@@ -1,0 +1,39 @@
+====================================================================
+           WORKSHIFT - PORTAL DO COLABORADOR (STANDALONE)
+====================================================================
+
+Olá! Você tem 2 formas muito fáceis de abrir o Portal do Colaborador:
+
+--------------------------------------------------------------------
+OPÇÃO 1: ABRIR DIRETO NO NAVEGADOR (SEM PRECISAR INSTALAR NADA) ⭐
+--------------------------------------------------------------------
+1. Dê um duplo clique no arquivo:
+   👉 "CLIQUE_AQUI_PARA_ABRIR.html"
+2. Pronto! O portal abrirá imediatamente no seu navegador (Chrome, Edge, etc.)
+   com todas as telas, registro de ponto GPS, calendário e solicitações.
+
+--------------------------------------------------------------------
+OPÇÃO 2: MODO DESENVOLVEDOR (VIA NODE.JS / NPM)
+--------------------------------------------------------------------
+Se você é desenvolvedor e deseja editar o código-fonte em React + TypeScript:
+
+1. Dê um duplo clique em:
+   👉 "1-INICIAR_SERVIDOR_LOCAL.bat"
+   
+   OU abra seu terminal/VS Code nesta pasta e digite:
+   npm install
+   npm run dev
+
+2. Acesse no navegador:
+   http://localhost:3000
+
+--------------------------------------------------------------------
+POR QUE O ARQUIVO 'index.html' DA RAIZ DÁ ERRO AO CLICAR DUAS VEZES?
+--------------------------------------------------------------------
+O arquivo "index.html" na raiz do projeto é o modelo de código-fonte 
+do Vite/React (ele aponta para "src/main.tsx"). Navegadores não conseguem
+executar arquivos TypeScript (".tsx") brutos diretamente sem o servidor
+Vite ou sem a compilação prévia. 
+
+Para abrir direto sem terminal, use o arquivo "CLIQUE_AQUI_PARA_ABRIR.html"!
+====================================================================
