@@ -297,7 +297,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     setRequestsList(prev => prev.map(r => r.id === reqId ? { ...r, status: 'rejected' } : r));
   };
 
-  const isOrbitStyledTab = activeTab === 'tarefas' || activeTab === 'aprovacoes' || activeTab === 'relatorios';
+  const isOrbitStyledTab = activeTab === 'tarefas' || activeTab === 'aprovacoes' || activeTab === 'relatorios' || activeTab === 'chat';
 
   return (
     <div className={`w-full font-sans space-y-4 select-none ${
@@ -878,144 +878,221 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         </div>
       )}
 
-      {/* ─── TAB 3: RELATÓRIO PRESENÇAS (ORBIT DARK IDENTITY) ─── */}
+      {/* ─── TAB 3: RELATÓRIO PRESENÇAS (INSPIRADO NA IDENTIDADE VISUAL DA LP) ─── */}
       {activeTab === 'relatorios' && (
-        <div className="space-y-5 animate-in fade-in duration-200">
+        <div className="space-y-6 animate-in fade-in duration-200 relative">
+          
+          {/* Efeito Glow de Fundo inspirado nas imagens da LP */}
+          <div 
+            className="absolute -top-12 right-0 w-[500px] h-[350px] pointer-events-none rounded-full"
+            style={{
+              background: 'radial-gradient(circle, rgba(255, 96, 31, 0.28) 0%, rgba(233, 0, 69, 0.15) 45%, transparent 75%)',
+              filter: 'blur(90px)',
+              zIndex: 0,
+            }}
+          />
 
-          {/* Orbit Header */}
-          <div className="rounded-3xl p-5 border border-white/10 shadow-2xl overflow-hidden relative"
-            style={{ background: 'linear-gradient(135deg, #12131A 0%, #1A1C24 100%)' }}>
-            <div className="absolute inset-0 opacity-5"
-              style={{ backgroundImage: 'radial-gradient(circle at 80% 20%, #f89847 0%, transparent 50%)' }} />
-            <div className="relative flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg shrink-0"
-                  style={{ background: 'linear-gradient(135deg, #96183c, #f89847)', borderRadius: '14px' }}>
-                  <FileText className="w-6 h-6 text-white" />
+          {/* Hero Banner Dark com Luz Quente na Lateral Direita (Fiel à LP) */}
+          <div 
+            className="rounded-3xl p-6 sm:p-8 border border-white/10 shadow-2xl relative overflow-hidden"
+            style={{ 
+              backgroundColor: '#111216',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.6)'
+            }}
+          >
+            {/* Feixe quente alaranjado/vermelho da Landing Page */}
+            <div 
+              className="absolute -top-1/2 -right-10 w-[55%] h-[200%] pointer-events-none"
+              style={{
+                background: 'radial-gradient(circle at 60% 50%, rgba(255, 96, 31, 0.42) 0%, rgba(233, 0, 69, 0.22) 45%, transparent 75%)',
+                filter: 'blur(60px)',
+              }}
+            />
+
+            <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="max-w-xl space-y-2">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-slate-300 border border-white/10 bg-white/5">
+                  <span className="w-3.5 h-0.5 rounded-full" style={{ background: 'linear-gradient(90deg, #e90045, #ff601f, #ffc928)' }} />
+                  GESTÃO INTELIGENTE DE EQUIPES
                 </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <h2 className="text-white font-extrabold text-base tracking-tight">Relatório de Presenças</h2>
-                    <span className="text-[9px] font-mono font-black px-2 py-0.5 rounded-full"
-                      style={{ background: 'rgba(248,152,71,0.15)', color: '#f89847', border: '1px solid rgba(248,152,71,0.35)' }}>
-                      ORBIT ANALYTICS
-                    </span>
-                  </div>
-                  <p className="text-slate-400 text-xs">Histórico consolidado de presença, faltas e justificativas da equipe</p>
-                </div>
+                <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-tight">
+                  Sua equipe. <br className="hidden sm:inline" />
+                  <span style={{
+                    background: 'linear-gradient(90deg, #e90045 0%, #ff601f 50%, #ffc928 100%)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent'
+                  }}>
+                    No ritmo certo.
+                  </span>
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-400">
+                  Consolidação em tempo real de jornadas, faltas justificadas, assiduidade e histórico operacional.
+                </p>
               </div>
-              <button
-                onClick={onExportCsv}
-                className="px-4 py-2 font-bold text-xs rounded-xl text-white flex items-center gap-1.5 shadow-md transition-all hover:scale-105 active:scale-95"
-                style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
-              >
-                <Download className="w-4 h-4" /> Exportar CSV
-              </button>
+
+              <div className="relative z-10 flex items-center gap-3 shrink-0">
+                <button
+                  onClick={onExportCsv}
+                  className="px-5 py-2.5 font-bold text-xs rounded-full text-white flex items-center gap-2 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                  style={{ 
+                    background: 'linear-gradient(90deg, #e90045 0%, #ff601f 50%, #ffc928 100%)',
+                    boxShadow: '0 4px 18px rgba(233, 0, 69, 0.4)'
+                  }}
+                >
+                  <Download className="w-4 h-4" /> Exportar Relatório CSV
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* KPI Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* KPI Cards Estilo Widget da LP */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
             {[
-              { label: 'TAXA DE ASSIDUIDADE', value: '89%', sub: '↗ Comparecimento geral', valueColor: '#f89847', subBg: 'rgba(248,152,71,0.12)', subColor: '#f89847' },
-              { label: 'PRESENÇAS CONFIRMADAS', value: '7', sub: '56h trabalhadas', valueColor: '#34d399', subBg: 'rgba(52,211,153,0.12)', subColor: '#34d399' },
-              { label: 'FALTAS NÃO JUSTIFICADAS', value: '1', sub: '1 justificada c/ atestado', valueColor: '#f87171', subBg: 'rgba(248,113,113,0.12)', subColor: '#f87171' },
-              { label: 'TOTAL NA ESCALA', value: '19', sub: '6 colaboradores ativos', valueColor: '#a78bfa', subBg: 'rgba(167,139,250,0.12)', subColor: '#a78bfa' },
+              { label: 'Taxa de Presença', value: '96%', sub: '▲ +2.4% acima da meta', dotColor: '#49d982', dotGlow: '#49d982' },
+              { label: 'Colaboradores Ativos', value: '48', sub: 'Total cadastrado na base', dotColor: '#ff601f', dotGlow: '#ff601f' },
+              { label: 'Escalas Hoje', value: '24', sub: 'Diurnas e noturnas', dotColor: '#ffd029', dotGlow: '#ffd029' },
+              { label: 'Faltas no Período', value: '02', sub: '1 abonada c/ atestado', dotColor: '#e90045', dotGlow: '#e90045' },
             ].map((kpi, i) => (
-              <div key={i} className="p-4 rounded-2xl border border-white/10 space-y-2" style={{ background: '#1A1C24' }}>
-                <span className="text-[10px] font-extrabold uppercase font-mono text-slate-400 block">{kpi.label}</span>
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-2xl font-black font-mono" style={{ color: kpi.valueColor }}>{kpi.value}</span>
-                  <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-lg" style={{ background: kpi.subBg, color: kpi.subColor }}>{kpi.sub}</span>
+              <div 
+                key={i} 
+                className="p-5 rounded-2xl border border-[#282a33] space-y-2 transition-transform hover:-translate-y-1 hover:border-[#3b3e4c]" 
+                style={{ background: '#15161b', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">{kpi.label}</span>
+                  <span 
+                    className="w-2.5 h-2.5 rounded-full" 
+                    style={{ background: kpi.dotColor, boxShadow: `0 0 8px ${kpi.dotGlow}` }}
+                  />
                 </div>
+                <div className="text-3xl font-extrabold text-white font-sans">{kpi.value}</div>
+                <span className="text-[11px] text-slate-500 font-medium block">{kpi.sub}</span>
               </div>
             ))}
           </div>
 
           {/* Filter Bar */}
-          <div className="p-3.5 rounded-2xl border border-white/10 flex flex-wrap items-center gap-3" style={{ background: '#1A1C24' }}>
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={relatorioSearch}
-                onChange={(e) => setRelatorioSearch(e.target.value)}
-                placeholder="Filtrar por nome ou setor..."
-                className="w-full pl-9 pr-3 py-2 text-xs rounded-xl text-white placeholder:text-slate-500 outline-none transition-colors"
-                style={{ background: '#14151C', border: '1px solid rgba(255,255,255,0.08)' }}
-              />
+          <div 
+            className="p-4 rounded-2xl border border-[#282a33] flex flex-wrap items-center justify-between gap-3 relative z-10" 
+            style={{ background: '#15161b' }}
+          >
+            <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[260px]">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={relatorioSearch}
+                  onChange={(e) => setRelatorioSearch(e.target.value)}
+                  placeholder="Filtrar por colaborador ou setor..."
+                  className="w-full pl-9 pr-3 py-2 text-xs rounded-full text-white placeholder:text-slate-500 outline-none transition-colors"
+                  style={{ background: '#0e0f12', border: '1px solid #282a33' }}
+                />
+              </div>
+              <select
+                value={relatorioStatus}
+                onChange={(e) => setRelatorioStatus(e.target.value)}
+                className="py-2 px-4 text-xs font-semibold rounded-full text-white outline-none cursor-pointer"
+                style={{ background: '#0e0f12', border: '1px solid #282a33', colorScheme: 'dark' }}
+              >
+                <option value="all">Todos os Status</option>
+                <option value="present">Presente</option>
+                <option value="absent">Ausente</option>
+                <option value="justified">Justificado</option>
+              </select>
+              <select
+                value={relatorioDept}
+                onChange={(e) => setRelatorioDept(e.target.value)}
+                className="py-2 px-4 text-xs font-semibold rounded-full text-white outline-none cursor-pointer"
+                style={{ background: '#0e0f12', border: '1px solid #282a33', colorScheme: 'dark' }}
+              >
+                <option value="all">Todos os Departamentos</option>
+                {departments.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
             </div>
-            <select
-              value={relatorioStatus}
-              onChange={(e) => setRelatorioStatus(e.target.value)}
-              className="py-2 px-3 text-xs font-bold rounded-xl text-white outline-none cursor-pointer"
-              style={{ background: '#14151C', border: '1px solid rgba(255,255,255,0.08)', colorScheme: 'dark' }}
-            >
-              <option value="all">Todos os Status</option>
-              <option value="present">Presente</option>
-              <option value="absent">Ausente</option>
-              <option value="justified">Justificado</option>
-            </select>
-            <select
-              value={relatorioDept}
-              onChange={(e) => setRelatorioDept(e.target.value)}
-              className="py-2 px-3 text-xs font-bold rounded-xl text-white outline-none cursor-pointer"
-              style={{ background: '#14151C', border: '1px solid rgba(255,255,255,0.08)', colorScheme: 'dark' }}
-            >
-              <option value="all">Todos os Departamentos</option>
-              {departments.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
           </div>
 
           {/* Data Table */}
-          <div className="rounded-2xl border border-white/10 overflow-hidden overflow-x-auto" style={{ background: '#1A1C24' }}>
+          <div 
+            className="rounded-2xl border border-[#282a33] overflow-hidden overflow-x-auto relative z-10" 
+            style={{ background: '#15161b' }}
+          >
             <table className="w-full border-collapse text-left text-xs font-sans min-w-[800px]">
               <thead>
-                <tr className="border-b border-white/10 font-mono text-[10px] uppercase text-slate-400" style={{ background: '#14151C' }}>
-                  <th className="p-3">DATA</th>
-                  <th className="p-3">COLABORADOR</th>
-                  <th className="p-3">DEPARTAMENTO</th>
-                  <th className="p-3">HORÁRIO</th>
-                  <th className="p-3">CARGA</th>
-                  <th className="p-3">STATUS PRESENÇA</th>
-                  <th className="p-3">TIPO</th>
-                  <th className="p-3">OBSERVAÇÕES</th>
+                <tr className="border-b border-[#282a33] font-mono text-[10px] uppercase text-slate-400" style={{ background: '#101115' }}>
+                  <th className="p-3.5">DATA</th>
+                  <th className="p-3.5">COLABORADOR</th>
+                  <th className="p-3.5">DEPARTAMENTO</th>
+                  <th className="p-3.5">HORÁRIO</th>
+                  <th className="p-3.5">CARGA</th>
+                  <th className="p-3.5">STATUS PRESENÇA</th>
+                  <th className="p-3.5">TIPO</th>
+                  <th className="p-3.5">OBSERVAÇÕES</th>
                 </tr>
               </thead>
               <tbody>
                 {[
-                  { date: '2026-08-31', name: 'Lucas Silva', role: 'Analista de Atendimento', dept: 'Atendimento', time: '08:00 – 17:00', hours: '8h', status: 'Presente', type: 'Regular', obs: 'Realizar triagem das filas de espera prioritárias.' },
-                  { date: '2026-08-31', name: 'Beatriz Santos', role: 'Especialista de Suporte', dept: 'Suporte Técnico', time: '09:00 – 18:00', hours: '8h', status: 'Presente', type: 'Reunião', obs: 'Apresentar métricas de SLA do suporte do mês anterior.' },
+                  { date: '2026-08-31', name: 'Lucas Silva', role: 'Analista de Atendimento', dept: 'Atendimento', time: '08:00 – 17:00', hours: '8h', status: 'Presente', type: 'Regular', obs: 'Check-in validado via GPS na sede.' },
+                  { date: '2026-08-31', name: 'Beatriz Santos', role: 'Especialista de Suporte', dept: 'Suporte Técnico', time: '09:00 – 18:00', hours: '8h', status: 'Presente', type: 'Reunião', obs: 'Apresentação de indicadores de SLA Q3.' },
                   { date: '2026-08-31', name: 'Rafael Mendes', role: 'Operador de Escala', dept: 'Operações', time: '07:00 – 16:00', hours: '8h', status: 'Presente', type: 'Regular', obs: '—' },
                   { date: '2026-08-31', name: 'Mariana Costa', role: 'Consultora de Vendas', dept: 'Comercial', time: '08:30 – 17:30', hours: '8h', status: 'Justificado', type: 'Regular', obs: 'Consulta médica agendada no período matutino - Atestado enviado.' },
                   { date: '2026-09-01', name: 'Lucas Silva', role: 'Analista de Atendimento', dept: 'Atendimento', time: '08:00 – 17:00', hours: '8h', status: 'Presente', type: 'Regular', obs: '—' },
-                  { date: '2026-09-01', name: 'Beatriz Santos', role: 'Especialista de Suporte', dept: 'Suporte Técnico', time: '09:00 – 18:00', hours: '8h', status: 'Ausente', type: 'Regular', obs: 'Não compareceu ao turno (No-show registrado pelo sistema)' },
+                  { date: '2026-09-01', name: 'Beatriz Santos', role: 'Especialista de Suporte', dept: 'Suporte Técnico', time: '09:00 – 18:00', hours: '8h', status: 'Ausente', type: 'Regular', obs: 'No-show registrado (falta não justificada)' },
                   { date: '2026-09-01', name: 'Rafael Mendes', role: 'Operador de Escala', dept: 'Operações', time: '07:00 – 16:00', hours: '8h', status: 'Presente', type: 'Regular', obs: '—' },
-                ].map((row, idx) => (
-                  <tr key={idx} className="border-b border-white/5 transition-colors" style={{ color: '#e2e8f0' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.025)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
-                    <td className="p-3 font-mono text-[11px] text-slate-400">{row.date}</td>
-                    <td className="p-3 font-bold text-white">
-                      {row.name}
-                      <span className="block text-[10px] text-slate-500 font-normal">{row.role}</span>
+                  { date: '2026-09-01', name: 'Thiago Oliveira', role: 'Desenvolvedor Frontend', dept: 'Tecnologia', time: '10:00 – 19:00', hours: '8h', status: 'Presente', type: 'Plantão', obs: 'Suporte aos deploys de homologação.' },
+                ].filter(row => {
+                  const matchSearch = !relatorioSearch || row.name.toLowerCase().includes(relatorioSearch.toLowerCase()) || row.dept.toLowerCase().includes(relatorioSearch.toLowerCase());
+                  const matchDept = relatorioDept === 'all' || row.dept === relatorioDept;
+                  const matchStatus = relatorioStatus === 'all' || 
+                    (relatorioStatus === 'present' && row.status === 'Presente') ||
+                    (relatorioStatus === 'absent' && row.status === 'Ausente') ||
+                    (relatorioStatus === 'justified' && row.status === 'Justificado');
+                  return matchSearch && matchDept && matchStatus;
+                }).map((row, idx) => (
+                  <tr 
+                    key={idx} 
+                    className="border-b border-white/5 transition-colors hover:bg-white/[0.03]" 
+                    style={{ color: '#e2e8f0' }}
+                  >
+                    <td className="p-3.5 font-mono text-[11px] text-slate-400">{row.date}</td>
+                    <td className="p-3.5">
+                      <div className="flex items-center gap-2.5">
+                        <div 
+                          className="w-7 h-7 rounded-full p-[1.5px] shrink-0" 
+                          style={{ background: 'linear-gradient(90deg, #e90045, #ff601f, #ffc928)' }}
+                        >
+                          <div className="w-full h-full rounded-full bg-[#15161b] flex items-center justify-center text-[10px] font-bold text-white uppercase">
+                            {row.name.substring(0, 2)}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="font-bold text-white block">{row.name}</span>
+                          <span className="block text-[10px] text-slate-500 font-normal">{row.role}</span>
+                        </div>
+                      </div>
                     </td>
-                    <td className="p-3 font-mono text-slate-400 text-[11px]">{row.dept}</td>
-                    <td className="p-3 font-mono text-[11px] text-slate-300">{row.time}</td>
-                    <td className="p-3 font-mono font-bold text-white">{row.hours}</td>
-                    <td className="p-3">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono inline-flex items-center gap-1" style={
+                    <td className="p-3.5 text-slate-400 text-[11px]">{row.dept}</td>
+                    <td className="p-3.5 font-mono text-[11px] text-slate-300">{row.time}</td>
+                    <td className="p-3.5 font-mono font-bold text-white">{row.hours}</td>
+                    <td className="p-3.5">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1.5" style={
                         row.status === 'Presente'
-                          ? { background: 'rgba(52,211,153,0.15)', color: '#34d399', border: '1px solid rgba(52,211,153,0.35)' }
+                          ? { background: 'rgba(73, 212, 123, 0.12)', color: '#49d982', border: '1px solid rgba(73, 212, 123, 0.25)' }
                           : row.status === 'Ausente'
-                          ? { background: 'rgba(248,113,113,0.15)', color: '#f87171', border: '1px solid rgba(248,113,113,0.35)' }
-                          : { background: 'rgba(167,139,250,0.15)', color: '#a78bfa', border: '1px solid rgba(167,139,250,0.35)' }
+                          ? { background: 'rgba(233, 0, 69, 0.12)', color: '#e90045', border: '1px solid rgba(233, 0, 69, 0.25)' }
+                          : { background: 'rgba(255, 208, 41, 0.12)', color: '#ffd029', border: '1px solid rgba(255, 208, 41, 0.25)' }
                       }>
+                        <span 
+                          className="w-1.5 h-1.5 rounded-full" 
+                          style={{ 
+                            background: row.status === 'Presente' ? '#49d982' : row.status === 'Ausente' ? '#e90045' : '#ffd029',
+                            boxShadow: `0 0 6px ${row.status === 'Presente' ? '#49d982' : row.status === 'Ausente' ? '#e90045' : '#ffd029'}`
+                          }} 
+                        />
                         {row.status}
                       </span>
                     </td>
-                    <td className="p-3 font-mono text-[11px] text-slate-400">{row.type}</td>
-                    <td className="p-3 text-slate-500 italic text-[11px]">{row.obs}</td>
+                    <td className="p-3.5 text-[11px] text-slate-400">{row.type}</td>
+                    <td className="p-3.5 text-slate-500 italic text-[11px] max-w-[260px] truncate">{row.obs}</td>
                   </tr>
                 ))}
               </tbody>

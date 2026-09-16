@@ -24,7 +24,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
   onOpenNotifications, onSwitchToEmployee, pendingRequestsCount,
 }) => {
   const [collapsed, setCollapsed] = useState(true);
-  const [activeTab, setActiveTab] = useState<ManagerTabId>('escala');
+  const [activeTab, setActiveTab] = useState<ManagerTabId>('orbit');
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
 
   const createShift = (date?: string, employeeId?: string) => onAddShift({
@@ -51,7 +51,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
       <main className={`min-w-0 flex-1 overflow-auto ${
         activeTab === 'orbit' 
           ? 'bg-[#0F1117] p-0 flex flex-col' 
-          : (activeTab === 'tarefas' || activeTab === 'aprovacoes' || activeTab === 'relatorios')
+          : (activeTab === 'tarefas' || activeTab === 'aprovacoes' || activeTab === 'relatorios' || activeTab === 'chat')
           ? 'bg-[#0F1117] p-3 sm:p-6'
           : 'bg-slate-100 p-3 sm:p-5'
       }`}>

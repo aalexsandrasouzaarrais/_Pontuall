@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aprovações e Faltas | Pontual - Gestão de Escalas e Ponto</title>
+  <meta name="description" content="Painel de controle para homologação de atestados, aprovação de trocas e gestão de faltas do sistema Pontual.">
+  
+  <!-- Fontes do Google: Inter e DM Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <!-- Folha de Estilos Externa -->
+  <link rel="stylesheet" href="./aprovacoes-e-faltas.css">
+</head>
+<body>
+
+  <!-- Efeitos de Glow Radial ao Fundo -->
+  <div class="bg-glow-top" aria-hidden="true"></div>
+  <div class="bg-glow-bottom" aria-hidden="true"></div>
+
+  <!-- 1. TOP HEADER / NAVEGAÇÃO -->
+  <header class="header">
+    <div class="container">
+      <div class="header-inner">
+        
+        <!-- Logotipo da Marca -->
+        <a href="#" class="logo-area">
+          <div class="logo-symbol">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+          </div>
+          <span class="logo-text">Pontu<span>all</span></span>
+        </a>
+
+        <!-- Links de Navegação Interna -->
+        <nav>
+          <ul class="nav-links">
+            <li class="nav-item"><a href="#">Dashboard</a></li>
+            <li class="nav-item"><a href="#">Grade de Escalas</a></li>
+            <li class="nav-item active"><a href="#">Aprovações & Faltas</a></li>
+            <li class="nav-item"><a href="#">Colaboradores</a></li>
+            <li class="nav-item"><a href="#">Relatórios</a></li>
+          </ul>
+        </nav>
+
+        <!-- Perfil do Usuário Logado -->
+        <div class="user-profile">
+          <div class="user-info">
+            <span class="user-name">Carlos Oliveira</span>
+            <span class="user-role">Gestor de Operações</span>
+          </div>
+          <div class="user-avatar-gradient" title="Perfil de Carlos Oliveira">
+            <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80" alt="Avatar do Gestor">
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </header>
+
+  <!-- CONTEÚDO PRINCIPAL -->
+  <main class="container">
+
+    <!-- 2. CABEÇALHO DA SEÇÃO -->
+    <section class="section-header">
+      <div class="eyebrow">
+        <span class="eyebrow-dot"></span>
+        PAINEL DE CONTROLE
+      </div>
+      <h1 class="main-title">
+        Aprovações e <span class="gradient-text">Faltas</span>
+      </h1>
+      <p class="subtitle">
+        Central unificada para análise de atestados médicos, gestão de ocorrências, homologação de justificativas e aprovação de trocas de escala em tempo real.
+      </p>
+    </section>
+
+    <!-- 3. CARDS DE MÉTRICAS KPI (GRID DE 4 COLUNAS) -->
+    <section class="kpi-grid">
+      
+      <!-- KPI 1: Pendentes -->
+      <div class="kpi-card">
+        <div class="kpi-top">
+          <span class="kpi-title">Pendentes de Aprovação</span>
+          <div class="kpi-icon-wrapper yellow">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+          </div>
+        </div>
+        <div class="kpi-value" id="kpi-pendentes">12</div>
+        <div class="kpi-footer">
+          <span class="kpi-trend-alert">● Requer atenção imediata</span>
+        </div>
+      </div>
+
+      <!-- KPI 2: Faltas no Mês -->
+      <div class="kpi-card">
+        <div class="kpi-top">
+          <span class="kpi-title">Faltas Registradas no Mês</span>
+          <div class="kpi-icon-wrapper red">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="15" y1="9" x2="9" y2="15"></line>
+              <line x1="9" y1="9" x2="15" y2="15"></line>
+            </svg>
+          </div>
+        </div>
+        <div class="kpi-value" id="kpi-faltas">04</div>
+        <div class="kpi-footer">
+          <span>-25% em relação ao mês anterior</span>
+        </div>
+      </div>
+
+      <!-- KPI 3: Atestados Anexados -->
+      <div class="kpi-card">
+        <div class="kpi-top">
+          <span class="kpi-title">Atestados Anexados</span>
+          <div class="kpi-icon-wrapper blue">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+              <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+          </div>
+        </div>
+        <div class="kpi-value" id="kpi-atestados">08</div>
+        <div class="kpi-footer">
+          <span>Comprovantes anexados pelo colaborador</span>
+        </div>
+      </div>
+
+      <!-- KPI 4: Taxa de Assiduidade -->
+      <div class="kpi-card">
+        <div class="kpi-top">
+          <span class="kpi-title">Taxa de Assiduidade</span>
+          <div class="kpi-icon-wrapper green">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+              <polyline points="22 4 12 14.01 9 11.01"></polyline>
+            </svg>
+          </div>
+        </div>
+        <div class="kpi-value" id="kpi-assiduidade">96%</div>
+        <div class="kpi-footer">
+          <span class="kpi-trend-positive">▲ Meta atingida (+2%)</span>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- 4. BARRA DE AÇÕES E FILTROS -->
+    <section class="controls-bar">
+      
+      <div class="controls-left">
+        <!-- Campo de Busca por Colaborador -->
+        <div class="search-box">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input 
+            type="text" 
+            id="searchInput"
+            class="search-input" 
+            placeholder="Buscar por colaborador..." 
+            onkeyup="filterTable()"
+          />
+        </div>
+
+        <!-- Filtros Rápidos em Pílula -->
+        <div class="filter-pills">
+          <button class="filter-btn active" onclick="setFilter('all', this)">Todos</button>
+          <button class="filter-btn" onclick="setFilter('pending', this)">Pendentes</button>
+          <button class="filter-btn" onclick="setFilter('approved', this)">Aprovados</button>
+          <button class="filter-btn" onclick="setFilter('rejected', this)">Faltas / Recusados</button>
+        </div>
+      </div>
+
+      <!-- Botão Primário de Ação -->
+      <button class="btn-primary" onclick="openModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+        Nova Solicitação / Lançar Falta
+      </button>
+
+    </section>
+
+    <!-- 5. TABELA / LISTA DE SOLICITAÇÕES -->
+    <section class="table-card">
+      <div class="table-responsive">
+        <table class="requests-table" id="requestsTable">
+          <thead>
+            <tr>
+              <th>Colaborador</th>
+              <th>Tipo</th>
+              <th>Data / Período</th>
+              <th>Comprovante</th>
+              <th>Status</th>
+              <th style="text-align: right;">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            
+            <!-- Linha 1: Atestado Pendente -->
+            <tr data-status="pending">
+              <td>
+                <div class="collab-cell">
+                  <div class="collab-avatar">
+                    <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80" alt="Lucas Silva">
+                  </div>
+                  <div>
+                    <span class="collab-name">Lucas Silva</span>
+                    <span class="collab-role">Analista de Atendimento</span>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="type-indicator">
+                  <span class="type-title">Atestado Médico</span>
+                  <span class="type-desc">Consulta odontológica e repouso (CID K01)</span>
+                </div>
+              </td>
+              <td>
+                <div class="date-badge">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                  16/09/2026
+                </div>
+              </td>
+              <td>
+                <button class="doc-btn" onclick="alert('Visualizando atestado_lucas_16set.pdf')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+                  atestado.pdf
+                </button>
+              </td>
+              <td>
+                <span class="badge-status pending">
+                  <span class="badge-status-dot"></span>
+                  Pendente
+                </span>
+              </td>
+              <td style="text-align: right;">
+                <div class="action-buttons" style="justify-content: flex-end;">
+                  <button class="btn-action approve" title="Aprovar Solicitação" onclick="changeStatus(this, 'approved')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  </button>
+                  <button class="btn-action reject" title="Recusar Solicitação" onclick="changeStatus(this, 'rejected')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Linha 2: Troca de Turno Pendente -->
+            <tr data-status="pending">
+              <td>
+                <div class="collab-cell">
+                  <div class="collab-avatar">
+                    <img src="https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80" alt="Beatriz Santos">
+                  </div>
+                  <div>
+                    <span class="collab-name">Beatriz Santos</span>
+                    <span class="collab-role">Especialista de Suporte</span>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="type-indicator">
+                  <span class="type-title">Troca de Turno</span>
+                  <span class="type-desc">Solicitou troca com Thiago Oliveira</span>
+                </div>
+              </td>
+              <td>
+                <div class="date-badge">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                  18/09/2026
+                </div>
+              </td>
+              <td>
+                <span class="no-doc">Não se aplica</span>
+              </td>
+              <td>
+                <span class="badge-status pending">
+                  <span class="badge-status-dot"></span>
+                  Pendente
+                </span>
+              </td>
+              <td style="text-align: right;">
+                <div class="action-buttons" style="justify-content: flex-end;">
+                  <button class="btn-action approve" title="Aprovar Troca" onclick="changeStatus(this, 'approved')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  </button>
+                  <button class="btn-action reject" title="Recusar Troca" onclick="changeStatus(this, 'rejected')">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Linha 3: Folga Aprovada -->
+            <tr data-status="approved">
+              <td>
+                <div class="collab-cell">
+                  <div class="collab-avatar">
+                    <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80" alt="Rafael Mendes">
+                  </div>
+                  <div>
+                    <span class="collab-name">Rafael Mendes</span>
+                    <span class="collab-role">Operador de Escala</span>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="type-indicator">
+                  <span class="type-title">Folga Compensatória</span>
+                  <span class="type-desc">Banco de horas acumulado no plantão</span>
+                </div>
+              </td>
+              <td>
+                <div class="date-badge">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                  14/09/2026
+                </div>
+              </td>
+              <td>
+                <span class="no-doc">Acordo banco</span>
+              </td>
+              <td>
+                <span class="badge-status approved">
+                  <span class="badge-status-dot"></span>
+                  Aprovado
+                </span>
+              </td>
+              <td style="text-align: right;">
+                <span class="action-decided">Homologado</span>
+              </td>
+            </tr>
+
+            <!-- Linha 4: Falta Injustificada / Recusada -->
+            <tr data-status="rejected">
+              <td>
+                <div class="collab-cell">
+                  <div class="collab-avatar">
+                    <img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80" alt="Mariana Costa">
+                  </div>
+                  <div>
+                    <span class="collab-name">Mariana Costa</span>
+                    <span class="collab-role">Consultora de Vendas</span>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="type-indicator">
+                  <span class="type-title">Falta Injustificada</span>
+                  <span class="type-desc">Ausência não comunicada no turno matutino</span>
+                </div>
+              </td>
+              <td>
+                <div class="date-badge">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                  11/09/2026
+                </div>
+              </td>
+              <td>
+                <span class="no-doc">Sem anexo</span>
+              </td>
+              <td>
+                <span class="badge-status rejected">
+                  <span class="badge-status-dot"></span>
+                  Falta Lançada
+                </span>
+              </td>
+              <td style="text-align: right;">
+                <span class="action-decided">Registrada em folha</span>
+              </td>
+            </tr>
+
+            <!-- Linha 5: Atestado Aprovado -->
+            <tr data-status="approved">
+              <td>
+                <div class="collab-cell">
+                  <div class="collab-avatar">
+                    <img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80" alt="Thiago Oliveira">
+                  </div>
+                  <div>
+                    <span class="collab-name">Thiago Oliveira</span>
+                    <span class="collab-role">Desenvolvedor Frontend</span>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="type-indicator">
+                  <span class="type-title">Atestado Médico</span>
+                  <span class="type-desc">Declaração de comparecimento vacinação</span>
+                </div>
+              </td>
+              <td>
+                <div class="date-badge">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                  09/09/2026
+                </div>
+              </td>
+              <td>
+                <button class="doc-btn" onclick="alert('Visualizando comprovante_thiago.pdf')">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+                  declaracao.pdf
+                </button>
+              </td>
+              <td>
+                <span class="badge-status approved">
+                  <span class="badge-status-dot"></span>
+                  Aprovado
+                </span>
+              </td>
+              <td style="text-align: right;">
+                <span class="action-decided">Abonado pelo RH</span>
+              </td>
+            </tr>
+
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 6. MODAL INTERATIVO: NOVA SOLICITAÇÃO / LANÇAR FALTA -->
+  <div class="modal-overlay" id="requestModal" onclick="handleBackdropClick(event)">
+    <div class="modal-window">
+      
+      <div class="modal-header">
+        <h3 class="modal-title">Lançar Registro / Solicitação</h3>
+        <button class="modal-close-btn" onclick="closeModal()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <form id="newRequestForm" onsubmit="handleFormSubmit(event)">
+        <div class="modal-body">
+          
+          <div class="form-group">
+            <label class="form-label" for="employeeSelect">Colaborador</label>
+            <select id="employeeSelect" class="form-control" required>
+              <option value="">Selecione o colaborador...</option>
+              <option value="Lucas Silva - Analista de Atendimento">Lucas Silva (Atendimento)</option>
+              <option value="Beatriz Santos - Especialista de Suporte">Beatriz Santos (Suporte)</option>
+              <option value="Rafael Mendes - Operador de Escala">Rafael Mendes (Operações)</option>
+              <option value="Mariana Costa - Consultora de Vendas">Mariana Costa (Comercial)</option>
+              <option value="Thiago Oliveira - Desenvolvedor Frontend">Thiago Oliveira (Tecnologia)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="typeSelect">Tipo de Ocorrência</label>
+            <select id="typeSelect" class="form-control" required>
+              <option value="Atestado Médico">Atestado Médico</option>
+              <option value="Falta Injustificada">Falta Injustificada</option>
+              <option value="Troca de Turno">Troca de Turno</option>
+              <option value="Folga Compensatória">Folga Compensatória</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="dateInput">Data da Ocorrência</label>
+            <input type="date" id="dateInput" class="form-control" required value="2026-09-16" />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="reasonInput">Motivo / Descrição</label>
+            <input type="text" id="reasonInput" class="form-control" placeholder="Ex: Consulta médica, imprevisto pessoal..." required />
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="fileInput">Anexar Comprovante (opcional)</label>
+            <input type="file" id="fileInput" class="form-control" style="padding: 7px 14px;" />
+          </div>
+
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" onclick="closeModal()">Cancelar</button>
+          <button type="submit" class="btn-primary">Salvar Lançamento</button>
+        </div>
+      </form>
+
+    </div>
+  </div>
+
+  <!-- 7. FOOTER -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-inner">
+        <span>© 2026 Pontual - Todos os direitos reservados.</span>
+        <span>Plataforma inteligente de escalas e ponto eletrônico.</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- SCRIPT INTERATIVO (SEM DEPENDÊNCIAS EXTERNAS) -->
+  <script>
+    let currentFilter = 'all';
+
+    function openModal() {
+      document.getElementById('requestModal').classList.add('active');
+    }
+
+    function closeModal() {
+      document.getElementById('requestModal').classList.remove('active');
+    }
+
+    function handleBackdropClick(e) {
+      if (e.target === document.getElementById('requestModal')) {
+        closeModal();
+      }
+    }
+
+    function setFilter(type, buttonElement) {
+      currentFilter = type;
+      
+      document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+      buttonElement.classList.add('active');
+
+      filterTable();
+    }
+
+    function filterTable() {
+      const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+      const rows = document.querySelectorAll('#requestsTable tbody tr');
+
+      rows.forEach(row => {
+        const collabName = row.querySelector('.collab-name').textContent.toLowerCase();
+        const collabRole = row.querySelector('.collab-role').textContent.toLowerCase();
+        const typeText = row.querySelector('.type-title').textContent.toLowerCase();
+        const status = row.getAttribute('data-status');
+
+        const matchesSearch = collabName.includes(searchTerm) || collabRole.includes(searchTerm) || typeText.includes(searchTerm);
+        const matchesFilter = (currentFilter === 'all') || (status === currentFilter);
+
+        if (matchesSearch && matchesFilter) {
+          row.style.display = '';
+        } else {
+          row.style.display = 'none';
+        }
+      });
+    }
+
+    function changeStatus(button, newStatus) {
+      const row = button.closest('tr');
+      row.setAttribute('data-status', newStatus);
+
+      const statusCell = row.children[4];
+      const actionsCell = row.children[5];
+
+      if (newStatus === 'approved') {
+        statusCell.innerHTML = `
+          <span class="badge-status approved">
+            <span class="badge-status-dot"></span>
+            Aprovado
+          </span>
+        `;
+        actionsCell.innerHTML = `<span class="action-decided">Homologado agora</span>`;
+      } else if (newStatus === 'rejected') {
+        statusCell.innerHTML = `
+          <span class="badge-status rejected">
+            <span class="badge-status-dot"></span>
+            Recusado / Falta
+          </span>
+        `;
+        actionsCell.innerHTML = `<span class="action-decided">Recusado agora</span>`;
+      }
+
+      // Atualizar contador de pendentes
+      const pendingCount = document.querySelectorAll('#requestsTable tbody tr[data-status="pending"]').length;
+      document.getElementById('kpi-pendentes').textContent = String(pendingCount).padStart(2, '0');
+    }
+
+    function handleFormSubmit(e) {
+      e.preventDefault();
+      
+      const collab = document.getElementById('employeeSelect').value.split(' - ');
+      const collabName = collab[0];
+      const collabRole = collab[1] || 'Colaborador';
+      const type = document.getElementById('typeSelect').value;
+      const dateVal = document.getElementById('dateInput').value;
+      const reason = document.getElementById('reasonInput').value;
+      const file = document.getElementById('fileInput').files[0];
+
+      // Formatar data para DD/MM/AAAA
+      const parts = dateVal.split('-');
+      const formattedDate = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : dateVal;
+
+      const isFalta = type === 'Falta Injustificada';
+      const statusKey = isFalta ? 'rejected' : 'pending';
+      const statusLabel = isFalta ? 'Falta Lançada' : 'Pendente';
+      const statusClass = isFalta ? 'rejected' : 'pending';
+
+      const fileHtml = file 
+        ? `<button class="doc-btn" onclick="alert('Visualizando comprovante anexado.')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+            ${file.name.substring(0, 14)}...
+           </button>`
+        : `<span class="no-doc">${isFalta ? 'Sem anexo' : 'Não anexado'}</span>`;
+
+      const actionsHtml = isFalta 
+        ? `<span class="action-decided">Lançada manualmente</span>`
+        : `
+          <div class="action-buttons" style="justify-content: flex-end;">
+            <button class="btn-action approve" title="Aprovar" onclick="changeStatus(this, 'approved')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </button>
+            <button class="btn-action reject" title="Recusar" onclick="changeStatus(this, 'rejected')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+        `;
+
+      const tbody = document.querySelector('#requestsTable tbody');
+      const newRow = document.createElement('tr');
+      newRow.setAttribute('data-status', statusKey);
+
+      newRow.innerHTML = `
+        <td>
+          <div class="collab-cell">
+            <div class="collab-avatar">
+              <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80" alt="${collabName}">
+            </div>
+            <div>
+              <span class="collab-name">${collabName}</span>
+              <span class="collab-role">${collabRole}</span>
+            </div>
+          </div>
+        </td>
+        <td>
+          <div class="type-indicator">
+            <span class="type-title">${type}</span>
+            <span class="type-desc">${reason}</span>
+          </div>
+        </td>
+        <td>
+          <div class="date-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+            ${formattedDate}
+          </div>
+        </td>
+        <td>${fileHtml}</td>
+        <td>
+          <span class="badge-status ${statusClass}">
+            <span class="badge-status-dot"></span>
+            ${statusLabel}
+          </span>
+        </td>
+        <td style="text-align: right;">${actionsHtml}</td>
+      `;
+
+      tbody.insertBefore(newRow, tbody.firstChild);
+
+      // Recalcular pendentes
+      const pendingCount = document.querySelectorAll('#requestsTable tbody tr[data-status="pending"]').length;
+      document.getElementById('kpi-pendentes').textContent = String(pendingCount).padStart(2, '0');
+
+      if (isFalta) {
+        const faltasElem = document.getElementById('kpi-faltas');
+        faltasElem.textContent = String(parseInt(faltasElem.textContent || '0') + 1).padStart(2, '0');
+      }
+
+      closeModal();
+      document.getElementById('newRequestForm').reset();
+    }
+  </script>
+
+</body>
+</html>

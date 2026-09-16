@@ -251,32 +251,22 @@ export function App() {
       <div className="bg-[#14141A] border-b border-white/10 px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-3">
           <img
-            src="/logo-painel.png"
-            alt="Logo Pontual"
-            className="h-8 sm:h-9 object-contain drop-shadow-xs"
-            onError={(e) => {
-              // Fallback if image path fails
-              e.currentTarget.style.display = 'none';
-            }}
+            src="/logo-pontual-header.png"
+            alt="Pontual"
+            className="h-6 sm:h-7 object-contain drop-shadow-xs"
           />
-          <span className="font-black text-base text-white tracking-tight sm:hidden">
-            Pontual
-          </span>
-          <span className="text-slate-500 font-mono hidden sm:inline">|</span>
-          <span className="text-slate-300 font-medium hidden sm:inline text-xs">
-            Gestão Inteligente de Escalas, Turnos & Ponto
-          </span>
         </div>
 
         {/* Switcher Pill */}
-        <div className="flex items-center gap-1.5 bg-[#1C1C24] p-1 rounded-full border border-white/10">
+        <div className="flex items-center gap-1.5 bg-[#12131A] p-1 rounded-full border border-white/10">
           <button
             onClick={() => setCurrentRole('manager')}
-            className={`px-3.5 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${
+            className={`px-3.5 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
               currentRole === 'manager'
-                ? 'bg-[#E2F952] text-slate-950 shadow-md font-black'
+                ? 'text-white shadow-md font-black'
                 : 'text-slate-400 hover:text-white'
             }`}
+            style={currentRole === 'manager' ? { background: 'linear-gradient(135deg, #96183c, #f89847)' } : {}}
           >
             <ShieldCheck className="w-3.5 h-3.5" />
             <span>👔 Visão do Gestor</span>
@@ -284,11 +274,12 @@ export function App() {
 
           <button
             onClick={() => setCurrentRole('employee')}
-            className={`px-3.5 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${
+            className={`px-3.5 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
               currentRole === 'employee'
-                ? 'bg-white text-slate-900 shadow-md font-black'
+                ? 'text-white shadow-md font-black'
                 : 'text-slate-400 hover:text-white'
             }`}
+            style={currentRole === 'employee' ? { background: 'linear-gradient(135deg, #96183c, #f89847)' } : {}}
           >
             <User className="w-3.5 h-3.5" />
             <span>👤 Portal do Colaborador</span>

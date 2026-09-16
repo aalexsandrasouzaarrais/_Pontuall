@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Relatórios e Presenças | Pontual</title>
+  <meta name="description"
+    content="Acompanhe jornadas, assiduidade e métricas de presença da sua equipe em tempo real com o Pontual.">
+
+  <!-- Google Fonts: DM Sans, Inter e JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet">
+
+  <link rel="stylesheet" href="./relatorios-presencas.css">
+</head>
+
+<body>
+
+  <!-- ILUMINAÇÃO DE FUNDO AMBIENTE (Inspirado nas imagens da Landing Page) -->
+  <div class="ambient-background" aria-hidden="true">
+    <div class="ambient-glow-top-right"></div>
+    <div class="ambient-glow-bottom-left"></div>
+    <div class="ambient-noise"></div>
+  </div>
+
+  <!-- HEADER / TOPO -->
+  <header class="site-header">
+    <div class="container">
+      <div class="header-inner">
+
+        <a href="#" class="brand-link">
+          <div class="brand-orb"></div>
+          <span class="brand-text">Pontu<span>al</span></span>
+        </a>
+
+        <nav>
+          <ul class="nav-menu">
+            <li><a href="#" class="nav-link">Escalas da Semana</a></li>
+            <li><a href="./aprovacoes-e-faltas.html" class="nav-link">Aprovações & Faltas</a></li>
+            <li><a href="#" class="nav-link active">Relatório & Presenças</a></li>
+            <li><a href="#" class="nav-link">Equipe</a></li>
+          </ul>
+        </nav>
+
+        <div class="user-block">
+          <div class="user-meta">
+            <span class="user-name">Gestor de Operações</span>
+            <span class="user-role">Sede Employer • Matriz</span>
+          </div>
+          <div class="user-avatar-ring">
+            <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
+              alt="Gestor">
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </header>
+
+  <!-- CONTEÚDO PRINCIPAL -->
+  <main class="container">
+
+    <!-- HERO BANNER COM DEGRADÊ DE FUNDO (EXATO COMO NAS IMAGENS DA LP) -->
+    <section class="hero-banner">
+      <div class="hero-content">
+        <div class="eyebrow-tag">
+          <span class="badge-line"></span>
+          
+        </div>
+        <h1 class="hero-title">
+          Relatório de Presenças <br>
+          <span class="text-gradient"></span>
+        </h1>
+        <p class="hero-desc">
+         
+        </p>
+
+        <div class="hero-actions">
+          <button class="btn-primary" onclick="exportCsv()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+              stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Exportar Relatório CSV
+          </button>
+
+          <a href="./aprovacoes-e-faltas.html" class="btn-outline">
+            Ver Aprovações & Faltas →
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- CARDS DE MÉTRICAS KPI (ESTILO DOS CARDS DO WIDGET DA LP) -->
+    <section class="stats-grid">
+
+      <div class="stat-card">
+        <div class="stat-header">
+          <span class="stat-label">Taxa de Presença</span>
+          <span class="stat-orb-indicator green"></span>
+        </div>
+        <div class="stat-value">96%</div>
+        <div class="stat-sub positive">
+          <span>▲ +2.4% acima da meta do mês</span>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-header">
+          <span class="stat-label">Colaboradores Ativos</span>
+          <span class="stat-orb-indicator gradient"></span>
+        </div>
+        <div class="stat-value">48</div>
+        <div class="stat-sub">
+          <span>Total cadastrado no sistema</span>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-header">
+          <span class="stat-label">Escalas Cumpridas Hoje</span>
+          <span class="stat-orb-indicator yellow"></span>
+        </div>
+        <div class="stat-value">24</div>
+        <div class="stat-sub">
+          <span>Turnos diurnos e noturnos</span>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-header">
+          <span class="stat-label">Faltas no Período</span>
+          <span class="stat-orb-indicator red"></span>
+        </div>
+        <div class="stat-value">02</div>
+        <div class="stat-sub">
+          <span>1 justificada com atestado</span>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- BARRA DE CONTROLES E FILTROS -->
+    <section class="filter-bar">
+
+      <div class="filter-bar-left">
+        <div class="search-field">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="searchInput" placeholder="Filtrar por nome ou setor..." onkeyup="filterReport()" />
+        </div>
+
+        <select id="deptFilter" class="select-control" onchange="filterReport()">
+          <option value="all">Todos os Departamentos</option>
+          <option value="Atendimento">Atendimento</option>
+          <option value="Suporte Técnico">Suporte Técnico</option>
+          <option value="Operações">Operações</option>
+          <option value="Comercial">Comercial</option>
+          <option value="Tecnologia">Tecnologia</option>
+        </select>
+      </div>
+
+      <div class="segmented-filters">
+        <button class="seg-btn active" onclick="setStatusFilter('all', this)">Todos</button>
+        <button class="seg-btn" onclick="setStatusFilter('Presente', this)">Presentes</button>
+        <button class="seg-btn" onclick="setStatusFilter('Justificado', this)">Justificados</button>
+        <button class="seg-btn" onclick="setStatusFilter('Ausente', this)">Ausentes</button>
+      </div>
+
+    </section>
+
+    <!-- TABELA DE REGISTROS DE PRESENÇA -->
+    <section class="table-panel">
+      <div class="table-wrapper">
+        <table class="report-table" id="reportTable">
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Colaborador</th>
+              <th>Departamento</th>
+              <th>Horário</th>
+              <th>Carga</th>
+              <th>Status Presença</th>
+              <th>Tipo</th>
+              <th>Observações</th>
+            </tr>
+          </thead>
+          <tbody>
+
+            <tr data-status="Presente" data-dept="Atendimento">
+              <td class="time-tag">31/08/2026</td>
+              <td>
+                <div class="person-cell">
+                  <div class="person-avatar">
+                    <img
+                      src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
+                      alt="Lucas Silva">
+                  </div>
+                  <div>
+                    <span class="person-name">Lucas Silva</span>
+                    <span class="person-role">Analista de Atendimento</span>
+                  </div>
+                </div>
+              </td>
+              <td class="dept-tag">Atendimento</td>
+              <td><span class="time-tag">08:00 – 17:00</span></td>
+              <td class="hours-tag">8h</td>
+              <td>
+                <span class="badge-status presente">
+                  <span class="badge-dot"></span> Presente
+                </span>
+              </td>
+              <td class="dept-tag">Regular</td>
+              <td class="obs-text">Check-in validado via GPS na sede.</td>
+            </tr>
+
+            <tr data-status="Presente" data-dept="Suporte Técnico">
+              <td class="time-tag">31/08/2026</td>
+              <td>
+                <div class="person-cell">
+                  <div class="person-avatar">
+                    <img
+                      src="https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80"
+                      alt="Beatriz Santos">
+                  </div>
+                  <div>
+                    <span class="person-name">Beatriz Santos</span>
+                    <span class="person-role">Especialista de Suporte</span>
+                  </div>
+                </div>
+              </td>
+              <td class="dept-tag">Suporte Técnico</td>
+              <td><span class="time-tag">09:00 – 18:00</span></td>
+              <td class="hours-tag">8h</td>
+              <td>
+                <span class="badge-status presente">
+                  <span class="badge-dot"></span> Presente
+                </span>
+              </td>
+              <td class="dept-tag">Reunião</td>
+              <td class="obs-text">Apresentação de indicadores de SLA Q3.</td>
+            </tr>
+
+            <tr data-status="Presente" data-dept="Operações">
+              <td class="time-tag">31/08/2026</td>
+              <td>
+                <div class="person-cell">
+                  <div class="person-avatar">
+                    <img
+                      src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80"
+                      alt="Rafael Mendes">
+                  </div>
+                  <div>
+                    <span class="person-name">Rafael Mendes</span>
+                    <span class="person-role">Operador de Escala</span>
+                  </div>
+                </div>
+              </td>
+              <td class="dept-tag">Operações</td>
+              <td><span class="time-tag">07:00 – 16:00</span></td>
+              <td class="hours-tag">8h</td>
+              <td>
+                <span class="badge-status presente">
+                  <span class="badge-dot"></span> Presente
+                </span>
+              </td>
+              <td class="dept-tag">Regular</td>
+              <td class="obs-text">—</td>
+            </tr>
+
+            <tr data-status="Justificado" data-dept="Comercial">
+              <td class="time-tag">31/08/2026</td>
+              <td>
+                <div class="person-cell">
+                  <div class="person-avatar">
+                    <img
+                      src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80"
+                      alt="Mariana Costa">
+                  </div>
+                  <div>
+                    <span class="person-name">Mariana Costa</span>
+                    <span class="person-role">Consultora de Vendas</span>
+                  </div>
+                </div>
+              </td>
+              <td class="dept-tag">Comercial</td>
+              <td><span class="time-tag">08:30 – 17:30</span></td>
+              <td class="hours-tag">8h</td>
+              <td>
+                <span class="badge-status justificado">
+                  <span class="badge-dot"></span> Justificado
+                </span>
+              </td>
+              <td class="dept-tag">Atestado</td>
+              <td class="obs-text">Atestado médico anexado e homologado pelo RH.</td>
+            </tr>
+
+            <tr data-status="Ausente" data-dept="Suporte Técnico">
+              <td class="time-tag">01/09/2026</td>
+              <td>
+                <div class="person-cell">
+                  <div class="person-avatar">
+                    <img
+                      src="https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80"
+                      alt="Beatriz Santos">
+                  </div>
+                  <div>
+                    <span class="person-name">Beatriz Santos</span>
+                    <span class="person-role">Especialista de Suporte</span>
+                  </div>
+                </div>
+              </td>
+              <td class="dept-tag">Suporte Técnico</td>
+              <td><span class="time-tag">09:00 – 18:00</span></td>
+              <td class="hours-tag">8h</td>
+              <td>
+                <span class="badge-status ausente">
+                  <span class="badge-dot"></span> Ausente
+                </span>
+              </td>
+              <td class="dept-tag">Regular</td>
+              <td class="obs-text">No-show registrado (falta não justificada).</td>
+            </tr>
+
+            <tr data-status="Presente" data-dept="Tecnologia">
+              <td class="time-tag">01/09/2026</td>
+              <td>
+                <div class="person-cell">
+                  <div class="person-avatar">
+                    <img
+                      src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80"
+                      alt="Thiago Oliveira">
+                  </div>
+                  <div>
+                    <span class="person-name">Thiago Oliveira</span>
+                    <span class="person-role">Desenvolvedor Frontend</span>
+                  </div>
+                </div>
+              </td>
+              <td class="dept-tag">Tecnologia</td>
+              <td><span class="time-tag">10:00 – 19:00</span></td>
+              <td class="hours-tag">8h</td>
+              <td>
+                <span class="badge-status presente">
+                  <span class="badge-dot"></span> Presente
+                </span>
+              </td>
+              <td class="dept-tag">Plantão</td>
+              <td class="obs-text">Suporte aos deploys de homologação.</td>
+            </tr>
+
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- RODAPÉ -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-content">
+        <span>© 2026 Pontual • Do planejamento à execução.</span>
+        <span>Porque cada minuto importa.</span>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    let activeStatus = 'all';
+
+    function setStatusFilter(status, btn) {
+      activeStatus = status;
+      document.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      filterReport();
+    }
+
+    function filterReport() {
+      const search = document.getElementById('searchInput').value.toLowerCase();
+      const selectedDept = document.getElementById('deptFilter').value;
+      const rows = document.querySelectorAll('#reportTable tbody tr');
+
+      rows.forEach(row => {
+        const name = row.querySelector('.person-name').textContent.toLowerCase();
+        const role = row.querySelector('.person-role').textContent.toLowerCase();
+        const dept = row.getAttribute('data-dept');
+        const status = row.getAttribute('data-status');
+
+        const matchSearch = name.includes(search) || role.includes(search) || dept.toLowerCase().includes(search);
+        const matchDept = selectedDept === 'all' || dept === selectedDept;
+        const matchStatus = activeStatus === 'all' || status === activeStatus;
+
+        if (matchSearch && matchDept && matchStatus) {
+          row.style.display = '';
+        } else {
+          row.style.display = 'none';
+        }
+      });
+    }
+
+    function exportCsv() {
+      const rows = [
+        ['Data', 'Colaborador', 'Cargo', 'Departamento', 'Horario', 'Carga', 'Status', 'Observacoes'],
+        ['31/08/2026', 'Lucas Silva', 'Analista de Atendimento', 'Atendimento', '08:00 - 17:00', '8h', 'Presente', 'Check-in validado via GPS'],
+        ['31/08/2026', 'Beatriz Santos', 'Especialista de Suporte', 'Suporte Técnico', '09:00 - 18:00', '8h', 'Presente', 'Reuniao de SLA'],
+        ['31/08/2026', 'Rafael Mendes', 'Operador de Escala', 'Operações', '07:00 - 16:00', '8h', 'Presente', ''],
+        ['31/08/2026', 'Mariana Costa', 'Consultora de Vendas', 'Comercial', '08:30 - 17:30', '8h', 'Justificado', 'Atestado medico homologado'],
+        ['01/09/2026', 'Beatriz Santos', 'Especialista de Suporte', 'Suporte Técnico', '09:00 - 18:00', '8h', 'Ausente', 'Falta nao justificada'],
+        ['01/09/2026', 'Thiago Oliveira', 'Desenvolvedor Frontend', 'Tecnologia', '10:00 - 19:00', '8h', 'Presente', 'Plantao']
+      ];
+
+      const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(";")).join("\n");
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", "relatorio_presencas_pontual.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  </script>
+
+</body>
+
+</html>

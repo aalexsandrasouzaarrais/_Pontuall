@@ -40,9 +40,9 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
 }) => {
   const navItems: SidebarItem[] = [
     {
-      id: 'escala',
+      id: 'orbit',
       label: 'Grade de Escalas',
-      icon: <CalendarDays className="w-5 h-5" />,
+      icon: <CalendarRange className="w-5 h-5" />,
     },
     {
       id: 'aprovacoes',
@@ -185,53 +185,6 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
             </button>
           );
         })}
-
-        {/* Divider */}
-        <div className="h-px bg-[#222634] my-2 mx-2" />
-
-        {/* Button: Visão Calendário Orbit */}
-        <button
-          type="button"
-          onClick={onOpenCalendarOrbit}
-          aria-label="Visão Calendário Orbit"
-          className={`group relative flex items-center h-12 rounded-xl text-left cursor-pointer transition-all duration-200 outline-none ${
-            activeTab === 'orbit'
-              ? 'bg-gradient-to-r from-[#96183c]/40 to-[#f89847]/20 text-white font-bold'
-              : 'text-slate-400 hover:text-white hover:bg-white/5 font-semibold'
-          }`}
-        >
-          {activeTab === 'orbit' && (
-            <span 
-              className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full shadow-[0_0_10px_#f89847]"
-              style={{ background: 'linear-gradient(180deg, #96183c, #f89847)' }}
-            />
-          )}
-
-          <div className="w-[68px] min-w-[68px] h-12 flex items-center justify-center flex-shrink-0">
-            <span
-              className={`transition-all duration-200 group-hover:scale-110 ${
-                activeTab === 'orbit' ? 'text-[#faf0ac]' : 'text-slate-400 group-hover:text-[#f89847]'
-              }`}
-            >
-              <CalendarRange className="w-5 h-5" />
-            </span>
-          </div>
-
-          <span
-            className={`text-[13px] whitespace-nowrap overflow-hidden flex-1 pr-2 transition-all duration-300 ${
-              collapsed ? 'opacity-0 -translate-x-2 pointer-events-none max-w-0' : 'opacity-100 translate-x-0'
-            }`}
-          >
-            Calendário Orbit
-          </span>
-
-          {collapsed && (
-            <span className="pointer-events-none absolute left-[76px] px-2.5 py-1.5 rounded-lg bg-[#1E2230] border border-[#222634] text-white text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-all duration-200 shadow-xl z-50">
-              Calendário Orbit
-            </span>
-          )}
-        </button>
-
       </nav>
     </aside>
   );
