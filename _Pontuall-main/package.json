@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
+    "build:singlefile": "vite build -c vite.singlefile.config.ts && copy dist-singlefile\\index.html CLIQUE_AQUI_PARA_ABRIR.html",
     "preview": "vite preview",
     "lint": "tsc --noEmit"
   },
@@ -24,6 +25,7 @@
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
     "tailwindcss": "^4.1.14",
-    "typescript": "~5.8.2"
+    "typescript": "~5.8.2",
+    "vite-plugin-singlefile": "^2.3.3"
   }
 }
