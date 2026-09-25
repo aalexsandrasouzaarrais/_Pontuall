@@ -1,0 +1,340 @@
+@import "tailwindcss";
+
+/* Paleta global Pontual — reduz a saturação dos antigos verdes, roxos e rosas. */
+:root {
+  --pontual-creme: #F9DE97;
+  --pontual-laranja: #F59242;
+  --pontual-vinho: #9F243C;
+  --pontual-vinho-escuro: #640C1E;
+}
+
+/* Componentes que utilizavam a identidade verde/roxa recebem a nova paleta,
+   sem alterar os tons neutros ou as cores de status do sistema. */
+[class*="bg-[#166534]"],
+[class*="bg-[#6D28D9]"] {
+  background-color: var(--pontual-vinho-escuro) !important;
+}
+
+[class*="bg-[#BBF7D0]"],
+[class*="bg-[#E2F952]"] {
+  background-color: var(--pontual-creme) !important;
+}
+
+[class*="text-[#166534]"],
+[class*="text-[#6D28D9]"] {
+  color: var(--pontual-vinho-escuro) !important;
+}
+
+[class*="text-[#BBF7D0]"],
+[class*="text-[#E2F952]"] {
+  color: var(--pontual-creme) !important;
+}
+
+[class*="border-[#166534]"],
+[class*="border-[#6D28D9]"] {
+  border-color: var(--pontual-vinho) !important;
+}
+
+[class*="border-[#BBF7D0]"],
+[class*="border-[#E2F952]"] {
+  border-color: var(--pontual-creme) !important;
+}
+
+[class*="ring-[#166534]"],
+[class*="ring-[#6D28D9]"] {
+  --tw-ring-color: var(--pontual-vinho) !important;
+}
+
+[class*="hover:bg-emerald"]:hover,
+[class*="hover:bg-purple"]:hover {
+  background-color: var(--pontual-vinho) !important;
+}
+
+[class*="hover:text-emerald"]:hover,
+[class*="hover:text-purple"]:hover {
+  color: var(--pontual-creme) !important;
+}
+
+/* Ações principais em páginas com estilo Orbit/gestor. */
+button[style*="#e90045"],
+button[style*="#ff1a53"],
+button[style*="#96183c"] {
+  background: linear-gradient(90deg, var(--pontual-vinho-escuro), var(--pontual-vinho), var(--pontual-laranja)) !important;
+  color: var(--pontual-creme) !important;
+  box-shadow: 0 5px 18px rgba(100, 12, 30, 0.30) !important;
+}
+
+/* Modern Dark-Themed Slim Scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(245, 146, 66, 0.35) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(245, 146, 66, 0.25);
+  border-radius: 9999px;
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 146, 66, 0.55);
+}
+
+/* Refined modal scrollbars */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(245, 146, 66, 0.35) rgba(255, 255, 255, 0.02);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 9999px;
+  margin: 6px 0;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(245, 146, 66, 0.3);
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 146, 66, 0.6);
+}
+
+/* ==========================================================================
+   PONTUAL LIGHT THEME SCOPE (VISÃO DO GESTOR)
+   ========================================================================== */
+html.light .manager-scope,
+html.light .modal-scope,
+.manager-scope.light,
+.modal-scope.light {
+  color-scheme: light;
+}
+
+/* Scrollbars no modo claro */
+html.light * {
+  scrollbar-color: rgba(159, 36, 60, 0.25) transparent;
+}
+html.light ::-webkit-scrollbar-thumb {
+  background: rgba(159, 36, 60, 0.2);
+}
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(159, 36, 60, 0.45);
+}
+
+/* Backgrounds da página e containers no modo claro */
+html.light .manager-scope,
+html.light .manager-scope [class*="bg-[#0F1117]"],
+html.light .manager-scope [class*="bg-[#101116]"],
+html.light .manager-scope [class*="bg-[#111216]"],
+html.light .manager-scope [class*="bg-[#0B0B0E]"],
+.manager-scope.light [class*="bg-[#0F1117]"],
+.manager-scope.light [class*="bg-[#101116]"],
+.manager-scope.light [class*="bg-[#111216]"],
+.manager-scope.light [class*="bg-[#0B0B0E]"] {
+  background-color: #f8fafc !important;
+}
+
+/* Cards, painéis laterais e blocos brancos no modo claro */
+html.light .manager-scope [class*="bg-[#14151C]"],
+html.light .manager-scope [class*="bg-[#15161b]"],
+html.light .manager-scope [class*="bg-[#0B0C10]"],
+html.light .manager-scope aside[class*="bg-[#0F1117]"],
+html.light .modal-scope [class*="bg-[#101116]"],
+html.light .modal-scope [class*="bg-[#111216]"],
+html.light .modal-scope [class*="bg-[#15161b]"],
+.manager-scope.light [class*="bg-[#14151C]"],
+.manager-scope.light [class*="bg-[#15161b]"],
+.manager-scope.light [class*="bg-[#0B0C10]"],
+.manager-scope.light aside[class*="bg-[#0F1117]"],
+.modal-scope.light [class*="bg-[#101116]"],
+.modal-scope.light [class*="bg-[#111216]"],
+.modal-scope.light [class*="bg-[#15161b]"] {
+  background-color: #ffffff !important;
+}
+
+/* Sub-barras, headers secundários e fundos alternados no modo claro */
+html.light .manager-scope [class*="bg-[#0e0f12]"],
+html.light .manager-scope [class*="bg-[#0c0d12]"],
+html.light .manager-scope [class*="bg-[#12131A]"],
+html.light .manager-scope [class*="bg-[#121319]"],
+html.light .manager-scope [class*="bg-[#181922]"],
+html.light .manager-scope [class*="bg-[#1A1C24]"],
+html.light .modal-scope [class*="bg-[#0e0f12]"],
+html.light .modal-scope [class*="bg-[#0d0e12]"],
+.manager-scope.light [class*="bg-[#0e0f12]"],
+.manager-scope.light [class*="bg-[#0c0d12]"],
+.manager-scope.light [class*="bg-[#12131A]"],
+.manager-scope.light [class*="bg-[#121319]"],
+.manager-scope.light [class*="bg-[#181922]"],
+.manager-scope.light [class*="bg-[#1A1C24]"],
+.modal-scope.light [class*="bg-[#0e0f12]"],
+.modal-scope.light [class*="bg-[#0d0e12]"] {
+  background-color: #f1f5f9 !important;
+}
+
+/* Bordas convertidas para slate-200 suave no modo claro */
+html.light .manager-scope [class*="border-[#222634]"],
+html.light .manager-scope [class*="border-[#282a33]"],
+html.light .manager-scope [class*="border-[#292b34]"],
+html.light .manager-scope [class*="border-white/10"],
+html.light .manager-scope [class*="border-white/5"],
+html.light .modal-scope [class*="border-[#222634]"],
+html.light .modal-scope [class*="border-[#282a33]"],
+html.light .modal-scope [class*="border-[#292b34]"],
+.manager-scope.light [class*="border-[#222634]"],
+.manager-scope.light [class*="border-[#282a33]"],
+.manager-scope.light [class*="border-[#292b34]"],
+.manager-scope.light [class*="border-white/10"],
+.manager-scope.light [class*="border-white/5"],
+.modal-scope.light [class*="border-[#222634]"],
+.modal-scope.light [class*="border-[#282a33]"],
+.modal-scope.light [class*="border-[#292b34]"] {
+  border-color: #e2e8f0 !important;
+}
+
+/* Textos principais no modo claro (preservando títulos de calendário com gradientes/banners) */
+html.light .manager-scope h1:not([style*="gradient"]):not(.calendar-month-title),
+html.light .manager-scope h2:not([style*="gradient"]):not(.calendar-month-title),
+html.light .manager-scope h3:not([style*="gradient"]):not(.calendar-month-title),
+html.light .manager-scope h4:not([style*="gradient"]):not(.calendar-month-title),
+html.light .manager-scope strong.text-white,
+html.light .modal-scope h1:not([style*="gradient"]),
+html.light .modal-scope h2:not([style*="gradient"]),
+html.light .modal-scope h3:not([style*="gradient"]),
+html.light .modal-scope h4:not([style*="gradient"]),
+.manager-scope.light h1:not([style*="gradient"]):not(.calendar-month-title),
+.manager-scope.light h2:not([style*="gradient"]):not(.calendar-month-title),
+.manager-scope.light h3:not([style*="gradient"]):not(.calendar-month-title),
+.manager-scope.light h4:not([style*="gradient"]):not(.calendar-month-title),
+.manager-scope.light strong.text-white,
+.modal-scope.light h1:not([style*="gradient"]),
+.modal-scope.light h2:not([style*="gradient"]),
+.modal-scope.light h3:not([style*="gradient"]),
+.modal-scope.light h4:not([style*="gradient"]) {
+  color: #0f172a !important;
+}
+
+/* Escrita do mês/período no cabeçalho do calendário do gestor sempre em branco */
+html.light .manager-scope .calendar-month-title,
+.manager-scope.light .calendar-month-title,
+.manager-scope .calendar-month-title,
+h2.calendar-month-title {
+  color: #ffffff !important;
+}
+
+/* Textos de suporte e contraste suave */
+html.light .manager-scope .text-slate-400,
+html.light .modal-scope .text-slate-400,
+.manager-scope.light .text-slate-400,
+.modal-scope.light .text-slate-400 {
+  color: #475569 !important;
+}
+
+html.light .manager-scope .text-slate-500,
+html.light .modal-scope .text-slate-500,
+.manager-scope.light .text-slate-500,
+.modal-scope.light .text-slate-500 {
+  color: #64748b !important;
+}
+
+html.light .manager-scope .text-slate-300,
+html.light .manager-scope .text-slate-200,
+html.light .modal-scope .text-slate-300,
+html.light .modal-scope .text-slate-200,
+.manager-scope.light .text-slate-300,
+.manager-scope.light .text-slate-200,
+.modal-scope.light .text-slate-300,
+.modal-scope.light .text-slate-200 {
+  color: #1e293b !important;
+}
+
+/* Inputs e caixas de seleção no modo claro */
+html.light .manager-scope input[type="text"],
+html.light .manager-scope input[type="search"],
+html.light .manager-scope input[type="date"],
+html.light .manager-scope select,
+html.light .manager-scope textarea,
+.manager-scope.light input[type="text"],
+.manager-scope.light input[type="search"],
+.manager-scope.light input[type="date"],
+.manager-scope.light select,
+.manager-scope.light textarea {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+html.light .manager-scope input::placeholder,
+.manager-scope.light input::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Suavização de sombras no modo claro */
+html.light .manager-scope [style*="0 8px 24px rgba(0,0,0"],
+html.light .manager-scope [style*="0 20px 50px rgba(0,0,0"],
+.manager-scope.light [style*="0 8px 24px rgba(0,0,0"],
+.manager-scope.light [style*="0 20px 50px rgba(0,0,0"] {
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06) !important;
+}
+
+/* Aprovações e Faltas — estilização gerenciada nativamente via Tailwind dinâmico no componente ManagerMatrixGrid.tsx */
+
+
+/* Estilização gerenciada nativamente via Tailwind dinâmico no componente ManagerMatrixGrid.tsx */
+
+.manager-scope.light .approvals-page .bg-emerald-500\/10 {
+  background-color: #eaf6e8 !important;
+}
+
+.manager-scope.light .approvals-page .text-emerald-400 {
+  color: #39733c !important;
+}
+
+.manager-scope.light .approvals-page .text-rose-400,
+.manager-scope.light .approvals-page .text-rose-300 {
+  color: #9f243c !important;
+}
+
+.manager-scope.light .approvals-page .text-amber-300 {
+  color: #9f5b13 !important;
+}
+
+.approvals-title-highlight,
+.attendance-title-highlight,
+.reminders-title-highlight {
+  display: inline-block !important;
+  background-clip: text !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+}
+
+.manager-scope.light .approvals-title-highlight,
+.manager-scope.light .attendance-title-highlight,
+.manager-scope.light .reminders-title-highlight {
+  background-image: linear-gradient(90deg, #9F243C 0%, #c2323e 48%, #F59242 100%) !important;
+  background-clip: text !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+}
+
+.colaborador-page-container {
+  background-color: #000000;
+  min-height: 100vh;
+}

@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pontual - Criar conta</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="assets/images/favicon.png">
+    <link rel="shortcut icon" href="assets/images/favicon.ico" type="image/x-icon">
+    <link rel="apple-touch-icon" href="assets/images/favicon.png">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/css/conta2.css">
+
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <main class="page">
+        <section class="signup-container">
+
+            <aside class="left-side">
+                <div class="logo2">
+                    <img class="brand-symbol" src="assets/images/logo_pontual_transparente.png" alt="Logo Pontual">
+                    <img class="brand-word" src="assets/images/Pontual-Branco.png" alt="Pontual">
+                </div>
+
+                <div class="left-content">
+                    <span class="join-badge">Junte-se a nós</span>
+
+                    <h1>
+                        Comece sua
+                        <span>jornada</span>
+                    </h1>
+
+                    <p class="description">
+                        Siga estes passos simples para configurar sua conta.
+                    </p>
+
+                    <div class="steps">
+                        <button class="step active" id="step1" type="button">
+                            <span class="step-number" id="stepNum1">1</span>
+                            <span class="step-text">Informe seu<br>email</span>
+                        </button>
+
+                        <button class="step" id="step2" type="button">
+                            <span class="step-number" id="stepNum2">2</span>
+                            <span class="step-text">Configure sua<br>senha</span>
+                        </button>
+
+                        <button class="step" id="step3" type="button">
+                            <span class="step-number" id="stepNum3">3</span>
+                            <span class="step-text">Confirme sua<br>identidade</span>
+                        </button>
+                    </div>
+                </div>
+            </aside>
+
+            <section class="right-side">
+
+                <!-- =================================================
+                     SELETOR DE TEMA (Fixado no topo superior direito)
+                ================================================== -->
+                <div class="theme-switcher" id="themeSwitcher" aria-label="Escolha o tema">
+                    <button
+                        type="button"
+                        class="theme-option theme-option--dark"
+                        data-theme="dark"
+                        aria-label="Tema escuro"
+                        aria-pressed="false"
+                        title="Tema escuro">
+                        <svg class="theme-option__icon" width="15" height="15" viewBox="0 0 24 24"
+                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round" aria-hidden="true">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                        </svg>
+                    </button>
+
+                    <button
+                        type="button"
+                        class="theme-option theme-option--light is-active"
+                        data-theme="light"
+                        aria-label="Tema claro"
+                        aria-pressed="true"
+                        title="Tema claro">
+                        <svg class="theme-option__icon" width="15" height="15" viewBox="0 0 24 24"
+                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round" aria-hidden="true">
+                            <circle cx="12" cy="12" r="4"></circle>
+                            <path d="M12 2v2"></path>
+                            <path d="M12 20v2"></path>
+                            <path d="m4.93 4.93 1.41 1.41"></path>
+                            <path d="m17.66 17.66 1.41 1.41"></path>
+                            <path d="M2 12h2"></path>
+                            <path d="M20 12h2"></path>
+                            <path d="m6.34 17.66-1.41 1.41"></path>
+                            <path d="m19.07 4.93-1.41 1.41"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="form-container">
+                    <div class="right-logo">
+                        <img class="icon-login--dark" src="assets/images/logo_pontual_transparente.png" alt="Logo Pontual">
+                        <img class="icon-login--light" src="assets/images/logo_pontual_claro.png" alt="Logo Pontual">
+                    </div>
+
+                    <h2>Crie sua conta</h2>
+                    <p class="form-subtitle">Preencha seus dados para começar.</p>
+
+                    <form id="cadastroForm" novalidate>
+                        <div class="input-group">
+                            <label for="nome">Nome completo</label>
+                            <div class="input-wrapper">
+                                <input type="text" id="nome" name="nome" placeholder="Digite seu nome completo" autocomplete="name" required>
+                            </div>
+                        </div>
+
+                        <div class="input-group">
+                            <label for="cnpj">CNPJ</label>
+                            <div class="input-wrapper">
+                                <input type="text" id="cnpj" name="cnpj" placeholder="Digite seu CNPJ" autocomplete="organization" required>
+                            </div>
+                        </div>
+
+
+                        <div class="input-group">
+                            <label for="email">Email</label>
+                            <div class="input-wrapper">
+                                <input type="email" id="email" name="email" placeholder="Digite seu email" autocomplete="email" required>
+                            </div>
+                        </div>
+
+                        <div class="input-group">
+                            <label for="senha">Senha</label>
+                            <div class="input-wrapper">
+                                <input type="password" id="senha" name="senha" placeholder="Digite sua senha" autocomplete="new-password" required>
+                                <button type="button" class="password-button" data-target="senha" aria-label="Mostrar senha">
+                                    <i data-lucide="eye"></i>
+                                </button>
+                            </div>
+                            <div class="password-strength" id="passwordStrength">
+                                <div class="strength-track">
+                                    <div class="strength-bar" id="strengthBar"></div>
+                                </div>
+                                <div class="strength-info">
+                                    <span class="strength-label" id="strengthLabel"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="input-group">
+                            <label for="confirmarSenha">Confirmar senha</label>
+                            <div class="input-wrapper">
+                                <input type="password" id="confirmarSenha" name="confirmarSenha" placeholder="Digite sua senha novamente" autocomplete="new-password" required>
+                                <button type="button" class="password-button" data-target="confirmarSenha" aria-label="Mostrar senha">
+                                    <i data-lucide="eye"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="continue-button">
+                            <span>Criar conta</span>
+                        </button>
+                    </form>
+
+                    <p class="login-link">
+                        Já possui uma conta?
+                        <a href="login2.html">Entrar</a>
+                    </p>
+
+                   
+
+            
+                    
+                </div>
+            </section>
+        </section>
+    </main>
+
+    <script>
+        lucide.createIcons();
+
+        /* =========================================================
+           CONTROLE DO TEMA
+        ========================================================= */
+
+        const themeSwitcher = document.getElementById('themeSwitcher');
+        const themeOptions = document.querySelectorAll('.theme-option');
+
+        function applyTheme(theme) {
+            document.body.classList.remove('theme-dark', 'theme-light');
+            document.body.classList.add(`theme-${theme}`);
+
+            themeOptions.forEach(option => {
+                const isActive = option.dataset.theme === theme;
+                option.classList.toggle('is-active', isActive);
+                option.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            });
+
+            localStorage.setItem('pontual-theme', theme);
+        }
+
+        themeOptions.forEach(option => {
+            option.addEventListener('click', () => {
+                applyTheme(option.dataset.theme);
+            });
+        });
+
+        /* Mantém a preferência do usuário ao recarregar a página. */
+        const savedTheme = localStorage.getItem('pontual-theme') || 'light';
+        applyTheme(savedTheme === 'dark' ? 'dark' : 'light');
+
+        const nomeInput = document.getElementById('nome');
+        const emailInput = document.getElementById('email');
+        const senhaInput = document.getElementById('senha');
+        const confirmarSenhaInput = document.getElementById('confirmarSenha');
+
+        const step1 = document.getElementById('step1');
+        const step2 = document.getElementById('step2');
+        const step3 = document.getElementById('step3');
+        const stepNum1 = document.getElementById('stepNum1');
+        const stepNum2 = document.getElementById('stepNum2');
+        const stepNum3 = document.getElementById('stepNum3');
+
+        function isValidEmail(value) {
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+        }
+
+        function setStep(step, numberElement, number, active, completed) {
+            step.classList.toggle('active', active);
+            step.classList.toggle('completed', completed);
+            numberElement.textContent = completed ? '✓' : number;
+        }
+
+        function checkPasswordStrength(password) {
+            if (!password) {
+                return { status: '', label: '' };
+            }
+
+            let score = 0;
+            const hasLength = password.length >= 8;
+            const hasLower = /[a-z]/.test(password);
+            const hasUpper = /[A-Z]/.test(password);
+            const hasNumber = /[0-9]/.test(password);
+            const hasSpecial = /[^A-Za-z0-9]/.test(password);
+
+            if (password.length >= 6) score++;
+            if (hasLength) score++;
+            if (hasLower && hasUpper) score++;
+            if (hasNumber) score++;
+            if (hasSpecial) score++;
+
+            if (password.length < 6 || score <= 2) {
+                return { status: 'weak', label: 'Senha fraca' };
+            } else if (score <= 3) {
+                return { status: 'medium', label: 'Senha média' };
+            } else {
+                return { status: 'strong', label: 'Senha forte' };
+            }
+        }
+
+        function updatePasswordStrength() {
+            const val = senhaInput.value;
+            const strengthBar = document.getElementById('strengthBar');
+            const strengthLabel = document.getElementById('strengthLabel');
+
+            if (!val) {
+                strengthBar.className = 'strength-bar';
+                strengthLabel.className = 'strength-label';
+                strengthLabel.textContent = '';
+                return;
+            }
+
+            const res = checkPasswordStrength(val);
+            strengthBar.className = `strength-bar ${res.status}`;
+            strengthLabel.className = `strength-label ${res.status}`;
+            strengthLabel.textContent = res.label;
+        }
+
+        function updateSteps() {
+            updatePasswordStrength();
+            const emailOk = isValidEmail(emailInput.value);
+            const passwordOk = senhaInput.value.length >= 8;
+            const passwordsMatch = passwordOk && senhaInput.value === confirmarSenhaInput.value;
+
+            setStep(step1, stepNum1, '1', true, emailOk);
+            setStep(step2, stepNum2, '2', emailOk || senhaInput.value.length > 0, passwordsMatch);
+            setStep(step3, stepNum3, '3', emailOk && passwordsMatch, false);
+        }
+
+        [nomeInput, emailInput, senhaInput, confirmarSenhaInput].forEach(input => {
+            input.addEventListener('input', updateSteps);
+            input.addEventListener('focus', updateSteps);
+        });
+
+        step1.addEventListener('click', () => emailInput.focus());
+        step2.addEventListener('click', () => senhaInput.focus());
+        step3.addEventListener('click', () => document.querySelector('.continue-button').focus());
+
+        document.querySelectorAll('.password-button').forEach(button => {
+            button.addEventListener('click', () => {
+                const input = document.getElementById(button.dataset.target);
+                const icon = button.querySelector('svg');
+                const showing = input.type === 'text';
+
+                input.type = showing ? 'password' : 'text';
+                button.innerHTML = showing
+                    ? '<i data-lucide="eye"></i>'
+                    : '<i data-lucide="eye-off"></i>';
+
+                button.setAttribute('aria-label', showing ? 'Mostrar senha' : 'Ocultar senha');
+                lucide.createIcons();
+            });
+        });
+
+        document.getElementById('cadastroForm').addEventListener('submit', event => {
+            event.preventDefault();
+
+            if (!nomeInput.value.trim() || !isValidEmail(emailInput.value)) {
+                alert('Preencha seu nome e informe um email válido.');
+                return;
+            }
+
+            if (senhaInput.value.length < 8) {
+                alert('A senha deve possuir pelo menos 8 caracteres.');
+                return;
+            }
+
+            if (senhaInput.value !== confirmarSenhaInput.value) {
+                alert('As senhas não coincidem.');
+                return;
+            }
+
+            step3.classList.add('active', 'completed');
+            stepNum3.textContent = '✓';
+            alert('Conta criada com sucesso!');
+        });
+
+        updateSteps();
+    </script>
+</body>
+</html>
