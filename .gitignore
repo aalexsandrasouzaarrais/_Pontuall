@@ -1,24 +1,25 @@
 # Dependencies
 node_modules/
-**/node_modules/
+*/node_modules/
 
-# Production build / cache
+# Production builds
 dist/
 dist-ssr/
-dist-singlefile/
-**/dist/
-**/dist-singlefile/
-.cache/
-**/cache/
+frontend/dist/
 
-# Logs
+# Logs & cache
 *.log
 npm-debug.log*
 yarn-debug.log*
+yarn-error.log*
 pnpm-debug.log*
+.npm-cache/
+.cache/
 
-# System
-Thumbs.db
+# OS and Editor
 .DS_Store
+Thumbs.db
 .vscode/
 .idea/
+*.swp
+*.swo

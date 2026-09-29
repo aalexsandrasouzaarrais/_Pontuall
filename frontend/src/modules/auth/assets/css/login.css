@@ -1,0 +1,1237 @@
+/* =========================================================
+   PONTUAL - LOGIN2.CSS (SCOPED)
+   Paleta: #96183c / #f89642 / #faf0ac
+========================================================= */
+
+
+.pontual-login-page,
+.pontual-login-page *,
+.pontual-login-page *::before,
+.pontual-login-page *::after {
+  box-sizing: border-box;
+}
+
+
+
+
+
+.pontual-login-page {
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  color: #ffffff;
+  min-height: 100vh;
+}
+
+
+/* =========================================================
+   FUNDO
+========================================================= */
+
+.pontual-login-page.page {
+    width: 100%;
+    min-height: 100vh;
+    height: 100vh;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    padding: clamp(12px, 2vh, 24px);
+
+    position: relative;
+    overflow: hidden;
+
+    background:
+        radial-gradient(
+            circle at 18% 25%,
+            rgba(248, 150, 66, 0.28),
+            transparent 32%
+        ),
+        radial-gradient(
+            circle at 80% 15%,
+            rgba(150, 24, 60, 0.28),
+            transparent 35%
+        ),
+        radial-gradient(
+            circle at 82% 85%,
+            rgba(150, 24, 60, 0.20),
+            transparent 35%
+        ),
+        #080808;
+}
+
+.page::before {
+    content: "";
+    position: absolute;
+
+    width: 600px;
+    height: 600px;
+
+    left: -200px;
+    top: -250px;
+
+    background: #f89642;
+    filter: blur(160px);
+    opacity: 0.12;
+
+    pointer-events: none;
+}
+
+/* =========================================================
+   CARD PRINCIPAL
+   IGUAL AO CADASTRO
+========================================================= */
+
+.pontual-login-page .signup-container {
+    width: 100%;
+    max-width: 1280px;
+
+    height: clamp(600px, 88vh, 640px);
+
+    display: grid;
+    grid-template-columns: 1.12fr 0.88fr;
+
+    border-radius: 22px;
+    overflow: hidden;
+
+    position: relative;
+
+    background: #111111;
+
+    border: 1px solid rgba(255, 255, 255, 0.13);
+
+    box-shadow:
+        0 25px 80px rgba(0, 0, 0, 0.70),
+        0 0 70px rgba(150, 24, 60, 0.10);
+}
+
+/* =========================================================
+   PAINEL ESQUERDO
+========================================================= */
+
+.pontual-login-page .left-panel {
+    position: relative;
+
+    height: 100%;
+    padding: clamp(22px, 3vh, 34px) clamp(26px, 3vw, 38px);
+
+    overflow: hidden;
+
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+
+    background:
+        radial-gradient(
+            circle at 35% 18%,
+            rgba(248, 150, 66, 0.90),
+            transparent 32%
+        ),
+        radial-gradient(
+            circle at 65% 28%,
+            rgba(150, 24, 60, 0.72),
+            transparent 38%
+        ),
+        linear-gradient(
+            145deg,
+            #221006 0%,
+            #4b0d14 45%,
+            #19070b 100%
+        );
+}
+
+.pontual-login-page .left-panel::before {
+    content: "";
+    position: absolute;
+
+    width: 450px;
+    height: 450px;
+
+    left: -150px;
+    top: 60px;
+
+    border-radius: 50%;
+
+    background:
+        radial-gradient(
+            circle,
+            rgba(248, 150, 66, 0.45),
+            transparent 65%
+        );
+
+    filter: blur(40px);
+    pointer-events: none;
+}
+
+.pontual-login-page .left-panel::after {
+    content: "";
+    position: absolute;
+
+    width: 500px;
+    height: 220px;
+
+    left: -60px;
+    bottom: -150px;
+
+    border-radius: 50%;
+
+    border-top: 2px solid rgba(248, 150, 66, 0.55);
+
+    box-shadow:
+        0 -10px 30px rgba(150, 24, 60, 0.18);
+
+    transform: rotate(-8deg);
+    pointer-events: none;
+}
+
+/* =========================================================
+   LOGO
+========================================================= */
+
+.logo,
+.pontual-login-page .logo2 {
+    position: relative;
+    z-index: 2;
+
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    font-size: 18px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.logo img,
+.pontual-login-page .logo2 img {
+    width: auto;
+    height: clamp(58px, 3.8vh, 66px);
+    max-width: 160px;
+    object-fit: contain;
+}
+
+/* =========================================================
+   CONTEÚDO ESQUERDO
+========================================================= */
+
+.pontual-login-page .hero-content {
+    position: relative;
+    z-index: 2;
+
+    margin-top: auto;
+    padding-top: 14px;
+}
+
+.pontual-login-page .badge {
+    display: inline-flex;
+
+    padding: 5px 13px;
+    border-radius: 999px;
+
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(250, 240, 172, 0.18);
+
+    font-size: 11.5px;
+    color: #faf0ac;
+
+    backdrop-filter: blur(10px);
+    margin-bottom: clamp(8px, 1.2vh, 14px);
+}
+
+.pontual-login-page .hero-content h1 {
+    font-size: clamp(24px, 2.4vw, 34px);
+    line-height: 1.1;
+
+    font-weight: 600;
+    letter-spacing: -1px;
+
+    color: #ffffff;
+}
+
+.pontual-login-page .hero-content h1 span,
+.left-content h1 span {
+    background:
+        linear-gradient(
+            90deg,
+            #fff3a8 0%,
+            #ffb347 48%,
+            #ff8359 100%
+        );
+
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    display: inline-block;
+}
+
+.pontual-login-page .hero-description {
+    margin-top: clamp(6px, 1vh, 10px);
+
+    font-size: clamp(12px, 1vw, 13.5px);
+    color: rgba(255, 255, 255, 0.68);
+
+    line-height: 1.45;
+}
+
+/* =========================================================
+   ETAPAS
+========================================================= */
+
+.pontual-login-page .steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+
+    gap: clamp(8px, 1vw, 12px);
+    margin-top: clamp(14px, 2vh, 22px);
+
+    max-width: 580px;
+}
+
+.pontual-login-page .step {
+    min-height: clamp(76px, 10.5vh, 96px);
+    padding: clamp(10px, 1.2vh, 14px);
+
+    border-radius: 12px;
+
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 6px;
+
+    cursor: pointer;
+    user-select: none;
+
+    transition: 0.30s ease;
+}
+
+.pontual-login-page .step:hover {
+    transform: translateY(-3px);
+    border-color: rgba(248, 150, 66, 0.55);
+}
+
+.pontual-login-page .step.active,
+.pontual-login-page .step.completed {
+    border: 1px solid transparent;
+
+    background:
+        linear-gradient(#151515, #151515) padding-box,
+        linear-gradient(
+            135deg,
+            #faf0ac,
+            #f89642,
+            #96183c
+        ) border-box;
+
+    box-shadow:
+        0 0 22px rgba(150, 24, 60, 0.20);
+
+    transform: translateY(-2px);
+}
+
+.pontual-login-page .step-number {
+    width: 26px;
+    height: 26px;
+
+    border-radius: 50%;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    font-size: 11.5px;
+    font-weight: 600;
+
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: rgba(255, 255, 255, 0.75);
+
+    transition: 0.30s ease;
+}
+
+.pontual-login-page .step.active .pontual-login-page .step-number,
+.pontual-login-page .step.completed .pontual-login-page .step-number {
+    background:
+        linear-gradient(
+            135deg,
+            #f89642,
+            #96183c
+        );
+
+    border: none;
+    color: #ffffff;
+
+    box-shadow:
+        0 4px 14px rgba(248, 150, 66, 0.30);
+}
+
+.pontual-login-page .step-text {
+    font-size: 11px;
+    line-height: 1.32;
+
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.pontual-login-page .step.active .pontual-login-page .step-text,
+.pontual-login-page .step.completed .pontual-login-page .step-text {
+    color: #ffffff;
+    font-weight: 500;
+}
+
+/* =========================================================
+   PAINEL DIREITO
+========================================================= */
+
+.pontual-login-page .right-panel {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: clamp(16px, 2.4vh, 26px) clamp(22px, 3vw, 36px);
+
+    background:
+        linear-gradient(
+            145deg,
+            #101010,
+            #0d0d0d
+        );
+}
+
+/* =========================================================
+   FORMULÁRIO
+========================================================= */
+
+.pontual-login-page .form-container {
+    width: 100%;
+    max-width: 390px;
+}
+
+.pontual-login-page .icon-login {
+    position: relative;
+    z-index: 2;
+
+    width: clamp(58px, 4.4vh, 66px);
+    height: clamp(58px, 4.4vh, 66px);
+
+    display: block;
+    margin: 0 auto 22px;
+
+    object-fit: contain;
+}
+
+/* =========================================================
+   PERFIL
+========================================================= */
+
+.pontual-login-page .role-selector {
+    display: flex;
+
+    width: 100%;
+    padding: 5px;
+    gap: 8px;
+
+    margin-bottom: 22px;
+
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+}
+
+.pontual-login-page .role-btn {
+    flex: 1;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+
+    padding: clamp(7px, 1vh, 9px) 12px;
+
+    border: 1px solid transparent;
+    border-radius: 8px;
+
+    background: transparent;
+    color: rgba(255, 255, 255, 0.60);
+
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+
+    cursor: pointer;
+    transition: 0.25s ease;
+}
+
+.pontual-login-page .role-btn:hover {
+    color: #ffffff;
+    background: rgba(248, 150, 66, 0.08);
+}
+
+.pontual-login-page .role-btn.active {
+    background:
+        linear-gradient(
+            135deg,
+            #faf0ac,
+            #f89642,
+            #96183c
+        );
+
+    color: #ffffff;
+    font-weight: 600;
+
+    box-shadow:
+        0 4px 16px rgba(150, 24, 60, 0.30);
+
+    border-color: rgba(250, 240, 172, 0.20);
+}
+
+.pontual-login-page .role-icon {
+    flex-shrink: 0;
+    stroke: currentColor;
+}
+
+/* =========================================================
+   TÍTULO / SUBTÍTULO
+========================================================= */
+
+.pontual-login-page .form-container h2 {
+    text-align: center;
+
+    font-size: clamp(19px, 2vw, 23px);
+    font-weight: 600;
+
+    letter-spacing: -0.5px;
+    margin-bottom: 8px;
+
+    color: #ffffff;
+}
+
+.form-subtitle {
+    text-align: center;
+
+    font-size: 12.5px;
+    color: rgba(255, 255, 255, 0.50);
+
+    margin-bottom: 24px;
+    line-height: 1.5;
+}
+
+/* =========================================================
+   INPUTS
+========================================================= */
+
+.pontual-login-page .input-group {
+    margin-bottom: 18px;
+}
+
+.pontual-login-page .input-group label {
+    display: block;
+
+    margin-bottom: 7px;
+
+    font-size: 12.5px;
+    font-weight: 500;
+
+    color: rgba(255, 255, 255, 0.88);
+}
+
+.pontual-login-page .input-group input,
+.input-wrapper input {
+    width: 100%;
+    height: 44px;
+
+    padding: 0 13px;
+
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+
+    outline: none;
+
+    background: rgba(255, 255, 255, 0.035);
+    color: #ffffff;
+
+    font-family: inherit;
+    font-size: 13px;
+
+    transition: 0.25s ease;
+}
+
+.pontual-login-page .input-group input::placeholder,
+.input-wrapper input::placeholder {
+    color: rgba(255, 255, 255, 0.32);
+}
+
+.pontual-login-page .input-group input:focus,
+.input-wrapper input:focus {
+    border-color: #f89642;
+
+    box-shadow:
+        0 0 0 3px rgba(248, 150, 66, 0.10);
+}
+
+.pontual-login-page .input-wrapper,
+.password-wrapper {
+    position: relative;
+}
+
+/* =========================================================
+   SENHA
+========================================================= */
+
+.pontual-login-page .password-wrapper input {
+    padding-right: 40px;
+}
+
+.pontual-login-page .eye,
+.password-button {
+    position: absolute;
+
+    right: 11px;
+    top: 50%;
+
+    transform: translateY(-50%);
+
+    border: none;
+    background: transparent;
+
+    color: rgba(255, 255, 255, 0.45);
+
+    cursor: pointer;
+    padding: 4px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pontual-login-page .eye:hover,
+.password-button:hover {
+    color: #faf0ac;
+}
+
+/* =========================================================
+   BOTÃO ENTRAR
+========================================================= */
+
+.pontual-login-page .continue-button {
+    width: 100%;
+    height: 44px;
+
+    border: none;
+    border-radius: 10px;
+
+    cursor: pointer;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    gap: 8px;
+
+    margin-top: 22px;
+
+    color: #ffffff;
+
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+
+    background:
+        linear-gradient(
+            90deg,
+            #f89642,
+            #96183c
+        );
+
+    box-shadow:
+        0 8px 22px rgba(150, 24, 60, 0.22);
+
+    transition: 0.25s ease;
+}
+
+.pontual-login-page .continue-button:hover {
+    transform: translateY(-2px);
+
+    box-shadow:
+        0 12px 28px rgba(150, 24, 60, 0.34);
+}
+
+.pontual-login-page .continue-button:active {
+    transform: translateY(0);
+}
+
+.pontual-login-page .arrow {
+    font-size: 17px;
+    transition: 0.20s ease;
+}
+
+.pontual-login-page .continue-button:hover .arrow {
+    transform: translateX(4px);
+}
+
+/* =========================================================
+   LINK
+========================================================= */
+
+.pontual-login-page .login-text,
+.login-link {
+    text-align: center;
+
+    margin-top: 16px;
+
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.45);
+}
+
+.pontual-login-page .login-text a,
+.login-link a {
+    color: #f89642;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.pontual-login-page .login-text a:hover,
+.login-link a:hover {
+    color: #faf0ac;
+    text-decoration: underline;
+}
+
+/* =========================================================
+   DIVISOR
+========================================================= */
+
+.pontual-login-page .divider {
+    display: flex;
+    align-items: center;
+
+    gap: 10px;
+
+    margin: 20px 0;
+}
+
+.pontual-login-page .divider span {
+    flex: 1;
+    height: 1px;
+
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.pontual-login-page .divider p {
+    color: rgba(255, 255, 255, 0.50);
+    font-size: 11.5px;
+}
+
+/* =========================================================
+   GOOGLE
+========================================================= */
+
+.pontual-login-page .google-button {
+    width: 100%;
+    height: 42px;
+
+    border-radius: 10px;
+    border: 1px solid rgba(250, 240, 172, 0.16);
+
+    background: rgba(255, 255, 255, 0.015);
+    color: #ffffff;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    gap: 8px;
+
+    cursor: pointer;
+
+    font-family: inherit;
+    font-size: 13px;
+
+    transition: 0.25s ease;
+}
+
+.pontual-login-page .google-button:hover {
+    background: rgba(248, 150, 66, 0.06);
+    border-color: rgba(248, 150, 66, 0.40);
+}
+
+.pontual-login-page .google-icon {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+/* =========================================================
+   TERMOS
+========================================================= */
+
+.pontual-login-page .terms {
+    text-align: center;
+
+    margin-top: clamp(8px, 1.1vh, 11px);
+
+    font-size: 9.5px;
+    line-height: 1.35;
+
+    color: rgba(255, 255, 255, 0.35);
+}
+
+.pontual-login-page .terms a {
+    color: #f89642;
+    text-decoration: none;
+}
+
+.pontual-login-page .terms a:hover {
+    color: #faf0ac;
+}
+
+/* =========================================================
+   RESPONSIVIDADE
+========================================================= */
+
+@media (max-width: 920px) {
+    .pontual-login-page.page {
+        height: auto;
+        min-height: 100vh;
+        padding: 20px 16px;
+        overflow-y: auto;
+    }
+
+    .pontual-login-page .signup-container {
+        grid-template-columns: 1fr;
+        max-width: 500px;
+        height: auto;
+        min-height: 0;
+    }
+
+    .pontual-login-page .left-panel {
+        min-height: 420px;
+        padding: 24px 22px;
+    }
+
+    .pontual-login-page .hero-content {
+        margin-top: 20px;
+        padding-top: 0;
+    }
+
+    .pontual-login-page .right-panel {
+        padding: 26px 22px;
+    }
+}
+
+@media (max-width: 540px) {
+    .pontual-login-page .steps {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .pontual-login-page .step {
+        flex-direction: row;
+        align-items: center;
+        min-height: auto;
+        padding: 10px 12px;
+    }
+
+    .pontual-login-page .step-text {
+        font-size: 11px;
+    }
+}
+
+@media (max-height: 640px) and (min-width: 921px) {
+    .pontual-login-page.page {
+        padding: 8px 16px;
+    }
+
+    .pontual-login-page .signup-container {
+        height: calc(100vh - 16px);
+    }
+
+    .pontual-login-page .left-panel {
+        padding: 16px 24px;
+    }
+
+    .pontual-login-page .right-panel {
+        padding: 14px 24px;
+    }
+
+    .pontual-login-page .icon-login {
+        width: 48px;
+        height: 48px;
+        margin-bottom: 12px;
+    }
+
+    .pontual-login-page .form-container h2 {
+        font-size: 20px;
+        margin-bottom: 6px;
+    }
+
+    .pontual-login-page .input-group {
+        margin-bottom: 14px;
+    }
+
+    .pontual-login-page .input-group input,
+    .input-wrapper input {
+        height: 42px;
+    }
+
+    .pontual-login-page .continue-button {
+        height: 42px;
+        margin-top: 14px;
+    }
+
+    .pontual-login-page .divider {
+        margin: 14px 0;
+    }
+
+    .pontual-login-page .google-button {
+        height: 40px;
+    }
+
+    .pontual-login-page .step {
+        min-height: 80px;
+        padding: 10px 12px;
+    }
+}
+/* =========================================================
+   SELETOR DE TEMA (THEME-SWITCHER)
+========================================================= */
+
+.pontual-login-page .form-container {
+    position: relative;
+}
+
+.pontual-login-page .theme-switcher {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    z-index: 20;
+
+    display: flex;
+    align-items: center;
+    gap: 3px;
+
+    padding: 4px;
+    border: 1px solid rgba(255, 255, 255, .10);
+    border-radius: 999px;
+
+    background: rgba(255, 255, 255, .045);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+
+    transition:
+        background .35s ease,
+        border-color .35s ease,
+        box-shadow .35s ease;
+}
+
+.pontual-login-page .theme-option {
+    width: 29px;
+    height: 29px;
+    padding: 0;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+
+    color: #8d8d8d;
+    cursor: pointer;
+
+    transition:
+        color .25s ease,
+        background .25s ease,
+        transform .2s ease,
+        box-shadow .25s ease;
+}
+
+.pontual-login-page .theme-option:hover {
+    color: #ffffff;
+    transform: translateY(-1px);
+}
+
+.pontual-login-page .theme-option.is-active {
+    color: #ffffff;
+    background: linear-gradient(135deg, #f89642, #96183c);
+    box-shadow: 0 4px 12px rgba(150, 24, 60, .25);
+}
+
+.pontual-login-page .theme-option:focus-visible {
+    outline: 2px solid rgba(248, 150, 66, .75);
+    outline-offset: 2px;
+}
+
+.theme-option__icon {
+    pointer-events: none;
+}
+
+
+/* =========================================================
+   MODO CLARO (.theme-light)
+   Tema proporcional: inclui o painel esquerdo e os cards
+========================================================= */
+
+/* ----- Body & Page ----- */
+.pontual-login-page.theme-light {
+    background: #f4f1eb;
+    color: #1a1a1a;
+}
+
+.pontual-login-page.theme-light .page , html.light .pontual-login-page.page {
+    background:
+        radial-gradient(circle at 17% 20%, rgba(248, 150, 66, 0.10), transparent 30%),
+        radial-gradient(circle at 72% 12%, rgba(150, 24, 60, 0.08), transparent 34%),
+        radial-gradient(circle at 82% 88%, rgba(150, 24, 60, 0.06), transparent 32%),
+        #f4f1eb;
+}
+
+.pontual-login-page.theme-light .page::before , html.light .pontual-login-page .page::before {
+    background: #f89642;
+    opacity: 0.06;
+}
+
+/* ----- Container ----- */
+.pontual-login-page.theme-light .signup-container , html.light .pontual-login-page .signup-container {
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow:
+        0 20px 60px rgba(0, 0, 0, 0.07),
+        0 0 40px rgba(150, 24, 60, 0.03);
+}
+
+/* ----- Painel Esquerdo (Claro proporcional) ----- */
+.pontual-login-page.theme-light .left-panel , html.light .pontual-login-page .left-panel {
+    background:
+        radial-gradient(circle at 32% 18%, rgba(248, 150, 66, .60) 0%, rgba(248, 150, 66, .12) 22%, transparent 45%),
+        linear-gradient(135deg, #7a2234 0%, #a82e4a 52%, #5e1828 100%) !important;
+}
+
+.pontual-login-page.theme-light .left-panel::before , html.light .pontual-login-page .left-panel::before {
+    background: radial-gradient(circle, rgba(248, 150, 66, .25), transparent 65%);
+}
+
+.pontual-login-page.theme-light .left-panel::after , html.light .pontual-login-page .left-panel::after {
+    border-top-color: rgba(248, 150, 66, .35);
+    box-shadow: 0 -10px 30px rgba(150, 24, 60, .10);
+}
+
+.pontual-login-page.theme-light .badge , html.light .pontual-login-page .badge {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.25);
+    color: #fff5e0;
+}
+
+.pontual-login-page.theme-light .hero-content h1 span, html.light .pontual-login-page .hero-content h1 span,
+.pontual-login-page.theme-light .left-content h1 span , html.light .pontual-login-page .left-content h1 span {
+    background: linear-gradient(90deg, #fff3a8 0%, #ffb347 48%, #ff8359 100%) !important;
+    -webkit-background-clip: text !important;
+    background-clip: text !important;
+    color: transparent !important;
+    display: inline-block;
+}
+
+.pontual-login-page.theme-light .hero-description , html.light .pontual-login-page .hero-description {
+    color: rgba(255, 255, 255, 0.78);
+}
+
+/* ----- Cards das Etapas (Claro - Fundo Branco e Opaco) ----- */
+.pontual-login-page.theme-light .step , html.light .pontual-login-page .step {
+    background: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.60);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+
+.pontual-login-page.theme-light .step:hover , html.light .pontual-login-page .step:hover {
+    background: #ffffff;
+    border-color: rgba(248, 150, 66, 0.60);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+    transform: translateY(-3px);
+}
+
+.pontual-login-page.theme-light .step.active, html.light .pontual-login-page .step.active,
+.pontual-login-page.theme-light .step.completed , html.light .pontual-login-page .step.completed {
+    background:
+        linear-gradient(#ffffff, #ffffff) padding-box,
+        linear-gradient(135deg, #faf0ac, #f89642, #96183c) border-box;
+    border: 2px solid transparent;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16), 0 0 16px rgba(248, 150, 66, 0.20);
+}
+
+.pontual-login-page.theme-light .step-number , html.light .pontual-login-page .step-number {
+    border: 1px solid #e0d2cf;
+    background: #f7f3f2;
+    color: #7a2234;
+}
+
+.pontual-login-page.theme-light .step.active .step-number, html.light .pontual-login-page .step.active .step-number,
+.pontual-login-page.theme-light .step.completed .step-number , html.light .pontual-login-page .step.completed .step-number {
+    background: linear-gradient(135deg, #faf0ac, #f89642);
+    color: #5e1828;
+    border: none;
+    box-shadow: 0 4px 14px rgba(248, 150, 66, 0.35);
+}
+
+.pontual-login-page.theme-light .step-text , html.light .pontual-login-page .step-text {
+    color: #4a383d;
+}
+
+.pontual-login-page.theme-light .step.active .step-text, html.light .pontual-login-page .step.active .step-text,
+.pontual-login-page.theme-light .step.completed .step-text , html.light .pontual-login-page .step.completed .step-text {
+    color: #1f1418;
+    font-weight: 600;
+}
+
+/* ----- Painel Direito ----- */
+.pontual-login-page.theme-light .right-panel , html.light .pontual-login-page .right-panel {
+    background: #ffffff;
+}
+
+/* ----- Theme Switcher (Claro) ----- */
+.pontual-login-page.theme-light .theme-switcher , html.light .pontual-login-page .theme-switcher {
+    border-color: rgba(85, 24, 38, .12);
+    background: rgba(255, 255, 255, .78);
+    box-shadow: 0 8px 24px rgba(70, 35, 40, .08);
+}
+
+.pontual-login-page.theme-light .theme-option , html.light .pontual-login-page .theme-option {
+    color: #777;
+}
+
+.pontual-login-page.theme-light .theme-option:hover , html.light .pontual-login-page .theme-option:hover {
+    color: #6f142b;
+}
+
+.pontual-login-page.theme-light .theme-option.is-active , html.light .pontual-login-page .theme-option.is-active {
+    color: #ffffff;
+}
+
+/* ----- Formulário ----- */
+.pontual-login-page.theme-light .form-container h2 , html.light .pontual-login-page .form-container h2 {
+    color: #1a1a1a;
+}
+
+.pontual-login-page.theme-light .form-subtitle , html.light .pontual-login-page .form-subtitle {
+    color: #777777;
+}
+
+.pontual-login-page.theme-light .role-selector , html.light .pontual-login-page .role-selector {
+    background: #eeeceb;
+    border-color: #dfdbda;
+}
+
+.pontual-login-page.theme-light .role-btn , html.light .pontual-login-page .role-btn {
+    color: #777777;
+}
+
+.pontual-login-page.theme-light .role-btn.active , html.light .pontual-login-page .role-btn.active {
+    background: linear-gradient(135deg, #f89642, #96183c);
+    color: #ffffff;
+    box-shadow: 0 4px 14px rgba(150, 24, 60, 0.25);
+}
+
+.pontual-login-page.theme-light .input-group label , html.light .pontual-login-page .input-group label {
+    color: #333333;
+}
+
+.pontual-login-page.theme-light .input-group input, html.light .pontual-login-page .input-group input,
+.pontual-login-page.theme-light .input-wrapper input , html.light .pontual-login-page .input-wrapper input {
+    background: #f7f7f7;
+    border-color: #dddddd;
+    color: #1a1a1a;
+}
+
+.pontual-login-page.theme-light .input-group input::placeholder, html.light .pontual-login-page .input-group input::placeholder,
+.pontual-login-page.theme-light .input-wrapper input::placeholder , html.light .pontual-login-page .input-wrapper input::placeholder {
+    color: #aaaaaa;
+}
+
+.pontual-login-page.theme-light .input-group input:focus, html.light .pontual-login-page .input-group input:focus,
+.pontual-login-page.theme-light .input-wrapper input:focus , html.light .pontual-login-page .input-wrapper input:focus {
+    border-color: #f89642;
+    box-shadow: 0 0 0 3px rgba(248, 150, 66, 0.12);
+    background: #ffffff;
+}
+
+.pontual-login-page.theme-light .eye, html.light .pontual-login-page .eye,
+.pontual-login-page.theme-light .password-button , html.light .pontual-login-page .password-button {
+    color: #aaaaaa;
+}
+
+.pontual-login-page.theme-light .eye:hover, html.light .pontual-login-page .eye:hover,
+.pontual-login-page.theme-light .password-button:hover , html.light .pontual-login-page .password-button:hover {
+    color: #96183c;
+}
+
+.pontual-login-page.theme-light .login-text, html.light .pontual-login-page .login-text,
+.pontual-login-page.theme-light .login-link , html.light .pontual-login-page .login-link {
+    color: #888888;
+}
+
+.pontual-login-page.theme-light .login-text a, html.light .pontual-login-page .login-text a,
+.pontual-login-page.theme-light .login-link a , html.light .pontual-login-page .login-link a {
+    color: #96183c;
+}
+
+.pontual-login-page.theme-light .login-text a:hover, html.light .pontual-login-page .login-text a:hover,
+.pontual-login-page.theme-light .login-link a:hover , html.light .pontual-login-page .login-link a:hover {
+    color: #f89642;
+}
+
+.pontual-login-page.theme-light .divider span , html.light .pontual-login-page .divider span {
+    background: #e0e0e0;
+}
+
+.pontual-login-page.theme-light .divider p , html.light .pontual-login-page .divider p {
+    color: #999999;
+}
+
+.pontual-login-page.theme-light .google-button , html.light .pontual-login-page .google-button {
+    background: #ffffff;
+    border: 1px solid #dddddd;
+    color: #333333;
+}
+
+.pontual-login-page.theme-light .google-button:hover , html.light .pontual-login-page .google-button:hover {
+    background: #f9f9f9;
+    border-color: #cccccc;
+}
+
+.pontual-login-page.theme-light .terms , html.light .pontual-login-page .terms {
+    color: #999999;
+}
+
+.pontual-login-page.theme-light .terms a , html.light .pontual-login-page .terms a {
+    color: #96183c;
+}
+
+.pontual-login-page.theme-light .terms a:hover , html.light .pontual-login-page .terms a:hover {
+    color: #f89642;
+}
+
+/* Transição geral */
+.pontual-login-page .signup-container,
+.left-panel,
+.right-panel,
+.form-container,
+.input-wrapper input,
+.password-wrapper input,
+.role-selector,
+.google-button,
+.step,
+.step-number,
+.step-text,
+.badge {
+    transition:
+        background .35s ease,
+        background-color .35s ease,
+        border-color .35s ease,
+        color .35s ease,
+        box-shadow .35s ease;
+}
+
+@media (max-width: 700px) {
+    .pontual-login-page .theme-switcher {
+        top: 12px;
+        right: 12px;
+    }
+}
