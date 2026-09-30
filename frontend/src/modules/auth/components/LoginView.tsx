@@ -46,6 +46,7 @@ const DEFAULT_FALLBACK_USERS = [
 
 export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const { theme, setTheme } = useTheme();
+  const isDark = theme === 'dark';
 
   const [currentRole, setCurrentRole] = useState<'colaborador' | 'gestor'>('colaborador');
   const [loginInput, setLoginInput] = useState('');
@@ -393,13 +394,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
           <div className="form-container">
             {/* Logo */}
             <img
-              className="icon-login icon-login--dark"
-              src={logoPontualTransparente}
-              alt="Pontual Logo"
-            />
-            <img
-              className="icon-login icon-login--light"
-              src={logoPontualClaro}
+              className={`icon-login ${isDark ? 'icon-login--dark' : 'icon-login--light'}`}
+              src={isDark ? logoPontualTransparente : logoPontualClaro}
               alt="Pontual Logo"
             />
 

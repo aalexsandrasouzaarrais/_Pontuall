@@ -1138,97 +1138,148 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                             })}
                           </div>
 
-                          {/* Placed Event Cards — PRESERVED ACCORDING TO USER PHOTO */}
-                          <div className="absolute inset-0 p-1 pointer-events-none flex flex-col gap-1.5">
-                            {dayEvents.map((ev) => {
-                              const emp = employees.find((e) => e.id === ev.employeeId);
+                          {/* Placed Event Cards — Absolute positioned with guaranteed minimum height */}
+                          <div className="absolute inset-0 p-1 pointer-events-none">
+                            {(() => {
                               const baseH = hours[0] ?? 0;
-                              const [sH, sM] = ev.startTime.split(':').map(Number);
-                              const startH = isNaN(sH) ? baseH : sH;
-                              const startM = isNaN(sM) ? 0 : sM;
-                              const topOffset = Math.max(0, ((startH - baseH) + (startM / 60)) * 64);
-                              const isDraft = ev.status === 'draft';
+                              const CARD_HEIGHT = 84;
 
-                              const mutedStyle = getMutedShiftColor(ev, isDark);
+                              // Calculate vertical position for each event
+                              const eventsWithPos = dayEvents.map((ev) => {
+                                const [sH, sM] = ev.startTime.split(':').map(Number);
+                                const startH = isNaN(sH) ? baseH : sH;
+                                const startM = isNaN(sM) ? 0 : sM;
+                                const topOffset = Math.max(0, ((startH - baseH) + (startM / 60)) * 64);
+                                return { ev, topOffset };
+                              }).sort((a, b) => a.topOffset - b.topOffset);
 
-                              return (
-                                <div
-                                  key={ev.id}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleOpenEditShift(ev);
-                                  }}
-                                  className="pointer-events-auto rounded-xl p-2.5 cursor-pointer shadow-md transition-all duration-150 hover:scale-[1.02] hover:shadow-xl text-left relative overflow-hidden group/shift"
-                                  style={{
-                                    background: isDraft ? (isDark ? 'rgba(217, 119, 6, 0.18)' : 'rgba(217, 119, 6, 0.12)') : mutedStyle.bg,
-                                    border: isDraft ? '2px dashed #f59e0b' : `1px solid ${mutedStyle.border}`,
-                                    borderLeft: isDraft ? '2px dashed #f59e0b' : `3.5px solid ${mutedStyle.accent}`,
-                                    backdropFilter: 'blur(6px)',
-                                    marginTop: `${topOffset}px`,
-                                    boxShadow: isDraft
-                                      ? '0 0 14px rgba(245, 158, 11, 0.18)'
-                                      : isDark ? '0 4px 14px rgba(0,0,0,0.35)' : '0 2px 8px rgba(0,0,0,0.06)',
-                                  }}
-                                >
-                                  {/* Draft background stripes */}
-                                  {isDraft && (
+                              // Group into overlap clusters where two events overlap if topOffset difference < CARD_HEIGHT
+                              const clusters: Array<typeof eventsWithPos> = [];
+                              for (const item of eventsWithPos) {
+                                let placed = false;
+                                for (const cluster of clusters) {
+                                  const last = cluster[cluster.length - 1];
+                                  if (item.topOffset < last.topOffset + CARD_HEIGHT) {
+                                    cluster.push(item);
+                                    placed = true;
+                                    break;
+                                  }
+                                }
+                                if (!placed) {
+                                  clusters.push([item]);
+                                }
+                              }
+
+                              return clusters.flatMap((cluster) => {
+                                const count = cluster.length;
+                                return cluster.map((item, idx) => {
+                                  const { ev, topOffset } = item;
+                                  const emp = employees.find((e) => e.id === ev.employeeId);
+                                  const isDraft = ev.status === 'draft';
+                                  const mutedStyle = getMutedShiftColor(ev, isDark);
+
+                                  let leftStyle = '4px';
+                                  let widthStyle = 'calc(100% - 8px)';
+                                  let zIndex = 10 + idx;
+
+                                  if (count === 2) {
+                                    if (idx === 0) {
+                                      leftStyle = '4px';
+                                      widthStyle = 'calc(50% - 6px)';
+                                    } else {
+                                      leftStyle = 'calc(50% + 2px)';
+                                      widthStyle = 'calc(50% - 6px)';
+                                    }
+                                  } else if (count > 2) {
+                                    const step = Math.min(18, 60 / count);
+                                    leftStyle = `${4 + idx * step}px`;
+                                    widthStyle = `calc(100% - ${4 + idx * step + 4}px)`;
+                                  }
+
+                                  return (
                                     <div
-                                      className="absolute inset-0 pointer-events-none opacity-20"
-                                      style={{
-                                        backgroundImage: 'repeating-linear-gradient(45deg, #f59e0b 0, #f59e0b 8px, transparent 8px, transparent 16px)',
+                                      key={ev.id}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleOpenEditShift(ev);
                                       }}
-                                    />
-                                  )}
+                                      className="pointer-events-auto rounded-xl p-2.5 cursor-pointer shadow-md transition-all duration-150 hover:scale-[1.02] hover:z-30 hover:shadow-xl text-left absolute overflow-hidden group/shift flex flex-col justify-between shrink-0"
+                                      style={{
+                                        top: `${topOffset}px`,
+                                        left: leftStyle,
+                                        width: widthStyle,
+                                        minHeight: `${CARD_HEIGHT}px`,
+                                        background: isDraft ? (isDark ? 'rgba(217, 119, 6, 0.18)' : 'rgba(217, 119, 6, 0.12)') : mutedStyle.bg,
+                                        border: isDraft ? '2px dashed #f59e0b' : `1px solid ${mutedStyle.border}`,
+                                        borderLeft: isDraft ? '2px dashed #f59e0b' : `3.5px solid ${mutedStyle.accent}`,
+                                        backdropFilter: 'blur(6px)',
+                                        boxShadow: isDraft
+                                          ? '0 0 14px rgba(245, 158, 11, 0.18)'
+                                          : isDark ? '0 4px 14px rgba(0,0,0,0.35)' : '0 2px 8px rgba(0,0,0,0.06)',
+                                        zIndex,
+                                      }}
+                                    >
+                                      {/* Draft background stripes */}
+                                      {isDraft && (
+                                        <div
+                                          className="absolute inset-0 pointer-events-none opacity-20"
+                                          style={{
+                                            backgroundImage: 'repeating-linear-gradient(45deg, #f59e0b 0, #f59e0b 8px, transparent 8px, transparent 16px)',
+                                          }}
+                                        />
+                                      )}
 
-                                  {/* Top row: Title and Badge (Publicado / Rascunho) */}
-                                  <div className="flex items-center justify-between gap-1 mb-1 relative z-10">
-                                    <span className={`font-bold text-xs truncate ${isDark ? 'text-white' : 'text-slate-800'}`}>
-                                      {ev.title || 'Turno'}
-                                    </span>
+                                      {/* Top row: Title and Badge (Publicado / Rascunho) */}
+                                      <div className="flex items-center justify-between gap-1 mb-1 relative z-10">
+                                        <span className={`font-bold text-xs truncate ${isDark ? 'text-white' : 'text-slate-800'}`}>
+                                          {ev.title || 'Turno'}
+                                        </span>
 
-                                    {isDraft ? (
-                                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-extrabold border border-dashed border-amber-500/50 font-mono tracking-wider shrink-0">
-                                        📝 Rascunho
-                                      </span>
-                                    ) : (
-                                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-medium border shrink-0 ${
-                                        isDark 
-                                          ? 'bg-white/10 text-slate-200 border-white/15' 
-                                          : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                        {isDraft ? (
+                                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-extrabold border border-dashed border-amber-500/50 font-mono tracking-wider shrink-0">
+                                            📝 Rascunho
+                                          </span>
+                                        ) : (
+                                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-medium border shrink-0 ${
+                                            isDark 
+                                              ? 'bg-white/10 text-slate-200 border-white/15' 
+                                              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                          }`}>
+                                            ✓ Publicado
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {/* Time Row */}
+                                      <div className={`text-[11px] font-mono font-medium mb-1 relative z-10 ${
+                                        isDark ? 'text-slate-300 opacity-90' : 'text-slate-600'
                                       }`}>
-                                        ✓ Publicado
-                                      </span>
-                                    )}
-                                  </div>
+                                        {ev.startTime} - {ev.endTime}
+                                      </div>
 
-                                  {/* Time Row */}
-                                  <div className={`text-[11px] font-mono font-medium mb-2 relative z-10 ${
-                                    isDark ? 'text-slate-300 opacity-90' : 'text-slate-600'
-                                  }`}>
-                                    {ev.startTime} - {ev.endTime}
-                                  </div>
-
-                                  {/* Assigned Collaborator Avatar + Name */}
-                                  <div className="flex items-center gap-1.5 mt-auto relative z-10">
-                                    {emp && (
-                                      <img
-                                        src={emp.avatar}
-                                        alt={emp.name}
-                                        title={emp.name}
-                                        className={`w-5 h-5 rounded-full object-cover ring-1 ${
-                                          isDark ? 'ring-white/20' : 'ring-slate-300'
-                                        }`}
-                                      />
-                                    )}
-                                    <span className={`text-[10px] font-medium truncate ${
-                                      isDark ? 'text-slate-300' : 'text-slate-700'
-                                    }`}>
-                                      {emp?.name.split(' ')[0]}
-                                    </span>
-                                  </div>
-                                </div>
-                              );
-                            })}
+                                      {/* Assigned Collaborator Avatar + Name */}
+                                      <div className="flex items-center gap-1.5 mt-auto relative z-10">
+                                        {emp && (
+                                          <img
+                                            src={emp.avatar}
+                                            alt={emp.name}
+                                            title={emp.name}
+                                            className={`w-5 h-5 rounded-full object-cover ring-1 ${
+                                              isDark ? 'ring-white/20' : 'ring-slate-300'
+                                            }`}
+                                          />
+                                        )}
+                                        <span className={`text-[10px] font-medium truncate ${
+                                          isDark ? 'text-slate-300' : 'text-slate-700'
+                                        }`}>
+                                          {emp?.name.split(' ')[0]}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                });
+                              });
+                            })()}
                           </div>
                         </div>
                       );

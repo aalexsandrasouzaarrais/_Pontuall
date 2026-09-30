@@ -29,16 +29,17 @@
 .pontual-login-page.page {
     width: 100%;
     min-height: 100vh;
-    height: 100vh;
+    height: auto;
 
     display: flex;
     justify-content: center;
     align-items: center;
 
-    padding: clamp(12px, 2vh, 24px);
+    padding: clamp(16px, 3vh, 32px) 16px;
 
     position: relative;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
 
     background:
         radial-gradient(
@@ -83,14 +84,16 @@
 
 .pontual-login-page .signup-container {
     width: 100%;
-    max-width: 1280px;
+    max-width: 1140px;
 
-    height: clamp(600px, 88vh, 640px);
+    min-height: 620px;
+    height: auto;
 
     display: grid;
-    grid-template-columns: 1.12fr 0.88fr;
+    grid-template-columns: 1.08fr 0.92fr;
+    align-items: stretch;
 
-    border-radius: 22px;
+    border-radius: 24px;
     overflow: hidden;
 
     position: relative;
@@ -111,14 +114,16 @@
 .pontual-login-page .left-panel {
     position: relative;
 
-    height: 100%;
-    padding: clamp(22px, 3vh, 34px) clamp(26px, 3vw, 38px);
+    min-height: 100%;
+    height: auto;
+    padding: clamp(24px, 3.5vh, 38px) clamp(24px, 3vw, 40px);
 
     overflow: hidden;
 
     display: flex;
     flex-direction: column;
     justify-content: space-between;
+    gap: 22px;
 
     background:
         radial-gradient(
@@ -384,10 +389,14 @@
 
 .pontual-login-page .right-panel {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
 
-    padding: clamp(16px, 2.4vh, 26px) clamp(22px, 3vw, 36px);
+    min-height: 100%;
+    height: auto;
+    padding: clamp(24px, 3.5vh, 40px) clamp(22px, 3vw, 40px);
+    position: relative;
 
     background:
         linear-gradient(
@@ -403,20 +412,39 @@
 
 .pontual-login-page .form-container {
     width: 100%;
-    max-width: 390px;
+    max-width: 400px;
+    margin: auto 0;
 }
 
 .pontual-login-page .icon-login {
     position: relative;
     z-index: 2;
 
-    width: clamp(58px, 4.4vh, 66px);
-    height: clamp(58px, 4.4vh, 66px);
+    width: clamp(52px, 4vh, 62px);
+    height: clamp(52px, 4vh, 62px);
 
     display: block;
-    margin: 0 auto 22px;
+    margin: 0 auto 16px;
 
     object-fit: contain;
+}
+
+.pontual-login-page .icon-login--dark {
+    display: block;
+}
+
+.pontual-login-page .icon-login--light {
+    display: none;
+}
+
+.pontual-login-page.theme-light .icon-login--dark,
+html.light .pontual-login-page .icon-login--dark {
+    display: none !important;
+}
+
+.pontual-login-page.theme-light .icon-login--light,
+html.light .pontual-login-page .icon-login--light {
+    display: block !important;
 }
 
 /* =========================================================
@@ -786,37 +814,61 @@
    RESPONSIVIDADE
 ========================================================= */
 
-@media (max-width: 920px) {
+@media (max-width: 980px) {
     .pontual-login-page.page {
         height: auto;
         min-height: 100vh;
-        padding: 20px 16px;
+        padding: clamp(16px, 3vh, 28px) 14px;
         overflow-y: auto;
     }
 
     .pontual-login-page .signup-container {
         grid-template-columns: 1fr;
-        max-width: 500px;
+        max-width: 520px;
         height: auto;
         min-height: 0;
+        margin: auto;
     }
 
     .pontual-login-page .left-panel {
-        min-height: 420px;
-        padding: 24px 22px;
+        min-height: auto;
+        padding: 26px 22px;
+        gap: 16px;
     }
 
     .pontual-login-page .hero-content {
-        margin-top: 20px;
+        margin-top: 14px;
         padding-top: 0;
     }
 
     .pontual-login-page .right-panel {
-        padding: 26px 22px;
+        padding: 30px 22px;
+        min-height: auto;
+    }
+
+    .pontual-login-page .steps {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
     }
 }
 
-@media (max-width: 540px) {
+@media (max-width: 580px) {
+    .pontual-login-page.page {
+        padding: 12px 10px;
+    }
+
+    .pontual-login-page .signup-container {
+        border-radius: 18px;
+    }
+
+    .pontual-login-page .left-panel {
+        padding: 22px 16px;
+    }
+
+    .pontual-login-page .right-panel {
+        padding: 24px 16px;
+    }
+
     .pontual-login-page .steps {
         grid-template-columns: 1fr;
         gap: 8px;
@@ -826,7 +878,7 @@
         flex-direction: row;
         align-items: center;
         min-height: auto;
-        padding: 10px 12px;
+        padding: 10px 14px;
     }
 
     .pontual-login-page .step-text {
@@ -834,50 +886,55 @@
     }
 }
 
-@media (max-height: 640px) and (min-width: 921px) {
+@media (max-height: 720px) and (min-width: 981px) {
     .pontual-login-page.page {
-        padding: 8px 16px;
+        padding: 12px 16px;
     }
 
     .pontual-login-page .signup-container {
-        height: calc(100vh - 16px);
+        min-height: 0;
     }
 
     .pontual-login-page .left-panel {
-        padding: 16px 24px;
+        padding: 20px 24px;
+        gap: 14px;
     }
 
     .pontual-login-page .right-panel {
-        padding: 14px 24px;
+        padding: 20px 24px;
     }
 
     .pontual-login-page .icon-login {
-        width: 48px;
-        height: 48px;
+        width: 46px;
+        height: 46px;
         margin-bottom: 12px;
+    }
+
+    .pontual-login-page .role-selector {
+        margin-bottom: 14px;
     }
 
     .pontual-login-page .form-container h2 {
         font-size: 20px;
-        margin-bottom: 6px;
+        margin-bottom: 4px;
     }
 
     .pontual-login-page .input-group {
-        margin-bottom: 14px;
+        margin-bottom: 12px;
     }
 
     .pontual-login-page .input-group input,
-    .input-wrapper input {
+    .pontual-login-page .input-wrapper input {
         height: 42px;
     }
 
     .pontual-login-page .continue-button {
         height: 42px;
-        margin-top: 14px;
+        margin-top: 12px;
     }
 
     .pontual-login-page .divider {
-        margin: 14px 0;
+        margin: 10px 0;
     }
 
     .pontual-login-page .google-button {
@@ -885,8 +942,8 @@
     }
 
     .pontual-login-page .step {
-        min-height: 80px;
-        padding: 10px 12px;
+        min-height: 70px;
+        padding: 8px 10px;
     }
 }
 /* =========================================================
