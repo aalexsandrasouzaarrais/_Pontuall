@@ -38,6 +38,7 @@ interface EmployeeSidebarProps {
   notifications: NotificationItem[];
   onOpenNotifications: () => void;
   isLightTheme: boolean;
+  onOpenProfile?: () => void;
 }
 
 export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
@@ -51,6 +52,7 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
   notifications,
   onOpenNotifications,
   isLightTheme,
+  onOpenProfile,
 }) => {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -347,12 +349,18 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
           {collapsed ? (
             /* Collapsed: just avatar */
             <div className="group relative flex justify-center">
-              <img
-                src={activeEmployee.avatar}
-                alt={activeEmployee.name}
-                className="w-9 h-9 rounded-full object-cover ring-2 ring-[#F89847]/50 cursor-pointer hover:ring-[#F89847] transition-all"
-                onClick={onOpenNotifications}
-              />
+              <button
+                type="button"
+                onClick={onOpenProfile || onOpenNotifications}
+                title="Clique para alterar sua foto de perfil"
+                className="cursor-pointer"
+              >
+                <img
+                  src={activeEmployee.avatar}
+                  alt={activeEmployee.name}
+                  className="w-9 h-9 rounded-full object-cover ring-2 ring-[#F89847]/50 hover:ring-[#F89847] hover:scale-105 transition-all"
+                />
+              </button>
 
               <span
                 className={`pointer-events-none absolute left-[56px] px-2.5 py-1.5 rounded-lg border text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-all duration-200 shadow-xl z-50 ${
@@ -361,22 +369,33 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
                     : "bg-[#1E2230] border-[#222634] text-white"
                 }`}
               >
-                {activeEmployee.name}
+                <p className="font-bold">{activeEmployee.name}</p>
+                <p className="text-[10px] text-emerald-500 font-medium">● Mudar foto</p>
               </span>
             </div>
           ) : (
             /* Expanded: profile card with select */
             <div className="flex items-center gap-2.5 w-full">
-              <img
-                src={activeEmployee.avatar}
-                alt={activeEmployee.name}
-                className="w-9 h-9 rounded-full object-cover ring-2 ring-[#F89847]/50 flex-shrink-0"
-              />
+              <button
+                type="button"
+                onClick={onOpenProfile}
+                title="Clique para alterar sua foto de perfil"
+                className="cursor-pointer relative group shrink-0"
+              >
+                <img
+                  src={activeEmployee.avatar}
+                  alt={activeEmployee.name}
+                  className="w-9 h-9 rounded-full object-cover ring-2 ring-[#F89847]/50 group-hover:ring-[#F89847] group-hover:scale-105 transition-all"
+                />
+                <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white" />
+              </button>
 
               <div className="flex-1 min-w-0">
                 {/* Name */}
                 <div
-                  className={`text-xs font-extrabold truncate leading-tight ${
+                  onClick={onOpenProfile}
+                  title="Clique para ver seu perfil"
+                  className={`text-xs font-extrabold truncate leading-tight cursor-pointer hover:underline ${
                     isLightTheme
                       ? "text-slate-900"
                       : "text-white"

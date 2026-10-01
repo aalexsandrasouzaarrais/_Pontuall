@@ -84,3 +84,67 @@ authRoutes.get('/colaboradores', async (_req: Request, res: Response): Promise<v
     res.status(500).json({ error: err.message });
   }
 });
+
+// Cadastro direto de novo gestor
+authRoutes.post('/registro-gestor', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { nome, email, senha, cargo, departamento, telefone } = req.body;
+
+    if (!nome || !email || !senha) {
+      res.status(400).json({ error: 'Nome, e-mail e senha são obrigatórios.' });
+      return;
+    }
+
+    // Verifica se já existe colaborador com o mesmo e-mail
+    const { data: existente } = await supabaseAdmin
+      .from('TAB_Colaborador')
+      .select('Idf_Colaborador')
+      .eq('Eml_Corporativo', email.trim().toLowerCase())
+      .maybeSingle();
+
+    if (existente) {
+      res.status(409).json({ error: 'Este e-mail corporativo já está cadastrado.' });
+      return;
+    }
+
+    const matricula = `GST-${Math.floor(1000 + Math.random() * 9000)}`;
+    const { data: novoGestor, error: insertError } = await supabaseAdmin
+      .from('TAB_Colaborador')
+      .insert({
+        Cod_Matricula: matricula,
+        Nme_Colaborador: nome.trim(),
+        Eml_Corporativo: email.trim().toLowerCase(),
+        Des_Senha_Hash: senha,
+        Tpo_Perfil: 'gestor',
+        Tpo_Cargo: cargo?.trim() || 'Gestor Geral',
+        Des_Departamento: departamento?.trim() || 'Gestão de Pessoas & Operações',
+        Des_Avatar_Url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
+        Num_Telefone: telefone || '(11) 98765-4321',
+        Num_Horas_Semanais: 44,
+        Flg_Ativo: true
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      res.status(500).json({ error: 'Erro ao cadastrar gestor no banco de dados.', details: insertError.message });
+      return;
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Gestor cadastrado com sucesso!',
+      gestor: {
+        id: novoGestor.Idf_Colaborador,
+        matricula: novoGestor.Cod_Matricula,
+        nome: novoGestor.Nme_Colaborador,
+        email: novoGestor.Eml_Corporativo,
+        perfil: novoGestor.Tpo_Perfil,
+        cargo: novoGestor.Tpo_Cargo,
+        departamento: novoGestor.Des_Departamento
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Erro interno ao processar cadastro de gestor.', details: err.message });
+  }
+});

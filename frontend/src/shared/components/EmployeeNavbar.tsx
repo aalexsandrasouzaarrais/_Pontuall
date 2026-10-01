@@ -21,6 +21,7 @@ interface EmployeeNavbarProps {
   notifications: NotificationItem[];
   onOpenNotifications: () => void;
   onSwitchToManager?: () => void;
+  onOpenProfile?: () => void;
 }
 
 export const EmployeeNavbar: React.FC<EmployeeNavbarProps> = ({
@@ -32,6 +33,7 @@ export const EmployeeNavbar: React.FC<EmployeeNavbarProps> = ({
   notifications,
   onOpenNotifications,
   onSwitchToManager,
+  onOpenProfile,
 }) => {
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -207,21 +209,28 @@ export const EmployeeNavbar: React.FC<EmployeeNavbarProps> = ({
           </button>
 
           {/* Employee Avatar */}
-          <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
-            <img
-              src={activeEmployee.avatar}
-              alt={activeEmployee.name}
-              className="w-7 h-7 rounded-full object-cover ring-1 ring-emerald-600/30"
-            />
+          <button
+            type="button"
+            onClick={onOpenProfile}
+            title="Clique para alterar sua foto de perfil"
+            className="flex items-center gap-2 pl-2 border-l border-slate-200 cursor-pointer hover:opacity-85 transition-opacity text-left group"
+          >
+            <div className="relative">
+              <img
+                src={activeEmployee.avatar}
+                alt={activeEmployee.name}
+                className="w-7 h-7 rounded-full object-cover ring-1 ring-emerald-600/30 group-hover:ring-emerald-600 transition-all"
+              />
+            </div>
             <div className="hidden sm:block text-left">
-              <div className="text-xs font-bold text-slate-900 leading-tight">
+              <div className="text-xs font-bold text-slate-900 leading-tight group-hover:text-emerald-800 transition-colors">
                 {activeEmployee.name}
               </div>
               <div className="text-[10px] text-emerald-700 font-bold">
-                Online ● GPS Ativo
+                Online ● Mudar foto
               </div>
             </div>
-          </div>
+          </button>
         </div>
       </div>
 

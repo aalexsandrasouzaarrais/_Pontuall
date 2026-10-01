@@ -39,6 +39,7 @@ interface ManagerSidebarProps {
   };
   theme?: 'light' | 'dark';
   onToggleTheme?: () => void;
+  onOpenProfile?: () => void;
 }
 
 export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
@@ -52,6 +53,7 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
   currentUser,
   theme = 'dark',
   onToggleTheme,
+  onOpenProfile,
 }) => {
   const isLightTheme = theme === 'light';
 
@@ -320,11 +322,16 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
         >
           {collapsed ? (
             <div className="w-full flex items-center justify-center py-1">
-              <div className="relative group">
+              <button
+                type="button"
+                onClick={onOpenProfile}
+                title="Clique para alterar sua foto de perfil"
+                className="relative group cursor-pointer"
+              >
                 <img
                   src={displayUser.avatar}
                   alt={displayUser.name}
-                  className="w-10 h-10 rounded-full object-cover ring-2 ring-[#96183C] shadow-md"
+                  className="w-10 h-10 rounded-full object-cover ring-2 ring-[#96183C] shadow-md group-hover:scale-105 group-hover:ring-[#F89847] transition-all"
                 />
                 <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white shadow-xs" />
                 <span
@@ -335,16 +342,19 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
                   }`}
                 >
                   <p className="font-bold text-slate-900 dark:text-white">{displayUser.name}</p>
-                  <p className="text-[10px] text-emerald-500 font-medium">● Online • Gestor Master</p>
+                  <p className="text-[10px] text-emerald-500 font-medium">● Mudar Foto de Perfil</p>
                 </span>
-              </div>
+              </button>
             </div>
           ) : (
-            <div
-              className={`flex items-center gap-3 p-2 rounded-xl border transition-all ${
+            <button
+              type="button"
+              onClick={onOpenProfile}
+              title="Clique para alterar sua foto de perfil"
+              className={`w-full flex items-center gap-3 p-2 rounded-xl border text-left cursor-pointer transition-all hover:scale-[1.02] ${
                 isLightTheme
-                  ? 'bg-slate-50 border-slate-200 shadow-xs'
-                  : 'bg-white/[0.03] border-white/5'
+                  ? 'bg-slate-50 border-slate-200 shadow-xs hover:border-[#96183C]/40'
+                  : 'bg-white/[0.03] border-white/5 hover:border-white/20'
               }`}
             >
               <div className="relative shrink-0">
@@ -360,10 +370,10 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
                   {displayUser.name}
                 </p>
                 <p className="text-[10px] text-emerald-500 font-medium truncate mt-0.5">
-                  ● Online • Gestor Master
+                  ● Mudar foto de perfil
                 </p>
               </div>
-            </div>
+            </button>
           )}
         </div>
 

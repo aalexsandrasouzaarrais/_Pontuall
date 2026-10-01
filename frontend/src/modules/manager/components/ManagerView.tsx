@@ -20,11 +20,12 @@ interface ManagerViewProps {
   onOpenNotifications: () => void;
   onSwitchToEmployee: () => void;
   pendingRequestsCount: number;
+  onOpenProfile?: () => void;
 }
 
 export const ManagerView: React.FC<ManagerViewProps> = ({
   employees, shifts, activeEmployee, notificationsCount, onAddShift, onUpdateShift, onDeleteShift, onAddEmployee, onOpenRequests, onOpenChat,
-  onOpenNotifications, onSwitchToEmployee, pendingRequestsCount,
+  onOpenNotifications, onSwitchToEmployee, pendingRequestsCount, onOpenProfile,
 }) => {
   const { theme, isDark, toggleTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(true);
@@ -64,6 +65,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
         currentUser={activeEmployee}
         theme={theme}
         onToggleTheme={toggleTheme}
+        onOpenProfile={onOpenProfile}
       />
       <main className={`min-w-0 flex-1 overflow-auto transition-colors duration-300 ${
         activeTab === 'orbit' 

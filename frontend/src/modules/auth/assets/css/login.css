@@ -1292,3 +1292,124 @@ html.light .pontual-login-page .icon-login--light {
         right: 12px;
     }
 }
+
+/* =========================================================
+   FORMULÁRIO DE CADASTRO DO GESTOR & MEDIDOR DE FORÇA
+========================================================= */
+
+.pontual-login-page .signup-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+@media (max-width: 600px) {
+    .pontual-login-page .signup-grid-2 {
+        grid-template-columns: 1fr;
+        gap: 0;
+    }
+}
+
+.pontual-login-page .password-strength {
+    margin-top: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.pontual-login-page .strength-track {
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.10);
+    border-radius: 99px;
+    overflow: hidden;
+}
+
+.pontual-login-page .strength-bar {
+    height: 100%;
+    width: 0%;
+    border-radius: 99px;
+    transition: width 0.35s ease, background-color 0.35s ease, box-shadow 0.35s ease;
+}
+
+.pontual-login-page .strength-bar.weak {
+    width: 33%;
+    background-color: #ef4444;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.45);
+}
+
+.pontual-login-page .strength-bar.medium {
+    width: 66%;
+    background-color: #f59e0b;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.45);
+}
+
+.pontual-login-page .strength-bar.strong {
+    width: 100%;
+    background-color: #10b981;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.45);
+}
+
+.pontual-login-page .strength-info {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    min-height: 14px;
+}
+
+.pontual-login-page .strength-label {
+    font-size: 11px;
+    font-weight: 500;
+    transition: color 0.3s ease;
+}
+
+.pontual-login-page .strength-label.weak {
+    color: #ef4444;
+}
+
+.pontual-login-page .strength-label.medium {
+    color: #f59e0b;
+}
+
+.pontual-login-page .strength-label.strong {
+    color: #10b981;
+}
+
+/* Modo Light */
+.pontual-login-page.theme-light .strength-track,
+html.light .pontual-login-page .strength-track {
+    background: #e5e7eb;
+}
+
+.pontual-login-page.theme-light .strength-bar.weak,
+html.light .pontual-login-page .strength-bar.weak {
+    background-color: #dc2626;
+    box-shadow: 0 0 6px rgba(220, 38, 38, 0.25);
+}
+
+.pontual-login-page.theme-light .strength-bar.medium,
+html.light .pontual-login-page .strength-bar.medium {
+    background-color: #d97706;
+    box-shadow: 0 0 6px rgba(217, 119, 6, 0.25);
+}
+
+.pontual-login-page.theme-light .strength-bar.strong,
+html.light .pontual-login-page .strength-bar.strong {
+    background-color: #16a34a;
+    box-shadow: 0 0 6px rgba(22, 163, 74, 0.25);
+}
+
+.pontual-login-page.theme-light .strength-label.weak,
+html.light .pontual-login-page .strength-label.weak {
+    color: #dc2626;
+}
+
+.pontual-login-page.theme-light .strength-label.medium,
+html.light .pontual-login-page .strength-label.medium {
+    color: #d97706;
+}
+
+.pontual-login-page.theme-light .strength-label.strong,
+html.light .pontual-login-page .strength-label.strong {
+    color: #16a34a;
+}

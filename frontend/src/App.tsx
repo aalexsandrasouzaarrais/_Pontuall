@@ -33,6 +33,10 @@ import {
   LoginView 
 } from '@/modules/auth/components/LoginView';
 import { 
+  ProfileEditModal 
+} from '@/shared/components/ProfileEditModal';
+import { supabase } from '@/shared/services/supabase';
+import { 
   INITIAL_EMPLOYEES, 
   getInitialShifts, 
   INITIAL_REQUESTS, 
@@ -43,7 +47,8 @@ import {
 } from './data/mockData';
 import { 
   getColaboradoresSupabase, 
-  createColaboradorSupabase 
+  createColaboradorSupabase,
+  syncGoogleUserWithSupabase
 } from '@/modules/auth/services/colaboradorService';
 import { 
   getShiftsSupabase, 
@@ -103,6 +108,10 @@ function AppContent() {
 
   const handleLoginSuccess = (user: Employee, role: 'manager' | 'employee') => {
     setActiveEmployee(user);
+    setEmployees(prev => {
+      const exists = prev.some(e => e.id === user.id || (e.email && user.email && e.email.toLowerCase() === user.email.toLowerCase()));
+      return exists ? prev : [user, ...prev];
+    });
     setCurrentRole(role);
     setIsAuthenticated(true);
   };
@@ -115,10 +124,24 @@ function AppContent() {
         const parsed = JSON.parse(savedUserStr);
         const match = INITIAL_EMPLOYEES.find(e => 
           e.id === parsed.id || 
+          e.id === parsed.Idf_Colaborador ||
           e.email?.toLowerCase() === parsed.email?.toLowerCase() ||
+          e.email?.toLowerCase() === parsed.Eml_Corporativo?.toLowerCase() ||
           (parsed.emailSecundario && e.email?.toLowerCase() === parsed.emailSecundario?.toLowerCase())
         );
         if (match) return match;
+
+        return {
+          id: parsed.Idf_Colaborador || parsed.id || `emp-${Date.now()}`,
+          name: parsed.Nme_Colaborador || parsed.nome || parsed.name || 'Gestor',
+          role: parsed.Tpo_Cargo || parsed.cargo || parsed.role || 'Gestor Geral',
+          department: parsed.Des_Departamento || parsed.departamento || parsed.department || 'Gestão de Pessoas & Operações',
+          avatar: parsed.Des_Avatar_Url || parsed.avatar || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
+          email: parsed.Eml_Corporativo || parsed.email || '',
+          phone: parsed.Num_Telefone || parsed.phone || '(11) 98765-4321',
+          standardHoursPerWeek: parsed.Num_Horas_Semanais || parsed.standardHoursPerWeek || 44,
+          registrationId: parsed.Cod_Matricula || parsed.registrationId || 'GST-0001'
+        };
       }
     } catch {}
     return INITIAL_EMPLOYEES[0];
@@ -138,8 +161,20 @@ function AppContent() {
       try {
         const dbEmployees = await getColaboradoresSupabase();
         if (dbEmployees && dbEmployees.length > 0) {
-          setEmployees(dbEmployees);
-          setActiveEmployee(prev => dbEmployees.find(e => e.id === prev.id) || dbEmployees[0]);
+          setEmployees(prev => {
+            // Une com funcionários locais se houver algum não presente no banco
+            const combined = [...dbEmployees];
+            for (const p of prev) {
+              if (!combined.some(c => c.id === p.id || (c.email && p.email && c.email.toLowerCase() === p.email.toLowerCase()))) {
+                combined.push(p);
+              }
+            }
+            return combined;
+          });
+          setActiveEmployee(prev => {
+            const found = dbEmployees.find(e => e.id === prev.id || (e.email && prev.email && e.email.toLowerCase() === prev.email.toLowerCase()));
+            return found || prev;
+          });
         }
 
         const dbShifts = await getShiftsSupabase();
@@ -161,6 +196,68 @@ function AppContent() {
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
   const [isManagerRequestsModalOpen, setIsManagerRequestsModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+
+  // Monitora autenticação via Google Workspace (OAuth redirect)
+  React.useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user?.email) {
+        const googleMeta = session.user.user_metadata || {};
+        const googlePicture = googleMeta.avatar_url || googleMeta.picture;
+        const googleName = googleMeta.full_name || googleMeta.name || session.user.email.split('@')[0];
+
+        if (googlePicture) {
+          localStorage.setItem('pontual_google_avatar', googlePicture);
+        }
+
+        syncGoogleUserWithSupabase({
+          email: session.user.email,
+          name: googleName,
+          picture: googlePicture,
+          roleHint: currentRole
+        }).then(emp => {
+          setActiveEmployee(emp);
+          setIsAuthenticated(true);
+        });
+      }
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user?.email) {
+        const googleMeta = session.user.user_metadata || {};
+        const googlePicture = googleMeta.avatar_url || googleMeta.picture;
+        const googleName = googleMeta.full_name || googleMeta.name || session.user.email.split('@')[0];
+
+        if (googlePicture) {
+          localStorage.setItem('pontual_google_avatar', googlePicture);
+        }
+
+        const emp = await syncGoogleUserWithSupabase({
+          email: session.user.email,
+          name: googleName,
+          picture: googlePicture,
+          roleHint: currentRole
+        });
+        setActiveEmployee(emp);
+        setIsAuthenticated(true);
+        showToast('Google Workspace', `Bem-vindo(a), ${emp.name}! Foto conectada.`, 'success');
+      }
+    });
+
+    return () => {
+      authListener?.subscription?.unsubscribe();
+    };
+  }, []);
+
+  // Atualiza foto de perfil em todo o sistema
+  const handleUpdateAvatar = (newAvatarUrl: string) => {
+    setActiveEmployee(prev => ({
+      ...prev,
+      avatar: newAvatarUrl
+    }));
+    setEmployees(prev => prev.map(e => e.id === activeEmployee.id ? { ...e, avatar: newAvatarUrl } : e));
+    showToast('Foto Atualizada', 'Sua foto de perfil foi alterada com sucesso.', 'success');
+  };
 
   // Floating Toast Notification
   const [toast, setToast] = useState<{
@@ -501,6 +598,7 @@ function AppContent() {
             onOpenNotifications={() => setIsNotificationsModalOpen(true)}
             onSwitchToEmployee={() => setCurrentRole('employee')}
             pendingRequestsCount={pendingRequestsCount}
+            onOpenProfile={() => setIsProfileModalOpen(true)}
           />
         </div>
       ) : (
@@ -524,6 +622,7 @@ function AppContent() {
             notifications={notifications}
             onOpenNotifications={() => setIsNotificationsModalOpen(true)}
             isLightTheme={!isDark}
+            onOpenProfile={() => setIsProfileModalOpen(true)}
           />
 
           {/* Main Content */}
@@ -1113,6 +1212,14 @@ function AppContent() {
         }
         employees={employees}
         isLightTheme={!isDark}
+      />
+
+      <ProfileEditModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        currentUser={activeEmployee}
+        onUpdateAvatar={handleUpdateAvatar}
+        theme={theme}
       />
 
       {/* Floating Toast Notification */}
