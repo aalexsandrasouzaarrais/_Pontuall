@@ -73,14 +73,47 @@ export const ORBIT_COLORS: ShiftColor[] = [
 ];
 
 export const SHIFT_TYPES = [
+  "Presencial",
+  "Home Office",
   "Reunião / Alinhamento",
   "Plantão",
-  "Home Office",
-  "Presencial",
-  "Evento",
   "Treinamento",
+  "Evento",
   "Outro",
 ];
+
+export const getColorForShiftType = (type: string): ShiftColor => {
+  const lower = type.toLowerCase();
+  if (lower.includes('home office') || lower.includes('remoto')) {
+    return ORBIT_COLORS[2]; // Esmeralda (Home Office / Remoto)
+  }
+  if (lower.includes('presencial') || lower.includes('operacional')) {
+    return ORBIT_COLORS[0]; // Coral / Vinho (Operacional / Presencial)
+  }
+  if (lower.includes('reunião') || lower.includes('alinhamento') || lower.includes('meeting')) {
+    return ORBIT_COLORS[4]; // Violeta / Roxo (Reunião / Alinhamento)
+  }
+  if (lower.includes('plantão') || lower.includes('sobreaviso')) {
+    return ORBIT_COLORS[1]; // Âmbar / Laranja (Plantão / Sobreaviso)
+  }
+  if (lower.includes('treinamento') || lower.includes('onboarding')) {
+    return ORBIT_COLORS[3]; // Azul Oceano (Treinamento / Onboarding)
+  }
+  if (lower.includes('evento') || lower.includes('extraordinário')) {
+    return ORBIT_COLORS[5]; // Rosa Magenta (Evento / Extraordinário)
+  }
+  return ORBIT_COLORS[0];
+};
+
+export const getTypeForColor = (color: ShiftColor): string | null => {
+  if (color.label === "Coral / Vinho" || color.category?.includes("Presencial")) return "Presencial";
+  if (color.label === "Esmeralda" || color.category?.includes("Home Office")) return "Home Office";
+  if (color.label === "Violeta / Roxo" || color.category?.includes("Reunião") || color.category?.includes("Alinhamento")) return "Reunião / Alinhamento";
+  if (color.label === "Âmbar / Laranja" || color.category?.includes("Plantão")) return "Plantão";
+  if (color.label === "Azul Oceano" || color.category?.includes("Treinamento")) return "Treinamento";
+  if (color.label === "Rosa Magenta" || color.category?.includes("Evento")) return "Evento";
+  return null;
+};
 
 export const BREAK_OPTIONS = ["30min", "45min", "1h", "1h30", "2h", "Sem intervalo"];
 
@@ -174,7 +207,14 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
     if (editingShift) {
       setEmployeeId(editingShift.employeeId || employees[0]?.id || 'emp-1');
       
+      const isHomeOffice = editingShift.workplace?.toLowerCase().includes('remoto') || 
+                           editingShift.workplace?.toLowerCase().includes('home office') ||
+                           editingShift.title?.toLowerCase().includes('home office') ||
+                           editingShift.color?.category?.toLowerCase().includes('home office') ||
+                           editingShift.color?.label === 'Esmeralda';
+
       const mappedType = 
+        isHomeOffice ? 'Home Office' :
         editingShift.type === 'meeting' ? 'Reunião / Alinhamento' :
         editingShift.type === 'on_call' ? 'Plantão' :
         editingShift.type === 'training' ? 'Treinamento' : 'Presencial';
@@ -197,12 +237,8 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
 
       if (editingShift.color) {
         setSelectedColor(editingShift.color);
-      } else if (editingShift.type === 'meeting') {
-        setSelectedColor(ORBIT_COLORS[4]);
-      } else if (editingShift.type === 'on_call') {
-        setSelectedColor(ORBIT_COLORS[1]);
       } else {
-        setSelectedColor(ORBIT_COLORS[0]);
+        setSelectedColor(getColorForShiftType(mappedType));
       }
 
       // If the shift is already published, start in View Mode!
@@ -229,6 +265,22 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
     }
     setConfirmDelete(false);
   }, [editingShift, initialDate, employees]);
+
+  // Atualiza o tipo e sincroniza automaticamente a cor correspondente
+  const handleShiftTypeChange = (newType: string) => {
+    setShiftType(newType);
+    const newColor = getColorForShiftType(newType);
+    setSelectedColor(newColor);
+  };
+
+  // Ao clicar diretamente numa cor da paleta, sincroniza também o tipo se houver categoria correspondente
+  const handleColorChange = (c: ShiftColor) => {
+    setSelectedColor(c);
+    const matchingType = getTypeForColor(c);
+    if (matchingType) {
+      setShiftType(matchingType);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -827,20 +879,25 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
             {/* Shift type + Title */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-semibold mb-1.5 block" style={{ color: "rgba(255,255,255,0.55)" }}>
-                  TIPO DE TURNO
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold" style={{ color: isLight ? "#475569" : "rgba(255,255,255,0.55)" }}>
+                    TIPO DE TURNO
+                  </label>
+                  <span className={`text-[11px] font-semibold flex items-center gap-1.5 px-2 py-0.5 rounded-full ${
+                    isLight ? 'bg-white border border-slate-200 text-slate-700' : 'bg-black/30 border border-white/10 text-white/80'
+                  }`}>
+                    <span className="w-2 h-2 rounded-full inline-block shadow-xs" style={{ background: selectedColor.bg }} />
+                    <span className="font-mono">{selectedColor.label}</span>
+                  </span>
+                </div>
                 <select
                   value={shiftType}
-                  onChange={e => setShiftType(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl text-sm text-white outline-none transition-all cursor-pointer"
-                  style={{
-                    background: "rgba(255,255,255,0.05)",
-                    border: "1px solid rgba(255,255,255,0.12)",
-                  }}
+                  onChange={e => handleShiftTypeChange(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all cursor-pointer"
+                  style={inputStyle}
                 >
                   {SHIFT_TYPES.map(t => (
-                    <option key={t} value={t} style={{ background: "#1a0010", color: "#fff" }}>
+                    <option key={t} value={t} style={optionStyle}>
                       {t}
                     </option>
                   ))}
@@ -986,7 +1043,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                     <button
                       key={c.label}
                       type="button"
-                      onClick={() => setSelectedColor(c)}
+                      onClick={() => handleColorChange(c)}
                       className={`w-7.5 h-7.5 rounded-full transition-all relative cursor-pointer flex items-center justify-center ${
                         isSelected 
                           ? isLight

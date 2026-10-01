@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, X, Check, Sparkles, RefreshCw, Mail, Key } from 'lucide-react';
+import { User, X, Check, Sparkles, RefreshCw, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Employee } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
 
@@ -35,17 +35,67 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     return `PNT-${randomNum}`;
   };
 
-  // Pré-preenche um ID automático ao abrir o modal
-  useEffect(() => {
-    if (isOpen && !employeeId) {
-      setEmployeeId(generateRandomId());
-    }
-  }, [isOpen]);
-  const [role, setRole] = useState('Analista Operacional');
+  const [role, setRole] = useState('');
   const [department, setDepartment] = useState('Atendimento');
   const [userRole, setUserRole] = useState('Colaborador');
   const [employmentType, setEmploymentType] = useState('CLT');
-  const [hasError, setHasError] = useState(false);
+
+  // Formata o número de telefone no padrão brasileiro: (XX) XXXXX-XXXX ou (XX) XXXX-XXXX
+  const formatPhoneNumber = (value: string) => {
+    let digits = value.replace(/\D/g, '');
+
+    // Se colar com código de país do Brasil (+55), remove o 55 inicial
+    if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+      digits = digits.slice(2);
+    }
+
+    // Limita estritamente ao tamanho máximo de telefone brasileiro (11 dígitos: DDD + 9 dígitos)
+    digits = digits.slice(0, 11);
+
+    if (!digits) return '';
+    if (digits.length <= 2) {
+      return `(${digits}`;
+    }
+    if (digits.length <= 6) {
+      return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    }
+    if (digits.length <= 10) {
+      return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    }
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  };
+
+  // Estados de validação e feedback
+  const [firstNameError, setFirstNameError] = useState(false);
+  const [lastNameError, setLastNameError] = useState(false);
+  const [roleError, setRoleError] = useState(false);
+  const [startDateError, setStartDateError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSaved, setIsSaved] = useState(false);
+
+  // Reseta ou inicializa o formulário ao abrir
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab('PERFIL');
+      setFirstName('');
+      setLastName('');
+      setEmail('');
+      setPhone('');
+      setEmployeeId(generateRandomId());
+      setRole('');
+      setDepartment('Atendimento');
+      setUserRole('Colaborador');
+      setEmploymentType('CLT');
+      setStartDate(new Date().toISOString().split('T')[0]);
+      setSendWelcomeEmail(true);
+      setFirstNameError(false);
+      setLastNameError(false);
+      setRoleError(false);
+      setStartDateError(false);
+      setErrorMessage(null);
+      setIsSaved(false);
+    }
+  }, [isOpen]);
 
   // Fechamento via tecla ESC
   useEffect(() => {
@@ -64,10 +114,76 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
 
   if (!isOpen) return null;
 
+  // Validação da etapa 1
+  const validateStep1 = () => {
+    const isFirstEmpty = !firstName.trim();
+    const isLastEmpty = !lastName.trim();
+
+    setFirstNameError(isFirstEmpty);
+    setLastNameError(isLastEmpty);
+
+    if (isFirstEmpty || isLastEmpty) {
+      setErrorMessage('Preencha os campos obrigatórios da Etapa 1 (Nome e Sobrenome) para prosseguir.');
+      return false;
+    }
+
+    setErrorMessage(null);
+    return true;
+  };
+
+  // Validação da etapa 2
+  const validateStep2 = () => {
+    const isRoleEmpty = !role.trim();
+    const isDateEmpty = !startDate;
+
+    setRoleError(isRoleEmpty);
+    setStartDateError(isDateEmpty);
+
+    if (isRoleEmpty || isDateEmpty) {
+      setErrorMessage('Preencha as informações obrigatórias da Etapa 2 (Cargo / Função) para salvar o colaborador.');
+      return false;
+    }
+
+    setErrorMessage(null);
+    return true;
+  };
+
+  const handleNextStep = () => {
+    if (validateStep1()) {
+      setActiveTab('ATRIBUIÇÕES');
+    }
+  };
+
+  const handleTabChange = (targetTab: 'PERFIL' | 'ATRIBUIÇÕES') => {
+    if (targetTab === 'PERFIL') {
+      setActiveTab('PERFIL');
+      setErrorMessage(null);
+    } else {
+      // Para ir para Atribuições, precisa preencher a etapa 1 primeiro
+      if (validateStep1()) {
+        setActiveTab('ATRIBUIÇÕES');
+      }
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!firstName.trim()) {
-      setHasError(true);
+
+    // Se estiver na etapa 1, não permite salvar! Deve avançar para a etapa 2.
+    if (activeTab === 'PERFIL') {
+      handleNextStep();
+      return;
+    }
+
+    // Se estiver na etapa 2:
+    // 1. Valida se a etapa 1 continua válida
+    if (!validateStep1()) {
+      setActiveTab('PERFIL');
+      return;
+    }
+
+    // 2. Valida se a etapa 2 foi preenchida
+    if (!validateStep2()) {
       return;
     }
 
@@ -77,7 +193,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       id: `emp-${cleanId}`,
       registrationId: cleanId,
       name: fullName,
-      role: role.trim() || (userRole === 'Gestor' ? 'Gerente Operacional' : 'Colaborador'),
+      role: role.trim(),
       department: department.trim() || 'Operações',
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
       email: email.trim() || `${firstName.toLowerCase().replace(/\s+/g, '')}@pontual.com.br`,
@@ -88,22 +204,19 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     };
 
     onAddEmployee(newEmp);
-    onClose();
-    // Reset form
-    setFirstName('');
-    setLastName('');
-    setEmail('');
-    setPhone('');
-    setEmployeeId('');
-    setHasError(false);
+    setIsSaved(true);
+    setErrorMessage(null);
+
+    // Fecha suavemente após confirmar o salvamento na tela
+    setTimeout(() => {
+      onClose();
+      setIsSaved(false);
+    }, 700);
   };
 
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
     >
       <div
         className={`relative w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-150 font-sans border transition-colors ${
@@ -161,8 +274,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
         }`}>
           <button
             type="button"
-            onClick={() => setActiveTab('PERFIL')}
-            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            onClick={() => handleTabChange('PERFIL')}
+            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'PERFIL'
                 ? 'text-white shadow-sm'
                 : isDark
@@ -173,13 +286,16 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
               background: 'linear-gradient(135deg, #96183c, #f89847)',
             } : undefined}
           >
-            1. PERFIL
+            {firstName.trim() && lastName.trim() && (
+              <Check className="w-3.5 h-3.5 text-emerald-300" />
+            )}
+            <span>1. PERFIL</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setActiveTab('ATRIBUIÇÕES')}
-            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            onClick={() => handleTabChange('ATRIBUIÇÕES')}
+            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'ATRIBUIÇÕES'
                 ? 'text-white shadow-sm'
                 : isDark
@@ -190,9 +306,28 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
               background: 'linear-gradient(135deg, #96183c, #f89847)',
             } : undefined}
           >
-            2. ATRIBUIÇÕES
+            {role.trim() && (
+              <Check className="w-3.5 h-3.5 text-emerald-300" />
+            )}
+            <span>2. ATRIBUIÇÕES</span>
           </button>
         </div>
+
+        {/* Banner de Mensagem de Erro / Orientação */}
+        {errorMessage && (
+          <div className="mx-6 mt-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center gap-2.5 text-xs text-rose-500 animate-in fade-in duration-150">
+            <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+            <span className="font-medium">{errorMessage}</span>
+          </div>
+        )}
+
+        {/* Banner de Mensagem de Sucesso */}
+        {isSaved && (
+          <div className="mx-6 mt-4 p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 flex items-center gap-2.5 text-xs text-emerald-400 font-semibold animate-in fade-in duration-150">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+            <span>Colaborador salvo com sucesso! Concluindo cadastro...</span>
+          </div>
+        )}
 
         {/* Modal Form */}
         <form onSubmit={handleSubmit} className="overflow-y-auto" style={{ maxHeight: 'calc(92vh - 210px)' }}>
@@ -206,7 +341,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className={`text-xs font-semibold mb-1.5 block ${
-                          hasError && !firstName ? 'text-rose-500 font-bold' : isDark ? 'text-slate-300' : 'text-slate-700'
+                          firstNameError ? 'text-rose-500 font-bold' : isDark ? 'text-slate-300' : 'text-slate-700'
                         }`}>
                           Nome*
                         </label>
@@ -215,37 +350,46 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                           value={firstName}
                           onChange={(e) => {
                             setFirstName(e.target.value);
-                            if (e.target.value) setHasError(false);
+                            if (e.target.value.trim()) setFirstNameError(false);
                           }}
                           placeholder="Ex: Carlos"
-                          required
                           className={`w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all border ${
-                            hasError && !firstName
+                            firstNameError
                               ? 'border-rose-500 ring-2 ring-rose-500/20'
                               : isDark
                                 ? 'bg-[#181A24] border-white/10 text-white placeholder:text-slate-500 focus:border-[#f89847] focus:ring-2 focus:ring-[#f89847]/10'
                                 : 'bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-[#96183c] focus:ring-2 focus:ring-[#96183c]/10'
                           }`}
                         />
+                        {firstNameError && (
+                          <span className="text-[11px] text-rose-500 mt-1 block">Nome é obrigatório</span>
+                        )}
                       </div>
                       <div>
                         <label className={`text-xs font-semibold mb-1.5 block ${
-                          isDark ? 'text-slate-300' : 'text-slate-700'
+                          lastNameError ? 'text-rose-500 font-bold' : isDark ? 'text-slate-300' : 'text-slate-700'
                         }`}>
                           Sobrenome*
                         </label>
                         <input
                           type="text"
                           value={lastName}
-                          onChange={(e) => setLastName(e.target.value)}
+                          onChange={(e) => {
+                            setLastName(e.target.value);
+                            if (e.target.value.trim()) setLastNameError(false);
+                          }}
                           placeholder="Ex: Silva"
-                          required
                           className={`w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all border ${
-                            isDark
-                              ? 'bg-[#181A24] border-white/10 text-white placeholder:text-slate-500 focus:border-[#f89847] focus:ring-2 focus:ring-[#f89847]/10'
-                              : 'bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-[#96183c] focus:ring-2 focus:ring-[#96183c]/10'
+                            lastNameError
+                              ? 'border-rose-500 ring-2 ring-rose-500/20'
+                              : isDark
+                                ? 'bg-[#181A24] border-white/10 text-white placeholder:text-slate-500 focus:border-[#f89847] focus:ring-2 focus:ring-[#f89847]/10'
+                                : 'bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-[#96183c] focus:ring-2 focus:ring-[#96183c]/10'
                           }`}
                         />
+                        {lastNameError && (
+                          <span className="text-[11px] text-rose-500 mt-1 block">Sobrenome é obrigatório</span>
+                        )}
                       </div>
                     </div>
 
@@ -307,8 +451,9 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                     <input
                       type="tel"
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      onChange={(e) => setPhone(formatPhoneNumber(e.target.value))}
                       placeholder="(11) 98765-4321"
+                      maxLength={15}
                       className={`w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all border ${
                         isDark
                           ? 'bg-[#181A24] border-white/10 text-white placeholder:text-slate-500 focus:border-[#f89847] focus:ring-2 focus:ring-[#f89847]/10'
@@ -378,28 +523,36 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className={`text-xs font-semibold mb-1.5 block ${
-                      isDark ? 'text-slate-300' : 'text-slate-700'
+                      roleError ? 'text-rose-500 font-bold' : isDark ? 'text-slate-300' : 'text-slate-700'
                     }`}>
-                      Cargo / Função
+                      Cargo / Função*
                     </label>
                     <input
                       type="text"
                       value={role}
-                      onChange={(e) => setRole(e.target.value)}
+                      onChange={(e) => {
+                        setRole(e.target.value);
+                        if (e.target.value.trim()) setRoleError(false);
+                      }}
                       placeholder="Ex: Analista Operacional"
                       className={`w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all border ${
-                        isDark
-                          ? 'bg-[#181A24] border-white/10 text-white placeholder:text-slate-500 focus:border-[#f89847] focus:ring-2 focus:ring-[#f89847]/10'
-                          : 'bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-[#96183c] focus:ring-2 focus:ring-[#96183c]/10'
+                        roleError
+                          ? 'border-rose-500 ring-2 ring-rose-500/20'
+                          : isDark
+                            ? 'bg-[#181A24] border-white/10 text-white placeholder:text-slate-500 focus:border-[#f89847] focus:ring-2 focus:ring-[#f89847]/10'
+                            : 'bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-[#96183c] focus:ring-2 focus:ring-[#96183c]/10'
                       }`}
                     />
+                    {roleError && (
+                      <span className="text-[11px] text-rose-500 mt-1 block">Cargo / Função é obrigatório</span>
+                    )}
                   </div>
 
                   <div>
                     <label className={`text-xs font-semibold mb-1.5 block ${
                       isDark ? 'text-slate-300' : 'text-slate-700'
                     }`}>
-                      Departamento / Setor
+                      Departamento / Setor*
                     </label>
                     <select
                       value={department}
@@ -422,28 +575,36 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className={`text-xs font-semibold mb-1.5 block ${
-                      isDark ? 'text-slate-300' : 'text-slate-700'
+                      startDateError ? 'text-rose-500 font-bold' : isDark ? 'text-slate-300' : 'text-slate-700'
                     }`}>
-                      Data de Início
+                      Data de Início*
                     </label>
                     <input
                       type="date"
                       value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
+                      onChange={(e) => {
+                        setStartDate(e.target.value);
+                        if (e.target.value) setStartDateError(false);
+                      }}
                       className={`w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all border ${
-                        isDark
-                          ? 'bg-[#181A24] border-white/10 text-white focus:border-[#f89847]'
-                          : 'bg-slate-50 border-slate-200 text-slate-800 focus:bg-white focus:border-[#96183c]'
+                        startDateError
+                          ? 'border-rose-500 ring-2 ring-rose-500/20'
+                          : isDark
+                            ? 'bg-[#181A24] border-white/10 text-white focus:border-[#f89847]'
+                            : 'bg-slate-50 border-slate-200 text-slate-800 focus:bg-white focus:border-[#96183c]'
                       }`}
                       style={{ colorScheme: isDark ? 'dark' : 'light' }}
                     />
+                    {startDateError && (
+                      <span className="text-[11px] text-rose-500 mt-1 block">Data de início é obrigatória</span>
+                    )}
                   </div>
 
                   <div>
                     <label className={`text-xs font-semibold mb-1.5 block ${
                       isDark ? 'text-slate-300' : 'text-slate-700'
                     }`}>
-                      Perfil de Acesso
+                      Perfil de Acesso*
                     </label>
                     <select
                       value={userRole}
@@ -464,7 +625,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                     <label className={`text-xs font-semibold mb-1.5 block ${
                       isDark ? 'text-slate-300' : 'text-slate-700'
                     }`}>
-                      Regime Contratual
+                      Regime Contratual*
                     </label>
                     <select
                       value={employmentType}
@@ -513,28 +674,67 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
           <div className={`px-6 py-4 flex items-center justify-between border-t ${
             isDark ? 'border-white/10 bg-[#0e1017]' : 'border-slate-200 bg-slate-50'
           }`}>
-            <button
-              type="button"
-              onClick={onClose}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
-                isDark
-                  ? 'text-slate-400 hover:text-white hover:bg-white/5'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-              }`}
-            >
-              Cancelar
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
+                  isDark
+                    ? 'text-slate-400 hover:text-white hover:bg-white/5'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                }`}
+              >
+                Cancelar
+              </button>
 
-            <button
-              type="submit"
-              className="px-6 py-2.5 rounded-xl text-sm font-bold transition-all hover:opacity-95 active:scale-95 shadow-md flex items-center gap-2 cursor-pointer text-white"
-              style={{
-                background: 'linear-gradient(135deg, #96183c 0%, #f89847 100%)',
-              }}
-            >
-              <Check className="w-4 h-4" />
-              <span>Salvar Colaborador</span>
-            </button>
+              {activeTab === 'ATRIBUIÇÕES' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('PERFIL');
+                    setErrorMessage(null);
+                  }}
+                  className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    isDark
+                      ? 'text-slate-300 hover:text-white hover:bg-white/10'
+                      : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200/80'
+                  }`}
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Voltar: Perfil</span>
+                </button>
+              )}
+            </div>
+
+            {activeTab === 'PERFIL' ? (
+              <button
+                type="button"
+                onClick={handleNextStep}
+                className="px-5 py-2.5 rounded-xl text-sm font-bold transition-all hover:opacity-95 active:scale-95 shadow-md flex items-center gap-2 cursor-pointer text-white"
+                style={{
+                  background: 'linear-gradient(135deg, #96183c 0%, #f89847 100%)',
+                }}
+              >
+                <span>Avançar para Atribuições</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={isSaved}
+                className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer text-white ${
+                  isSaved
+                    ? 'bg-emerald-600 hover:bg-emerald-600 cursor-default ring-2 ring-emerald-400/40'
+                    : 'hover:opacity-95 active:scale-95'
+                }`}
+                style={!isSaved ? {
+                  background: 'linear-gradient(135deg, #96183c 0%, #f89847 100%)',
+                } : undefined}
+              >
+                <Check className="w-4 h-4" />
+                <span>{isSaved ? 'Salvo com Sucesso!' : 'Salvar Colaborador'}</span>
+              </button>
+            )}
           </div>
         </form>
       </div>
