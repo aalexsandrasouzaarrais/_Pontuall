@@ -434,8 +434,8 @@ function AppContent() {
 
   const handleAddEmployee = async (newEmp: Employee) => {
     try {
-      // Salva diretamente na tabela TAB_Colaborador do Supabase
-      const saved = await createColaboradorSupabase(newEmp);
+      // Salva diretamente na tabela TAB_Colaborador do Supabase e vincula ao gestor ativo (M:N)
+      const saved = await createColaboradorSupabase(newEmp, activeEmployee?.id);
       setEmployees(prev => [...prev, saved]);
     } catch (err) {
       console.warn('Fallback local ao salvar colaborador:', err);

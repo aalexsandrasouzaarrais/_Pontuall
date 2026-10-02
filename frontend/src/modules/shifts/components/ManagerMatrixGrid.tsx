@@ -39,7 +39,7 @@ import {
   Lock,
   Hash
 } from 'lucide-react';
-import { Employee, Shift, TimeOffRequest } from '../types';
+import { Employee, Shift, TimeOffRequest } from '@/types';
 import { supabase } from '@/shared/services/supabase';
 import { DEFAULT_TEAM_CHANNELS, ChatChannelItem, ChatMessage } from '@/modules/chat/components/ChatModal';
 

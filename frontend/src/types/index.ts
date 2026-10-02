@@ -16,6 +16,10 @@ export interface Employee {
   hourlyRate?: number; // Ex: R$ 45,00/h
   workplace?: string; // Ex: 'Logística - Galpão 01'
   registrationId?: string; // Matrícula / ID BNE (Cod_Matricula ex: PNT-7842)
+  companyId?: string; // ID da Empresa (Idf_Empresa)
+  companyCnpj?: string; // CNPJ da Empresa (Num_CNPJ)
+  isMasterManager?: boolean; // Se é Gestor Master / Admin da Empresa (Flg_Gestor_Master)
+  managerIds?: string[]; // IDs dos Gestores vinculados a este colaborador (M:N)
 }
 
 export type ShiftStatus = 'draft' | 'published';

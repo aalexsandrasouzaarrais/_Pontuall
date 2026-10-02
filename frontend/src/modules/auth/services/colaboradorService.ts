@@ -13,17 +13,25 @@ export function mapBneToEmployee(row: any): Employee {
     phone: row.Num_Telefone || '(11) 99999-9999',
     standardHoursPerWeek: row.Num_Horas_Semanais || 40,
     registrationId: row.Cod_Matricula || '',
+    companyId: row.Idf_Empresa,
+    isMasterManager: row.Flg_Gestor_Master || false,
+    managerIds: row.managerIds || []
   };
 }
 
-// Busca todos os colaboradores da tabela TAB_Colaborador no Supabase
-export async function getColaboradoresSupabase(): Promise<Employee[]> {
+// Busca colaboradores do Supabase com suporte a filtragem por empresa e gestor
+export async function getColaboradoresSupabase(filter?: { companyId?: string; gestorId?: string }): Promise<Employee[]> {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('TAB_Colaborador')
       .select('*')
-      .eq('Flg_Ativo', true)
-      .order('Nme_Colaborador');
+      .eq('Flg_Ativo', true);
+
+    if (filter?.companyId) {
+      query = query.eq('Idf_Empresa', filter.companyId);
+    }
+
+    const { data, error } = await query.order('Nme_Colaborador');
 
     if (error) {
       console.warn('Aviso ao buscar colaboradores do Supabase:', error.message);
@@ -31,7 +39,22 @@ export async function getColaboradoresSupabase(): Promise<Employee[]> {
     }
 
     if (data && data.length > 0) {
-      return data.map(mapBneToEmployee);
+      let result = data.map(mapBneToEmployee);
+
+      // Se gestorId for especificado, realiza a filtragem pela tabela M:N TAB_Gestor_Colaborador
+      if (filter?.gestorId) {
+        const { data: vinculos } = await supabase
+          .from('TAB_Gestor_Colaborador')
+          .select('Idf_Colaborador')
+          .eq('Idf_Gestor', filter.gestorId);
+
+        if (vinculos) {
+          const idsPermitidos = new Set(vinculos.map((v: any) => v.Idf_Colaborador));
+          result = result.filter(emp => idsPermitidos.has(emp.id) || emp.isMasterManager);
+        }
+      }
+
+      return result;
     }
     return [];
   } catch (err: any) {
@@ -40,24 +63,25 @@ export async function getColaboradoresSupabase(): Promise<Employee[]> {
   }
 }
 
-// Salva um novo colaborador diretamente na tabela TAB_Colaborador no Supabase
-export async function createColaboradorSupabase(emp: Employee): Promise<Employee> {
+// Salva um novo colaborador diretamente na tabela TAB_Colaborador e estabelece o vínculo M:N em TAB_Gestor_Colaborador
+export async function createColaboradorSupabase(emp: Employee, creatorGestorId?: string): Promise<Employee> {
   const matricula = emp.registrationId || `PNT-${Math.floor(1000 + Math.random() * 9000)}`;
   const payload = {
     Cod_Matricula: matricula,
     Nme_Colaborador: emp.name,
     Eml_Corporativo: emp.email,
-    Des_Senha_Hash: matricula, // O ID é a senha provisória de primeiro acesso!
+    Des_Senha_Hash: matricula, // ID como senha provisória
     Tpo_Perfil: 'colaborador',
     Tpo_Cargo: emp.role,
     Des_Departamento: emp.department,
     Des_Avatar_Url: emp.avatar,
     Num_Telefone: emp.phone,
     Num_Horas_Semanais: emp.standardHoursPerWeek || 40,
+    Idf_Empresa: emp.companyId || null,
     Flg_Ativo: true
   };
 
-  const { data, error } = await supabase
+  const { data: novoColaborador, error } = await supabase
     .from('TAB_Colaborador')
     .insert(payload)
     .select()
@@ -68,10 +92,28 @@ export async function createColaboradorSupabase(emp: Employee): Promise<Employee
     throw new Error(error.message);
   }
 
-  return mapBneToEmployee(data);
+  // Estabelece os vínculos de gestores (M:N) na tabela TAB_Gestor_Colaborador
+  const gestoresParaVincular = new Set<string>();
+  if (creatorGestorId) gestoresParaVincular.add(creatorGestorId);
+  if (emp.managerIds) emp.managerIds.forEach(id => gestoresParaVincular.add(id));
+
+  if (gestoresParaVincular.size > 0) {
+    const vinculosPayload = Array.from(gestoresParaVincular).map((gestorId, index) => ({
+      Idf_Gestor: gestorId,
+      Idf_Colaborador: novoColaborador.Idf_Colaborador,
+      Idf_Empresa: emp.companyId || null,
+      Flg_Gestor_Principal: index === 0
+    }));
+
+    await supabase.from('TAB_Gestor_Colaborador').insert(vinculosPayload);
+  }
+
+  const mapped = mapBneToEmployee(novoColaborador);
+  mapped.managerIds = Array.from(gestoresParaVincular);
+  return mapped;
 }
 
-// Salva um novo gestor diretamente na tabela TAB_Colaborador no Supabase
+// Salva um novo gestor no Supabase com suporte a CNPJ e Multi-Empresa
 export async function createGestorSupabase(gestorData: {
   name: string;
   email: string;
@@ -81,11 +123,53 @@ export async function createGestorSupabase(gestorData: {
   department?: string;
   phone?: string;
 }): Promise<Employee> {
+  const cleanEmail = gestorData.email.trim().toLowerCase();
+  const rawCnpj = gestorData.cnpj ? gestorData.cnpj.replace(/\D/g, '') : '';
+  let companyId: string | null = null;
+  let isMasterManager = false;
+  let companyCnpj: string | undefined = undefined;
+
+  // 1. Processa a Empresa por CNPJ
+  if (rawCnpj.length === 14) {
+    companyCnpj = rawCnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+
+    try {
+      const { data: empExistente } = await supabase
+        .from('TAB_Empresa')
+        .select('Idf_Empresa')
+        .eq('Num_CNPJ', companyCnpj)
+        .maybeSingle();
+
+      if (empExistente) {
+        companyId = empExistente.Idf_Empresa;
+        isMasterManager = false; // Empresa já existia -> gestor secundário
+      } else {
+        const { data: novaEmp, error: empErr } = await supabase
+          .from('TAB_Empresa')
+          .insert({
+            Num_CNPJ: companyCnpj,
+            Nme_Razao_Social: `Empresa ${companyCnpj}`,
+            Nme_Fantasia: `Organização ${companyCnpj}`,
+            Flg_Ativa: true
+          })
+          .select()
+          .single();
+
+        if (!empErr && novaEmp) {
+          companyId = novaEmp.Idf_Empresa;
+          isMasterManager = true; // 1º Gestor cadastrado com este CNPJ -> Master/RH!
+        }
+      }
+    } catch (empException) {
+      console.warn('Alerta ao processar tabela TAB_Empresa no Supabase:', empException);
+    }
+  }
+
   const matricula = `GST-${Math.floor(1000 + Math.random() * 9000)}`;
   const payload = {
     Cod_Matricula: matricula,
     Nme_Colaborador: gestorData.name.trim(),
-    Eml_Corporativo: gestorData.email.trim().toLowerCase(),
+    Eml_Corporativo: cleanEmail,
     Des_Senha_Hash: gestorData.password,
     Tpo_Perfil: 'gestor',
     Tpo_Cargo: gestorData.role?.trim() || 'Gestor Geral',
@@ -93,6 +177,8 @@ export async function createGestorSupabase(gestorData: {
     Des_Avatar_Url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
     Num_Telefone: gestorData.phone?.trim() || '(11) 98765-4321',
     Num_Horas_Semanais: 44,
+    Idf_Empresa: companyId,
+    Flg_Gestor_Master: isMasterManager,
     Flg_Ativo: true
   };
 
@@ -107,7 +193,39 @@ export async function createGestorSupabase(gestorData: {
     throw new Error(error.message);
   }
 
-  return mapBneToEmployee(data);
+  const emp = mapBneToEmployee(data);
+  emp.companyId = companyId || undefined;
+  emp.companyCnpj = companyCnpj;
+  emp.isMasterManager = isMasterManager;
+  return emp;
+}
+
+// Vincula um Colaborador a um Gestor na tabela M:N TAB_Gestor_Colaborador
+export async function vincularGestorColaboradorSupabase(
+  gestorId: string,
+  colaboradorId: string,
+  empresaId?: string,
+  ePrincipal: boolean = true
+): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('TAB_Gestor_Colaborador')
+      .upsert({
+        Idf_Gestor: gestorId,
+        Idf_Colaborador: colaboradorId,
+        Idf_Empresa: empresaId || null,
+        Flg_Gestor_Principal: ePrincipal
+      }, { onConflict: 'Idf_Gestor,Idf_Colaborador' });
+
+    if (error) {
+      console.warn('Erro ao vincular na tabela M:N TAB_Gestor_Colaborador:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.error('Erro ao vincular gestor-colaborador:', err.message);
+    return false;
+  }
 }
 
 // Atualiza a foto de perfil do colaborador ou gestor na tabela TAB_Colaborador
@@ -115,7 +233,6 @@ export async function updateColaboradorAvatarSupabase(employeeId: string, email:
   try {
     let query = supabase.from('TAB_Colaborador').update({ Des_Avatar_Url: avatarUrl });
 
-    // Tenta atualizar pelo Idf_Colaborador (se for UUID válido) ou pelo Eml_Corporativo
     if (employeeId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(employeeId)) {
       query = query.eq('Idf_Colaborador', employeeId);
     } else if (email) {
@@ -146,7 +263,6 @@ export async function syncGoogleUserWithSupabase(googleUser: {
   const email = googleUser.email.toLowerCase();
 
   try {
-    // 1. Busca se já existe na TAB_Colaborador
     const { data: existing } = await supabase
       .from('TAB_Colaborador')
       .select('*')
@@ -154,7 +270,6 @@ export async function syncGoogleUserWithSupabase(googleUser: {
       .maybeSingle();
 
     if (existing) {
-      // Se a foto não existia ou é placeholder genérico, atualiza para a foto oficial do Google
       if (googleUser.picture && (!existing.Des_Avatar_Url || existing.Des_Avatar_Url.includes('unsplash'))) {
         await supabase
           .from('TAB_Colaborador')
@@ -165,7 +280,6 @@ export async function syncGoogleUserWithSupabase(googleUser: {
       return mapBneToEmployee(existing);
     }
 
-    // 2. Se for novo usuário via Google Workspace, cadastra herdando a foto do Google
     const isManager = googleUser.roleHint === 'manager' || email.includes('gestor') || email.includes('gerente') || email.includes('admin');
     const matricula = `${isManager ? 'GST' : 'PNT'}-${Math.floor(1000 + Math.random() * 9000)}`;
 

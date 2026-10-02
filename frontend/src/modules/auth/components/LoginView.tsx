@@ -390,6 +390,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
           Tpo_Cargo: createdEmployee.role,
           Des_Departamento: createdEmployee.department,
           Des_Avatar_Url: createdEmployee.avatar,
+          Idf_Empresa: createdEmployee.companyId || `emp-${cleanCnpj}`,
+          Num_CNPJ: createdEmployee.companyCnpj || cleanCnpj,
+          Flg_Gestor_Master: createdEmployee.isMasterManager ?? true,
           Flg_Ativo: true,
         };
 

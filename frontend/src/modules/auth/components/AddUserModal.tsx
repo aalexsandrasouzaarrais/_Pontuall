@@ -187,6 +187,15 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       return;
     }
 
+    let activeCompanyId: string | undefined = undefined;
+    let activeGestorId: string | undefined = undefined;
+
+    try {
+      const activeUser = JSON.parse(localStorage.getItem('pontual_active_user') || '{}');
+      activeCompanyId = activeUser.Idf_Empresa || activeUser.companyId;
+      activeGestorId = activeUser.Idf_Colaborador || activeUser.id;
+    } catch {}
+
     const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
     const cleanId = employeeId.trim() || generateRandomId();
     const newEmp: Employee = {
@@ -201,6 +210,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       standardHoursPerWeek: employmentType === 'PJ' ? 40 : 44,
       contractType: employmentType as 'CLT' | 'PJ' | 'TEMPORARIO',
       workplace: 'Sede Pontual - Matriz',
+      companyId: activeCompanyId,
+      managerIds: activeGestorId ? [activeGestorId] : []
     };
 
     onAddEmployee(newEmp);
