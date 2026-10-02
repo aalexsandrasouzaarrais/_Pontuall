@@ -13,11 +13,22 @@ import {
   CheckCircle2, 
   UserCheck, 
   AlertTriangle,
-  Plus
+  Plus,
+  Paperclip,
+  Download,
+  Eye,
+  Image as ImageIcon
 } from 'lucide-react';
 import { Employee } from '@/types';
 import { supabase } from '@/shared/services/supabase';
 import { INITIAL_EMPLOYEES } from '@/data/mockData';
+import { 
+  ChatAttachment, 
+  compressImageFile, 
+  parseChatMessage, 
+  serializeChatMessage,
+  sendChatMessageToSupabase
+} from '@/shared/utils/chatUtils';
 
 interface ChatModalProps {
   isOpen: boolean;
@@ -34,6 +45,7 @@ export interface ChatMessage {
   sender_role: string;
   sender_avatar: string;
   text: string;
+  attachment?: string | null;
   created_at: string;
   channel?: string;
   recipient_id?: string | null;
@@ -49,9 +61,9 @@ export interface ChatChannelItem {
 }
 
 export const DEFAULT_TEAM_CHANNELS: ChatChannelItem[] = [
-  { id: 'geral', name: 'geral', desc: 'Comunicação aberta para toda a equipe', badge: 'Online', unread: 0 },
-  { id: 'escalas', name: 'escalas', desc: 'Dúvidas sobre horários e plantões de fim de semana', badge: 'Ativo', unread: 0 },
-  { id: 'gestao', name: 'gestao', desc: 'Alinhamento direto entre liderança e supervisão', badge: 'RH', unread: 0 },
+  { id: 'geral', name: 'geral', desc: 'Comunicação aberta para toda a equipe', badge: '', unread: 0 },
+  { id: 'escalas', name: 'escalas', desc: 'Dúvidas sobre horários e plantões de fim de semana', badge: '', unread: 0 },
+  { id: 'gestao', name: 'gestao', desc: 'Alinhamento direto entre liderança e supervisão', badge: '', unread: 0 },
 ];
 
 export const ChatModal: React.FC<ChatModalProps> = ({
@@ -65,6 +77,12 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   const [inputMsg, setInputMsg] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Anexos do chat
+  const [pendingAttachment, setPendingAttachment] = useState<ChatAttachment | null>(null);
+  const [isAttaching, setIsAttaching] = useState(false);
+  const [previewModalImage, setPreviewModalImage] = useState<{ url: string; name: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Modo: 'direct' (1-on-1 com a Gestora ou Colaborador) ou 'group' (canais da equipe)
   const [chatType, setChatType] = useState<'direct' | 'group'>('direct');
@@ -113,7 +131,10 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
       if (saved) {
         const parsed: ChatChannelItem[] = JSON.parse(saved);
-        return parsed.filter(c => !deletedIds.has(c.id));
+        return parsed.filter(c => !deletedIds.has(c.id)).map(c => ({
+          ...c,
+          badge: ['Online', 'Ativo', 'RH'].includes(c.badge) ? '' : c.badge
+        }));
       }
     } catch {}
     return DEFAULT_TEAM_CHANNELS;
@@ -383,13 +404,32 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Envio de Mensagem
+  // Envio de Mensagem e Anexos
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsAttaching(true);
+    try {
+      const compressed = await compressImageFile(file);
+      setPendingAttachment(compressed);
+    } catch (err) {
+      console.error('Erro ao processar anexo:', err);
+      setErrorMessage('Não foi possível anexar o arquivo selecionado.');
+    } finally {
+      setIsAttaching(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputMsg.trim()) return;
+    if (!inputMsg.trim() && !pendingAttachment) return;
 
-    const textToSend = inputMsg.trim();
+    const rawText = inputMsg.trim();
+    const attachmentToSend = pendingAttachment;
+
     setInputMsg('');
+    setPendingAttachment(null);
 
     // Feedback imediato na tela (Optimistic UI)
     const directRecipient = isManager ? selectedDirectEmployeeId : 'gestor-camila';
@@ -399,7 +439,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       sender_name: currentEmployee.name,
       sender_role: currentEmployee.role,
       sender_avatar: currentEmployee.avatar || '',
-      text: textToSend,
+      text: rawText,
+      attachment: attachmentToSend ? JSON.stringify(attachmentToSend) : null,
       created_at: new Date().toISOString(),
       channel: currentChannel,
       recipient_id: chatType === 'direct' ? directRecipient : null,
@@ -407,17 +448,16 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     setMessages((prev) => [...prev, optimisticMsg]);
 
     try {
-      const { error } = await supabase.from('messages').insert([
-        {
-          sender_id: currentEmployee.id,
-          sender_name: currentEmployee.name,
-          sender_role: currentEmployee.role,
-          sender_avatar: currentEmployee.avatar || '',
-          text: textToSend,
-          channel: currentChannel,
-          recipient_id: chatType === 'direct' ? directRecipient : null,
-        },
-      ]);
+      const { error } = await sendChatMessageToSupabase({
+        sender_id: currentEmployee.id,
+        sender_name: currentEmployee.name,
+        sender_role: currentEmployee.role,
+        sender_avatar: currentEmployee.avatar || '',
+        text: rawText,
+        attachment: attachmentToSend,
+        channel: currentChannel,
+        recipient_id: chatType === 'direct' ? directRecipient : null,
+      });
 
       if (error) {
         console.error('Erro ao enviar mensagem:', error.message);
@@ -501,8 +541,6 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
   // Exclusão do canal de grupo
   const handleDeleteActiveGroup = async () => {
-    if (!activeGroup.id.startsWith('grupo_')) return;
-
     setIsDeleting(true);
     const groupId = activeGroup.id;
     const groupName = activeGroup.name;
@@ -553,7 +591,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     <div className={`fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 ${
       isLightTheme ? 'bg-slate-900/40 backdrop-blur-xs' : 'bg-black/75 backdrop-blur-md'
     } animate-in fade-in duration-200`}>
-      <div className={`rounded-3xl shadow-2xl max-w-lg w-full border overflow-hidden flex flex-col h-[640px] max-h-[92vh] relative transition-colors ${
+      <div className={`rounded-3xl shadow-2xl max-w-2xl w-full border overflow-hidden flex flex-col h-[700px] max-h-[92vh] relative transition-colors ${
         isLightTheme ? 'bg-white border-slate-200 text-slate-800' : 'bg-[#13141B] border-white/10 text-slate-100'
       }`}>
         {/* Top Highlight Bar */}
@@ -576,7 +614,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                     ? (isManager ? `Direto com ${selectedDirectEmployee?.name || 'Colaborador'}` : 'Conversa com Gestão') 
                     : `#${activeGroup.name}`}
                 </h3>
-                {chatType === 'group' && (
+                {chatType === 'group' && activeGroup.badge && (
                   <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-white/20 text-[#faf0ac] shrink-0 border border-white/25">
                     {activeGroup.badge}
                   </span>
@@ -604,8 +642,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               </button>
             )}
 
-            {/* Botão Excluir Grupo (apenas grupos criados) */}
-            {chatType === 'group' && activeGroup.id.startsWith('grupo_') && (
+            {/* Botão Excluir Grupo */}
+            {chatType === 'group' && isManager && (
               <button
                 type="button"
                 onClick={() => setIsConfirmDeleteOpen(true)}
@@ -807,6 +845,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               );
             }
 
+            const parsed = parseChatMessage(msg.text, msg.attachment);
+
             return (
               <div
                 key={msg.id}
@@ -819,7 +859,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                     isManagerMsg ? 'ring-[#F59242]' : (isLightTheme ? 'ring-slate-300' : 'ring-white/20')
                   }`}
                 />
-                <div className={`max-w-[78%] rounded-2xl p-2.5 text-xs shadow-2xs ${
+                <div className={`max-w-[82%] rounded-2xl p-2.5 text-xs shadow-2xs ${
                   isMe
                     ? 'text-white rounded-tr-none'
                     : (isLightTheme
@@ -847,7 +887,47 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                       {timeFormatted}
                     </span>
                   </div>
-                  <p className="leading-relaxed break-words">{msg.text}</p>
+
+                  {/* Texto da Mensagem */}
+                  {parsed.text && (
+                    <p className="leading-relaxed break-words mb-1">{parsed.text}</p>
+                  )}
+
+                  {/* Anexo de Imagem Salvo no Banco de Dados */}
+                  {parsed.attachment && parsed.attachment.type === 'image' && (
+                    <div className="mt-1.5">
+                      <div 
+                        className="relative group/img rounded-xl overflow-hidden border border-black/10 dark:border-white/15 cursor-pointer max-w-[240px] shadow-sm bg-black/20"
+                        onClick={() => setPreviewModalImage({ url: parsed.attachment!.url, name: parsed.attachment!.name })}
+                        title="Clique para ampliar a imagem"
+                      >
+                        <img
+                          src={parsed.attachment.url}
+                          alt={parsed.attachment.name}
+                          className="w-full max-h-48 object-cover group-hover/img:scale-102 transition-transform duration-200"
+                          loading="lazy"
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white">
+                          <span className="p-1.5 rounded-lg bg-black/60 hover:bg-black/80">
+                            <Eye className="w-3.5 h-3.5" />
+                          </span>
+                          <a
+                            href={parsed.attachment.url}
+                            download={parsed.attachment.name}
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-1.5 rounded-lg bg-black/60 hover:bg-black/80"
+                            title="Baixar imagem"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                        <div className="px-2 py-0.5 bg-black/60 backdrop-blur-xs text-[9px] text-white/90 flex items-center justify-between">
+                          <span className="truncate max-w-[140px]">{parsed.attachment.name}</span>
+                          {parsed.attachment.size && <span className="opacity-80">{parsed.attachment.size}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -855,18 +935,73 @@ export const ChatModal: React.FC<ChatModalProps> = ({
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input Bar */}
+        {/* Banner de Preview do Anexo Pendente */}
+        {pendingAttachment && (
+          <div className={`px-3 py-2 border-t flex items-center justify-between gap-2 text-xs transition-colors shrink-0 ${
+            isLightTheme ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-amber-500/10 border-amber-500/20 text-amber-200'
+          }`}>
+            <div className="flex items-center gap-2 min-w-0">
+              <img 
+                src={pendingAttachment.url} 
+                alt="Preview do anexo" 
+                className="w-9 h-9 rounded-lg object-cover border border-amber-500/30 shrink-0 shadow-xs" 
+              />
+              <div className="min-w-0">
+                <p className="font-bold truncate text-[11px] text-amber-400">{pendingAttachment.name}</p>
+                <p className="text-[9px] opacity-75">{pendingAttachment.size || 'Imagem pronta para envio'}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPendingAttachment(null)}
+              className="p-1 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 opacity-70 hover:opacity-100 cursor-pointer"
+              title="Remover anexo"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Input Bar com Botão de Anexo */}
         <form onSubmit={handleSend} className={`p-3 border-t flex items-center gap-2 transition-colors shrink-0 ${
           isLightTheme ? 'bg-white border-slate-200' : 'bg-[#13141B] border-white/10'
         }`}>
+          {/* Input oculto para seleção de imagens */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            accept="image/*"
+            onChange={handleFileSelect}
+            className="hidden"
+          />
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isAttaching}
+            className={`p-2.5 rounded-xl transition-all cursor-pointer ${
+              pendingAttachment
+                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                : isLightTheme
+                  ? 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                  : 'text-slate-400 hover:text-white hover:bg-white/10'
+            }`}
+            title="Anexar imagem ou foto"
+            aria-label="Anexar imagem ou foto"
+          >
+            <Paperclip className="w-4 h-4" />
+          </button>
+
           <input
             type="text"
             value={inputMsg}
             onChange={(e) => setInputMsg(e.target.value)}
             placeholder={
-              chatType === 'direct'
-                ? (isManager ? `Mensagem direta para ${selectedDirectEmployee?.name || 'Colaborador'}...` : 'Mensagem privada para a gestora Camila...')
-                : `Mensagem no canal #${activeGroup.name}...`
+              pendingAttachment
+                ? 'Adicionar legenda para a imagem (opcional)...'
+                : chatType === 'direct'
+                  ? (isManager ? `Mensagem direta para ${selectedDirectEmployee?.name || 'Colaborador'}...` : 'Mensagem privada para a gestora Camila...')
+                  : `Mensagem no canal #${activeGroup.name}...`
             }
             className={`flex-1 rounded-xl px-3 py-2.5 text-xs focus:outline-none transition-colors border ${
               isLightTheme
@@ -874,9 +1009,10 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                 : 'bg-[#1F202B] border-white/10 text-white placeholder-slate-400 focus:ring-1 focus:ring-[#f89642]'
             }`}
           />
+
           <button
             type="submit"
-            disabled={!inputMsg.trim()}
+            disabled={!inputMsg.trim() && !pendingAttachment}
             className="p-2.5 text-white hover:brightness-110 rounded-xl shadow-xs transition-all disabled:opacity-40 disabled:hover:brightness-100 cursor-pointer"
             style={{ background: 'linear-gradient(135deg, #96183c, #f89642)' }}
             title="Enviar mensagem"
@@ -884,6 +1020,43 @@ export const ChatModal: React.FC<ChatModalProps> = ({
             <Send className="w-4 h-4" />
           </button>
         </form>
+
+        {/* ─── MODAL: VISUALIZAÇÃO AMPLIADA DA IMAGEM ─── */}
+        {previewModalImage && (
+          <div 
+            className="absolute inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-in fade-in duration-200"
+            onClick={() => setPreviewModalImage(null)}
+          >
+            <div className="relative max-w-full max-h-[88vh] flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
+              <div className="w-full flex items-center justify-between pb-2 text-white text-xs">
+                <span className="font-semibold truncate max-w-[200px] sm:max-w-md">{previewModalImage.name}</span>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={previewModalImage.url}
+                    download={previewModalImage.name}
+                    className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors"
+                    title="Baixar imagem"
+                  >
+                    <Download className="w-4 h-4" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewModalImage(null)}
+                    className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors cursor-pointer"
+                    title="Fechar"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <img
+                src={previewModalImage.url}
+                alt={previewModalImage.name}
+                className="max-h-[75vh] max-w-full object-contain rounded-2xl shadow-2xl border border-white/20"
+              />
+            </div>
+          </div>
+        )}
 
         {/* ─── MODAL: VER INTEGRANTES DO GRUPO ─── */}
         {isMembersModalOpen && (
@@ -1015,7 +1188,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         {/* ─── MODAL: CRIAR NOVO GRUPO (GESTÃO) ─── */}
         {isNewGroupModalOpen && (
           <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className={`w-full max-w-sm rounded-3xl border shadow-2xl overflow-hidden flex flex-col max-h-[90%] ${
+            <div className={`w-full max-w-md rounded-3xl border shadow-2xl overflow-hidden flex flex-col max-h-[90%] ${
               isLightTheme ? 'bg-white border-slate-200 text-slate-800' : 'bg-[#161720] border-white/15 text-white'
             }`}>
               <div className="px-4 py-3.5 border-b flex items-center justify-between shrink-0" style={{ background: 'linear-gradient(135deg, #96183c, #f89642)' }}>
@@ -1105,8 +1278,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                       return (
                         <label
                           key={emp.id}
-                          className={`flex items-center gap-2 p-1.5 rounded-lg cursor-pointer text-xs transition-colors ${
-                            isChecked ? (isLightTheme ? 'bg-slate-200' : 'bg-white/10') : 'hover:bg-white/5'
+                          className={`flex items-center gap-2.5 p-1.5 rounded-xl cursor-pointer text-xs transition-colors ${
+                            isChecked ? (isLightTheme ? 'bg-slate-200' : 'bg-white/10') : (isLightTheme ? 'hover:bg-slate-100' : 'hover:bg-white/5')
                           }`}
                         >
                           <input
@@ -1117,10 +1290,15 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                                 prev.includes(emp.id) ? prev.filter(id => id !== emp.id) : [...prev, emp.id]
                               );
                             }}
-                            className="rounded accent-[#f89642]"
+                            className="rounded accent-[#f89642] shrink-0"
                           />
-                          <span className="truncate">{emp.name}</span>
-                          <span className="text-[9px] text-slate-400 ml-auto">{emp.role}</span>
+                          <img
+                            src={emp.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                            alt={emp.name}
+                            className="w-6 h-6 rounded-full object-cover shrink-0 ring-1 ring-white/10"
+                          />
+                          <span className="truncate font-semibold">{emp.name}</span>
+                          <span className="text-[10px] text-slate-400 ml-auto truncate max-w-[130px]">{emp.role}</span>
                         </label>
                       );
                     })}
