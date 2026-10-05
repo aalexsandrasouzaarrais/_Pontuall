@@ -19,8 +19,14 @@ export interface SendWelcomeEmailResult {
  * Tenta via Backend Express (Resend) ou Supabase Edge Functions.
  */
 export async function sendWelcomeEmail(payload: SendWelcomeEmailPayload): Promise<SendWelcomeEmailResult> {
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-  const resetLink = payload.link || `${origin}/redefinir-senha?matricula=${encodeURIComponent(payload.matricula)}`;
+  // Prioriza a URL configurada do app (ex: no Vercel VITE_APP_URL=https://meuapp.vercel.app),
+  // ou dinamicamente o domínio atual do navegador (window.location.origin).
+  const configuredUrl = import.meta.env.VITE_APP_URL || import.meta.env.VITE_PUBLIC_URL || '';
+  const currentOrigin = (typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('file://')) 
+    ? window.location.origin 
+    : '';
+  const origin = (configuredUrl || currentOrigin || 'http://localhost:3000').replace(/\/+$/, '');
+  const resetLink = payload.link || `${origin}/colaborador?matricula=${encodeURIComponent(payload.matricula)}&primeiro_acesso=true`;
 
   const requestBody = {
     email: payload.email,
@@ -29,8 +35,10 @@ export async function sendWelcomeEmail(payload: SendWelcomeEmailPayload): Promis
     link: resetLink
   };
 
-  // 1. Tenta disparar através do Backend Express (porta 5000 ou proxy relativo /api)
+  // 1. Tenta disparar através do Backend Express ou API configurada
+  const backendBase = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
   const endpoints = [
+    ...(backendBase ? [`${backendBase}/api/auth/send-welcome-email`, `${backendBase}/send-welcome-email`] : []),
     '/api/auth/send-welcome-email',
     'http://localhost:5000/api/auth/send-welcome-email'
   ];

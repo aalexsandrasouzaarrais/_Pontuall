@@ -14,6 +14,29 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
     rel="stylesheet">
+  <script>
+    // Previne SecurityError: Access is denied for this document caso o navegador bloqueie storage
+    (function() {
+      try {
+        var t = '__test__';
+        window.localStorage.setItem(t, t);
+        window.localStorage.removeItem(t);
+      } catch (e) {
+        var mem = {};
+        var mock = {
+          getItem: function(k) { return mem[k] || null; },
+          setItem: function(k, v) { mem[k] = String(v); },
+          removeItem: function(k) { delete mem[k]; },
+          clear: function() { mem = {}; },
+          key: function(i) { return Object.keys(mem)[i] || null; },
+          get length() { return Object.keys(mem).length; }
+        };
+        try {
+          Object.defineProperty(window, 'localStorage', { value: mock, configurable: true, writable: true });
+        } catch (_) {}
+      }
+    })();
+  </script>
 </head>
 
 <body class="bg-slate-50 text-slate-900 antialiased font-sans selection:bg-purple-200 selection:text-purple-900">

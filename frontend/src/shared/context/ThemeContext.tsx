@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { safeStorage } from '../utils/safeStorage';
 
 export type ThemeMode = 'light' | 'dark';
 
@@ -16,12 +17,12 @@ const THEME_STORAGE_KEY = 'pontual_theme_preference';
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [theme, setThemeState] = useState<ThemeMode>(() => {
     try {
-      const saved = localStorage.getItem(THEME_STORAGE_KEY);
+      const saved = safeStorage.getItem(THEME_STORAGE_KEY);
       if (saved === 'light' || saved === 'dark') {
         return saved;
       }
     } catch {
-      // Ignore localStorage read errors
+      // Ignore storage read errors
     }
     return 'dark'; // Dark como padrão oficial do sistema
   });
@@ -29,9 +30,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const setTheme = (newTheme: ThemeMode) => {
     setThemeState(newTheme);
     try {
-      localStorage.setItem(THEME_STORAGE_KEY, newTheme);
+      safeStorage.setItem(THEME_STORAGE_KEY, newTheme);
     } catch {
-      // Ignore localStorage write errors
+      // Ignore storage write errors
     }
   };
 

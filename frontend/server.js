@@ -44,58 +44,100 @@ const handleSendWelcomeEmail = async (req, res) => {
     return res.status(400).json({ success: false, message: 'E-mail do destinatário não informado.' });
   }
 
-  const origin = req.headers.origin || 'http://localhost:3000';
-  const resetLink = link || `${origin}/?reset=true&matricula=${encodeURIComponent(matricula || '')}`;
+  const configuredAppUrl = process.env.FRONTEND_URL || process.env.APP_URL || process.env.VITE_APP_URL || '';
+  const origin = configuredAppUrl || req.headers.origin || 'http://localhost:3000';
+  const resetLink = link || `${origin.replace(/\/+$/, '')}/colaborador?matricula=${encodeURIComponent(matricula || '')}&primeiro_acesso=true`;
 
   const html = `
     <!DOCTYPE html>
-    <html>
+    <html lang="pt-BR">
     <head>
       <meta charset="utf-8">
-      <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #0d0f15; color: #e2e8f0; margin: 0; padding: 20px; }
-        .card { max-width: 550px; margin: 0 auto; background: #12131a; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.5); }
-        .bar { height: 6px; background: linear-gradient(90deg, #96183c, #f89847, #faf0ac); }
-        .content { padding: 32px; }
-        .badge { display: inline-block; padding: 4px 12px; background: rgba(248,152,71,0.15); color: #f89847; font-size: 12px; font-weight: bold; border-radius: 12px; margin-bottom: 16px; }
-        h1 { color: #ffffff; font-size: 22px; margin-top: 0; }
-        p { color: #94a3b8; font-size: 14px; line-height: 1.6; }
-        .info-box { background: #181a24; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 16px; margin: 20px 0; }
-        .info-item { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; }
-        .info-label { color: #64748b; }
-        .info-value { color: #f89847; font-weight: bold; font-family: monospace; }
-        .btn { display: block; text-align: center; background: linear-gradient(135deg, #96183c, #f89847); color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 14px; font-weight: bold; font-size: 14px; margin-top: 24px; box-shadow: 0 10px 20px rgba(150,24,60,0.3); }
-        .footer { font-size: 11px; color: #475569; text-align: center; margin-top: 24px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 16px; }
-      </style>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Bem-vindo(a) à Pontual!</title>
     </head>
-    <body>
-      <div class="card">
-        <div class="bar"></div>
-        <div class="content">
-          <div class="badge">Primeiro Acesso</div>
-          <h1>Bem-vindo(a) ao Pontual, ${nome || 'Colaborador'}!</h1>
-          <p>Seu cadastro de colaborador foi realizado no sistema Pontual. Utilize os dados abaixo para o seu primeiro acesso:</p>
+    <body style="margin: 0; padding: 28px 12px; background-color: #0b0c10; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+      <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #0b0c10;">
+        <tr>
+          <td align="center">
+            <!-- Card Principal -->
+            <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 520px; background-color: #121319; border-radius: 20px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6); text-align: left;">
+              
+              <!-- Linha Superior Gradiente (Branding Pontual) -->
+              <tr>
+                <td style="height: 5px; background: linear-gradient(90deg, #96183c 0%, #f89847 60%, #faf0ac 100%); background-color: #f89847; font-size: 0; line-height: 0;">&nbsp;</td>
+              </tr>
+              
+              <!-- Conteúdo -->
+              <tr>
+                <td style="padding: 36px 32px 32px 32px;">
+                  
+                  <!-- Título com "Pontual" destacado em laranja -->
+                  <h1 style="margin: 0 0 22px 0; font-size: 26px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px; line-height: 1.2;">
+                    Bem-vindo(a) à <span style="color: #f89847;">Pontual</span>!
+                  </h1>
 
-          <div class="info-box">
-            <div class="info-item">
-              <span class="info-label">E-mail Corporativo:</span>
-              <span class="info-value" style="color:#ffffff;">${email}</span>
-            </div>
-            <div class="info-item" style="margin-bottom:0;">
-              <span class="info-label">Matrícula / ID:</span>
-              <span class="info-value">${matricula || 'PNT-1000'}</span>
-            </div>
-          </div>
+                  <!-- Saudação com nome do colaborador em destaque -->
+                  <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.6; color: #94a3b8;">
+                    Olá <strong style="color: #e2e8f0; font-weight: 700;">${nome || 'Colaborador'}</strong>, seu cadastro foi realizado com sucesso pelo seu gestor.
+                  </p>
 
-          <p>Clique no botão abaixo para definir sua senha definitiva de acesso:</p>
+                  <!-- Instrução -->
+                  <p style="margin: 0 0 24px 0; font-size: 14px; line-height: 1.6; color: #94a3b8;">
+                    Para realizar o seu primeiro login e registrar seus turnos e pontos, utilize a sua senha temporária abaixo:
+                  </p>
 
-          <a href="${resetLink}" class="btn">Ativar Minha Conta e Criar Senha</a>
+                  <!-- Caixa de Matrícula / Senha Temporária -->
+                  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin: 0 0 24px 0; background-color: #181920; border-radius: 14px; border: 1px solid rgba(248, 152, 71, 0.28);">
+                    <tr>
+                      <td align="center" style="padding: 24px 20px;">
+                        <div style="font-size: 11px; font-weight: 700; color: #f89847; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 10px;">
+                          SUA SENHA TEMPORÁRIA / MATRÍCULA
+                        </div>
+                        <div style="font-size: 30px; font-weight: 800; color: #ffffff; letter-spacing: 2.5px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+                          ${matricula || 'PNT-1000'}
+                        </div>
+                      </td>
+                    </tr>
+                  </table>
 
-          <div class="footer">
-            Pontual Gestão de Escalas & Pontos • E-mail automático de ativação
-          </div>
-        </div>
-      </div>
+                  <!-- Recomendação de definição de senha -->
+                  <p style="margin: 0 0 26px 0; font-size: 14px; line-height: 1.6; color: #94a3b8;">
+                    Recomendamos que você acesse o sistema pelo botão abaixo e defina sua senha definitiva:
+                  </p>
+
+                  <!-- Botão de Ação Redondo Gradiente -->
+                  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin: 0 0 28px 0;">
+                    <tr>
+                      <td align="center">
+                        <a href="${resetLink}" target="_blank" style="display: inline-block; background-color: #d94826; background: linear-gradient(90deg, #9b1d36 0%, #d94826 45%, #eb7028 100%); color: #ffffff; text-decoration: none; font-size: 14.5px; font-weight: 700; padding: 14px 34px; border-radius: 9999px; box-shadow: 0 10px 25px rgba(155, 29, 54, 0.35); text-align: center;">
+                          Acessar e Definir Minha Senha
+                        </a>
+                      </td>
+                    </tr>
+                  </table>
+
+                  <!-- Link alternativo -->
+                  <div style="margin: 0 0 34px 0;">
+                    <p style="margin: 0 0 6px 0; font-size: 12px; color: #64748b; line-height: 1.5;">
+                      Ou copie e cole este link no seu navegador:
+                    </p>
+                    <a href="${resetLink}" target="_blank" style="font-size: 12px; color: #3b82f6; text-decoration: underline; word-break: break-all; line-height: 1.5;">
+                      ${resetLink}
+                    </a>
+                  </div>
+
+                  <!-- Rodapé discreto -->
+                  <div style="text-align: center; font-size: 11px; color: #475569; line-height: 1.5;">
+                    Pontual Gestão de Escalas & Pontos • Este é um e-mail automático do sistema.
+                  </div>
+
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
     </body>
     </html>
   `;
@@ -104,7 +146,7 @@ const handleSendWelcomeEmail = async (req, res) => {
     const info = await transporter.sendMail({
       from: `"Pontual Escalas" <${EMAIL_USER}>`,
       to: email,
-      subject: `Bem-vindo ao Pontual - Ativação de Conta (${matricula || 'Pontual'})`,
+      subject: `Bem-vindo(a) à Pontual - Primeiro Acesso (${matricula || 'Pontual'})`,
       html,
     });
 

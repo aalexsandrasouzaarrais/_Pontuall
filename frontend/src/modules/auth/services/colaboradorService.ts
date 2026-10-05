@@ -254,85 +254,50 @@ export async function updateColaboradorAvatarSupabase(employeeId: string, email:
   }
 }
 
-// Sincroniza usuário autenticado via Google Workspace com a tabela TAB_Colaborador
+// Sincroniza usuário autenticado via Google Workspace com a tabela TAB_Colaborador.
+// REGRA: Apenas contas previamente cadastradas no sistema podem acessar!
 export async function syncGoogleUserWithSupabase(googleUser: {
   email: string;
   name: string;
   picture?: string;
   roleHint?: 'manager' | 'employee';
-}): Promise<Employee> {
-  const email = googleUser.email.toLowerCase();
+}): Promise<Employee | null> {
+  const email = googleUser.email.toLowerCase().trim();
 
   try {
-    const { data: existing } = await supabase
+    // 1. Verifica se a conta já existe na tabela TAB_Colaborador e está ativa
+    const { data: existing, error } = await supabase
       .from('TAB_Colaborador')
       .select('*')
       .or(`Eml_Corporativo.ilike.${email},Eml_Secundario.ilike.${email}`)
+      .eq('Flg_Ativo', true)
       .maybeSingle();
 
+    if (error) {
+      console.warn('Aviso ao consultar usuário Google no Supabase:', error.message);
+    }
+
+    // Se a conta já existe previamente no sistema, permite o acesso
     if (existing) {
+      // Atualiza foto de perfil do Google caso não tenha uma foto personalizada
       if (googleUser.picture && (!existing.Des_Avatar_Url || existing.Des_Avatar_Url.includes('unsplash'))) {
-        await supabase
-          .from('TAB_Colaborador')
-          .update({ Des_Avatar_Url: googleUser.picture })
-          .eq('Idf_Colaborador', existing.Idf_Colaborador);
-        existing.Des_Avatar_Url = googleUser.picture;
+        try {
+          await supabase
+            .from('TAB_Colaborador')
+            .update({ Des_Avatar_Url: googleUser.picture })
+            .eq('Idf_Colaborador', existing.Idf_Colaborador);
+          existing.Des_Avatar_Url = googleUser.picture;
+        } catch {}
       }
       return mapBneToEmployee(existing);
     }
 
-    const isManager = googleUser.roleHint === 'manager' || email.includes('gestor') || email.includes('gerente') || email.includes('admin');
-    const matricula = `${isManager ? 'GST' : 'PNT'}-${Math.floor(1000 + Math.random() * 9000)}`;
-
-    const payload = {
-      Cod_Matricula: matricula,
-      Nme_Colaborador: googleUser.name,
-      Eml_Corporativo: email,
-      Des_Senha_Hash: 'google_oauth_authenticated',
-      Tpo_Perfil: isManager ? 'gestor' : 'colaborador',
-      Tpo_Cargo: isManager ? 'Gestor de Equipe' : 'Colaborador',
-      Des_Departamento: isManager ? 'Gestão de Pessoas & Operações' : 'Operações',
-      Des_Avatar_Url: googleUser.picture || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      Num_Telefone: '(11) 98765-4321',
-      Num_Horas_Semanais: isManager ? 44 : 40,
-      Flg_Ativo: true
-    };
-
-    const { data: created, error } = await supabase
-      .from('TAB_Colaborador')
-      .insert(payload)
-      .select()
-      .single();
-
-    if (error || !created) {
-      return {
-        id: `google-${Date.now()}`,
-        name: googleUser.name,
-        role: isManager ? 'Gestor de Equipe' : 'Colaborador',
-        department: isManager ? 'Gestão de Pessoas & Operações' : 'Operações',
-        avatar: googleUser.picture || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-        email: email,
-        phone: '(11) 98765-4321',
-        standardHoursPerWeek: isManager ? 44 : 40,
-        registrationId: matricula
-      };
-    }
-
-    return mapBneToEmployee(created);
+    // Se NÃO estiver previamente cadastrada, rejeita o acesso (não cria novo colaborador)
+    console.warn(`[Google Workspace] Acesso negado: o e-mail ${email} não está previamente cadastrado.`);
+    return null;
   } catch (err: any) {
-    console.warn('Erro ao sincronizar com Google no Supabase:', err.message);
-    const isManager = googleUser.roleHint === 'manager';
-    return {
-      id: `google-${Date.now()}`,
-      name: googleUser.name,
-      role: isManager ? 'Gestor de Equipe' : 'Colaborador',
-      department: isManager ? 'Gestão de Pessoas & Operações' : 'Operações',
-      avatar: googleUser.picture || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      email: email,
-      phone: '(11) 98765-4321',
-      standardHoursPerWeek: isManager ? 44 : 40,
-      registrationId: `${isManager ? 'GST' : 'PNT'}-9000`
-    };
+    console.error('Erro ao verificar usuário Google no Supabase:', err.message);
+    return null;
   }
 }
 

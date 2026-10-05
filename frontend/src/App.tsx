@@ -87,6 +87,7 @@ import {
   X 
 } from 'lucide-react';
 import { ThemeProvider, useTheme } from '@/shared/context/ThemeContext';
+import { safeStorage } from '@/shared/utils/safeStorage';
 import logoWideDark from './assets/logo-pontual-wide-dark.png';
 import logoWideLight from './assets/logo-pontual-wide.png';
 
@@ -95,16 +96,18 @@ function AppContent() {
   
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
-      return !!localStorage.getItem('pontual_active_user');
+      return !!safeStorage.getItem('pontual_active_user');
     } catch {
       return false;
     }
   });
 
+  const [authFeedback, setAuthFeedback] = useState<{ message: string; type: 'error' | 'warning' | 'success' } | null>(null);
+
   // Global Role Mode: 'manager' (Visual requested in photo) vs 'employee'
   const [currentRole, setCurrentRole] = useState<'manager' | 'employee'>(() => {
     try {
-      const saved = localStorage.getItem('pontual_role');
+      const saved = safeStorage.getItem('pontual_role');
       if (saved === 'manager' || saved === 'employee') return saved;
     } catch {}
     return 'manager';
@@ -119,7 +122,7 @@ function AppContent() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [activeEmployee, setActiveEmployee] = useState<Employee>(() => {
     try {
-      const savedUserStr = localStorage.getItem('pontual_active_user');
+      const savedUserStr = safeStorage.getItem('pontual_active_user');
       if (savedUserStr) {
         const parsed = JSON.parse(savedUserStr);
         const match = INITIAL_EMPLOYEES.find(e => 
@@ -227,47 +230,86 @@ function AppContent() {
 
   // Monitora autenticação via Google Workspace (OAuth redirect)
   React.useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user?.email) {
-        const googleMeta = session.user.user_metadata || {};
-        const googlePicture = googleMeta.avatar_url || googleMeta.picture;
-        const googleName = googleMeta.full_name || googleMeta.name || session.user.email.split('@')[0];
+    const handleGoogleSession = async (session: any) => {
+      if (!session?.user?.email) return;
 
-        if (googlePicture) {
-          localStorage.setItem('pontual_google_avatar', googlePicture);
-        }
+      const googleMeta = session.user.user_metadata || {};
+      const googlePicture = googleMeta.avatar_url || googleMeta.picture;
+      const googleName = googleMeta.full_name || googleMeta.name || session.user.email.split('@')[0];
 
-        syncGoogleUserWithSupabase({
-          email: session.user.email,
-          name: googleName,
-          picture: googlePicture,
-          roleHint: currentRole
-        }).then(emp => {
-          setActiveEmployee(emp);
-          setIsAuthenticated(true);
+      if (googlePicture) {
+        safeStorage.setItem('pontual_google_avatar', googlePicture);
+      }
+
+      const emp = await syncGoogleUserWithSupabase({
+        email: session.user.email,
+        name: googleName,
+        picture: googlePicture,
+        roleHint: currentRole
+      });
+
+      // Se a conta Google NÃO estiver previamente cadastrada no sistema:
+      if (!emp) {
+        await supabase.auth.signOut();
+        safeStorage.removeItem('pontual_active_user');
+        safeStorage.removeItem('pontual_role');
+        setIsAuthenticated(false);
+
+        const unauthorizedMsg = `A conta Google (${session.user.email}) não possui cadastro no sistema Pontual. Solicite ao gestor o seu cadastro prévio.`;
+        setAuthFeedback({
+          message: unauthorizedMsg,
+          type: 'error'
         });
+
+        showToast(
+          'Acesso Não Autorizado',
+          unauthorizedMsg,
+          'error'
+        );
+
+        if (typeof window !== 'undefined' && window.location.hash && window.location.hash.includes('access_token')) {
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+        return;
+      }
+
+      const isManager = emp.isMasterManager || emp.role?.toLowerCase().includes('gestor') || session.user.email.includes('gestor') || session.user.email.includes('kamile');
+      const systemRole: 'manager' | 'employee' = isManager ? 'manager' : 'employee';
+
+      safeStorage.setItem('pontual_role', systemRole);
+      safeStorage.setItem('pontual_active_user', JSON.stringify({
+        Idf_Colaborador: emp.id,
+        Nme_Colaborador: emp.name,
+        Eml_Corporativo: emp.email,
+        Tpo_Perfil: isManager ? 'gestor' : 'colaborador',
+        Tpo_Cargo: emp.role,
+        Des_Departamento: emp.department,
+        Des_Avatar_Url: emp.avatar,
+        Cod_Matricula: emp.registrationId,
+        Flg_Gestor_Master: emp.isMasterManager,
+        Flg_Ativo: true
+      }));
+
+      setActiveEmployee(emp);
+      setCurrentRole(systemRole);
+      setIsAuthenticated(true);
+      showToast('Google Workspace', `Bem-vindo(a), ${emp.name}! Foto conectada.`, 'success');
+
+      // Limpa a URL caso contenha hash de autenticação do Supabase
+      if (typeof window !== 'undefined' && window.location.hash && window.location.hash.includes('access_token')) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    };
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        handleGoogleSession(session);
       }
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user?.email) {
-        const googleMeta = session.user.user_metadata || {};
-        const googlePicture = googleMeta.avatar_url || googleMeta.picture;
-        const googleName = googleMeta.full_name || googleMeta.name || session.user.email.split('@')[0];
-
-        if (googlePicture) {
-          localStorage.setItem('pontual_google_avatar', googlePicture);
-        }
-
-        const emp = await syncGoogleUserWithSupabase({
-          email: session.user.email,
-          name: googleName,
-          picture: googlePicture,
-          roleHint: currentRole
-        });
-        setActiveEmployee(emp);
-        setIsAuthenticated(true);
-        showToast('Google Workspace', `Bem-vindo(a), ${emp.name}! Foto conectada.`, 'success');
+      if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user?.email) {
+        await handleGoogleSession(session);
       }
     });
 
@@ -494,8 +536,8 @@ function AppContent() {
 
   const handleLogout = () => {
     try {
-      localStorage.removeItem('pontual_active_user');
-      localStorage.removeItem('pontual_role');
+      safeStorage.removeItem('pontual_active_user');
+      safeStorage.removeItem('pontual_role');
     } catch {}
     setIsAuthenticated(false);
   };
@@ -540,7 +582,7 @@ function AppContent() {
 
   // Se o usuário não estiver autenticado, exibe a tela de Login oficial integrada ao Supabase
   if (!isAuthenticated) {
-    return <LoginView onLoginSuccess={handleLoginSuccess} />;
+    return <LoginView onLoginSuccess={handleLoginSuccess} externalFeedback={authFeedback} />;
   }
 
   return (
@@ -578,7 +620,7 @@ function AppContent() {
             <button
               onClick={() => {
                 setCurrentRole('manager');
-                localStorage.setItem('pontual_role', 'manager');
+                safeStorage.setItem('pontual_role', 'manager');
               }}
               className={`px-3.5 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 currentRole === 'manager'
@@ -594,7 +636,7 @@ function AppContent() {
             <button
               onClick={() => {
                 setCurrentRole('employee');
-                localStorage.setItem('pontual_role', 'employee');
+                safeStorage.setItem('pontual_role', 'employee');
               }}
               className={`px-3.5 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 currentRole === 'employee'
