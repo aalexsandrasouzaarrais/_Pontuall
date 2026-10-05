@@ -3,6 +3,7 @@ import { supabase } from '@/shared/services/supabase';
 import { mapBneToEmployee, createGestorSupabase } from '../services/colaboradorService';
 import { Employee } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
+import { PasswordResetPage } from './PasswordResetPage';
 
 // Imagens originais idênticas ao login do projeto
 import logoPontualTransparente from '../assets/images/logo_pontual_transparente.png';
@@ -48,8 +49,16 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const { theme, setTheme } = useTheme();
   const isDark = theme === 'dark';
 
-  // Modo: 'login' ou 'register' (cadastro autônomo do gestor)
-  const [viewMode, setViewMode] = useState<'login' | 'register'>('login');
+  // Modo: 'login', 'register' (cadastro autônomo do gestor) ou 'reset-password'
+  const [viewMode, setViewMode] = useState<'login' | 'register' | 'reset-password'>(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('reset') === 'true' || urlParams.get('type') === 'recovery') {
+        return 'reset-password';
+      }
+    } catch {}
+    return 'login';
+  });
 
   const [currentRole, setCurrentRole] = useState<'colaborador' | 'gestor'>('colaborador');
   const [loginInput, setLoginInput] = useState('');
@@ -447,6 +456,22 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       setIsLoading(false);
     }
   };
+
+  if (viewMode === 'reset-password') {
+    return (
+      <PasswordResetPage
+        onBackToLogin={() => setViewMode('login')}
+        onSuccess={(colaboradorData) => {
+          if (colaboradorData) {
+            const emp = mapBneToEmployee(colaboradorData);
+            onLoginSuccess(emp, 'employee');
+          } else {
+            setViewMode('login');
+          }
+        }}
+      />
+    );
+  }
 
   return (
     <main className={`pontual-login-page page ${theme === 'light' ? 'theme-light' : 'theme-dark'}`}>
@@ -877,6 +902,15 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                             <circle cx="12" cy="12" r="3"></circle>
                           </svg>
                         )}
+                      </button>
+                    </div>
+                    <div className="flex justify-end mt-1.5 mb-2">
+                      <button
+                        type="button"
+                        onClick={() => setViewMode('reset-password')}
+                        className="text-xs text-[#f89847] hover:underline bg-transparent border-0 p-0 cursor-pointer"
+                      >
+                        Esqueceu ou deseja redefinir sua senha?
                       </button>
                     </div>
                   </div>

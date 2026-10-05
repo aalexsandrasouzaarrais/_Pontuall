@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, X, Check, Sparkles, RefreshCw, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Employee } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
+import { sendWelcomeEmail as sendWelcomeEmailService } from '@/modules/auth/services/emailService';
 
 interface AddUserModalProps {
   isOpen: boolean;
@@ -166,7 +167,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // Se estiver na etapa 1, não permite salvar! Deve avançar para a etapa 2.
@@ -215,6 +216,19 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     };
 
     onAddEmployee(newEmp);
+
+    if (sendWelcomeEmail && newEmp.email) {
+      try {
+        await sendWelcomeEmailService({
+          email: newEmp.email,
+          nome: newEmp.name,
+          matricula: cleanId,
+        });
+      } catch (err) {
+        console.warn('Erro ao disparar e-mail de ativação:', err);
+      }
+    }
+
     setIsSaved(true);
     setErrorMessage(null);
 

@@ -405,3 +405,24 @@ export async function updateColaboradorSupabase(emp: Partial<Employee> & { id: s
     return false;
   }
 }
+
+// Atualiza a senha definitiva do colaborador no Supabase (substituindo a temporária)
+export async function updateColaboradorPasswordSupabase(identifier: string, novaSenha: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('TAB_Colaborador')
+      .update({ Des_Senha_Hash: novaSenha })
+      .or(`Cod_Matricula.eq.${identifier},Idf_Colaborador.eq.${identifier},Eml_Corporativo.ilike.${identifier}`);
+
+    if (error) {
+      console.warn('Erro ao atualizar senha no Supabase:', error.message);
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.warn('Erro ao atualizar senha no Supabase:', err);
+    return false;
+  }
+}
+
