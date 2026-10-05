@@ -15,11 +15,13 @@ import {
   Clock,
   Users,
   UserCheck,
-  Layers
+  Layers,
+  Trash2
 } from 'lucide-react';
 import { Employee, Shift, ShiftTemplate } from '@/types';
 import { OrbitShiftModal, ORBIT_COLORS } from './OrbitShiftModal';
 import { ShiftTemplatesModal } from './ShiftTemplatesModal';
+import { DeleteShiftsModal } from './DeleteShiftsModal';
 
 interface OrbitCalendarViewProps {
   employees: Employee[];
@@ -27,6 +29,7 @@ interface OrbitCalendarViewProps {
   onAddShift: (shift: Partial<Shift>) => void;
   onUpdateShift: (shift: Shift, notifyEmployee?: boolean, changeReason?: string) => void;
   onDeleteShift: (id: string) => void;
+  onDeleteShiftsBulk?: (ids: string[]) => void;
   onAddEmployee: () => void;
   theme?: 'light' | 'dark';
 }
@@ -101,6 +104,7 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
   onAddShift,
   onUpdateShift,
   onDeleteShift,
+  onDeleteShiftsBulk,
   onAddEmployee,
   theme = 'dark',
 }) => {
@@ -135,6 +139,7 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
 
   // Modal de Templates de Horários & Replicar Semanas state
   const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   // Day Summary Panel (month view: show all collaborators for a day)
   const [dayPanelDate, setDayPanelDate] = useState<string | null>(null);
@@ -852,6 +857,24 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                 </button>
               )}
 
+              {/* Excluir Escalas em Lote / Filtro */}
+              <button
+                onClick={() => setIsDeleteModalOpen(true)}
+                className={`h-9 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all hover:-translate-y-0.5 ${
+                  isDark
+                    ? 'bg-rose-500/10 border border-rose-500/30 text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/50'
+                    : 'bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 shadow-2xs'
+                }`}
+                title="Excluir escalas em lote por período ou filtro"
+              >
+                <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${
+                  isDark ? 'bg-rose-500/20 text-rose-400' : 'bg-rose-100 text-rose-600'
+                }`}>
+                  <Trash2 className="w-3.5 h-3.5" />
+                </div>
+                <span>Excluir Escalas</span>
+              </button>
+
               {/* Templates de Escalas */}
               <button
                 onClick={() => setIsTemplatesModalOpen(true)}
@@ -1143,141 +1166,104 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                             {(() => {
                               const baseH = hours[0] ?? 0;
                               const CARD_HEIGHT = 84;
+                              const sortedEvents = [...dayEvents].sort((a, b) => a.startTime.localeCompare(b.startTime));
+                              let lastBottom = 0;
 
-                              // Calculate vertical position for each event
-                              const eventsWithPos = dayEvents.map((ev) => {
+                              return sortedEvents.map((ev, idx) => {
                                 const [sH, sM] = ev.startTime.split(':').map(Number);
                                 const startH = isNaN(sH) ? baseH : sH;
                                 const startM = isNaN(sM) ? 0 : sM;
-                                const topOffset = Math.max(0, ((startH - baseH) + (startM / 60)) * 64);
-                                return { ev, topOffset };
-                              }).sort((a, b) => a.topOffset - b.topOffset);
+                                const idealTop = Math.max(0, ((startH - baseH) + (startM / 60)) * 64);
 
-                              // Group into overlap clusters where two events overlap if topOffset difference < CARD_HEIGHT
-                              const clusters: Array<typeof eventsWithPos> = [];
-                              for (const item of eventsWithPos) {
-                                let placed = false;
-                                for (const cluster of clusters) {
-                                  const last = cluster[cluster.length - 1];
-                                  if (item.topOffset < last.topOffset + CARD_HEIGHT) {
-                                    cluster.push(item);
-                                    placed = true;
-                                    break;
-                                  }
-                                }
-                                if (!placed) {
-                                  clusters.push([item]);
-                                }
-                              }
+                                // Posiciona verticalmente logo abaixo do turno anterior para evitar sobreposição em baralho
+                                const topOffset = Math.max(idealTop, lastBottom);
+                                lastBottom = topOffset + CARD_HEIGHT + 6;
 
-                              return clusters.flatMap((cluster) => {
-                                const count = cluster.length;
-                                return cluster.map((item, idx) => {
-                                  const { ev, topOffset } = item;
-                                  const emp = employees.find((e) => e.id === ev.employeeId);
-                                  const isDraft = ev.status === 'draft';
-                                  const mutedStyle = getMutedShiftColor(ev, isDark);
+                                const emp = employees.find((e) => e.id === ev.employeeId);
+                                const isDraft = ev.status === 'draft';
+                                const mutedStyle = getMutedShiftColor(ev, isDark);
 
-                                  let leftStyle = '4px';
-                                  let widthStyle = 'calc(100% - 8px)';
-                                  let zIndex = 10 + idx;
+                                return (
+                                  <div
+                                    key={ev.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenEditShift(ev);
+                                    }}
+                                    className="pointer-events-auto rounded-xl p-2.5 cursor-pointer shadow-md transition-all duration-150 hover:scale-[1.02] hover:z-30 hover:shadow-xl text-left absolute overflow-hidden group/shift flex flex-col justify-between shrink-0"
+                                    style={{
+                                      top: `${topOffset}px`,
+                                      left: '4px',
+                                      width: 'calc(100% - 8px)',
+                                      minHeight: `${CARD_HEIGHT}px`,
+                                      background: isDraft ? (isDark ? 'rgba(217, 119, 6, 0.18)' : 'rgba(217, 119, 6, 0.12)') : mutedStyle.bg,
+                                      border: isDraft ? '2px dashed #f59e0b' : `1px solid ${mutedStyle.border}`,
+                                      borderLeft: isDraft ? '2px dashed #f59e0b' : `3.5px solid ${mutedStyle.accent}`,
+                                      backdropFilter: 'blur(6px)',
+                                      boxShadow: isDraft
+                                        ? '0 0 14px rgba(245, 158, 11, 0.18)'
+                                        : isDark ? '0 4px 14px rgba(0,0,0,0.35)' : '0 2px 8px rgba(0,0,0,0.06)',
+                                      zIndex: 10 + idx,
+                                    }}
+                                  >
+                                    {/* Draft background stripes */}
+                                    {isDraft && (
+                                      <div
+                                        className="absolute inset-0 pointer-events-none opacity-20"
+                                        style={{
+                                          backgroundImage: 'repeating-linear-gradient(45deg, #f59e0b 0, #f59e0b 8px, transparent 8px, transparent 16px)',
+                                        }}
+                                      />
+                                    )}
 
-                                  if (count === 2) {
-                                    if (idx === 0) {
-                                      leftStyle = '4px';
-                                      widthStyle = 'calc(50% - 6px)';
-                                    } else {
-                                      leftStyle = 'calc(50% + 2px)';
-                                      widthStyle = 'calc(50% - 6px)';
-                                    }
-                                  } else if (count > 2) {
-                                    const step = Math.min(18, 60 / count);
-                                    leftStyle = `${4 + idx * step}px`;
-                                    widthStyle = `calc(100% - ${4 + idx * step + 4}px)`;
-                                  }
+                                    {/* Top row: Title and Badge (Publicado / Rascunho) */}
+                                    <div className="flex items-center justify-between gap-1 mb-1 relative z-10">
+                                      <span className={`font-bold text-xs truncate ${isDark ? 'text-white' : 'text-slate-800'}`}>
+                                        {ev.title || 'Turno'}
+                                      </span>
 
-                                  return (
-                                    <div
-                                      key={ev.id}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleOpenEditShift(ev);
-                                      }}
-                                      className="pointer-events-auto rounded-xl p-2.5 cursor-pointer shadow-md transition-all duration-150 hover:scale-[1.02] hover:z-30 hover:shadow-xl text-left absolute overflow-hidden group/shift flex flex-col justify-between shrink-0"
-                                      style={{
-                                        top: `${topOffset}px`,
-                                        left: leftStyle,
-                                        width: widthStyle,
-                                        minHeight: `${CARD_HEIGHT}px`,
-                                        background: isDraft ? (isDark ? 'rgba(217, 119, 6, 0.18)' : 'rgba(217, 119, 6, 0.12)') : mutedStyle.bg,
-                                        border: isDraft ? '2px dashed #f59e0b' : `1px solid ${mutedStyle.border}`,
-                                        borderLeft: isDraft ? '2px dashed #f59e0b' : `3.5px solid ${mutedStyle.accent}`,
-                                        backdropFilter: 'blur(6px)',
-                                        boxShadow: isDraft
-                                          ? '0 0 14px rgba(245, 158, 11, 0.18)'
-                                          : isDark ? '0 4px 14px rgba(0,0,0,0.35)' : '0 2px 8px rgba(0,0,0,0.06)',
-                                        zIndex,
-                                      }}
-                                    >
-                                      {/* Draft background stripes */}
-                                      {isDraft && (
-                                        <div
-                                          className="absolute inset-0 pointer-events-none opacity-20"
-                                          style={{
-                                            backgroundImage: 'repeating-linear-gradient(45deg, #f59e0b 0, #f59e0b 8px, transparent 8px, transparent 16px)',
-                                          }}
+                                      {isDraft ? (
+                                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-extrabold border border-dashed border-amber-500/50 font-mono tracking-wider shrink-0">
+                                          📝 Rascunho
+                                        </span>
+                                      ) : (
+                                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-medium border shrink-0 ${
+                                          isDark 
+                                            ? 'bg-white/10 text-slate-200 border-white/15' 
+                                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                        }`}>
+                                          ✓ Publicado
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {/* Time Row */}
+                                    <div className={`text-[11px] font-mono font-medium mb-1 relative z-10 ${
+                                      isDark ? 'text-slate-300 opacity-90' : 'text-slate-600'
+                                    }`}>
+                                      {ev.startTime} - {ev.endTime}
+                                    </div>
+
+                                    {/* Assigned Collaborator Avatar + Name */}
+                                    <div className="flex items-center gap-1.5 mt-auto relative z-10">
+                                      {emp && (
+                                        <img
+                                          src={emp.avatar}
+                                          alt={emp.name}
+                                          title={emp.name}
+                                          className={`w-5 h-5 rounded-full object-cover ring-1 ${
+                                            isDark ? 'ring-white/20' : 'ring-slate-300'
+                                          }`}
                                         />
                                       )}
-
-                                      {/* Top row: Title and Badge (Publicado / Rascunho) */}
-                                      <div className="flex items-center justify-between gap-1 mb-1 relative z-10">
-                                        <span className={`font-bold text-xs truncate ${isDark ? 'text-white' : 'text-slate-800'}`}>
-                                          {ev.title || 'Turno'}
-                                        </span>
-
-                                        {isDraft ? (
-                                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-extrabold border border-dashed border-amber-500/50 font-mono tracking-wider shrink-0">
-                                            📝 Rascunho
-                                          </span>
-                                        ) : (
-                                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-medium border shrink-0 ${
-                                            isDark 
-                                              ? 'bg-white/10 text-slate-200 border-white/15' 
-                                              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                          }`}>
-                                            ✓ Publicado
-                                          </span>
-                                        )}
-                                      </div>
-
-                                      {/* Time Row */}
-                                      <div className={`text-[11px] font-mono font-medium mb-1 relative z-10 ${
-                                        isDark ? 'text-slate-300 opacity-90' : 'text-slate-600'
+                                      <span className={`text-[10px] font-medium truncate ${
+                                        isDark ? 'text-slate-300' : 'text-slate-700'
                                       }`}>
-                                        {ev.startTime} - {ev.endTime}
-                                      </div>
-
-                                      {/* Assigned Collaborator Avatar + Name */}
-                                      <div className="flex items-center gap-1.5 mt-auto relative z-10">
-                                        {emp && (
-                                          <img
-                                            src={emp.avatar}
-                                            alt={emp.name}
-                                            title={emp.name}
-                                            className={`w-5 h-5 rounded-full object-cover ring-1 ${
-                                              isDark ? 'ring-white/20' : 'ring-slate-300'
-                                            }`}
-                                          />
-                                        )}
-                                        <span className={`text-[10px] font-medium truncate ${
-                                          isDark ? 'text-slate-300' : 'text-slate-700'
-                                        }`}>
-                                          {emp?.name.split(' ')[0]}
-                                        </span>
-                                      </div>
+                                        {emp?.name || 'Não atribuído'}
+                                      </span>
                                     </div>
-                                  );
-                                });
+                                  </div>
+                                );
                               });
                             })()}
                           </div>
@@ -1833,6 +1819,22 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
         currentWeekStart={weekStart}
         currentWeekShifts={filteredShifts}
         onApplyTemplate={handleApplyTemplate}
+        theme={theme}
+      />
+
+      {/* 6. Modal de Exclusão de Escalas em Lote / Filtro */}
+      <DeleteShiftsModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        shifts={shifts}
+        employees={employees}
+        onDeleteShifts={(shiftIds) => {
+          if (onDeleteShiftsBulk) {
+            onDeleteShiftsBulk(shiftIds);
+          } else {
+            shiftIds.forEach(id => onDeleteShift(id));
+          }
+        }}
         theme={theme}
       />
 

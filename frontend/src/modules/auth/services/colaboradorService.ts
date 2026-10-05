@@ -25,7 +25,8 @@ export async function getColaboradoresSupabase(filter?: { companyId?: string; ge
     let query = supabase
       .from('TAB_Colaborador')
       .select('*')
-      .eq('Flg_Ativo', true);
+      .eq('Flg_Ativo', true)
+      .neq('Tpo_Perfil', 'gestor');
 
     if (filter?.companyId) {
       query = query.eq('Idf_Empresa', filter.companyId);
@@ -50,11 +51,11 @@ export async function getColaboradoresSupabase(filter?: { companyId?: string; ge
 
         if (vinculos) {
           const idsPermitidos = new Set(vinculos.map((v: any) => v.Idf_Colaborador));
-          result = result.filter(emp => idsPermitidos.has(emp.id) || emp.isMasterManager);
+          result = result.filter(emp => idsPermitidos.has(emp.id));
         }
       }
 
-      return result;
+      return result.filter(emp => !emp.isMasterManager);
     }
     return [];
   } catch (err: any) {
@@ -332,5 +333,75 @@ export async function syncGoogleUserWithSupabase(googleUser: {
       standardHoursPerWeek: isManager ? 44 : 40,
       registrationId: `${isManager ? 'GST' : 'PNT'}-9000`
     };
+  }
+}
+
+// Inativa ou Desvincula um colaborador no Supabase
+export async function deactivateColaboradorSupabase(
+  employeeId: string,
+  gestorId?: string,
+  isMasterManager: boolean = true
+): Promise<boolean> {
+  try {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(employeeId);
+    if (!isUuid) return true;
+
+    if (isMasterManager) {
+      // Gestor Master: Inativa o colaborador na TAB_Colaborador (Soft Delete)
+      const { error } = await supabase
+        .from('TAB_Colaborador')
+        .update({ Flg_Ativo: false })
+        .eq('Idf_Colaborador', employeeId);
+
+      if (error) {
+        console.warn('Erro ao inativar colaborador no Supabase:', error.message);
+        return false;
+      }
+    } else if (gestorId) {
+      // Gestor de Equipe: Remove o vínculo na tabela M:N TAB_Gestor_Colaborador
+      const { error } = await supabase
+        .from('TAB_Gestor_Colaborador')
+        .delete()
+        .eq('Idf_Gestor', gestorId)
+        .eq('Idf_Colaborador', employeeId);
+
+      if (error) {
+        console.warn('Erro ao remover vínculo do colaborador:', error.message);
+        return false;
+      }
+    }
+    return true;
+  } catch (err: any) {
+    console.error('Erro ao inativar/desvincular colaborador:', err.message);
+    return false;
+  }
+}
+
+// Atualiza dados cadastrais de um colaborador no Supabase
+export async function updateColaboradorSupabase(emp: Partial<Employee> & { id: string }): Promise<boolean> {
+  try {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(emp.id);
+    if (!isUuid) return true;
+
+    const payload: any = {};
+    if (emp.name) payload.Nme_Colaborador = emp.name;
+    if (emp.role) payload.Tpo_Cargo = emp.role;
+    if (emp.department) payload.Des_Departamento = emp.department;
+    if (emp.phone) payload.Num_Telefone = emp.phone;
+    if (emp.standardHoursPerWeek) payload.Num_Horas_Semanais = emp.standardHoursPerWeek;
+
+    const { error } = await supabase
+      .from('TAB_Colaborador')
+      .update(payload)
+      .eq('Idf_Colaborador', emp.id);
+
+    if (error) {
+      console.warn('Erro ao atualizar colaborador no Supabase:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.error('Erro ao atualizar colaborador:', err.message);
+    return false;
   }
 }

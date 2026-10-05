@@ -48,12 +48,16 @@ import {
 import { 
   getColaboradoresSupabase, 
   createColaboradorSupabase,
+  deactivateColaboradorSupabase,
+  updateColaboradorSupabase,
   syncGoogleUserWithSupabase
 } from '@/modules/auth/services/colaboradorService';
 import { 
   getShiftsSupabase, 
   createShiftSupabase, 
-  registerPunchSupabase 
+  registerPunchSupabase,
+  deleteShiftSupabase,
+  deleteBulkShiftsSupabase
 } from '@/modules/shifts/services/shiftService';
 import { 
   Employee, 
@@ -108,15 +112,11 @@ function AppContent() {
 
   const handleLoginSuccess = (user: Employee, role: 'manager' | 'employee') => {
     setActiveEmployee(user);
-    setEmployees(prev => {
-      const exists = prev.some(e => e.id === user.id || (e.email && user.email && e.email.toLowerCase() === user.email.toLowerCase()));
-      return exists ? prev : [user, ...prev];
-    });
     setCurrentRole(role);
     setIsAuthenticated(true);
   };
 
-  const [employees, setEmployees] = useState<Employee[]>(INITIAL_EMPLOYEES);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [activeEmployee, setActiveEmployee] = useState<Employee>(() => {
     try {
       const savedUserStr = localStorage.getItem('pontual_active_user');
@@ -129,7 +129,7 @@ function AppContent() {
           e.email?.toLowerCase() === parsed.Eml_Corporativo?.toLowerCase() ||
           (parsed.emailSecundario && e.email?.toLowerCase() === parsed.emailSecundario?.toLowerCase())
         );
-        if (match) return match;
+        if (match && !parsed.Idf_Empresa && !parsed.companyId) return match;
 
         return {
           id: parsed.Idf_Colaborador || parsed.id || `emp-${Date.now()}`,
@@ -140,53 +140,80 @@ function AppContent() {
           email: parsed.Eml_Corporativo || parsed.email || '',
           phone: parsed.Num_Telefone || parsed.phone || '(11) 98765-4321',
           standardHoursPerWeek: parsed.Num_Horas_Semanais || parsed.standardHoursPerWeek || 44,
-          registrationId: parsed.Cod_Matricula || parsed.registrationId || 'GST-0001'
+          registrationId: parsed.Cod_Matricula || parsed.registrationId || 'GST-0001',
+          companyId: parsed.Idf_Empresa || parsed.companyId || undefined,
+          isMasterManager: parsed.Flg_Gestor_Master !== undefined ? parsed.Flg_Gestor_Master : (parsed.isMasterManager || false),
+          companyCnpj: parsed.companyCnpj || undefined,
+          managerIds: parsed.managerIds || []
         };
       }
     } catch {}
     return INITIAL_EMPLOYEES[0];
   });
-  const [shifts, setShifts] = useState<Shift[]>(getInitialShifts());
-  const [requests, setRequests] = useState<TimeOffRequest[]>(INITIAL_REQUESTS);
-  const [justifications, setJustifications] = useState<AbsenceJustification[]>(INITIAL_JUSTIFICATIONS);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+  const [shifts, setShifts] = useState<Shift[]>([]);
+  const [requests, setRequests] = useState<TimeOffRequest[]>([]);
+  const [justifications, setJustifications] = useState<AbsenceJustification[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   
   // Employee Tabs
   const [employeeTab, setEmployeeTab] = useState<'overview' | 'calendar' | 'requests' | 'justifications' | 'chat'>('overview');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Sincronização inicial com o Supabase (TAB_Colaborador e TAB_Escala_Turno)
+  // Sincronização e filtragem estrita por empresa/gestor com o Supabase (TAB_Colaborador e TAB_Escala_Turno)
   React.useEffect(() => {
     async function loadDataFromSupabase() {
+      if (!isAuthenticated || !activeEmployee) return;
+
+      const isDemoUser = !activeEmployee.companyId && (
+        activeEmployee.id === 'mgr-1' || 
+        activeEmployee.id === 'emp-1' ||
+        activeEmployee.email === 'gestor@pontual.com' ||
+        activeEmployee.email === 'colaborador@pontual.com'
+      );
+
+      if (isDemoUser) {
+        setEmployees(INITIAL_EMPLOYEES);
+        setShifts(getInitialShifts());
+        setRequests(INITIAL_REQUESTS);
+        setJustifications(INITIAL_JUSTIFICATIONS);
+        setNotifications(INITIAL_NOTIFICATIONS);
+        return;
+      }
+
       try {
-        const dbEmployees = await getColaboradoresSupabase();
-        if (dbEmployees && dbEmployees.length > 0) {
-          setEmployees(prev => {
-            // Une com funcionários locais se houver algum não presente no banco
-            const combined = [...dbEmployees];
-            for (const p of prev) {
-              if (!combined.some(c => c.id === p.id || (c.email && p.email && c.email.toLowerCase() === p.email.toLowerCase()))) {
-                combined.push(p);
-              }
-            }
-            return combined;
-          });
-          setActiveEmployee(prev => {
-            const found = dbEmployees.find(e => e.id === prev.id || (e.email && prev.email && e.email.toLowerCase() === prev.email.toLowerCase()));
-            return found || prev;
-          });
+        const filter = {
+          companyId: activeEmployee.companyId || undefined,
+          gestorId: (activeEmployee.isMasterManager || !activeEmployee.companyId) ? undefined : activeEmployee.id
+        };
+
+        const dbEmployees = await getColaboradoresSupabase(filter);
+        
+        let finalEmployees: Employee[] = dbEmployees || [];
+        if (currentRole === 'employee' && activeEmployee && !activeEmployee.isMasterManager) {
+          if (!finalEmployees.some(e => e.id === activeEmployee.id || (e.email && activeEmployee.email && e.email.toLowerCase() === activeEmployee.email.toLowerCase()))) {
+            finalEmployees = [activeEmployee, ...finalEmployees];
+          }
         }
 
-        const dbShifts = await getShiftsSupabase();
-        if (dbShifts && dbShifts.length > 0) {
-          setShifts(dbShifts);
-        }
+        setEmployees(finalEmployees);
+
+        // Busca turnos estritamente dos colaboradores pertencentes à empresa/equipe
+        const empIds = finalEmployees.map(e => e.id);
+        const dbShifts = await getShiftsSupabase(empIds);
+        setShifts(dbShifts);
+
+        // Filtra solicitações e justificativas por colaboradores da mesma empresa
+        setRequests(prev => prev.filter(r => empIds.includes(r.employeeId)));
+        setJustifications(prev => prev.filter(j => empIds.includes(j.employeeId)));
+        setNotifications([]);
+
       } catch (err) {
-        console.warn('Usando dados locais de fallback:', err);
+        console.warn('Erro ao carregar dados do Supabase:', err);
       }
     }
+
     loadDataFromSupabase();
-  }, []);
+  }, [activeEmployee?.id, activeEmployee?.companyId, isAuthenticated]);
 
   // Modals state
   const [selectedShiftForDetail, setSelectedShiftForDetail] = useState<Shift | null>(null);
@@ -314,6 +341,28 @@ function AppContent() {
     setNotifications(prev => [newNotif, ...prev]);
   };
 
+  const handleUpdateEmployee = async (updated: Employee) => {
+    setEmployees(prev => prev.map(e => e.id === updated.id ? updated : e));
+    try {
+      await updateColaboradorSupabase(updated);
+    } catch (err) {
+      console.warn('Erro ao atualizar no Supabase:', err);
+    }
+    showToast('Cadastro Atualizado', `Informações de ${updated.name} foram salvas.`, 'success');
+  };
+
+  const handleDeactivateEmployee = async (employeeId: string) => {
+    const target = employees.find(e => e.id === employeeId);
+    setEmployees(prev => prev.filter(e => e.id !== employeeId));
+    setShifts(prev => prev.filter(s => s.employeeId !== employeeId));
+    try {
+      await deactivateColaboradorSupabase(employeeId, activeEmployee?.id, activeEmployee?.isMasterManager);
+    } catch (err) {
+      console.warn('Erro ao inativar no Supabase:', err);
+    }
+    showToast('Colaborador Desativado', `${target?.name || 'O colaborador'} foi inativado e removido das escalas ativas.`, 'info');
+  };
+
   // Submit swap or time-off request
   const handleSubmitRequest = (req: Partial<TimeOffRequest>) => {
     const newRequest: TimeOffRequest = {
@@ -404,8 +453,27 @@ function AppContent() {
     }
   };
 
-  const handleDeleteShift = (shiftId: string) => {
+  const handleDeleteShift = async (shiftId: string) => {
     setShifts(prev => prev.filter(s => s.id !== shiftId));
+    try {
+      await deleteShiftSupabase(shiftId);
+    } catch (err) {
+      console.warn('Erro ao excluir no Supabase:', err);
+    }
+  };
+
+  const handleDeleteShiftsBulk = async (shiftIdsToDelete: string[]) => {
+    setShifts(prev => prev.filter(s => !shiftIdsToDelete.includes(s.id)));
+    try {
+      await deleteBulkShiftsSupabase(shiftIdsToDelete);
+    } catch (err) {
+      console.warn('Erro ao excluir lote no Supabase:', err);
+    }
+    showToast(
+      'Escalas Excluídas',
+      `${shiftIdsToDelete.length} escala(s) foram removidas da grade com sucesso.`,
+      'info'
+    );
   };
 
   const handleApproveRequest = (id: string) => {
@@ -592,7 +660,10 @@ function AppContent() {
             onAddShift={handleAddShift}
             onUpdateShift={handleUpdateShift}
             onDeleteShift={handleDeleteShift}
+            onDeleteShiftsBulk={handleDeleteShiftsBulk}
             onAddEmployee={handleAddEmployee}
+            onUpdateEmployee={handleUpdateEmployee}
+            onDeactivateEmployee={handleDeactivateEmployee}
             onOpenRequests={() => setIsManagerRequestsModalOpen(true)}
             onOpenChat={() => setIsChatModalOpen(true)}
             onOpenNotifications={() => setIsNotificationsModalOpen(true)}

@@ -14,7 +14,10 @@ interface ManagerViewProps {
   onAddShift: (shift: Partial<Shift>) => void;
   onUpdateShift: (shift: Shift, notifyEmployee?: boolean, changeReason?: string) => void;
   onDeleteShift: (id: string) => void;
+  onDeleteShiftsBulk?: (ids: string[]) => void;
   onAddEmployee: (employee: Employee) => void;
+  onUpdateEmployee?: (updated: Employee) => void;
+  onDeactivateEmployee?: (id: string) => void;
   onOpenRequests: () => void;
   onOpenChat: () => void;
   onOpenNotifications: () => void;
@@ -24,7 +27,8 @@ interface ManagerViewProps {
 }
 
 export const ManagerView: React.FC<ManagerViewProps> = ({
-  employees, shifts, activeEmployee, notificationsCount, onAddShift, onUpdateShift, onDeleteShift, onAddEmployee, onOpenRequests, onOpenChat,
+  employees, shifts, activeEmployee, notificationsCount, onAddShift, onUpdateShift, onDeleteShift, onDeleteShiftsBulk, onAddEmployee,
+  onUpdateEmployee, onDeactivateEmployee, onOpenRequests, onOpenChat,
   onOpenNotifications, onSwitchToEmployee, pendingRequestsCount, onOpenProfile,
 }) => {
   const { theme, isDark, toggleTheme } = useTheme();
@@ -70,7 +74,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
       <main className={`min-w-0 flex-1 overflow-auto transition-colors duration-300 ${
         activeTab === 'orbit' 
           ? (isDark ? 'bg-[#0F1117] p-0 flex flex-col' : 'bg-[#f8fafc] p-0 flex flex-col') 
-          : (activeTab === 'tarefas' || activeTab === 'aprovacoes' || activeTab === 'relatorios' || activeTab === 'chat')
+          : (activeTab === 'tarefas' || activeTab === 'aprovacoes' || activeTab === 'relatorios' || activeTab === 'chat' || activeTab === 'colaboradores')
           ? (isDark ? 'bg-[#0F1117] p-3 sm:p-6' : 'bg-[#f8fafc] p-3 sm:p-6')
           : (isDark ? 'bg-[#15161b] p-3 sm:p-5' : 'bg-slate-100 p-3 sm:p-5')
       }`}>
@@ -81,6 +85,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
             onAddShift={onAddShift}
             onUpdateShift={onUpdateShift}
             onDeleteShift={onDeleteShift}
+            onDeleteShiftsBulk={onDeleteShiftsBulk}
             onAddEmployee={() => setIsAddUserModalOpen(true)}
             theme={theme}
           />
@@ -101,6 +106,11 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
             onOpenNotifications={onOpenNotifications}
             onNavigateToOrbit={() => setActiveTab('orbit')}
             theme={theme}
+            activeEmployee={activeEmployee}
+            onUpdateEmployee={onUpdateEmployee}
+            onDeactivateEmployee={onDeactivateEmployee}
+            onDeleteShift={onDeleteShift}
+            onDeleteShiftsBulk={onDeleteShiftsBulk}
           />
         )}
       </main>

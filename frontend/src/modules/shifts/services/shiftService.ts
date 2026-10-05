@@ -18,13 +18,22 @@ export function mapBneToShift(row: any): Shift {
   };
 }
 
-export async function getShiftsSupabase(): Promise<Shift[]> {
+export async function getShiftsSupabase(employeeIds?: string[]): Promise<Shift[]> {
   try {
-    const { data, error } = await supabase
+    if (employeeIds && employeeIds.length === 0) {
+      return [];
+    }
+
+    let query = supabase
       .from('TAB_Escala_Turno')
       .select('*')
-      .eq('Flg_Ativo', true)
-      .order('Dta_Turno', { ascending: true });
+      .eq('Flg_Ativo', true);
+
+    if (employeeIds && employeeIds.length > 0) {
+      query = query.in('Idf_Colaborador', employeeIds);
+    }
+
+    const { data, error } = await query.order('Dta_Turno', { ascending: true });
 
     if (error) {
       console.warn('Aviso ao buscar escalas do Supabase:', error.message);
@@ -102,5 +111,49 @@ export async function registerPunchSupabase(
     }
   } catch (err: any) {
     console.warn('Erro ao salvar registro de ponto no Supabase:', err.message);
+  }
+}
+
+// Exclui um único turno no Supabase
+export async function deleteShiftSupabase(shiftId: string): Promise<boolean> {
+  try {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(shiftId);
+    if (!isUuid) return true;
+
+    const { error } = await supabase
+      .from('TAB_Escala_Turno')
+      .delete()
+      .eq('Idf_Turno', shiftId);
+
+    if (error) {
+      console.warn('Erro ao excluir turno no Supabase:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.error('Erro ao excluir turno:', err.message);
+    return false;
+  }
+}
+
+// Exclui lote de turnos no Supabase por lista de IDs
+export async function deleteBulkShiftsSupabase(shiftIds: string[]): Promise<boolean> {
+  try {
+    const validUuids = shiftIds.filter(id => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+    if (validUuids.length === 0) return true;
+
+    const { error } = await supabase
+      .from('TAB_Escala_Turno')
+      .delete()
+      .in('Idf_Turno', validUuids);
+
+    if (error) {
+      console.warn('Erro ao excluir lote de turnos no Supabase:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.error('Erro ao excluir lote de turnos:', err.message);
+    return false;
   }
 }

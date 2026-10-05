@@ -175,7 +175,7 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
               <div className={`text-sm font-bold ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
                 {selectedEmployee
                   ? `${selectedEmployee.name} -- ${selectedEmployee.role} (${selectedEmployee.department})`
-                  : 'Lucas Silva -- Analista de Atendimento (Atendimento)'}
+                  : 'Colaborador não especificado'}
               </div>
             </div>
           </div>

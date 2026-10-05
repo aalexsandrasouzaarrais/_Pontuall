@@ -11,17 +11,6 @@ interface ProfileEditModalProps {
   theme?: 'light' | 'dark';
 }
 
-const PRESET_AVATARS = [
-  'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-];
-
 export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
   isOpen,
   onClose,
@@ -298,34 +287,6 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
                 >
                   Aplicar
                 </button>
-              </div>
-            </div>
-
-            {/* Galeria de Avatares Rápidos */}
-            <div>
-              <label className={`block text-[11px] font-semibold mb-2 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                Ou selecione um avatar rápido:
-              </label>
-              <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                {PRESET_AVATARS.map((url, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => {
-                      setPreviewUrl(url);
-                      setErrorMessage(null);
-                    }}
-                    className={`w-10 h-10 rounded-full overflow-hidden shrink-0 ring-2 transition-all cursor-pointer ${
-                      previewUrl === url
-                        ? 'ring-[#f89847] scale-110 shadow-md'
-                        : isDark
-                        ? 'ring-white/10 hover:ring-white/30 opacity-70 hover:opacity-100'
-                        : 'ring-slate-200 hover:ring-slate-400 opacity-70 hover:opacity-100'
-                    }`}
-                  >
-                    <img src={url} alt={`Avatar ${idx + 1}`} className="w-full h-full object-cover" />
-                  </button>
-                ))}
               </div>
             </div>
           </div>

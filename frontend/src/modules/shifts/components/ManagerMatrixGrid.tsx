@@ -49,6 +49,8 @@ import {
   serializeChatMessage,
   sendChatMessageToSupabase
 } from '@/shared/utils/chatUtils';
+import { EmployeesManagementView } from '@/modules/manager/components/EmployeesManagementView';
+import { DeleteShiftsModal } from './DeleteShiftsModal';
 
 interface ManagerMatrixGridProps {
   employees: Employee[];
@@ -64,8 +66,13 @@ interface ManagerMatrixGridProps {
   onOpenChat?: () => void;
   onOpenNotifications?: () => void;
   onNavigateToOrbit?: () => void;
-  activeTab?: 'escala' | 'aprovacoes' | 'relatorios' | 'tarefas' | 'chat';
+  activeTab?: 'escala' | 'aprovacoes' | 'relatorios' | 'tarefas' | 'chat' | 'colaboradores';
   theme?: 'light' | 'dark';
+  activeEmployee?: Employee;
+  onUpdateEmployee?: (updated: Employee) => void;
+  onDeactivateEmployee?: (employeeId: string) => void;
+  onDeleteShift?: (id: string) => void;
+  onDeleteShiftsBulk?: (ids: string[]) => void;
 }
 
 export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
@@ -84,12 +91,19 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   onNavigateToOrbit,
   activeTab: sidebarTab,
   theme = 'dark',
+  activeEmployee,
+  onUpdateEmployee,
+  onDeactivateEmployee,
+  onDeleteShift,
+  onDeleteShiftsBulk,
 }) => {
-  // Active top tab state: 'escala' | 'aprovacoes' | 'relatorios' | 'tarefas' | 'chat'
-  const [internalActiveTab, setInternalActiveTab] = useState<'escala' | 'aprovacoes' | 'relatorios' | 'tarefas' | 'chat'>(sidebarTab || 'aprovacoes');
+  // Active top tab state: 'escala' | 'aprovacoes' | 'relatorios' | 'tarefas' | 'chat' | 'colaboradores'
+  const [internalActiveTab, setInternalActiveTab] = useState<'escala' | 'aprovacoes' | 'relatorios' | 'tarefas' | 'chat' | 'colaboradores'>(sidebarTab || 'aprovacoes');
   const activeTab = sidebarTab || internalActiveTab;
   const setActiveTab = setInternalActiveTab;
   const isDark = theme !== 'light';
+
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   useEffect(() => {
     if (sidebarTab) setInternalActiveTab(sidebarTab);
@@ -138,6 +152,17 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     feedback: '',
   });
 
+  // Identifica se estamos na conta de demonstração (Employer RH demo)
+  const isDemoCompany = useMemo(() => {
+    return employees.some(e => 
+      e.id === 'emp-1' || 
+      e.id === 'mgr-1' || 
+      e.email?.toLowerCase() === 'colaborador@pontual.com' ||
+      e.email?.toLowerCase() === 'gestor@pontual.com' ||
+      e.email?.toLowerCase() === 'camila.duarte@employer.com.br'
+    );
+  }, [employees]);
+
   const [approvalsData, setApprovalsData] = useState<Array<{
     id: string;
     employeeId?: string;
@@ -152,98 +177,107 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     status: 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente';
     actionText?: string;
     feedback: string;
-  }>>([
-    {
-      id: 'ap-1',
-      employeeId: 'emp-1',
-      employeeName: 'Lucas Silva',
-      employeeRole: 'Analista de Atendimento',
-      employeeDept: 'Atendimento',
-      employeeAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-      type: 'Atestado Médico',
-      reason: 'Consulta odontológica e repouso (CID K01)',
-      date: '16/09/2026',
-      documentName: 'atestado.pdf',
-      status: 'Aprovado',
-      actionText: 'Homologado agora',
-      feedback: 'Atestado validado e abonado integralmente.',
-    },
-    {
-      id: 'ap-2',
-      employeeId: 'emp-2',
-      employeeName: 'Beatriz Santos',
-      employeeRole: 'Especialista de Suporte',
-      employeeDept: 'Suporte Técnico',
-      employeeAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
-      type: 'Troca de Turno',
-      reason: 'Solicitou troca com Thiago Oliveira',
-      date: '18/09/2026',
-      documentName: 'Não se aplica',
-      status: 'Recusado / Falta',
-      actionText: 'Recusado agora',
-      feedback: 'Incompatível com o limite de descanso entre jornadas.',
-    },
-    {
-      id: 'ap-3',
-      employeeId: 'emp-3',
-      employeeName: 'Rafael Mendes',
-      employeeRole: 'Operador de Escala',
-      employeeDept: 'Operações',
-      employeeAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-      type: 'Folga Compensatória',
-      reason: 'Banco de horas acumulado no plantão',
-      date: '14/09/2026',
-      documentName: 'Acordo banco',
-      status: 'Aprovado',
-      actionText: 'Homologado',
-      feedback: 'Compensação aprovada conforme saldo positivo em banco de horas.',
-    },
-    {
-      id: 'ap-4',
-      employeeId: 'emp-4',
-      employeeName: 'Mariana Costa',
-      employeeRole: 'Consultora de Vendas',
-      employeeDept: 'Comercial',
-      employeeAvatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
-      type: 'Falta Injustificada',
-      reason: 'Ausência não comunicada no turno matutino',
-      date: '11/09/2026',
-      documentName: 'Sem anexo',
-      status: 'Falta Lançada',
-      actionText: 'Registrada em folha',
-      feedback: 'Ausência sem aviso prévio. Desconto de DSR lançado no espelho.',
-    },
-    {
-      id: 'ap-5',
-      employeeId: 'emp-5',
-      employeeName: 'Thiago Oliveira',
-      employeeRole: 'Desenvolvedor Frontend',
-      employeeDept: 'Tecnologia',
-      employeeAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
-      type: 'Atestado Médico',
-      reason: 'Declaração de comparecimento vacinação',
-      date: '09/09/2026',
-      documentName: 'declaracao.pdf',
-      status: 'Aprovado',
-      actionText: 'Abonado pelo RH',
-      feedback: 'Declaração aceita e horas abonadas no fechamento.',
-    },
-    {
-      id: 'ap-6',
-      employeeId: 'emp-6',
-      employeeName: 'Juliana Lima',
-      employeeRole: 'Supervisora de Operações',
-      employeeDept: 'Operações',
-      employeeAvatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
-      type: 'Troca de Turno',
-      reason: 'Troca de plantão de domingo com Rafael Mendes por curso',
-      date: '20/09/2026',
-      documentName: 'Não se aplica',
-      status: 'Pendente',
-      actionText: 'Aguardando decisão',
-      feedback: '',
-    },
-  ]);
+  }>>([]);
+
+  useEffect(() => {
+    if (isDemoCompany) {
+      setApprovalsData([
+        {
+          id: 'ap-1',
+          employeeId: 'emp-1',
+          employeeName: 'Lucas Silva',
+          employeeRole: 'Analista de Atendimento',
+          employeeDept: 'Atendimento',
+          employeeAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+          type: 'Atestado Médico',
+          reason: 'Consulta odontológica e repouso (CID K01)',
+          date: '16/09/2026',
+          documentName: 'atestado.pdf',
+          status: 'Aprovado',
+          actionText: 'Homologado agora',
+          feedback: 'Atestado validado e abonado integralmente.',
+        },
+        {
+          id: 'ap-2',
+          employeeId: 'emp-2',
+          employeeName: 'Beatriz Santos',
+          employeeRole: 'Especialista de Suporte',
+          employeeDept: 'Suporte Técnico',
+          employeeAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+          type: 'Troca de Turno',
+          reason: 'Solicitou troca com Thiago Oliveira',
+          date: '18/09/2026',
+          documentName: 'Não se aplica',
+          status: 'Recusado / Falta',
+          actionText: 'Recusado agora',
+          feedback: 'Incompatível com o limite de descanso entre jornadas.',
+        },
+        {
+          id: 'ap-3',
+          employeeId: 'emp-3',
+          employeeName: 'Rafael Mendes',
+          employeeRole: 'Operador de Escala',
+          employeeDept: 'Operações',
+          employeeAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+          type: 'Folga Compensatória',
+          reason: 'Banco de horas acumulado no plantão',
+          date: '14/09/2026',
+          documentName: 'Acordo banco',
+          status: 'Aprovado',
+          actionText: 'Homologado',
+          feedback: 'Compensação aprovada conforme saldo positivo em banco de horas.',
+        },
+        {
+          id: 'ap-4',
+          employeeId: 'emp-4',
+          employeeName: 'Mariana Costa',
+          employeeRole: 'Consultora de Vendas',
+          employeeDept: 'Comercial',
+          employeeAvatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
+          type: 'Falta Injustificada',
+          reason: 'Ausência não comunicada no turno matutino',
+          date: '11/09/2026',
+          documentName: 'Sem anexo',
+          status: 'Falta Lançada',
+          actionText: 'Registrada em folha',
+          feedback: 'Ausência sem aviso prévio. Desconto de DSR lançado no espelho.',
+        },
+        {
+          id: 'ap-5',
+          employeeId: 'emp-5',
+          employeeName: 'Thiago Oliveira',
+          employeeRole: 'Desenvolvedor Frontend',
+          employeeDept: 'Tecnologia',
+          employeeAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+          type: 'Atestado Médico',
+          reason: 'Declaração de comparecimento vacinação',
+          date: '09/09/2026',
+          documentName: 'declaracao.pdf',
+          status: 'Aprovado',
+          actionText: 'Abonado pelo RH',
+          feedback: 'Declaração aceita e horas abonadas no fechamento.',
+        },
+        {
+          id: 'ap-6',
+          employeeId: 'emp-6',
+          employeeName: 'Juliana Lima',
+          employeeRole: 'Supervisora de Operações',
+          employeeDept: 'Operações',
+          employeeAvatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
+          type: 'Troca de Turno',
+          reason: 'Troca de plantão de domingo com Rafael Mendes por curso',
+          date: '20/09/2026',
+          documentName: 'Não se aplica',
+          status: 'Pendente',
+          actionText: 'Aguardando decisão',
+          feedback: '',
+        },
+      ]);
+    } else {
+      const validEmpIds = new Set(employees.map(e => e.id));
+      setApprovalsData(prev => prev.filter(item => item.employeeId && validEmpIds.has(item.employeeId)));
+    }
+  }, [isDemoCompany, employees]);
 
   const handleApproveOccurrence = (id: string) => {
     setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, status: 'Aprovado', actionText: 'Homologado agora' } : item));
@@ -278,7 +312,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     setApprovalsData(prev => [newItem, ...prev]);
     setIsNewOccurrenceModalOpen(false);
     setNewOccurrenceForm({
-      employeeId: 'emp-1',
+      employeeId: employees[0]?.id || 'emp-1',
       type: 'Atestado Médico',
       date: new Date().toLocaleDateString('pt-BR'),
       reason: '',
@@ -293,25 +327,67 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   const [relatorioStatus, setRelatorioStatus] = useState('all');
   const [relatorioDept, setRelatorioDept] = useState('all');
 
+  const reportRows = useMemo(() => {
+    if (shifts && shifts.length > 0) {
+      return shifts.map(s => {
+        const emp = employees.find(e => e.id === s.employeeId);
+        const statusMap: Record<string, string> = {
+          present: 'Presente',
+          absent: 'Ausente',
+          justified: 'Justificado',
+          pending: 'Pendente'
+        };
+        return {
+          date: s.date,
+          name: emp?.name || 'Colaborador',
+          role: emp?.role || 'Colaborador',
+          dept: emp?.department || 'Geral',
+          time: `${s.startTime} – ${s.endTime}`,
+          hours: '8h',
+          status: statusMap[s.attendanceStatus || 'pending'] || 'Pendente',
+          type: s.type === 'regular' ? 'Regular' : 'Extra',
+          obs: s.notes || (s.checkInLocation?.address ? `Check-in validado via GPS em ${s.checkInLocation.address}` : '—')
+        };
+      });
+    }
+
+    if (isDemoCompany) {
+      return [
+        { date: '2026-08-31', name: 'Lucas Silva', role: 'Analista de Atendimento', dept: 'Atendimento', time: '08:00 – 17:00', hours: '8h', status: 'Presente', type: 'Regular', obs: 'Check-in validado via GPS na sede.' },
+        { date: '2026-08-31', name: 'Beatriz Santos', role: 'Especialista de Suporte', dept: 'Suporte Técnico', time: '09:00 – 18:00', hours: '8h', status: 'Presente', type: 'Reunião', obs: 'Apresentação de indicadores de SLA Q3.' },
+        { date: '2026-08-31', name: 'Rafael Mendes', role: 'Operador de Escala', dept: 'Operações', time: '07:00 – 16:00', hours: '8h', status: 'Presente', type: 'Regular', obs: '—' },
+        { date: '2026-08-31', name: 'Mariana Costa', role: 'Consultora de Vendas', dept: 'Comercial', time: '08:30 – 17:30', hours: '8h', status: 'Justificado', type: 'Regular', obs: 'Consulta médica agendada no período matutino - Atestado enviado.' },
+        { date: '2026-09-01', name: 'Lucas Silva', role: 'Analista de Atendimento', dept: 'Atendimento', time: '08:00 – 17:00', hours: '8h', status: 'Presente', type: 'Regular', obs: '—' },
+        { date: '2026-09-01', name: 'Beatriz Santos', role: 'Especialista de Suporte', dept: 'Suporte Técnico', time: '09:00 – 18:00', hours: '8h', status: 'Ausente', type: 'Regular', obs: 'No-show registrado (falta não justificada)' },
+        { date: '2026-09-01', name: 'Rafael Mendes', role: 'Operador de Escala', dept: 'Operações', time: '07:00 – 16:00', hours: '8h', status: 'Presente', type: 'Regular', obs: '—' },
+        { date: '2026-09-01', name: 'Thiago Oliveira', role: 'Desenvolvedor Frontend', dept: 'Tecnologia', time: '10:00 – 19:00', hours: '8h', status: 'Presente', type: 'Plantão', obs: 'Suporte aos deploys de homologação.' },
+      ];
+    }
+
+    return [];
+  }, [shifts, employees, isDemoCompany]);
+
   // Tab 4 (Tarefas) State - Orbit Visual Identity
   const allAssignablePeople = useMemo(() => {
     const list = [...employees];
-    const hasManager = list.some(e => e.name.toLowerCase().includes('camila'));
-    if (!hasManager) {
-      list.unshift({
-        id: 'mgr-1',
-        name: 'Camila Duarte',
-        role: 'Gerente Geral',
-        department: 'Gestão & Operações',
-        avatar: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
-        email: 'camila.duarte@employer.com.br',
-        phone: '(11) 99999-0000',
-        standardHoursPerWeek: 40,
-        contractType: 'CLT',
-      });
+    if (isDemoCompany) {
+      const hasManager = list.some(e => e.name.toLowerCase().includes('camila'));
+      if (!hasManager) {
+        list.unshift({
+          id: 'mgr-1',
+          name: 'Camila Duarte',
+          role: 'Gerente Geral',
+          department: 'Gestão & Operações',
+          avatar: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
+          email: 'camila.duarte@employer.com.br',
+          phone: '(11) 99999-0000',
+          standardHoursPerWeek: 40,
+          contractType: 'CLT',
+        });
+      }
     }
     return list;
-  }, [employees]);
+  }, [employees, isDemoCompany]);
 
   interface ReminderItem {
     id: string;
@@ -327,58 +403,67 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     completed: boolean;
   }
 
-  const [reminders, setReminders] = useState<ReminderItem[]>([
-    {
-      id: 'rem-1',
-      type: 'reuniao',
-      tag: 'Metas Corporativas',
-      title: 'Alinhamento Semanal de Metas Q3',
-      description: 'Revisão dos indicadores de NPS e tempo de resposta da equipe.',
-      date: '2026-08-28',
-      time: '14:00',
-      link: 'https://meet.google.com/abc-defg-hij',
-      assigneeName: 'Camila Duarte, Lucas Silva, Beatriz Santos',
-      assignedEmployeeIds: ['mgr-1', 'emp-1', 'emp-2'],
-      completed: false,
-    },
-    {
-      id: 'rem-2',
-      type: 'atividade',
-      tag: 'Gestão de Escalas',
-      title: 'Publicar Escala de Setembro',
-      description: 'Validar solicitações de folga e atestados antes do fechamento do mês.',
-      date: '2026-08-29',
-      time: '16:30',
-      assigneeName: 'Camila Duarte, Rafael Mendes',
-      assignedEmployeeIds: ['mgr-1', 'emp-3'],
-      completed: false,
-    },
-    {
-      id: 'rem-3',
-      type: 'plantao',
-      tag: 'Operacional',
-      title: 'Supervisão de Plantão de Fim de Semana',
-      description: 'Garantir escala de contingência e cobertura de suporte aos chamados críticos.',
-      date: '2026-08-30',
-      time: '08:00',
-      assigneeName: 'Rafael Mendes, Juliana Lima',
-      assignedEmployeeIds: ['emp-3', 'emp-6'],
-      completed: true,
-    },
-    {
-      id: 'rem-4',
-      type: 'treinamento',
-      tag: 'Onboarding & Treinamento',
-      title: 'Treinamento de Novos Analistas CLT',
-      description: 'Apresentação das políticas de pontualidade, intervalos e rotina de registro.',
-      date: '2026-09-01',
-      time: '10:00',
-      link: 'https://meet.google.com/tech-treinamento',
-      assigneeName: 'Lucas Silva, Mariana Costa',
-      assignedEmployeeIds: ['emp-1', 'emp-4'],
-      completed: false,
+  const [reminders, setReminders] = useState<ReminderItem[]>([]);
+
+  useEffect(() => {
+    if (isDemoCompany) {
+      setReminders([
+        {
+          id: 'rem-1',
+          type: 'reuniao',
+          tag: 'Metas Corporativas',
+          title: 'Alinhamento Semanal de Metas Q3',
+          description: 'Revisão dos indicadores de NPS e tempo de resposta da equipe.',
+          date: '2026-08-28',
+          time: '14:00',
+          link: 'https://meet.google.com/abc-defg-hij',
+          assigneeName: 'Camila Duarte, Lucas Silva, Beatriz Santos',
+          assignedEmployeeIds: ['mgr-1', 'emp-1', 'emp-2'],
+          completed: false,
+        },
+        {
+          id: 'rem-2',
+          type: 'atividade',
+          tag: 'Gestão de Escalas',
+          title: 'Publicar Escala de Setembro',
+          description: 'Validar solicitações de folga e atestados antes do fechamento do mês.',
+          date: '2026-08-29',
+          time: '16:30',
+          assigneeName: 'Camila Duarte, Rafael Mendes',
+          assignedEmployeeIds: ['mgr-1', 'emp-3'],
+          completed: false,
+        },
+        {
+          id: 'rem-3',
+          type: 'plantao',
+          tag: 'Operacional',
+          title: 'Supervisão de Plantão de Fim de Semana',
+          description: 'Garantir escala de contingência e cobertura de suporte aos chamados críticos.',
+          date: '2026-08-30',
+          time: '08:00',
+          assigneeName: 'Rafael Mendes, Juliana Lima',
+          assignedEmployeeIds: ['emp-3', 'emp-6'],
+          completed: true,
+        },
+        {
+          id: 'rem-4',
+          type: 'treinamento',
+          tag: 'Onboarding & Treinamento',
+          title: 'Treinamento de Novos Analistas CLT',
+          description: 'Apresentação das políticas de pontualidade, intervalos e rotina de registro.',
+          date: '2026-09-01',
+          time: '10:00',
+          link: 'https://meet.google.com/tech-treinamento',
+          assigneeName: 'Lucas Silva, Mariana Costa',
+          assignedEmployeeIds: ['emp-1', 'emp-4'],
+          completed: false,
+        }
+      ]);
+    } else {
+      const validEmpIds = new Set(employees.map(e => e.id));
+      setReminders(prev => prev.filter(rem => rem.assignedEmployeeIds?.some(id => validEmpIds.has(id))));
     }
-  ]);
+  }, [isDemoCompany, employees]);
 
   const [reminderSearch, setReminderSearch] = useState('');
   const [reminderFilterType, setReminderFilterType] = useState<string>('all');
@@ -814,7 +899,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     setGroupToDelete(null);
   };
 
-  const isOrbitStyledTab = activeTab === 'tarefas' || activeTab === 'aprovacoes' || activeTab === 'relatorios' || activeTab === 'chat';
+  const isOrbitStyledTab = activeTab === 'tarefas' || activeTab === 'aprovacoes' || activeTab === 'relatorios' || activeTab === 'chat' || activeTab === 'colaboradores';
 
   return (
     <div className={`w-full font-sans space-y-4 select-none manager-scope ${theme} ${
@@ -993,6 +1078,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   <option key={d} value={d}>{d}</option>
                 ))}
               </select>
+
+              <button 
+                onClick={() => setIsDeleteModalOpen(true)}
+                className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Excluir escalas em lote por período ou filtro"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                <span className="hidden sm:inline">Excluir Escalas</span>
+              </button>
 
               <button 
                 onClick={() => onNavigateToOrbit ? onNavigateToOrbit() : null}
@@ -2195,16 +2289,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {[
-                  { date: '2026-08-31', name: 'Lucas Silva', role: 'Analista de Atendimento', dept: 'Atendimento', time: '08:00 – 17:00', hours: '8h', status: 'Presente', type: 'Regular', obs: 'Check-in validado via GPS na sede.' },
-                  { date: '2026-08-31', name: 'Beatriz Santos', role: 'Especialista de Suporte', dept: 'Suporte Técnico', time: '09:00 – 18:00', hours: '8h', status: 'Presente', type: 'Reunião', obs: 'Apresentação de indicadores de SLA Q3.' },
-                  { date: '2026-08-31', name: 'Rafael Mendes', role: 'Operador de Escala', dept: 'Operações', time: '07:00 – 16:00', hours: '8h', status: 'Presente', type: 'Regular', obs: '—' },
-                  { date: '2026-08-31', name: 'Mariana Costa', role: 'Consultora de Vendas', dept: 'Comercial', time: '08:30 – 17:30', hours: '8h', status: 'Justificado', type: 'Regular', obs: 'Consulta médica agendada no período matutino - Atestado enviado.' },
-                  { date: '2026-09-01', name: 'Lucas Silva', role: 'Analista de Atendimento', dept: 'Atendimento', time: '08:00 – 17:00', hours: '8h', status: 'Presente', type: 'Regular', obs: '—' },
-                  { date: '2026-09-01', name: 'Beatriz Santos', role: 'Especialista de Suporte', dept: 'Suporte Técnico', time: '09:00 – 18:00', hours: '8h', status: 'Ausente', type: 'Regular', obs: 'No-show registrado (falta não justificada)' },
-                  { date: '2026-09-01', name: 'Rafael Mendes', role: 'Operador de Escala', dept: 'Operações', time: '07:00 – 16:00', hours: '8h', status: 'Presente', type: 'Regular', obs: '—' },
-                  { date: '2026-09-01', name: 'Thiago Oliveira', role: 'Desenvolvedor Frontend', dept: 'Tecnologia', time: '10:00 – 19:00', hours: '8h', status: 'Presente', type: 'Plantão', obs: 'Suporte aos deploys de homologação.' },
-                ].filter(row => {
+                {reportRows.filter(row => {
                   const matchSearch = !relatorioSearch || row.name.toLowerCase().includes(relatorioSearch.toLowerCase()) || row.dept.toLowerCase().includes(relatorioSearch.toLowerCase());
                   const matchDept = relatorioDept === 'all' || row.dept === relatorioDept;
                   const matchStatus = relatorioStatus === 'all' || 
@@ -3776,6 +3861,33 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           </div>
         );
       })()}
+
+      {/* 🛑 TAB 6: GESTÃO DA EQUIPE & COLABORADORES */}
+      {activeTab === 'colaboradores' && (
+        <EmployeesManagementView
+          employees={employees}
+          activeEmployee={activeEmployee}
+          onAddEmployee={onAddEmployee}
+          onUpdateEmployee={onUpdateEmployee || (() => {})}
+          onDeactivateEmployee={onDeactivateEmployee || (() => {})}
+        />
+      )}
+
+      {/* Modal de Exclusão de Escalas em Lote / Filtro */}
+      <DeleteShiftsModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        shifts={shifts}
+        employees={employees}
+        onDeleteShifts={(shiftIds) => {
+          if (onDeleteShiftsBulk) {
+            onDeleteShiftsBulk(shiftIds);
+          } else if (onDeleteShift) {
+            shiftIds.forEach(id => onDeleteShift(id));
+          }
+        }}
+        theme={theme}
+      />
 
     </div>
   );

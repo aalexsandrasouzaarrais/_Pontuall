@@ -9,11 +9,12 @@ import {
   Bell,
   Sun,
   Moon,
+  Users,
 } from 'lucide-react';
 import logoPainel from '@/assets/logo-painel.png';
 import logoColaboradorLight from '@/assets/logo-colaborador-light.png';
 
-export type ManagerTabId = 'escala' | 'orbit' | 'aprovacoes' | 'relatorios' | 'tarefas' | 'chat';
+export type ManagerTabId = 'escala' | 'orbit' | 'aprovacoes' | 'relatorios' | 'tarefas' | 'chat' | 'colaboradores';
 
 interface SidebarItem {
   id: ManagerTabId;
@@ -62,6 +63,11 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
       id: 'orbit',
       label: 'Grade de Escalas',
       icon: <CalendarRange className="w-5 h-5" />,
+    },
+    {
+      id: 'colaboradores',
+      label: 'Equipe & Colaboradores',
+      icon: <Users className="w-5 h-5" />,
     },
     {
       id: 'aprovacoes',
