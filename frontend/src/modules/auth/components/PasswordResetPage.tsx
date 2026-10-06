@@ -67,20 +67,44 @@ export const PasswordResetPage: React.FC<PasswordResetPageProps> = ({
       const ok = await updateColaboradorPasswordSupabase(cleanMatricula, novaSenha);
 
       if (ok) {
-        // 2. Busca os dados do colaborador atualizado
+        // 2. Busca os dados do colaborador atualizado (no Supabase ou local Storage)
         let colaboradorObj = null;
         try {
-          const { data } = await supabase
-            .from('TAB_Colaborador')
-            .select('*')
-            .eq('Cod_Matricula', cleanMatricula)
-            .maybeSingle();
+          const cleanNoSpace = cleanMatricula.replace(/\s+/g, '').toLowerCase();
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanMatricula);
 
-          if (data) {
-            colaboradorObj = data;
+          let fetchQuery = supabase.from('TAB_Colaborador').select('*');
+
+          if (isUuid) {
+            fetchQuery = fetchQuery.or(`Idf_Colaborador.eq.${cleanMatricula},Cod_Matricula.ilike.%${cleanMatricula}%,Eml_Corporativo.ilike.%${cleanMatricula}%`);
+          } else {
+            fetchQuery = fetchQuery.or(`Cod_Matricula.ilike.%${cleanMatricula}%,Cod_Matricula.ilike.%${cleanNoSpace}%,Eml_Corporativo.ilike.%${cleanMatricula}%`);
+          }
+
+          const { data } = await fetchQuery.limit(1);
+
+          if (data && data.length > 0) {
+            colaboradorObj = data[0];
+          }
+
+          // Fallback: se não encontrou no Supabase, busca nos usuários salvos no safeStorage
+          if (!colaboradorObj) {
+            const localUsersStr = safeStorage.getItem('pontual_registered_users');
+            if (localUsersStr) {
+              const localUsers = JSON.parse(localUsersStr);
+              const match = localUsers.find((u: any) => {
+                const mat = (u.Cod_Matricula || u.matricula || '').toLowerCase();
+                const eml = (u.Eml_Corporativo || u.email || '').toLowerCase();
+                return mat.includes(cleanNoSpace) || eml.includes(cleanNoSpace);
+              });
+              if (match) colaboradorObj = match;
+            }
+          }
+
+          if (colaboradorObj) {
             try {
-              safeStorage.setItem('pontual_role', 'employee');
-              safeStorage.setItem('pontual_active_user', JSON.stringify(data));
+              safeStorage.setItem('pontual_role', colaboradorObj.Tpo_Perfil === 'gestor' || colaboradorObj.perfil === 'gestor' ? 'manager' : 'employee');
+              safeStorage.setItem('pontual_active_user', JSON.stringify(colaboradorObj));
             } catch {}
           }
         } catch {}
