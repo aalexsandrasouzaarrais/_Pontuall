@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, X, Check, Sparkles, RefreshCw, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Employee } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
+import { safeStorage } from '@/shared/utils/safeStorage';
 import { sendWelcomeEmail as sendWelcomeEmailService } from '@/modules/auth/services/emailService';
 
 interface AddUserModalProps {
@@ -192,7 +193,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     let activeGestorId: string | undefined = undefined;
 
     try {
-      const activeUser = JSON.parse(localStorage.getItem('pontual_active_user') || '{}');
+      const activeUser = JSON.parse(safeStorage.getItem('pontual_active_user') || '{}');
       activeCompanyId = activeUser.Idf_Empresa || activeUser.companyId;
       activeGestorId = activeUser.Idf_Colaborador || activeUser.id;
     } catch {}

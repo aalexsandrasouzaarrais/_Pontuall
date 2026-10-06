@@ -3,6 +3,7 @@ import { KeyRound, Lock, Eye, EyeOff, CheckCircle2, AlertCircle, ArrowRight, Shi
 import { updateColaboradorPasswordSupabase } from '../services/colaboradorService';
 import { supabase } from '@/shared/services/supabase';
 import { useTheme } from '@/shared/context/ThemeContext';
+import { safeStorage } from '@/shared/utils/safeStorage';
 import logoWideDark from '@/assets/logo-pontual-wide-dark.png';
 import logoWideLight from '@/assets/logo-pontual-wide.png';
 
@@ -78,8 +79,8 @@ export const PasswordResetPage: React.FC<PasswordResetPageProps> = ({
           if (data) {
             colaboradorObj = data;
             try {
-              localStorage.setItem('pontual_role', 'employee');
-              localStorage.setItem('pontual_active_user', JSON.stringify(data));
+              safeStorage.setItem('pontual_role', 'employee');
+              safeStorage.setItem('pontual_active_user', JSON.stringify(data));
             } catch {}
           }
         } catch {}
