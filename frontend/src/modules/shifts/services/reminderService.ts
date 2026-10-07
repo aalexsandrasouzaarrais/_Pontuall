@@ -1,3 +1,4 @@
+import { getTodayDateString } from '@/shared/utils/dateUtils';
 import { supabase } from '@/shared/services/supabase';
 
 // Estrutura no banco:
@@ -161,7 +162,7 @@ export async function createReminderSupabase(
       Des_Lembrete: reminder.description || null,
       Tpo_Lembrete: (reminder.type || 'atividade').slice(0, 30),
       Des_Tag: (reminder.tag || 'Geral').slice(0, 50),
-      Dta_Lembrete: reminder.date || new Date().toISOString().split('T')[0],
+      Dta_Lembrete: reminder.date || getTodayDateString(),
       Dta_Hora_Lembrete: (reminder.time || '08:00').slice(0, 10),
       Des_Link_Reuniao: reminder.link || null,
       Flg_Concluido: reminder.completed ?? false,
@@ -276,3 +277,4 @@ export async function deleteReminderSupabase(id: string): Promise<boolean> {
     return false;
   }
 }
+

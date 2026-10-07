@@ -1,3 +1,4 @@
+import { getTodayDateString } from '@/shared/utils/dateUtils';
 import { supabase } from '@/shared/services/supabase';
 import { TimeOffRequest, AbsenceJustification, Employee } from '@/types';
 
@@ -139,7 +140,7 @@ export async function createJustificativaSupabase(
     const payload = {
       Idf_Colaborador: colabId,
       Idf_Turno: isValidUuid(just.shiftId) ? just.shiftId : null,
-      Dta_Ausencia: just.date || new Date().toISOString().split('T')[0],
+      Dta_Ausencia: just.date || getTodayDateString(),
       Des_Motivo: just.reason || 'Justificativa de Ausência / Atestado Médico',
       Cod_Cid_Atestado: (just as any).cidCode || null,
       Nme_Documento: just.documentName || 'Atestado_Medico.pdf',
@@ -275,7 +276,7 @@ export async function createSolicitacaoSupabase(
       Idf_Colaborador_Destino: isValidUuid(req.targetEmployeeId) ? req.targetEmployeeId : null,
       Idf_Turno: isValidUuid(req.shiftId) ? req.shiftId : null,
       Tpo_Solicitacao: req.type === 'swap' ? 'troca' : 'folga',
-      Dta_Solicitada: req.date || new Date().toISOString().split('T')[0],
+      Dta_Solicitada: req.date || getTodayDateString(),
       Des_Motivo: req.reason || 'Solicitação de Folga / Troca de Turno',
       Tpo_Status_Solicitacao: 'pending',
       Dta_Cadastro: new Date().toISOString(),

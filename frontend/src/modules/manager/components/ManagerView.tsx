@@ -1,3 +1,4 @@
+import { getTodayDateString } from '@/shared/utils/dateUtils';
 import React, { useState } from 'react';
 import { ManagerSidebar, ManagerTabId } from './ManagerSidebar';
 import { ManagerMatrixGrid } from '@/modules/shifts/components/ManagerMatrixGrid';
@@ -42,7 +43,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
 
   const createShift = (date?: string, employeeId?: string) => onAddShift({
-    date: date || new Date().toISOString().slice(0, 10),
+    date: date || getTodayDateString(),
     employeeId: employeeId || employees[0]?.id,
     title: 'Novo turno', startTime: '09:00', endTime: '18:00', breakMinutes: 60,
   });
