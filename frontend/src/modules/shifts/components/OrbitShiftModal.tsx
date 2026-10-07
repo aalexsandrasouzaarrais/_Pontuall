@@ -1,3 +1,4 @@
+import { getTodayDateString } from '@/shared/utils/dateUtils';
 import React, { useState, useEffect } from 'react';
 import { 
   Calendar, 
@@ -160,7 +161,7 @@ interface OrbitShiftModalProps {
 
 export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
   isOpen,
-  initialDate = new Date().toISOString().split('T')[0],
+  initialDate = getTodayDateString(),
   initialEmployeeId,
   editingShift,
   employees,

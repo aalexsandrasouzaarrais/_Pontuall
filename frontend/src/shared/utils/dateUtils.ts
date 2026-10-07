@@ -1,9 +1,35 @@
-export function getTodayDateString(): string {
-  const d = new Date();
+/**
+ * Formata uma data como YYYY-MM-DD usando o fuso horário LOCAL.
+ * Nunca use `toISOString().split('T')[0]` para isso: ele converte para UTC
+ * e, no Brasil (UTC-3), após as 21h retorna o dia seguinte.
+ */
+export function toLocalDateString(d: Date): string {
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+export function getTodayDateString(): string {
+  return toLocalDateString(new Date());
+}
+
+/** Soma (ou subtrai) dias de uma data sem alterar a original. */
+export function addDaysLocal(d: Date, n: number): Date {
+  const r = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  r.setDate(r.getDate() + n);
+  return r;
+}
+
+/** Retorna a segunda-feira (00:00 local) da semana da data informada. */
+export function startOfWeekMonday(d: Date): Date {
+  const day = d.getDay(); // 0 = Domingo
+  return addDaysLocal(d, day === 0 ? -6 : 1 - day);
+}
+
+/** Retorna o domingo (00:00 local) da semana da data informada. */
+export function startOfWeekSunday(d: Date): Date {
+  return addDaysLocal(d, -d.getDay());
 }
 
 export function formatTime(timeStr: string): string {

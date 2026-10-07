@@ -1,3 +1,4 @@
+import { getTodayDateString } from '@/shared/utils/dateUtils';
 import React, { useState, useEffect } from 'react';
 import { User, X, Check, Sparkles, RefreshCw, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Employee } from '@/types';
@@ -29,7 +30,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
   const [phone, setPhone] = useState('');
   const [employeeId, setEmployeeId] = useState('');
   const [sendWelcomeEmail, setSendWelcomeEmail] = useState(true);
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(getTodayDateString());
 
   // Função para gerar uma matrícula aleatória única
   const generateRandomId = () => {
@@ -88,7 +89,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       setDepartment('Atendimento');
       setUserRole('Colaborador');
       setEmploymentType('CLT');
-      setStartDate(new Date().toISOString().split('T')[0]);
+      setStartDate(getTodayDateString());
       setSendWelcomeEmail(true);
       setFirstNameError(false);
       setLastNameError(false);

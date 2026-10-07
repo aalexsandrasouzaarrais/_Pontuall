@@ -1,3 +1,4 @@
+import { getTodayDateString } from '@/shared/utils/dateUtils';
 import React, { useState } from 'react';
 import { 
   EmployeeSidebar 
@@ -477,7 +478,7 @@ function AppContent() {
       employeeName: activeEmployee.name,
       employeeAvatar: activeEmployee.avatar,
       type: req.type || 'swap',
-      date: req.date || new Date().toISOString().split('T')[0],
+      date: req.date || getTodayDateString(),
       shiftId: req.shiftId,
       targetEmployeeId: req.targetEmployeeId,
       targetEmployeeName: req.targetEmployeeName,
@@ -509,7 +510,7 @@ function AppContent() {
       employeeName: activeEmployee.name,
       employeeAvatar: activeEmployee.avatar,
       shiftId: just.shiftId || '',
-      date: just.date || new Date().toISOString().split('T')[0],
+      date: just.date || getTodayDateString(),
       reason: just.reason || '',
       documentName: just.documentName,
       documentType: just.documentType,
@@ -541,7 +542,7 @@ function AppContent() {
     const created: Shift = {
       id: `shift-${Date.now()}`,
       employeeId: newShiftData.employeeId || employees[0]?.id || 'emp-1',
-      date: newShiftData.date || new Date().toISOString().split('T')[0],
+      date: newShiftData.date || getTodayDateString(),
       startTime: newShiftData.startTime || '08:00',
       endTime: newShiftData.endTime || '17:00',
       breakMinutes: newShiftData.breakMinutes !== undefined ? newShiftData.breakMinutes : 60,

@@ -51,6 +51,7 @@ import {
 } from '@/shared/utils/chatUtils';
 import { EmployeesManagementView } from '@/modules/manager/components/EmployeesManagementView';
 import { DeleteShiftsModal } from './DeleteShiftsModal';
+import { addDaysLocal, startOfWeekMonday, toLocalDateString } from '@/shared/utils/dateUtils';
 import {
   ReminderItem,
   getRemindersSupabase,
@@ -416,7 +417,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     description: '',
     type: 'atividade',
     tag: 'Geral',
-    date: '2026-09-02',
+    date: toLocalDateString(new Date()),
     time: '09:00',
     link: '',
     assignedEmployeeIds: [],
@@ -429,7 +430,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       description: '',
       type: 'atividade',
       tag: 'Geral',
-      date: '2026-09-02',
+      date: toLocalDateString(new Date()),
       time: '09:00',
       link: '',
       assignedEmployeeIds: [],
@@ -623,31 +624,35 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   useEffect(() => {
     chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
-  // Período de datas de exemplo para a matriz
-  const baseDate = new Date(2026, 7, 31); // 31 de Agosto de 2026
-  baseDate.setDate(baseDate.getDate() + currentWeekOffset * 7);
+  // Semana exibida na matriz: segunda-feira da semana atual + deslocamento de semanas
+  const baseDate = useMemo(
+    () => addDaysLocal(startOfWeekMonday(new Date()), currentWeekOffset * 7),
+    [currentWeekOffset]
+  );
 
   const weekDays = useMemo(() => {
     const days = [];
     const dayNames = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM'];
     
     for (let i = 0; i < 7; i++) {
-      const d = new Date(baseDate);
-      d.setDate(d.getDate() + i);
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const dayNum = String(d.getDate()).padStart(2, '0');
-      const dateStr = `${year}-${month}-${dayNum}`;
-
+      const d = addDaysLocal(baseDate, i);
       days.push({
         date: d,
-        dateStr,
+        dateStr: toLocalDateString(d),
         dayName: dayNames[i],
         dayNumber: d.getDate(),
       });
     }
     return days;
   }, [baseDate]);
+
+  // Rótulo do período da semana (ex: "05 de out. – 11 de out. de 2026")
+  const weekRangeLabel = useMemo(() => {
+    const start = weekDays[0].date;
+    const end = weekDays[6].date;
+    const fmt = (d: Date) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+    return `${fmt(start)} – ${fmt(end)} de ${end.getFullYear()}`;
+  }, [weekDays]);
 
   // Departamentos únicos
   const departments = useMemo(() => {
@@ -973,7 +978,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
-                <span className="px-3 text-slate-900 font-mono">Esta Semana</span>
+                <span className="px-3 text-slate-900 font-mono">
+                  {currentWeekOffset === 0 ? 'Esta Semana' : currentWeekOffset > 0 ? `+${currentWeekOffset} sem.` : `${currentWeekOffset} sem.`}
+                </span>
                 <button
                   onClick={() => setCurrentWeekOffset(prev => prev + 1)}
                   className="p-1 rounded-lg hover:bg-white hover:text-purple-700 transition-colors"
@@ -983,7 +990,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               </div>
 
               <span className="text-xs font-mono font-bold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
-                31 de ago. – 06 de set. de 2026
+                {weekRangeLabel}
               </span>
             </div>
 
@@ -1064,8 +1071,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-3 text-xs bg-white px-4 py-2 rounded-xl border border-slate-200 text-slate-600">
             <div className="flex items-center gap-3 flex-wrap">
               <span className="font-extrabold text-slate-900 uppercase font-mono text-[10px] tracking-wider">LEGENDA:</span>
-              <span className="flex items-center gap-1.5 text-xs font-semibold"><span className="w-2.5 h-2.5 rounded bg-purple-600" /> Publicado</span>
-              <span className="flex items-center gap-1.5 text-xs font-semibold"><span className="w-2.5 h-2.5 rounded bg-amber-400 border border-amber-500" /> Rascunho</span>
               <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700"><CheckCircle2 className="w-3.5 h-3.5" /> Presença</span>
               <span className="flex items-center gap-1.5 text-xs font-semibold text-rose-600"><XCircle className="w-3.5 h-3.5" /> Falta</span>
               <span className="flex items-center gap-1.5 text-xs font-semibold text-purple-700"><AlertCircle className="w-3.5 h-3.5" /> Justificado</span>
@@ -1173,12 +1178,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                       <span className="text-[9px] font-mono font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-md">
                                         {shift.hoursWorked || '8'}h
                                       </span>
-
-                                      {isDraft && (
-                                        <span className="text-[9px] font-mono font-extrabold bg-amber-100 text-amber-700 border border-amber-300 px-1.5 py-0.5 rounded-md uppercase">
-                                          Rascunho
-                                        </span>
-                                      )}
 
                                       {isPresent && (
                                         <span className="text-[9px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.5 rounded-md flex items-center gap-0.5">

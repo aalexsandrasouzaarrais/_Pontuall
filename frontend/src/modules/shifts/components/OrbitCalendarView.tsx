@@ -60,6 +60,27 @@ function startOfWeek(d: Date): Date {
   return addDays(d, -day);
 }
 
+/**
+ * Gera as células de um mês (começando no DOMINGO), incluindo os dias
+ * finais do mês anterior e iniciais do próximo para completar as semanas.
+ * Retorna 35 células (5 semanas) ou 42 (6 semanas) quando o mês precisar.
+ */
+function buildMonthCells(reference: Date): { date: Date; isCurrent: boolean; dateStr: string }[] {
+  const y = reference.getFullYear();
+  const m = reference.getMonth();
+  const firstDay = new Date(y, m, 1).getDay();
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  const totalCells = firstDay + daysInMonth > 35 ? 42 : 35;
+
+  const cells: { date: Date; isCurrent: boolean; dateStr: string }[] = [];
+  for (let i = 0; i < totalCells; i++) {
+    // Dia relativo ao 1º do mês (pode ser negativo ou maior que o total de dias)
+    const dt = new Date(y, m, 1 - firstDay + i);
+    cells.push({ date: dt, isCurrent: dt.getMonth() === m, dateStr: formatDate(dt) });
+  }
+  return cells;
+}
+
 export function getMutedShiftColor(ev: Shift, isDark: boolean) {
   const hex = (ev.color?.bg || '').toLowerCase();
   const label = (ev.color?.label || '').toLowerCase();
@@ -213,7 +234,10 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
   // Navigation handlers
   const navPrev = () => {
     if (view === 'Mês') {
-      setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+      const prevMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
+      setCurrentDate(prevMonth);
+      setMiniMonthDate(prevMonth);
+      setWeekStart(startOfWeek(prevMonth));
     } else if (view === 'Semana') {
       setWeekStart(addDays(weekStart, -7));
     } else {
@@ -223,7 +247,10 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
 
   const navNext = () => {
     if (view === 'Mês') {
-      setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+      const nextMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+      setCurrentDate(nextMonth);
+      setMiniMonthDate(nextMonth);
+      setWeekStart(startOfWeek(nextMonth));
     } else if (view === 'Semana') {
       setWeekStart(addDays(weekStart, 7));
     } else {
@@ -374,30 +401,11 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
     return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   }, [weekStart]);
 
-  // Mini Calendar generation
-  const miniCalendarCells = useMemo(() => {
-    const y = miniMonthDate.getFullYear();
-    const m = miniMonthDate.getMonth();
-    const firstDay = new Date(y, m, 1).getDay();
-    const daysInMonth = new Date(y, m + 1, 0).getDate();
-    const daysInPrev = new Date(y, m, 0).getDate();
+  // Mini Calendar generation (painel lateral) - baseado no mês do mini calendário
+  const miniCalendarCells = useMemo(() => buildMonthCells(miniMonthDate), [miniMonthDate]);
 
-    const cells: { date: Date; isCurrent: boolean; dateStr: string }[] = [];
-    for (let i = firstDay - 1; i >= 0; i--) {
-      const d = new Date(y, m - 1, daysInPrev - i);
-      cells.push({ date: d, isCurrent: false, dateStr: formatDate(d) });
-    }
-    for (let d = 1; d <= daysInMonth; d++) {
-      const dt = new Date(y, m, d);
-      cells.push({ date: dt, isCurrent: true, dateStr: formatDate(dt) });
-    }
-    const remaining = 35 - cells.length;
-    for (let d = 1; d <= (remaining > 0 ? remaining : 7); d++) {
-      const dt = new Date(y, m + 1, d);
-      cells.push({ date: dt, isCurrent: false, dateStr: formatDate(dt) });
-    }
-    return cells.slice(0, 35);
-  }, [miniMonthDate]);
+  // Visão "Mês" principal - baseada no mês exibido no título (currentDate)
+  const monthViewCells = useMemo(() => buildMonthCells(currentDate), [currentDate]);
 
   // Compute dynamic hours range tailored to the shifts and collaborator's schedule
   const hours = useMemo(() => {
@@ -1260,25 +1268,11 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                                       />
                                     )}
 
-                                    {/* Top row: Title and Badge (Publicado / Rascunho) */}
+                                    {/* Top row: Title */}
                                     <div className="flex items-center justify-between gap-1 mb-1 relative z-10">
                                       <span className={`font-bold text-xs truncate ${isDark ? 'text-white' : 'text-slate-800'}`}>
                                         {ev.title || 'Turno'}
                                       </span>
-
-                                      {isDraft ? (
-                                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-extrabold border border-dashed border-amber-500/50 font-mono tracking-wider shrink-0">
-                                          📝 Rascunho
-                                        </span>
-                                      ) : (
-                                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-medium border shrink-0 ${
-                                          isDark 
-                                            ? 'bg-white/10 text-slate-200 border-white/15' 
-                                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                        }`}>
-                                          ✓ Publicado
-                                        </span>
-                                      )}
                                     </div>
 
                                     {/* Time Row */}
@@ -1413,7 +1407,7 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
               </div>
 
               <div className="grid grid-cols-7 gap-2">
-                {miniCalendarCells.map((cell, idx) => {
+                {monthViewCells.map((cell, idx) => {
                   const dateStr = cell.dateStr;
                   const dayEvents = eventsByDate[dateStr] || [];
                   const isTodayCell = dateStr === todayStr;
@@ -1642,17 +1636,6 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                                 <div>
                                   <div className="flex items-center gap-2">
                                     <h4 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{ev.title}</h4>
-                                    {isDraft ? (
-                                      <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-extrabold border border-dashed border-amber-500/50 font-mono">
-                                        📝 RASCUNHO
-                                      </span>
-                                    ) : (
-                                      <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-medium border ${
-                                        isDark ? 'bg-white/10 text-slate-200 border-white/15' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                      }`}>
-                                        ✓ PUBLICADO
-                                      </span>
-                                    )}
                                   </div>
                                   <p className={`text-xs mt-0.5 font-mono ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{ev.startTime} às {ev.endTime}</p>
                                 </div>
@@ -1780,15 +1763,6 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                             <span className={`font-semibold text-sm truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
                               {emp?.name ?? 'Colaborador'}
                             </span>
-                            {isDraft ? (
-                              <span className="flex-shrink-0 px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/20 text-amber-500 border border-amber-500/30">
-                                RASCUNHO
-                              </span>
-                            ) : (
-                              <span className="flex-shrink-0 px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-600 border border-emerald-500/30">
-                                PUBLICADO
-                              </span>
-                            )}
                           </div>
                           <p className={`text-xs truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{emp?.role ?? ''}</p>
                           <div className="flex items-center gap-1.5 mt-1.5">

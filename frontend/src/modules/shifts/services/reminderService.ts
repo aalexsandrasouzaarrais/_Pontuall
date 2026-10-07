@@ -1,3 +1,4 @@
+import { getTodayDateString } from '@/shared/utils/dateUtils';
 import { supabase } from '@/shared/services/supabase';
 
 export interface ReminderItem {
@@ -73,7 +74,7 @@ export async function createReminderSupabase(reminder: Partial<ReminderItem>): P
       Tag_Lembrete: reminder.tag || 'Geral',
       Titulo_Lembrete: reminder.title || '',
       Des_Lembrete: reminder.description || '',
-      Dta_Lembrete: reminder.date || new Date().toISOString().split('T')[0],
+      Dta_Lembrete: reminder.date || getTodayDateString(),
       Dta_Hora: reminder.time || '08:00',
       Des_Link: reminder.link || null,
       Des_Nome_Alocados: reminder.assigneeName || null,
