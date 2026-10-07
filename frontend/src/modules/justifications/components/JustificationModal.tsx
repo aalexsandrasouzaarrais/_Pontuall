@@ -20,6 +20,7 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
   isLightTheme = false,
 }) => {
   const [selectedShiftId, setSelectedShiftId] = useState(shifts[0]?.id || '');
+  const [absenceDate, setAbsenceDate] = useState(new Date().toISOString().split('T')[0]);
   const [reason, setReason] = useState('');
   const [documentName, setDocumentName] = useState('');
   const [isUploaded, setIsUploaded] = useState(false);
@@ -34,6 +35,14 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
     }
   };
 
+  const handleShiftChange = (shiftId: string) => {
+    setSelectedShiftId(shiftId);
+    const chosen = shifts.find(s => s.id === shiftId);
+    if (chosen?.date) {
+      setAbsenceDate(chosen.date);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!reason.trim()) return;
@@ -44,8 +53,8 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
       employeeId: currentEmployee.id,
       employeeName: currentEmployee.name,
       employeeAvatar: currentEmployee.avatar,
-      shiftId: selectedShiftId,
-      date: chosenShift?.date || new Date().toISOString().split('T')[0],
+      shiftId: selectedShiftId || undefined,
+      date: absenceDate || chosenShift?.date || new Date().toISOString().split('T')[0],
       reason,
       documentName: documentName || 'Atestado_Medico_Anexo.pdf',
       documentType: 'application/pdf',
@@ -108,25 +117,45 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className={`p-5 space-y-4 ${isLightTheme ? 'text-slate-800' : 'text-white'}`}>
-          {/* Shift Selection */}
+          {/* Absence Date Field */}
           <div>
             <label className={`block text-[10px] font-semibold uppercase tracking-wider mb-2 ${
               isLightTheme ? 'text-slate-600' : 'text-white/60'
             }`}>
-              Turno / Data da Ausência
+              Data da Ausência / Falta
+            </label>
+            <input
+              type="date"
+              value={absenceDate}
+              onChange={(e) => setAbsenceDate(e.target.value)}
+              className={`w-full rounded-xl px-3 py-2.5 text-sm transition-colors focus:outline-none border ${
+                isLightTheme
+                  ? 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:border-[#f89642] focus:ring-1 focus:ring-[#f89642]'
+                  : 'bg-white/5 border-white/10 text-white focus:border-[#f89642] focus:ring-1 focus:ring-[#f89642]'
+              }`}
+              style={{ colorScheme: isLightTheme ? 'light' : 'dark' }}
+              required
+            />
+          </div>
+
+          {/* Shift Selection (Optional) */}
+          <div>
+            <label className={`block text-[10px] font-semibold uppercase tracking-wider mb-2 ${
+              isLightTheme ? 'text-slate-600' : 'text-white/60'
+            }`}>
+              Vincular a um Turno da Escala (Opcional)
             </label>
             <select
               value={selectedShiftId}
-              onChange={(e) => setSelectedShiftId(e.target.value)}
+              onChange={(e) => handleShiftChange(e.target.value)}
               className={`w-full rounded-xl px-3 py-2.5 text-sm transition-colors appearance-none focus:outline-none border ${
                 isLightTheme
                   ? 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:border-[#f89642] focus:ring-1 focus:ring-[#f89642]'
                   : 'bg-white/5 border-white/10 text-white focus:border-[#f89642] focus:ring-1 focus:ring-[#f89642]'
               }`}
-              required
             >
               <option value="" className={isLightTheme ? 'bg-white text-slate-900' : 'bg-[#1a0010] text-white'}>
-                Selecione o turno ausente...
+                Nenhum turno específico (ou selecionar...)
               </option>
               {shifts.map(s => (
                 <option

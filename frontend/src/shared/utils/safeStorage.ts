@@ -1,7 +1,7 @@
 /**
  * Utilitário de armazenamento resiliente (SafeStorage)
- * Utiliza sessionStorage para garantir que a sessão expire ao fechar o navegador/aba,
- * e previne falhas de 'SecurityError: Access is denied for this document'.
+ * Previne falhas de 'SecurityError: Access is denied for this document'
+ * que ocorrem em navegadores quando cookies/armazenamento local estão restritos ou em sandboxes.
  */
 
 const memoryStorageFallback: Record<string, string> = {};
@@ -9,8 +9,8 @@ const memoryStorageFallback: Record<string, string> = {};
 export const safeStorage = {
   getItem: (key: string): string | null => {
     try {
-      if (typeof window !== 'undefined' && 'sessionStorage' in window) {
-        return window.sessionStorage.getItem(key);
+      if (typeof window !== 'undefined' && 'localStorage' in window) {
+        return window.localStorage.getItem(key);
       }
     } catch {
       // Ignora erro de segurança do navegador e utiliza memória
@@ -20,12 +20,8 @@ export const safeStorage = {
 
   setItem: (key: string, value: string): void => {
     try {
-      if (typeof window !== 'undefined' && 'sessionStorage' in window) {
-        window.sessionStorage.setItem(key, value);
-      }
-      // Limpa do localStorage para remover sessões persistentes antigas
       if (typeof window !== 'undefined' && 'localStorage' in window) {
-        window.localStorage.removeItem(key);
+        window.localStorage.setItem(key, value);
       }
     } catch {
       // Ignora erro de segurança do navegador e armazena em memória
@@ -35,9 +31,6 @@ export const safeStorage = {
 
   removeItem: (key: string): void => {
     try {
-      if (typeof window !== 'undefined' && 'sessionStorage' in window) {
-        window.sessionStorage.removeItem(key);
-      }
       if (typeof window !== 'undefined' && 'localStorage' in window) {
         window.localStorage.removeItem(key);
       }
@@ -49,9 +42,6 @@ export const safeStorage = {
 
   clear: (): void => {
     try {
-      if (typeof window !== 'undefined' && 'sessionStorage' in window) {
-        window.sessionStorage.clear();
-      }
       if (typeof window !== 'undefined' && 'localStorage' in window) {
         window.localStorage.clear();
       }

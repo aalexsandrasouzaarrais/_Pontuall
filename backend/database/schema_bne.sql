@@ -12,16 +12,30 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ----------------------------------------------------------------------------
--- 1. TABELA DE COLABORADORES E USUÁRIOS
+-- 1. TABELA DE EMPRESAS MULTILOCATÁRIAS
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS "TAB_Empresa" (
+    "Idf_Empresa" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    "Nme_Empresa" VARCHAR(150) NOT NULL,
+    "Nme_Razao_Social" VARCHAR(150),
+    "Num_Cnpj" VARCHAR(20) UNIQUE NOT NULL,
+    "Flg_Ativa" BOOLEAN DEFAULT TRUE,
+    "Dta_Cadastro" TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+);
+
+-- ----------------------------------------------------------------------------
+-- 2. TABELA DE COLABORADORES E USUÁRIOS
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS "TAB_Colaborador" (
     "Idf_Colaborador" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    "Idf_Empresa" UUID REFERENCES "TAB_Empresa"("Idf_Empresa") ON DELETE CASCADE,
     "Cod_Matricula" VARCHAR(50) UNIQUE,
     "Nme_Colaborador" VARCHAR(150) NOT NULL,
     "Eml_Corporativo" VARCHAR(150) NOT NULL UNIQUE,
     "Eml_Secundario" VARCHAR(150),
     "Des_Senha_Hash" VARCHAR(255) NOT NULL,
     "Tpo_Perfil" VARCHAR(30) NOT NULL DEFAULT 'colaborador', -- 'gestor' ou 'colaborador'
+    "Flg_Gestor_Master" BOOLEAN DEFAULT FALSE,
     "Tpo_Cargo" VARCHAR(100),
     "Des_Departamento" VARCHAR(100),
     "Des_Avatar_Url" TEXT,
@@ -30,6 +44,18 @@ CREATE TABLE IF NOT EXISTS "TAB_Colaborador" (
     "Flg_Ativo" BOOLEAN DEFAULT TRUE,
     "Dta_Cadastro" TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
     "Dta_Atualizacao" TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+);
+
+-- ----------------------------------------------------------------------------
+-- 3. TABELA DE RELACIONAMENTO GESTOR <-> COLABORADOR (QUEM É GESTOR DE QUEM)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS "TAB_Gestor_Colaborador" (
+    "Idf_Gestor_Colaborador" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    "Idf_Gestor" UUID NOT NULL REFERENCES "TAB_Colaborador"("Idf_Colaborador") ON DELETE CASCADE,
+    "Idf_Colaborador" UUID NOT NULL REFERENCES "TAB_Colaborador"("Idf_Colaborador") ON DELETE CASCADE,
+    "Tpo_Vinculo" VARCHAR(50) DEFAULT 'direto', -- 'direto', 'substituto', 'departamento'
+    "Dta_Cadastro" TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+    CONSTRAINT "UK_Gestor_Colaborador" UNIQUE ("Idf_Gestor", "Idf_Colaborador")
 );
 
 -- ----------------------------------------------------------------------------

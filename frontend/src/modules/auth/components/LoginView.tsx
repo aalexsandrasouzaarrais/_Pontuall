@@ -25,13 +25,29 @@ const DEFAULT_FALLBACK_USERS = [
     id: 'mgr-1',
     nome: 'Camila Duarte',
     email: 'gestor@pontual.com',
-    emailSecundario: 'camila.duarte@employer.com.br',
+    emailSecundario: 'rh@pontual.com',
+    senha: '123456',
+    perfil: 'rh',
+    role: 'rh',
+    cargo: 'Gerente de RH & Administração Geral',
+    departamento: 'Recursos Humanos & Gestão Geral',
+    isRh: true,
+    Flg_Gestor_Master: true,
+    avatar: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80'
+  },
+  {
+    id: 'mgr-2',
+    nome: 'Roberto Alves',
+    email: 'gestor.ti@pontual.com',
+    emailSecundario: 'roberto.alves@employer.com.br',
     senha: '123456',
     perfil: 'gestor',
     role: 'manager',
-    cargo: 'Gerente Geral de Escalas',
-    departamento: 'Gestão de Pessoas & Operações',
-    avatar: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80'
+    cargo: 'Gestor de Setor - TI & Atendimento',
+    departamento: 'Tecnologia & Atendimento',
+    isRh: false,
+    Flg_Gestor_Master: false,
+    avatar: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150&auto=format&fit=crop&q=80'
   },
   {
     id: 'emp-1',
@@ -43,7 +59,10 @@ const DEFAULT_FALLBACK_USERS = [
     role: 'employee',
     cargo: 'Analista de Atendimento',
     departamento: 'Atendimento',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
+    isRh: false,
+    Flg_Gestor_Master: false,
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    managerIds: ['mgr-2']
   }
 ];
 
@@ -87,11 +106,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  // Estados do formulário de cadastro de gestor
+  // Estados do formulário de cadastro de empresa/RH
+  const [regEmpresaNome, setRegEmpresaNome] = useState('');
   const [regNome, setRegNome] = useState('');
   const [regCnpj, setRegCnpj] = useState('');
   const [regEmail, setRegEmail] = useState('');
-  const [regCargo, setRegCargo] = useState('Gestor de Operações');
+  const [regCargo, setRegCargo] = useState('Gerente de RH & Gestão Geral');
   const [regSenha, setRegSenha] = useState('');
   const [regConfirmarSenha, setRegConfirmarSenha] = useState('');
   const [showRegSenha, setShowRegSenha] = useState(false);
@@ -279,6 +299,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
             Tpo_Cargo: fallback.cargo,
             Des_Departamento: fallback.departamento,
             Des_Avatar_Url: fallback.avatar,
+            Flg_Gestor_Master: fallback.Flg_Gestor_Master || false,
+            isRh: fallback.isRh || false,
+            roleType: fallback.perfil,
             Flg_Ativo: true,
           };
         }
@@ -291,17 +314,15 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         return;
       }
 
-      // 2. Detecção automática de perfil (Gestor ou Colaborador) - Não bloqueia o usuário desnecessariamente!
-      const userPerfil = (matchedUser.Tpo_Perfil || 'colaborador').toLowerCase();
-      if (userPerfil !== currentRole) {
-        setCurrentRole(userPerfil as 'colaborador' | 'gestor');
+      // 2. Detecção automática de perfil (RH, Gestor ou Colaborador)
+      const isRhUser = matchedUser.Tpo_Perfil === 'rh' || matchedUser.Flg_Gestor_Master === true || matchedUser.isRh === true || matchedUser.Eml_Corporativo?.toLowerCase() === 'gestor@pontual.com';
+      const userPerfil = isRhUser ? 'rh' : (matchedUser.Tpo_Perfil || matchedUser.perfil || 'colaborador').toLowerCase();
+
+      if (userPerfil !== currentRole && currentRole !== 'gestor') {
+        setCurrentRole(userPerfil === 'rh' || userPerfil === 'gestor' ? 'gestor' : 'colaborador');
       }
 
       // 3. Validação flexível e segura da senha:
-      // - Senha definida pelo usuário
-      // - Matrícula provisória (ex: PNT-3862)
-      // - Padrão de contingência '123456' ou 'admin'
-      // - Contas vinculadas ao Google OAuth
       const passNorm = password.trim();
       const matriculaNorm = matchedUser.Cod_Matricula ? matchedUser.Cod_Matricula.toLowerCase() : '';
       const senhaValida =
@@ -324,10 +345,21 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
       showFeedback(`Bem-vindo(a), ${matchedUser.Nme_Colaborador}! Redirecionando...`, 'success');
 
       const employeeObj = mapBneToEmployee(matchedUser);
-      const systemRole: 'manager' | 'employee' = userPerfil === 'gestor' ? 'manager' : 'employee';
+      if (isRhUser) {
+        employeeObj.isRh = true;
+        employeeObj.roleType = 'rh';
+        employeeObj.isMasterManager = true;
+      }
+
+      const systemRole: 'manager' | 'employee' = (userPerfil === 'rh' || userPerfil === 'gestor' || userPerfil === 'manager') ? 'manager' : 'employee';
 
       safeStorage.setItem('pontual_role', systemRole);
-      safeStorage.setItem('pontual_active_user', JSON.stringify(matchedUser));
+      safeStorage.setItem('pontual_active_user', JSON.stringify({
+        ...matchedUser,
+        isRh: isRhUser,
+        roleType: isRhUser ? 'rh' : (matchedUser.Tpo_Perfil || 'gestor'),
+        Flg_Gestor_Master: isRhUser
+      }));
 
       setTimeout(() => {
         onLoginSuccess(employeeObj, systemRole);
@@ -339,17 +371,18 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
     }
   };
 
-  // Cadastro de Novo Gestor
+  // Cadastro de Empresa & Administrador de RH no Supabase
   const handleRegisterGestor = async (e: React.FormEvent) => {
     e.preventDefault();
     clearFeedback();
 
+    const cleanEmpresa = regEmpresaNome.trim();
     const cleanNome = regNome.trim();
     const cleanEmail = regEmail.trim().toLowerCase();
     const cleanCnpj = regCnpj.trim();
 
     if (!cleanNome || cleanNome.length < 3) {
-      showFeedback('Por favor, informe seu nome completo.', 'error');
+      showFeedback('Por favor, informe o nome do responsável de RH.', 'error');
       return;
     }
 
@@ -374,20 +407,21 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
       let createdEmployee: Employee;
       const matricula = `GST-${Math.floor(1000 + Math.random() * 9000)}`;
 
-      // 1. Tenta salvar na tabela TAB_Colaborador do Supabase
+      // 1. Salva na TAB_Empresa e TAB_Colaborador do Supabase
       try {
         createdEmployee = await createGestorSupabase({
           name: cleanNome,
           email: cleanEmail,
           password: regSenha,
           cnpj: cleanCnpj,
-          role: regCargo.trim() || 'Gestor Geral',
-          department: 'Gestão de Pessoas & Operações'
+          companyName: cleanEmpresa || undefined,
+          role: regCargo.trim() || 'Gerente de RH & Administração Geral',
+          department: 'Recursos Humanos & Gestão Geral',
+          isRh: true
         });
       } catch (dbErr: any) {
         console.warn('Supabase offline ou retorno com aviso, operando com contingência local:', dbErr?.message);
 
-        // Se for erro de violação de unicidade de email
         if (
           dbErr?.message &&
           (dbErr.message.includes('unique') ||
@@ -402,17 +436,20 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         createdEmployee = {
           id: `mgr-${Date.now()}`,
           name: cleanNome,
-          role: regCargo.trim() || 'Gestor Geral',
-          department: 'Gestão de Pessoas & Operações',
+          role: regCargo.trim() || 'Gerente de RH & Administração Geral',
+          department: 'Recursos Humanos & Gestão Geral',
           avatar: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
           email: cleanEmail,
           phone: '(11) 98765-4321',
           standardHoursPerWeek: 44,
-          registrationId: matricula
+          registrationId: matricula,
+          isRh: true,
+          isMasterManager: true,
+          roleType: 'rh'
         };
       }
 
-      // 2. Registra também no storage para suporte offline/local garantido
+      // 2. Registra também no storage para suporte offline/local
       try {
         const registeredUsers = JSON.parse(safeStorage.getItem('pontual_registered_users') || '[]');
         const userRecord = {
@@ -421,13 +458,15 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
           Eml_Corporativo: createdEmployee.email,
           Des_Senha_Hash: regSenha,
           Cod_Matricula: createdEmployee.registrationId || matricula,
-          Tpo_Perfil: 'gestor',
+          Tpo_Perfil: 'rh',
           Tpo_Cargo: createdEmployee.role,
           Des_Departamento: createdEmployee.department,
           Des_Avatar_Url: createdEmployee.avatar,
           Idf_Empresa: createdEmployee.companyId || `emp-${cleanCnpj}`,
           Num_CNPJ: createdEmployee.companyCnpj || cleanCnpj,
-          Flg_Gestor_Master: createdEmployee.isMasterManager ?? true,
+          Flg_Gestor_Master: true,
+          isRh: true,
+          roleType: 'rh',
           Flg_Ativo: true,
         };
 
@@ -442,13 +481,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
 
       // 3. Sucesso!
       setRegSuccess(true);
-      showFeedback(`Conta de Gestor criada com sucesso! Bem-vindo(a), ${cleanNome}!`, 'success');
+      showFeedback(`Empresa e Conta de RH registradas no Supabase! Bem-vindo(a), ${cleanNome}!`, 'success');
 
       setTimeout(() => {
         onLoginSuccess(createdEmployee, 'manager');
       }, 750);
     } catch (err) {
-      console.error('Erro ao cadastrar gestor:', err);
+      console.error('Erro ao cadastrar empresa/RH:', err);
       showFeedback('Ocorreu um erro ao realizar o cadastro. Tente novamente.', 'error');
       setIsRegLoading(false);
     }
@@ -1012,12 +1051,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
                   </button>
                 </form>
 
-                {/* CRIAR CONTA (GESTOR AGORA PODE SE CADASTRAR) */}
+                {/* CRIAR CONTA (EMPRESA / RH) */}
                 {currentRole === 'gestor' && (
                   <p className="login-text" id="signupPrompt">
-                    <span id="signupPromptText">Ainda não possui uma conta? </span>
+                    <span id="signupPromptText">Sua empresa ainda não está cadastrada? </span>
                     <a
-                      href="#cadastrar-gestor"
+                      href="#cadastrar-empresa-rh"
                       id="toggleSignMode"
                       onClick={(e) => {
                         e.preventDefault();
@@ -1025,7 +1064,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
                       }}
                       style={{ fontWeight: 600, textDecoration: 'underline', cursor: 'pointer' }}
                     >
-                      Criar conta de Gestor
+                      Cadastrar Empresa & RH
                     </a>
                   </p>
                 )}
@@ -1050,44 +1089,26 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
               </>
             ) : (
               /* =================================================
-                 FORMULÁRIO DE CADASTRO DO GESTOR
+                 FORMULÁRIO DE CADASTRO DA EMPRESA E RH
               ================================================== */
               <div className="signup-flow-container">
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '8px' }}>
-                  <span
-                    style={{
-                      fontSize: '11px',
-                      textTransform: 'uppercase',
-                      fontWeight: 700,
-                      letterSpacing: '0.08em',
-                      padding: '4px 10px',
-                      borderRadius: '999px',
-                      background: 'rgba(248, 150, 66, 0.15)',
-                      color: '#f89642',
-                      border: '1px solid rgba(248, 150, 66, 0.3)',
-                    }}
-                  >
-                    Novo Gestor
-                  </span>
-                </div>
-
-                <h2>Crie sua conta</h2>
-                <p className="form-subtitle">Preencha seus dados para gerenciar sua equipe na Pontual.</p>
+                <h2>Cadastre sua Empresa & RH</h2>
+                <p className="form-subtitle">Preencha os dados da sua empresa e crie sua conta de RH para começar.</p>
 
                 <form onSubmit={handleRegisterGestor} noValidate>
-                  {/* GRID NOME E CNPJ */}
+                  {/* GRID EMPRESA E CNPJ */}
                   <div className="signup-grid-2">
                     <div className="input-group">
-                      <label htmlFor="regNome">Nome completo*</label>
+                      <label htmlFor="regEmpresa">Nome da Empresa / Razão Social*</label>
                       <div className="input-wrapper">
                         <input
                           type="text"
-                          id="regNome"
+                          id="regEmpresa"
                           ref={regNomeInputRef}
-                          placeholder="Ex: Carlos Silva"
-                          value={regNome}
+                          placeholder="Ex: Minha Empresa S.A."
+                          value={regEmpresaNome}
                           onChange={(e) => {
-                            setRegNome(e.target.value);
+                            setRegEmpresaNome(e.target.value);
                             clearFeedback();
                           }}
                           required
@@ -1096,7 +1117,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
                     </div>
 
                     <div className="input-group">
-                      <label htmlFor="regCnpj">CNPJ da Empresa</label>
+                      <label htmlFor="regCnpj">CNPJ da Empresa*</label>
                       <div className="input-wrapper">
                         <input
                           type="text"
@@ -1108,20 +1129,38 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
                             setRegCnpj(formatCnpj(e.target.value));
                             clearFeedback();
                           }}
+                          required
                         />
                       </div>
                     </div>
                   </div>
 
-                  {/* GRID EMAIL E CARGO */}
+                  {/* GRID RESPONSÁVEL E EMAIL */}
                   <div className="signup-grid-2">
                     <div className="input-group">
-                      <label htmlFor="regEmail">Email corporativo*</label>
+                      <label htmlFor="regNome">Nome do Responsável de RH*</label>
+                      <div className="input-wrapper">
+                        <input
+                          type="text"
+                          id="regNome"
+                          placeholder="Ex: Ana Souza"
+                          value={regNome}
+                          onChange={(e) => {
+                            setRegNome(e.target.value);
+                            clearFeedback();
+                          }}
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="input-group">
+                      <label htmlFor="regEmail">Email corporativo do RH*</label>
                       <div className="input-wrapper">
                         <input
                           type="email"
                           id="regEmail"
-                          placeholder="gestor@empresa.com.br"
+                          placeholder="rh@empresa.com.br"
                           value={regEmail}
                           onChange={(e) => {
                             setRegEmail(e.target.value);
@@ -1131,21 +1170,22 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
                         />
                       </div>
                     </div>
+                  </div>
 
-                    <div className="input-group">
-                      <label htmlFor="regCargo">Cargo / Função</label>
-                      <div className="input-wrapper">
-                        <input
-                          type="text"
-                          id="regCargo"
-                          placeholder="Ex: Gerente Geral de Escalas"
-                          value={regCargo}
-                          onChange={(e) => {
-                            setRegCargo(e.target.value);
-                            clearFeedback();
-                          }}
-                        />
-                      </div>
+                  {/* CARGO */}
+                  <div className="input-group mb-3">
+                    <label htmlFor="regCargo">Cargo / Função</label>
+                    <div className="input-wrapper">
+                      <input
+                        type="text"
+                        id="regCargo"
+                        placeholder="Ex: Gerente de RH & Gestão Geral"
+                        value={regCargo}
+                        onChange={(e) => {
+                          setRegCargo(e.target.value);
+                          clearFeedback();
+                        }}
+                      />
                     </div>
                   </div>
 

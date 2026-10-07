@@ -88,6 +88,8 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
             onDeleteShiftsBulk={onDeleteShiftsBulk}
             onAddEmployee={() => setIsAddUserModalOpen(true)}
             theme={theme}
+            activeEmployee={activeEmployee}
+            isRh={activeEmployee?.isRh || activeEmployee?.roleType === 'rh' || activeEmployee?.isMasterManager}
           />
         ) : (
           <ManagerMatrixGrid
@@ -107,6 +109,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
             onNavigateToOrbit={() => setActiveTab('orbit')}
             theme={theme}
             activeEmployee={activeEmployee}
+            isRh={activeEmployee?.isRh || activeEmployee?.roleType === 'rh' || activeEmployee?.isMasterManager}
             onUpdateEmployee={onUpdateEmployee}
             onDeactivateEmployee={onDeactivateEmployee}
             onDeleteShift={onDeleteShift}
@@ -115,6 +118,6 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
         )}
       </main>
     </div>
-    <AddUserModal isOpen={isAddUserModalOpen} onClose={() => setIsAddUserModalOpen(false)} onAddEmployee={onAddEmployee} theme={theme} />
+    <AddUserModal isOpen={isAddUserModalOpen} onClose={() => setIsAddUserModalOpen(false)} onAddEmployee={onAddEmployee} employees={employees} theme={theme} />
   </>;
 };

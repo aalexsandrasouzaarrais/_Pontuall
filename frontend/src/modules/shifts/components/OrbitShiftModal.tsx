@@ -149,8 +149,10 @@ function formatDisplayDate(dateStr: string): string {
 interface OrbitShiftModalProps {
   isOpen: boolean;
   initialDate?: string;
+  initialEmployeeId?: string;
   editingShift: Shift | null;
   employees: Employee[];
+  isRh?: boolean;
   onSave: (shiftData: Partial<Shift> & { id?: string }, notifyEmployee?: boolean, changeReason?: string) => void;
   onDelete?: (id: string) => void;
   onClose: () => void;
@@ -159,8 +161,10 @@ interface OrbitShiftModalProps {
 export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
   isOpen,
   initialDate = new Date().toISOString().split('T')[0],
+  initialEmployeeId,
   editingShift,
   employees,
+  isRh,
   onSave,
   onDelete,
   onClose,
@@ -168,7 +172,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
   const { isDark } = useTheme();
   const isLight = !isDark;
 
-  const [employeeId, setEmployeeId] = useState<string>(employees[0]?.id || 'emp-1');
+  const [employeeId, setEmployeeId] = useState<string>(initialEmployeeId || employees[0]?.id || 'emp-1');
   const [shiftType, setShiftType] = useState<string>(SHIFT_TYPES[0]);
   const [title, setTitle] = useState<string>('');
   const [date, setDate] = useState<string>(initialDate);
@@ -205,19 +209,20 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
 
   useEffect(() => {
     if (editingShift) {
-      setEmployeeId(editingShift.employeeId || employees[0]?.id || 'emp-1');
+      setEmployeeId(editingShift.employeeId || initialEmployeeId || employees[0]?.id || 'emp-1');
       
-      const isHomeOffice = editingShift.workplace?.toLowerCase().includes('remoto') || 
-                           editingShift.workplace?.toLowerCase().includes('home office') ||
-                           editingShift.title?.toLowerCase().includes('home office') ||
-                           editingShift.color?.category?.toLowerCase().includes('home office') ||
-                           editingShift.color?.label === 'Esmeralda';
-
-      const mappedType = 
-        isHomeOffice ? 'Home Office' :
-        editingShift.type === 'meeting' ? 'Reunião / Alinhamento' :
-        editingShift.type === 'on_call' ? 'Plantão' :
-        editingShift.type === 'training' ? 'Treinamento' : 'Presencial';
+      let mappedType = editingShift.color ? getTypeForColor(editingShift.color) : null;
+      if (!mappedType) {
+        const isHomeOffice = editingShift.workplace?.toLowerCase().includes('remoto') || 
+                             editingShift.workplace?.toLowerCase().includes('home office') ||
+                             editingShift.title?.toLowerCase().includes('home office');
+        mappedType = 
+          isHomeOffice ? 'Home Office' :
+          editingShift.type === 'meeting' ? 'Reunião / Alinhamento' :
+          editingShift.type === 'on_call' ? 'Plantão' :
+          editingShift.type === 'training' ? 'Treinamento' :
+          editingShift.title?.toLowerCase().includes('evento') ? 'Evento' : 'Presencial';
+      }
       
       setShiftType(mappedType);
       setTitle(editingShift.title || '');
@@ -246,7 +251,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
       setNotifyCollaborator(true);
       setChangeReason('');
     } else {
-      setEmployeeId(employees[0]?.id || 'emp-1');
+      setEmployeeId(initialEmployeeId || employees[0]?.id || 'emp-1');
       setShiftType(SHIFT_TYPES[0]);
       setTitle('');
       setDate(initialDate);
@@ -264,7 +269,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
       setChangeReason('');
     }
     setConfirmDelete(false);
-  }, [editingShift, initialDate, employees]);
+  }, [editingShift, initialDate, initialEmployeeId, employees]);
 
   // Atualiza o tipo e sincroniza automaticamente a cor correspondente
   const handleShiftTypeChange = (newType: string) => {
@@ -324,7 +329,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
   // ─────────────────────────────────────────────────────────────────────────────
   // 1. VIEW MODE: Exibição da Escala Já Publicada (com botão para Editar e aviso)
   // ─────────────────────────────────────────────────────────────────────────────
-  if (isAlreadyPublished && !isEditingPublished) {
+  if ((isAlreadyPublished || isRh) && !isEditingPublished) {
     return (
       <div
         className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200"
@@ -606,7 +611,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
             }`}
           >
             <div>
-              {onDelete && !confirmDelete && (
+              {!isRh && onDelete && !confirmDelete && (
                 <button
                   type="button"
                   onClick={() => setConfirmDelete(true)}
@@ -620,7 +625,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                   Excluir Escala
                 </button>
               )}
-              {onDelete && confirmDelete && (
+              {!isRh && onDelete && confirmDelete && (
                 <button
                   type="button"
                   onClick={() => onDelete(editingShift!.id)}
@@ -641,18 +646,20 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
               >
                 Fechar
               </button>
-              <button
-                type="button"
-                onClick={() => setIsEditingPublished(true)}
-                className="px-5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all hover:opacity-90 active:scale-95 shadow-lg flex items-center gap-2 cursor-pointer text-white"
-                style={{
-                  background: "linear-gradient(135deg, #96183c 0%, #f89847 100%)",
-                  boxShadow: "0 4px 12px rgba(150,24,60,0.4)"
-                }}
-              >
-                <Pencil className="w-3.5 h-3.5" />
-                <span>Editar Escala</span>
-              </button>
+              {!isRh && (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingPublished(true)}
+                  className="px-5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all hover:opacity-90 active:scale-95 shadow-lg flex items-center gap-2 cursor-pointer text-white"
+                  style={{
+                    background: "linear-gradient(135deg, #96183c 0%, #f89847 100%)",
+                    boxShadow: "0 4px 12px rgba(150,24,60,0.4)"
+                  }}
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                  <span>Editar Escala</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

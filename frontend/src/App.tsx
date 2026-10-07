@@ -59,6 +59,14 @@ import {
   deleteShiftSupabase,
   deleteBulkShiftsSupabase
 } from '@/modules/shifts/services/shiftService';
+import {
+  getJustificativasSupabase,
+  createJustificativaSupabase,
+  updateJustificativaStatusSupabase,
+  getSolicitacoesSupabase,
+  createSolicitacaoSupabase,
+  updateSolicitacaoStatusSupabase
+} from '@/modules/requests/services/requestService';
 import { 
   Employee, 
   Shift, 
@@ -134,89 +142,131 @@ function AppContent() {
         );
         if (match && !parsed.Idf_Empresa && !parsed.companyId) return match;
 
-        return {
-          id: parsed.Idf_Colaborador || parsed.id || `emp-${Date.now()}`,
-          name: parsed.Nme_Colaborador || parsed.nome || parsed.name || 'Gestor',
-          role: parsed.Tpo_Cargo || parsed.cargo || parsed.role || 'Gestor Geral',
-          department: parsed.Des_Departamento || parsed.departamento || parsed.department || 'Gestão de Pessoas & Operações',
-          avatar: parsed.Des_Avatar_Url || parsed.avatar || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
-          email: parsed.Eml_Corporativo || parsed.email || '',
-          phone: parsed.Num_Telefone || parsed.phone || '(11) 98765-4321',
-          standardHoursPerWeek: parsed.Num_Horas_Semanais || parsed.standardHoursPerWeek || 44,
-          registrationId: parsed.Cod_Matricula || parsed.registrationId || 'GST-0001',
-          companyId: parsed.Idf_Empresa || parsed.companyId || undefined,
-          isMasterManager: parsed.Flg_Gestor_Master !== undefined ? parsed.Flg_Gestor_Master : (parsed.isMasterManager || false),
-          companyCnpj: parsed.companyCnpj || undefined,
-          managerIds: parsed.managerIds || []
-        };
-      }
-    } catch {}
-    return INITIAL_EMPLOYEES[0];
-  });
-  const [shifts, setShifts] = useState<Shift[]>([]);
-  const [requests, setRequests] = useState<TimeOffRequest[]>([]);
-  const [justifications, setJustifications] = useState<AbsenceJustification[]>([]);
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  
-  // Employee Tabs
-  const [employeeTab, setEmployeeTab] = useState<'overview' | 'calendar' | 'requests' | 'justifications' | 'chat'>('overview');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-
-  // Sincronização e filtragem estrita por empresa/gestor com o Supabase (TAB_Colaborador e TAB_Escala_Turno)
-  React.useEffect(() => {
-    async function loadDataFromSupabase() {
-      if (!isAuthenticated || !activeEmployee) return;
-
-      const isDemoUser = !activeEmployee.companyId && (
-        activeEmployee.id === 'mgr-1' || 
-        activeEmployee.id === 'emp-1' ||
-        activeEmployee.email === 'gestor@pontual.com' ||
-        activeEmployee.email === 'colaborador@pontual.com'
-      );
-
-      if (isDemoUser) {
-        setEmployees(INITIAL_EMPLOYEES);
-        setShifts(getInitialShifts());
-        setRequests(INITIAL_REQUESTS);
-        setJustifications(INITIAL_JUSTIFICATIONS);
-        setNotifications(INITIAL_NOTIFICATIONS);
-        return;
-      }
-
-      try {
-        const filter = {
-          companyId: activeEmployee.companyId || undefined,
-          gestorId: (activeEmployee.isMasterManager || !activeEmployee.companyId) ? undefined : activeEmployee.id
-        };
-
-        const dbEmployees = await getColaboradoresSupabase(filter);
-        
-        let finalEmployees: Employee[] = dbEmployees || [];
-        if (currentRole === 'employee' && activeEmployee && !activeEmployee.isMasterManager) {
-          if (!finalEmployees.some(e => e.id === activeEmployee.id || (e.email && activeEmployee.email && e.email.toLowerCase() === activeEmployee.email.toLowerCase()))) {
-            finalEmployees = [activeEmployee, ...finalEmployees];
-          }
+          const isRhParsed = parsed.isRh !== undefined ? parsed.isRh : (parsed.roleType === 'rh' || parsed.perfil === 'rh' || parsed.email?.toLowerCase() === 'gestor@pontual.com');
+          return {
+            id: parsed.Idf_Colaborador || parsed.id || `emp-${Date.now()}`,
+            name: parsed.Nme_Colaborador || parsed.nome || parsed.name || 'Gestor',
+            role: parsed.Tpo_Cargo || parsed.cargo || parsed.role || 'Gestor Geral',
+            department: parsed.Des_Departamento || parsed.departamento || parsed.department || 'Gestão de Pessoas & Operações',
+            avatar: parsed.Des_Avatar_Url || parsed.avatar || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
+            email: parsed.Eml_Corporativo || parsed.email || '',
+            phone: parsed.Num_Telefone || parsed.phone || '(11) 98765-4321',
+            standardHoursPerWeek: parsed.Num_Horas_Semanais || parsed.standardHoursPerWeek || 44,
+            registrationId: parsed.Cod_Matricula || parsed.registrationId || 'GST-0001',
+            companyId: parsed.Idf_Empresa || parsed.companyId || undefined,
+            isMasterManager: parsed.Flg_Gestor_Master !== undefined ? parsed.Flg_Gestor_Master : (parsed.isMasterManager || false),
+            isRh: isRhParsed,
+            roleType: parsed.roleType || (isRhParsed ? 'rh' : (parsed.Flg_Gestor_Master || parsed.perfil === 'gestor' ? 'gestor' : 'colaborador')),
+            companyCnpj: parsed.companyCnpj || undefined,
+            managerIds: parsed.managerIds || []
+          };
         }
+      } catch {}
+      return INITIAL_EMPLOYEES[0];
+    });
+    const [shifts, setShifts] = useState<Shift[]>([]);
+    const [requests, setRequests] = useState<TimeOffRequest[]>([]);
+    const [justifications, setJustifications] = useState<AbsenceJustification[]>([]);
+    const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+    
+    // Employee Tabs
+    const [employeeTab, setEmployeeTab] = useState<'overview' | 'calendar' | 'requests' | 'justifications' | 'chat'>('overview');
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-        setEmployees(finalEmployees);
+    // Sincronização e filtragem por empresa/gestor com o Supabase (TAB_Colaborador, TAB_Escala_Turno, TAB_Solicitacao_Colaborador, TAB_Justificativa_Ausencia)
+    React.useEffect(() => {
+      async function loadDataFromSupabase() {
+        if (!isAuthenticated || !activeEmployee) return;
 
-        // Busca turnos estritamente dos colaboradores pertencentes à empresa/equipe
-        const empIds = finalEmployees.map(e => e.id);
-        const dbShifts = await getShiftsSupabase(empIds);
-        setShifts(dbShifts);
+        const isDemoUser = !activeEmployee.companyId && (
+          activeEmployee.id === 'mgr-1' || 
+          activeEmployee.id === 'mgr-2' ||
+          activeEmployee.id === 'emp-1' ||
+          activeEmployee.email === 'gestor@pontual.com' ||
+          activeEmployee.email === 'gestor.ti@pontual.com' ||
+          activeEmployee.email === 'colaborador@pontual.com'
+        );
 
-        // Filtra solicitações e justificativas por colaboradores da mesma empresa
-        setRequests(prev => prev.filter(r => empIds.includes(r.employeeId)));
-        setJustifications(prev => prev.filter(j => empIds.includes(j.employeeId)));
-        setNotifications([]);
+        try {
+          const isRhUser = activeEmployee.isRh || activeEmployee.roleType === 'rh' || activeEmployee.isMasterManager;
+          const filter = {
+            companyId: activeEmployee.companyId || undefined,
+            gestorId: (isRhUser || !activeEmployee.companyId) ? undefined : activeEmployee.id
+          };
 
-      } catch (err) {
-        console.warn('Erro ao carregar dados do Supabase:', err);
+          const dbEmployees = await getColaboradoresSupabase(filter);
+          
+          let finalEmployees: Employee[] = (dbEmployees && dbEmployees.length > 0) ? dbEmployees : (isDemoUser ? INITIAL_EMPLOYEES : []);
+          if (currentRole === 'employee' && activeEmployee && !isRhUser) {
+            if (!finalEmployees.some(e => e.id === activeEmployee.id || (e.email && activeEmployee.email && e.email.toLowerCase() === activeEmployee.email.toLowerCase()))) {
+              finalEmployees = [activeEmployee, ...finalEmployees];
+            }
+          }
+
+          setEmployees(finalEmployees);
+
+          // Busca turnos estritamente dos colaboradores pertencentes à empresa/equipe
+          const empIds = finalEmployees.map(e => e.id);
+          const dbShifts = await getShiftsSupabase(empIds);
+          setShifts((dbShifts && dbShifts.length > 0) ? dbShifts : (isDemoUser ? getInitialShifts() : []));
+
+          // Busca solicitações e justificativas salvas no Supabase (TAB_Solicitacao_Colaborador e TAB_Justificativa_Ausencia)
+          const dbRequests = await getSolicitacoesSupabase();
+          const dbJustifications = await getJustificativasSupabase();
+
+          const enrichedRequests = dbRequests.map(r => {
+            const emp = finalEmployees.find(e => e.id === r.employeeId || (e.email && activeEmployee.email && e.email.toLowerCase() === activeEmployee.email.toLowerCase())) 
+              || INITIAL_EMPLOYEES.find(e => e.id === r.employeeId) 
+              || (r.employeeId === activeEmployee.id ? activeEmployee : undefined);
+            const targetEmp = finalEmployees.find(e => e.id === r.targetEmployeeId) || INITIAL_EMPLOYEES.find(e => e.id === r.targetEmployeeId);
+            return {
+              ...r,
+              employeeName: emp?.name || r.employeeName || 'Colaborador',
+              employeeAvatar: emp?.avatar || r.employeeAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+              targetEmployeeName: targetEmp?.name || r.targetEmployeeName || ''
+            };
+          });
+
+          const enrichedJustifications = dbJustifications.map(j => {
+            const emp = finalEmployees.find(e => e.id === j.employeeId || (e.email && activeEmployee.email && e.email.toLowerCase() === activeEmployee.email.toLowerCase())) 
+              || INITIAL_EMPLOYEES.find(e => e.id === j.employeeId) 
+              || (j.employeeId === activeEmployee.id ? activeEmployee : undefined);
+            return {
+              ...j,
+              employeeName: emp?.name || j.employeeName || 'Colaborador',
+              employeeAvatar: emp?.avatar || j.employeeAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
+            };
+          });
+
+          setRequests(prev => {
+            const mapById = new Map<string, TimeOffRequest>();
+            if (isDemoUser) {
+              INITIAL_REQUESTS.forEach(r => mapById.set(r.id, r));
+            }
+            enrichedRequests.forEach(r => mapById.set(r.id, r));
+            prev.forEach(r => { if (!mapById.has(r.id)) mapById.set(r.id, r); });
+            return Array.from(mapById.values());
+          });
+
+          setJustifications(prev => {
+            const mapById = new Map<string, AbsenceJustification>();
+            if (isDemoUser) {
+              INITIAL_JUSTIFICATIONS.forEach(j => mapById.set(j.id, j));
+            }
+            enrichedJustifications.forEach(j => mapById.set(j.id, j));
+            prev.forEach(j => { if (!mapById.has(j.id)) mapById.set(j.id, j); });
+            return Array.from(mapById.values());
+          });
+
+          setNotifications(isDemoUser ? INITIAL_NOTIFICATIONS : []);
+
+        } catch (err) {
+          console.warn('Erro ao carregar dados do Supabase:', err);
+        }
       }
-    }
 
-    loadDataFromSupabase();
-  }, [activeEmployee?.id, activeEmployee?.companyId, isAuthenticated]);
+      loadDataFromSupabase();
+    }, [activeEmployee?.id, activeEmployee?.companyId, isAuthenticated]);
 
   // Modals state
   const [selectedShiftForDetail, setSelectedShiftForDetail] = useState<Shift | null>(null);
@@ -406,9 +456,10 @@ function AppContent() {
   };
 
   // Submit swap or time-off request
-  const handleSubmitRequest = (req: Partial<TimeOffRequest>) => {
+  const handleSubmitRequest = async (req: Partial<TimeOffRequest>) => {
+    const tempId = `req-${Date.now()}`;
     const newRequest: TimeOffRequest = {
-      id: `req-${Date.now()}`,
+      id: tempId,
       employeeId: activeEmployee.id,
       employeeName: activeEmployee.name,
       employeeAvatar: activeEmployee.avatar,
@@ -424,12 +475,23 @@ function AppContent() {
 
     setRequests(prev => [newRequest, ...prev]);
     setEmployeeTab('requests');
+
+    try {
+      const saved = await createSolicitacaoSupabase(req, activeEmployee);
+      if (saved) {
+        setRequests(prev => prev.map(r => r.id === tempId ? { ...saved, employeeName: activeEmployee.name, employeeAvatar: activeEmployee.avatar } : r));
+      }
+    } catch (err) {
+      console.warn('Erro ao salvar solicitação no Supabase:', err);
+    }
+    showToast('Solicitação Enviada', 'Sua solicitação foi gravada no banco de dados e enviada para o Gestor e RH.', 'success');
   };
 
   // Submit absence justification
-  const handleSubmitJustification = (just: Partial<AbsenceJustification>) => {
+  const handleSubmitJustification = async (just: Partial<AbsenceJustification>) => {
+    const tempId = `just-${Date.now()}`;
     const newJust: AbsenceJustification = {
-      id: `just-${Date.now()}`,
+      id: tempId,
       employeeId: activeEmployee.id,
       employeeName: activeEmployee.name,
       employeeAvatar: activeEmployee.avatar,
@@ -449,6 +511,16 @@ function AppContent() {
     }
 
     setEmployeeTab('justifications');
+
+    try {
+      const saved = await createJustificativaSupabase(just, activeEmployee);
+      if (saved) {
+        setJustifications(prev => prev.map(j => j.id === tempId ? { ...saved, employeeName: activeEmployee.name, employeeAvatar: activeEmployee.avatar } : j));
+      }
+    } catch (err) {
+      console.warn('Erro ao salvar justificativa no Supabase:', err);
+    }
+    showToast('Atestado Enviado', 'Sua justificativa/atestado foi gravado no banco de dados e enviado para o RH e Gestor.', 'success');
   };
 
   // Manager Actions
@@ -459,11 +531,17 @@ function AppContent() {
       date: newShiftData.date || new Date().toISOString().split('T')[0],
       startTime: newShiftData.startTime || '08:00',
       endTime: newShiftData.endTime || '17:00',
-      breakMinutes: newShiftData.breakMinutes || 60,
-      status: 'published',
-      attendanceStatus: 'pending',
+      breakMinutes: newShiftData.breakMinutes !== undefined ? newShiftData.breakMinutes : 60,
+      status: newShiftData.status || 'published',
+      attendanceStatus: newShiftData.attendanceStatus || 'pending',
       type: newShiftData.type || 'regular',
       title: newShiftData.title || 'Turno de Trabalho',
+      notes: newShiftData.notes,
+      meetingLink: newShiftData.meetingLink,
+      projectTag: newShiftData.projectTag,
+      color: newShiftData.color,
+      workplace: newShiftData.workplace,
+      ...newShiftData,
     };
     try {
       const saved = await createShiftSupabase(created);
@@ -518,20 +596,28 @@ function AppContent() {
     );
   };
 
-  const handleApproveRequest = (id: string) => {
+  const handleApproveRequest = async (id: string) => {
     setRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'approved', managerNotes: 'Aprovado pelo gestor' } : r));
+    await updateSolicitacaoStatusSupabase(id, 'approved', 'Aprovado pelo gestor');
+    showToast('Solicitação Aprovada', 'A solicitação foi aprovada e salva no Supabase.', 'success');
   };
 
-  const handleRejectRequest = (id: string) => {
+  const handleRejectRequest = async (id: string) => {
     setRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'rejected', managerNotes: 'Recusado pelo gestor' } : r));
+    await updateSolicitacaoStatusSupabase(id, 'rejected', 'Recusado pelo gestor');
+    showToast('Solicitação Recusada', 'A solicitação foi recusada no Supabase.', 'info');
   };
 
-  const handleApproveJustification = (id: string) => {
+  const handleApproveJustification = async (id: string) => {
     setJustifications(prev => prev.map(j => j.id === id ? { ...j, status: 'approved', managerNotes: 'Homologado pelo RH' } : j));
+    await updateJustificativaStatusSupabase(id, 'approved', 'Homologado pelo RH');
+    showToast('Atestado Homologado', 'O atestado/justificativa foi homologado e atualizado no Supabase.', 'success');
   };
 
-  const handleRejectJustification = (id: string) => {
+  const handleRejectJustification = async (id: string) => {
     setJustifications(prev => prev.map(j => j.id === id ? { ...j, status: 'rejected', managerNotes: 'Não homologado' } : j));
+    await updateJustificativaStatusSupabase(id, 'rejected', 'Não homologado');
+    showToast('Atestado Recusado', 'A justificativa foi marcada como não homologada no Supabase.', 'info');
   };
 
   const handleLogout = () => {
@@ -573,6 +659,14 @@ function AppContent() {
     setSelectedShiftForDetail(shift);
     setIsDetailModalOpen(true);
   };
+
+  const visibleEmployees = React.useMemo(() => {
+    const isRhUser = activeEmployee?.isRh || activeEmployee?.roleType === 'rh' || activeEmployee?.isMasterManager;
+    if (isRhUser) {
+      return employees;
+    }
+    return employees.filter(e => e.id === activeEmployee?.id || (e.managerIds && e.managerIds.includes(activeEmployee?.id)));
+  }, [employees, activeEmployee]);
 
   const pendingRequestsCount = requests.filter(r => r.status === 'pending').length + justifications.filter(j => j.status === 'pending').length;
   const myRequests = requests.filter(r => r.employeeId === activeEmployee.id || r.targetEmployeeId === activeEmployee.id);
@@ -641,7 +735,7 @@ function AppContent() {
               className={`px-3.5 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                 currentRole === 'employee'
                   ? 'text-white shadow-md font-black'
-                  : !isDark ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white'
+                  : !isDark ? 'text-[#96183c] hover:text-slate-900' : 'text-slate-400 hover:text-white'
               }`}
               style={currentRole === 'employee' ? { background: 'linear-gradient(135deg, #96183c, #f89847)' } : {}}
             >
@@ -695,7 +789,7 @@ function AppContent() {
         /* MANAGER VIEW (Full screen width) */
         <div className={`flex-1 w-full flex flex-col min-h-0 manager-scope ${theme}`}>
           <ManagerView
-            employees={employees}
+            employees={visibleEmployees}
             shifts={shifts}
             activeEmployee={activeEmployee}
             notificationsCount={notifications.filter(n => !n.read).length}

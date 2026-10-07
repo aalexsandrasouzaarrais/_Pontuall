@@ -1,4 +1,4 @@
-export type UserRole = 'EMPLOYEE' | 'MANAGER' | 'ADMIN';
+export type UserRole = 'EMPLOYEE' | 'MANAGER' | 'RH' | 'ADMIN';
 
 export type ContractType = 'CLT' | 'PJ' | 'TEMPORARIO';
 
@@ -19,6 +19,8 @@ export interface Employee {
   companyId?: string; // ID da Empresa (Idf_Empresa)
   companyCnpj?: string; // CNPJ da Empresa (Num_CNPJ)
   isMasterManager?: boolean; // Se é Gestor Master / Admin da Empresa (Flg_Gestor_Master)
+  isRh?: boolean; // Se é do perfil RH (Administrador Geral da Empresa)
+  roleType?: 'rh' | 'gestor' | 'colaborador'; // Perfil estruturado em 3 níveis
   managerIds?: string[]; // IDs dos Gestores vinculados a este colaborador (M:N)
 }
 

@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { User, X, Check, Sparkles, RefreshCw, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Employee } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
-import { safeStorage } from '@/shared/utils/safeStorage';
 import { sendWelcomeEmail as sendWelcomeEmailService } from '@/modules/auth/services/emailService';
 
 interface AddUserModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddEmployee: (employee: Employee) => void;
+  employees?: Employee[];
   theme?: 'light' | 'dark';
 }
 
@@ -16,6 +16,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
   isOpen,
   onClose,
   onAddEmployee,
+  employees = [],
   theme: propTheme,
 }) => {
   const { theme: ctxTheme } = useTheme();
@@ -41,29 +42,25 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
   const [department, setDepartment] = useState('Atendimento');
   const [userRole, setUserRole] = useState('Colaborador');
   const [employmentType, setEmploymentType] = useState('CLT');
+  const [selectedGestorId, setSelectedGestorId] = useState<string>('');
 
-  // Formata o número de telefone no padrão brasileiro: (XX) XXXXX-XXXX ou (XX) XXXX-XXXX
+  // Identifica se o usuário logado atual é do perfil RH
+  const [isLoggedRh, setIsLoggedRh] = useState(false);
+
+  // Lista de gestores disponíveis para vinculação
+  const gestoresDisponiveis = employees.filter(e => e.roleType === 'gestor' || e.isMasterManager || e.id.startsWith('mgr-'));
+
+  // Formata o número de telefone no padrão brasileiro
   const formatPhoneNumber = (value: string) => {
     let digits = value.replace(/\D/g, '');
-
-    // Se colar com código de país do Brasil (+55), remove o 55 inicial
     if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
       digits = digits.slice(2);
     }
-
-    // Limita estritamente ao tamanho máximo de telefone brasileiro (11 dígitos: DDD + 9 dígitos)
     digits = digits.slice(0, 11);
-
     if (!digits) return '';
-    if (digits.length <= 2) {
-      return `(${digits}`;
-    }
-    if (digits.length <= 6) {
-      return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-    }
-    if (digits.length <= 10) {
-      return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
-    }
+    if (digits.length <= 2) return `(${digits}`;
+    if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
     return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
   };
 
@@ -88,6 +85,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       setDepartment('Atendimento');
       setUserRole('Colaborador');
       setEmploymentType('CLT');
+      setSelectedGestorId(gestoresDisponiveis[0]?.id || '');
       setStartDate(new Date().toISOString().split('T')[0]);
       setSendWelcomeEmail(true);
       setFirstNameError(false);
@@ -96,6 +94,12 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       setStartDateError(false);
       setErrorMessage(null);
       setIsSaved(false);
+
+      try {
+        const activeUser = JSON.parse(localStorage.getItem('pontual_active_user') || '{}');
+        const isRhUser = activeUser.isRh || activeUser.roleType === 'rh' || activeUser.perfil === 'rh' || activeUser.role === 'rh' || activeUser.email === 'gestor@pontual.com';
+        setIsLoggedRh(Boolean(isRhUser));
+      } catch {}
     }
   }, [isOpen]);
 
@@ -161,7 +165,6 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       setActiveTab('PERFIL');
       setErrorMessage(null);
     } else {
-      // Para ir para Atribuições, precisa preencher a etapa 1 primeiro
       if (validateStep1()) {
         setActiveTab('ATRIBUIÇÕES');
       }
@@ -171,20 +174,16 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Se estiver na etapa 1, não permite salvar! Deve avançar para a etapa 2.
     if (activeTab === 'PERFIL') {
       handleNextStep();
       return;
     }
 
-    // Se estiver na etapa 2:
-    // 1. Valida se a etapa 1 continua válida
     if (!validateStep1()) {
       setActiveTab('PERFIL');
       return;
     }
 
-    // 2. Valida se a etapa 2 foi preenchida
     if (!validateStep2()) {
       return;
     }
@@ -193,27 +192,37 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     let activeGestorId: string | undefined = undefined;
 
     try {
-      const activeUser = JSON.parse(safeStorage.getItem('pontual_active_user') || '{}');
+      const activeUser = JSON.parse(localStorage.getItem('pontual_active_user') || '{}');
       activeCompanyId = activeUser.Idf_Empresa || activeUser.companyId;
       activeGestorId = activeUser.Idf_Colaborador || activeUser.id;
     } catch {}
 
+    const isCreatingGestor = userRole === 'Gestor' || userRole === 'Gestor de Setor';
     const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
     const cleanId = employeeId.trim() || generateRandomId();
+
+    const finalManagerIds = isCreatingGestor 
+      ? [] 
+      : (selectedGestorId ? [selectedGestorId] : (activeGestorId ? [activeGestorId] : []));
+
     const newEmp: Employee = {
-      id: `emp-${cleanId}`,
+      id: isCreatingGestor ? `mgr-${cleanId}` : `emp-${cleanId}`,
       registrationId: cleanId,
       name: fullName,
       role: role.trim(),
       department: department.trim() || 'Operações',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+      avatar: isCreatingGestor
+        ? 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150&auto=format&fit=crop&q=80'
+        : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
       email: email.trim() || `${firstName.toLowerCase().replace(/\s+/g, '')}@pontual.com.br`,
       phone: phone.trim() || '(11) 98765-4321',
       standardHoursPerWeek: employmentType === 'PJ' ? 40 : 44,
       contractType: employmentType as 'CLT' | 'PJ' | 'TEMPORARIO',
       workplace: 'Sede Pontual - Matriz',
       companyId: activeCompanyId,
-      managerIds: activeGestorId ? [activeGestorId] : []
+      isRh: false,
+      roleType: isCreatingGestor ? 'gestor' : 'colaborador',
+      managerIds: finalManagerIds
     };
 
     onAddEmployee(newEmp);
@@ -635,6 +644,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                     <select
                       value={userRole}
                       onChange={(e) => setUserRole(e.target.value)}
+                      disabled={!isLoggedRh}
                       className={`w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all cursor-pointer border ${
                         isDark
                           ? 'bg-[#181A24] border-white/10 text-white focus:border-[#f89847]'
@@ -642,10 +652,36 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                       }`}
                     >
                       <option value="Colaborador" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>Colaborador</option>
-                      <option value="Gestor" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>Gestor</option>
-                      <option value="Administrador" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>Administrador</option>
+                      {isLoggedRh && (
+                        <option value="Gestor" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>Gestor de Setor</option>
+                      )}
                     </select>
                   </div>
+
+                  {isLoggedRh && userRole === 'Colaborador' && gestoresDisponiveis.length > 0 && (
+                    <div>
+                      <label className={`text-xs font-semibold mb-1.5 block ${
+                        isDark ? 'text-slate-300' : 'text-slate-700'
+                      }`}>
+                        Gestor Responsável*
+                      </label>
+                      <select
+                        value={selectedGestorId}
+                        onChange={(e) => setSelectedGestorId(e.target.value)}
+                        className={`w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all cursor-pointer border ${
+                          isDark
+                            ? 'bg-[#181A24] border-white/10 text-white focus:border-[#f89847]'
+                            : 'bg-slate-50 border-slate-200 text-slate-800 focus:bg-white focus:border-[#96183c]'
+                        }`}
+                      >
+                        {gestoresDisponiveis.map(g => (
+                          <option key={g.id} value={g.id} className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>
+                            {g.name} ({g.role || 'Gestor'})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   <div>
                     <label className={`text-xs font-semibold mb-1.5 block ${

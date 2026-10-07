@@ -101,26 +101,47 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
 
-  // Identifica se o usuário atual é gestor
+  // Identifica se o usuário é RH
+  const isRhUser = useMemo(() => {
+    return Boolean(currentEmployee?.isRh || currentEmployee?.roleType === 'rh' || currentEmployee?.isMasterManager);
+  }, [currentEmployee]);
+
   const isManager = useMemo(() => {
     const roleUpper = (currentEmployee?.role || '').toUpperCase();
-    return roleUpper.includes('GESTOR') || roleUpper.includes('GERENTE') || currentEmployee?.id === 'mgr-1' || currentEmployee?.id === 'gestor-camila';
-  }, [currentEmployee]);
+    return isRhUser || roleUpper.includes('GESTOR') || roleUpper.includes('GERENTE') || currentEmployee?.id === 'mgr-1';
+  }, [currentEmployee, isRhUser]);
 
   // Lista completa de colaboradores cadastrados
   const allEmployeesList = useMemo(() => {
     return employees && employees.length > 0 ? employees : INITIAL_EMPLOYEES;
   }, [employees]);
 
-  // Seleção de colaborador para conversa direta (quando o gestor está logado)
+  // Lista de contatos disponíveis para conversa direta (1 a 1):
+  // Se for RH: o RH tem chat EXCLUSIVO com os Gestores de Setor da sua empresa!
+  const directContacts = useMemo(() => {
+    if (isRhUser) {
+      return allEmployeesList.filter(e => 
+        e.id !== currentEmployee?.id && 
+        (e.roleType === 'gestor' || e.role?.toLowerCase().includes('gestor') || e.role?.toLowerCase().includes('gerente'))
+      );
+    }
+    return allEmployeesList.filter(e => e.id !== currentEmployee?.id);
+  }, [allEmployeesList, currentEmployee?.id, isRhUser]);
+
+  // Seleção de colaborador/gestor para conversa direta
   const [selectedDirectEmployeeId, setSelectedDirectEmployeeId] = useState<string>(() => {
-    const firstColab = (employees && employees.length > 0 ? employees : INITIAL_EMPLOYEES).find(e => e.id !== currentEmployee?.id);
-    return firstColab ? firstColab.id : 'emp-1';
+    return directContacts[0]?.id || 'emp-1';
   });
 
+  useEffect(() => {
+    if (directContacts.length > 0 && !directContacts.some(e => e.id === selectedDirectEmployeeId)) {
+      setSelectedDirectEmployeeId(directContacts[0].id);
+    }
+  }, [directContacts, selectedDirectEmployeeId]);
+
   const selectedDirectEmployee = useMemo(() => {
-    return allEmployeesList.find(e => e.id === selectedDirectEmployeeId) || allEmployeesList[0];
-  }, [allEmployeesList, selectedDirectEmployeeId]);
+    return directContacts.find(e => e.id === selectedDirectEmployeeId) || directContacts[0] || allEmployeesList[0];
+  }, [directContacts, selectedDirectEmployeeId, allEmployeesList]);
 
   // Lista dinâmica de grupos/canais disponíveis
   const [teamChannels, setTeamChannels] = useState<ChatChannelItem[]>(() => {
@@ -764,9 +785,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({
             <span className={`text-[10px] font-black uppercase tracking-wider shrink-0 mr-1 ${
               isLightTheme ? 'text-slate-400' : 'text-slate-500'
             }`}>
-              Colaborador:
+              {isRhUser ? 'Gestor de Setor:' : 'Contato:'}
             </span>
-            {allEmployeesList.filter(e => e.id !== currentEmployee.id).map(emp => {
+            {directContacts.map(emp => {
               const isSelected = selectedDirectEmployeeId === emp.id;
               return (
                 <button

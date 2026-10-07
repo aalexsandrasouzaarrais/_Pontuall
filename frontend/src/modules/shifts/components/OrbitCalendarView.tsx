@@ -32,6 +32,8 @@ interface OrbitCalendarViewProps {
   onDeleteShiftsBulk?: (ids: string[]) => void;
   onAddEmployee: () => void;
   theme?: 'light' | 'dark';
+  activeEmployee?: Employee;
+  isRh?: boolean;
 }
 
 const MONTHS_PT = [
@@ -58,41 +60,75 @@ function startOfWeek(d: Date): Date {
   return addDays(d, -day);
 }
 
-function getMutedShiftColor(ev: Shift, isDark: boolean) {
+export function getMutedShiftColor(ev: Shift, isDark: boolean) {
   const hex = (ev.color?.bg || '').toLowerCase();
+  const label = (ev.color?.label || '').toLowerCase();
+  const category = (ev.color?.category || '').toLowerCase();
+  const title = (ev.title || '').toLowerCase();
+  const workplace = (ev.workplace || '').toLowerCase();
 
-  // Violeta / Reunião
-  if (hex.includes('7c3aed') || hex.includes('violet') || hex.includes('3a2250') || hex.includes('48285b') || ev.type === 'meeting') {
+  // 1. Violeta / Roxo (Reunião / Alinhamento) - #3a2250
+  if (
+    hex.includes('3a2250') || hex.includes('7c3aed') || hex.includes('violet') || hex.includes('48285b') ||
+    label.includes('violeta') || label.includes('roxo') ||
+    category.includes('reunião') || category.includes('alinhamento') ||
+    ev.type === 'meeting'
+  ) {
     return isDark 
       ? { bg: '#2b1a3d', border: '#482a68', accent: '#7c4da6', text: '#f3e8ff' }
       : { bg: '#faf5ff', border: '#e9d5ff', accent: '#9333ea', text: '#581c87' };
   }
-  // Âmbar / Plantão
-  if (hex.includes('d97706') || hex.includes('amber') || hex.includes('543015') || hex.includes('6b3c1a') || hex.includes('f59e0b') || ev.type === 'on_call') {
+
+  // 2. Âmbar / Laranja (Plantão / Sobreaviso) - #543015
+  if (
+    hex.includes('543015') || hex.includes('6b3c1a') || hex.includes('d97706') || hex.includes('amber') || hex.includes('f59e0b') ||
+    label.includes('âmbar') || label.includes('laranja') ||
+    category.includes('plantão') || category.includes('sobreaviso') ||
+    ev.type === 'on_call'
+  ) {
     return isDark 
       ? { bg: '#362111', border: '#5c391f', accent: '#9e6234', text: '#fef3c7' }
       : { bg: '#fffbf5', border: '#fed7aa', accent: '#ea580c', text: '#7c2d12' };
   }
-  // Esmeralda / Treinamento
-  if (hex.includes('059669') || hex.includes('10b981') || hex.includes('163a2a') || hex.includes('1d4734') || ev.type === 'training') {
+
+  // 3. Esmeralda (Home Office / Remoto) - #163a2a
+  if (
+    hex.includes('163a2a') || hex.includes('1d4734') || hex.includes('059669') || hex.includes('10b981') ||
+    label.includes('esmeralda') ||
+    category.includes('home office') || category.includes('remoto') ||
+    workplace.includes('remoto') || workplace.includes('home office') ||
+    title.includes('home office')
+  ) {
     return isDark 
       ? { bg: '#132e22', border: '#214e3b', accent: '#368262', text: '#dcfce7' }
-      : { bg: '#f4fbf7', border: '#bbf7d0', accent: '#16a34a', text: '#14532d' };
+      : { bg: '#f4f4f4', border: '#bbf7d0', accent: '#16a34a', text: '#14532d' };
   }
-  // Azul Oceano
-  if (hex.includes('0284c7') || hex.includes('38bdf8') || hex.includes('18324a') || hex.includes('203a54')) {
+
+  // 4. Azul Oceano (Treinamento / Onboarding) - #18324a
+  if (
+    hex.includes('18324a') || hex.includes('203a54') || hex.includes('0284c7') || hex.includes('38bdf8') ||
+    label.includes('azul') || label.includes('oceano') ||
+    category.includes('treinamento') || category.includes('onboarding') ||
+    ev.type === 'training'
+  ) {
     return isDark 
       ? { bg: '#15273b', border: '#244161', accent: '#376899', text: '#e0f2fe' }
       : { bg: '#f4f9fd', border: '#bae6fd', accent: '#0284c7', text: '#0c4a6e' };
   }
-  // Rosa Magenta
-  if (hex.includes('db2777') || hex.includes('f472b6') || hex.includes('501d33') || hex.includes('682542')) {
+
+  // 5. Rosa Magenta (Evento / Extraordinário) - #501d33
+  if (
+    hex.includes('501d33') || hex.includes('682542') || hex.includes('db2777') || hex.includes('f472b6') ||
+    label.includes('rosa') || label.includes('magenta') ||
+    category.includes('evento') || category.includes('extraordinário') ||
+    title.includes('evento')
+  ) {
     return isDark 
       ? { bg: '#361726', border: '#57263e', accent: '#8c3f66', text: '#fce7f3' }
       : { bg: '#fdf6f9', border: '#fbcfe8', accent: '#db2777', text: '#831843' };
   }
 
-  // Padrão: Coral / Vinho Operacional
+  // 6. Coral / Vinho (Operacional / Presencial) - #63172a (Padrão)
   return isDark 
     ? { bg: '#381622', border: '#592638', accent: '#8f3b58', text: '#ffe4e6' }
     : { bg: '#fff5f7', border: '#fecdd3', accent: '#e11d48', text: '#881337' };
@@ -107,8 +143,11 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
   onDeleteShiftsBulk,
   onAddEmployee,
   theme = 'dark',
+  activeEmployee,
+  isRh: propsIsRh,
 }) => {
   const isDark = theme !== 'light';
+  const isRh = propsIsRh || activeEmployee?.isRh || activeEmployee?.roleType === 'rh' || activeEmployee?.isMasterManager;
   const today = useMemo(() => new Date(), []);
   const todayStr = useMemo(() => formatDate(today), [today]);
 
@@ -258,6 +297,7 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
 
   // Open Modal for New Shift
   const handleOpenCreateShift = (dateStr?: string, timeStr?: string, initialStatus: 'draft' | 'published' = 'published') => {
+    if (isRh) return; // RH apenas visualiza escalas!
     if (initialStatus === 'draft') {
       setEditingShift({
         id: '',
@@ -411,17 +451,19 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
         </button>
 
         {/* Quick Action Button */}
-        <button
-          onClick={() => handleOpenCreateShift()}
-          title="Novo Turno"
-          className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer ${
-            isDark
-              ? 'bg-[#1A1C24] hover:bg-[#252834] border-white/5 text-slate-300 hover:text-white shadow-xs'
-              : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700 hover:text-slate-900 shadow-2xs'
-          }`}
-        >
-          <Plus className="w-4 h-4" />
-        </button>
+        {!isRh && (
+          <button
+            onClick={() => handleOpenCreateShift()}
+            title="Novo Turno"
+            className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer ${
+              isDark
+                ? 'bg-[#1A1C24] hover:bg-[#252834] border-white/5 text-slate-300 hover:text-white shadow-xs'
+                : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700 hover:text-slate-900 shadow-2xs'
+            }`}
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+        )}
 
         {/* Divider */}
         <div className={`w-8 h-px my-1 ${isDark ? 'bg-white/10' : 'bg-slate-200'}`} />
@@ -839,72 +881,74 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
             </div>
 
             {/* Ações superiores: Publicar, Templates de Escalas e Novo Turno */}
-            <div className="flex items-center gap-2.5 flex-shrink-0">
-              {draftShifts.length > 0 && (
+            {!isRh && (
+              <div className="flex items-center gap-2.5 flex-shrink-0">
+                {draftShifts.length > 0 && (
+                  <button
+                    onClick={handlePublishAllDrafts}
+                    className="h-9 px-3.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all hover:-translate-y-0.5 shadow-sm cursor-pointer"
+                    style={{
+                      background: isDark ? 'rgba(0,0,0,0.25)' : 'rgba(150,24,60,0.1)',
+                      color: isDark ? '#fff' : '#96183c',
+                      border: isDark ? '1px solid rgba(255,255,255,0.3)' : '1px solid rgba(150,24,60,0.3)',
+                    }}
+                    title="Publicar todas as alterações salvas como rascunho"
+                  >
+                    <Radio className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                    <span>Publicar escala</span>
+                    <span className="opacity-80">({draftShifts.length})</span>
+                  </button>
+                )}
+
+                {/* Excluir Escalas em Lote / Filtro */}
                 <button
-                  onClick={handlePublishAllDrafts}
-                  className="h-9 px-3.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all hover:-translate-y-0.5 shadow-sm cursor-pointer"
-                  style={{
-                    background: isDark ? 'rgba(0,0,0,0.25)' : 'rgba(150,24,60,0.1)',
-                    color: isDark ? '#fff' : '#96183c',
-                    border: isDark ? '1px solid rgba(255,255,255,0.3)' : '1px solid rgba(150,24,60,0.3)',
-                  }}
-                  title="Publicar todas as alterações salvas como rascunho"
+                  onClick={() => setIsDeleteModalOpen(true)}
+                  className={`h-9 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all hover:-translate-y-0.5 ${
+                    isDark
+                      ? 'bg-rose-500/10 border border-rose-500/30 text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/50'
+                      : 'bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 shadow-2xs'
+                  }`}
+                  title="Excluir escalas em lote por período ou filtro"
                 >
-                  <Radio className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-                  <span>Publicar escala</span>
-                  <span className="opacity-80">({draftShifts.length})</span>
+                  <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${
+                    isDark ? 'bg-rose-500/20 text-rose-400' : 'bg-rose-100 text-rose-600'
+                  }`}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </div>
+                  <span>Excluir Escalas</span>
                 </button>
-              )}
 
-              {/* Excluir Escalas em Lote / Filtro */}
-              <button
-                onClick={() => setIsDeleteModalOpen(true)}
-                className={`h-9 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all hover:-translate-y-0.5 ${
-                  isDark
-                    ? 'bg-rose-500/10 border border-rose-500/30 text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/50'
-                    : 'bg-rose-50 border border-rose-200 text-rose-700 hover:bg-rose-100 shadow-2xs'
-                }`}
-                title="Excluir escalas em lote por período ou filtro"
-              >
-                <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${
-                  isDark ? 'bg-rose-500/20 text-rose-400' : 'bg-rose-100 text-rose-600'
-                }`}>
-                  <Trash2 className="w-3.5 h-3.5" />
-                </div>
-                <span>Excluir Escalas</span>
-              </button>
+                {/* Templates de Escalas */}
+                <button
+                  onClick={() => setIsTemplatesModalOpen(true)}
+                  className={`h-9 px-3.5 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-all hover:-translate-y-0.5 ${
+                    isDark
+                      ? 'bg-[#15161b] border border-white/10 text-slate-200 hover:text-[#F9DE97] hover:border-[#F59242]/60 hover:bg-[#F59242]/10'
+                      : 'bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 shadow-2xs'
+                  }`}
+                  title="Templates de Horários & Replicar Semanas"
+                >
+                  <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${
+                    isDark ? 'bg-[#9F243C]/30 text-[#F59242]' : 'bg-[#96183c]/10 text-[#96183c]'
+                  }`}>
+                    <Layers className="w-3.5 h-3.5" />
+                  </div>
+                  <span>Templates de Escalas</span>
+                </button>
 
-              {/* Templates de Escalas */}
-              <button
-                onClick={() => setIsTemplatesModalOpen(true)}
-                className={`h-9 px-3.5 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-all hover:-translate-y-0.5 ${
-                  isDark
-                    ? 'bg-[#15161b] border border-white/10 text-slate-200 hover:text-[#F9DE97] hover:border-[#F59242]/60 hover:bg-[#F59242]/10'
-                    : 'bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 shadow-2xs'
-                }`}
-                title="Templates de Horários & Replicar Semanas"
-              >
-                <div className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${
-                  isDark ? 'bg-[#9F243C]/30 text-[#F59242]' : 'bg-[#96183c]/10 text-[#96183c]'
-                }`}>
-                  <Layers className="w-3.5 h-3.5" />
-                </div>
-                <span>Templates de Escalas</span>
-              </button>
-
-              {/* Novo turno */}
-              <button
-                onClick={() => handleOpenCreateShift(undefined, undefined, 'published')}
-                className="h-9 px-4 rounded-xl text-xs font-extrabold transition-all hover:-translate-y-0.5 shadow-md flex items-center gap-1.5 cursor-pointer text-white"
-                style={{
-                  background: 'linear-gradient(135deg, #96183C 0%, #F89847 100%)',
-                }}
-              >
-                <Plus className="w-4 h-4" />
-                <span>Novo turno</span>
-              </button>
-            </div>
+                {/* Novo turno */}
+                <button
+                  onClick={() => handleOpenCreateShift(undefined, undefined, 'published')}
+                  className="h-9 px-4 rounded-xl text-xs font-extrabold transition-all hover:-translate-y-0.5 shadow-md flex items-center gap-1.5 cursor-pointer text-white"
+                  style={{
+                    background: 'linear-gradient(135deg, #96183C 0%, #F89847 100%)',
+                  }}
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Novo turno</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Barra de Filtros Ativos (Chips) */}
@@ -1779,19 +1823,21 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
               </div>
 
               {/* Footer: add new shift */}
-              <div className={`p-4 pt-3 border-t mt-1 ${isDark ? 'border-white/8' : 'border-slate-100'}`}>
-                <button
-                  onClick={() => {
-                    setDayPanelDate(null);
-                    handleOpenCreateShift(dayPanelDate);
-                  }}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl font-bold text-sm transition-all hover:opacity-90 cursor-pointer shadow-md text-white"
-                  style={{ background: 'linear-gradient(135deg,#96183c,#f89847)' }}
-                >
-                  <Plus size={16} />
-                  Adicionar turno para este dia
-                </button>
-              </div>
+              {!isRh && (
+                <div className={`p-4 pt-3 border-t mt-1 ${isDark ? 'border-white/8' : 'border-slate-100'}`}>
+                  <button
+                    onClick={() => {
+                      setDayPanelDate(null);
+                      handleOpenCreateShift(dayPanelDate);
+                    }}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl font-bold text-sm transition-all hover:opacity-90 cursor-pointer shadow-md text-white"
+                    style={{ background: 'linear-gradient(135deg,#96183c,#f89847)' }}
+                  >
+                    <Plus size={16} />
+                    Adicionar turno para este dia
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -1801,8 +1847,10 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
       <OrbitShiftModal
         isOpen={isShiftModalOpen}
         initialDate={modalInitialDate}
+        initialEmployeeId={selectedCollaboratorId || undefined}
         editingShift={editingShift}
         employees={employees}
+        isRh={isRh}
         onSave={handleSaveShift}
         onDelete={(id) => {
           onDeleteShift(id);

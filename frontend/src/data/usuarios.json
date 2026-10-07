@@ -4,13 +4,25 @@
       "id": "mgr-1",
       "nome": "Camila Duarte",
       "email": "gestor@pontual.com",
-      "emailSecundario": "camila.duarte@employer.com.br",
+      "emailSecundario": "rh@pontual.com",
+      "senha": "123456",
+      "perfil": "rh",
+      "role": "rh",
+      "cargo": "Gerente de Recursos Humanos (RH)",
+      "departamento": "Recursos Humanos & Gestão Geral",
+      "avatar": "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80"
+    },
+    {
+      "id": "mgr-2",
+      "nome": "Roberto Alves",
+      "email": "gestor.ti@pontual.com",
+      "emailSecundario": "roberto.alves@employer.com.br",
       "senha": "123456",
       "perfil": "gestor",
       "role": "manager",
-      "cargo": "Gerente Geral de Escalas",
-      "departamento": "Gestão de Pessoas & Operações",
-      "avatar": "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80"
+      "cargo": "Gestor de Setor - TI & Atendimento",
+      "departamento": "Tecnologia & Atendimento",
+      "avatar": "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150&auto=format&fit=crop&q=80"
     },
     {
       "id": "emp-1",
@@ -22,67 +34,8 @@
       "role": "employee",
       "cargo": "Analista de Atendimento",
       "departamento": "Atendimento",
-      "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
-    },
-    {
-      "id": "emp-2",
-      "nome": "Beatriz Santos",
-      "email": "beatriz.santos@employer.com.br",
-      "emailSecundario": "beatriz@pontual.com",
-      "senha": "123456",
-      "perfil": "colaborador",
-      "role": "employee",
-      "cargo": "Especialista de Suporte",
-      "departamento": "Suporte Técnico",
-      "avatar": "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80"
-    },
-    {
-      "id": "emp-3",
-      "nome": "Rafael Mendes",
-      "email": "rafael.mendes@employer.com.br",
-      "emailSecundario": "rafael@pontual.com",
-      "senha": "123456",
-      "perfil": "colaborador",
-      "role": "employee",
-      "cargo": "Operador de Escala",
-      "departamento": "Operações",
-      "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80"
-    },
-    {
-      "id": "emp-4",
-      "nome": "Mariana Costa",
-      "email": "mariana.costa@employer.com.br",
-      "emailSecundario": "mariana@pontual.com",
-      "senha": "123456",
-      "perfil": "colaborador",
-      "role": "employee",
-      "cargo": "Consultora de Vendas",
-      "departamento": "Comercial",
-      "avatar": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80"
-    },
-    {
-      "id": "emp-5",
-      "nome": "Thiago Oliveira",
-      "email": "thiago.oliveira@employer.com.br",
-      "emailSecundario": "thiago@pontual.com",
-      "senha": "123456",
-      "perfil": "colaborador",
-      "role": "employee",
-      "cargo": "Desenvolvedor Frontend",
-      "departamento": "Tecnologia",
-      "avatar": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80"
-    },
-    {
-      "id": "emp-6",
-      "nome": "Juliana Lima",
-      "email": "juliana.lima@employer.com.br",
-      "emailSecundario": "juliana@pontual.com",
-      "senha": "123456",
-      "perfil": "colaborador",
-      "role": "employee",
-      "cargo": "Supervisora de Operações",
-      "departamento": "Operações",
-      "avatar": "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80"
+      "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+      "managerIds": ["mgr-2"]
     }
   ]
 }

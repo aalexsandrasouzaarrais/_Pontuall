@@ -56,7 +56,20 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
     department: '',
     phone: '',
     standardHoursPerWeek: 40,
+    roleType: 'colaborador' as 'rh' | 'gestor' | 'colaborador',
+    managerId: '',
   });
+
+  // Lista de gestores únicos e disponíveis para vinculação
+  const gestoresList = useMemo(() => {
+    return employees.filter(e => 
+      e.roleType === 'gestor' || 
+      e.isMasterManager || 
+      e.role.toLowerCase().includes('gestor') || 
+      e.role.toLowerCase().includes('gerente') ||
+      e.id.startsWith('mgr-')
+    );
+  }, [employees]);
 
   // Lista de departamentos únicos
   const departments = useMemo(() => {
@@ -86,12 +99,15 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
   // Abertura do modal de edição
   const handleOpenEdit = (emp: Employee) => {
     setEditingEmployee(emp);
+    const primaryManagerId = (emp.managerIds && emp.managerIds.length > 0) ? emp.managerIds[0] : '';
     setEditForm({
       name: emp.name,
       role: emp.role,
       department: emp.department,
       phone: emp.phone || '',
       standardHoursPerWeek: emp.standardHoursPerWeek || 40,
+      roleType: emp.roleType || (emp.isRh ? 'rh' : emp.role.toLowerCase().includes('gestor') ? 'gestor' : 'colaborador'),
+      managerId: primaryManagerId,
     });
   };
 
@@ -100,6 +116,8 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
     e.preventDefault();
     if (!editingEmployee) return;
 
+    const isRhRole = editForm.roleType === 'rh';
+
     const updated: Employee = {
       ...editingEmployee,
       name: editForm.name.trim(),
@@ -107,6 +125,10 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
       department: editForm.department.trim(),
       phone: editForm.phone.trim(),
       standardHoursPerWeek: Number(editForm.standardHoursPerWeek) || 40,
+      roleType: editForm.roleType,
+      isRh: isRhRole,
+      isMasterManager: isRhRole ? (editingEmployee.isMasterManager ?? true) : false,
+      managerIds: editForm.managerId ? [editForm.managerId] : [],
     };
 
     onUpdateEmployee(updated);
@@ -340,6 +362,37 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                   <div className={`space-y-1.5 text-xs p-3 rounded-xl border ${
                     isDark ? 'bg-[#0b0c10] border-white/5' : 'bg-slate-50 border-slate-100'
                   }`}>
+                    <div className="flex items-center justify-between gap-2 pb-1 border-b border-white/5">
+                      <span className="text-[10px] text-slate-400 font-bold uppercase">Papel:</span>
+                      {emp.isRh || emp.roleType === 'rh' ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                          RH Admin
+                        </span>
+                      ) : emp.roleType === 'gestor' || emp.role.toLowerCase().includes('gestor') || emp.role.toLowerCase().includes('gerente') ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#f89847]/20 text-[#f89847] border border-[#f89847]/30">
+                          Gestor
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-500/15 text-slate-300 border border-slate-500/20">
+                          Colaborador
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-0.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-[#f89642] shrink-0" />
+                      <span className="truncate text-slate-300">
+                        Gestor: <strong className="text-white">
+                          {(() => {
+                            const manager = employees.find(m => emp.managerIds?.includes(m.id));
+                            if (manager) return manager.name;
+                            if (emp.roleType === 'gestor' || emp.isRh || emp.roleType === 'rh') return 'Próprio Gestor';
+                            return 'Sem gestor';
+                          })()}
+                        </strong>
+                      </span>
+                    </div>
+
                     <div className="flex items-center gap-2">
                       <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                       <span className="truncate">{emp.department}</span>
@@ -404,6 +457,8 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                 isDark ? 'bg-[#0b0c10] border-[#252A3A] text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500'
               }`}>
                 <th className="p-3.5">COLABORADOR</th>
+                <th className="p-3.5">PAPEL</th>
+                <th className="p-3.5">GESTOR RESPONSÁVEL</th>
                 <th className="p-3.5">MATRÍCULA</th>
                 <th className="p-3.5">CARGO / FUNÇÃO</th>
                 <th className="p-3.5">DEPARTAMENTO</th>
@@ -425,11 +480,40 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                         />
                         <div>
                           <span className="font-bold block text-sm">{emp.name}</span>
-                          {emp.isMasterManager && (
-                            <span className="text-[9px] font-bold text-amber-400 uppercase">Gestor Master RH</span>
-                          )}
                         </div>
                       </div>
+                    </td>
+                    <td className="p-3.5 font-semibold">
+                      {emp.isRh || emp.roleType === 'rh' ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                          RH Admin
+                        </span>
+                      ) : emp.roleType === 'gestor' || emp.role.toLowerCase().includes('gestor') || emp.role.toLowerCase().includes('gerente') ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#f89847]/20 text-[#f89847] border border-[#f89847]/30">
+                          Gestor
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-500/15 text-slate-300 border border-slate-500/20">
+                          Colaborador
+                        </span>
+                      )}
+                    </td>
+                    <td className="p-3.5">
+                      {(() => {
+                        const manager = employees.find(m => emp.managerIds?.includes(m.id));
+                        if (manager) {
+                          return (
+                            <div className="flex items-center gap-2">
+                              <img src={manager.avatar} alt={manager.name} className="w-5 h-5 rounded-full object-cover border border-white/10 shrink-0" />
+                              <span className="font-bold text-xs">{manager.name}</span>
+                            </div>
+                          );
+                        }
+                        if (emp.roleType === 'gestor' || emp.isRh || emp.roleType === 'rh') {
+                          return <span className="text-slate-400 italic text-[11px]">— (Próprio Gestor)</span>;
+                        }
+                        return <span className="text-slate-400 text-[11px]">Sem gestor direto</span>;
+                      })()}
                     </td>
                     <td className="p-3.5 font-mono text-slate-400">{emp.registrationId || 'PNT-1000'}</td>
                     <td className="p-3.5 font-semibold">{emp.role}</td>
@@ -550,6 +634,42 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                       isDark ? 'bg-[#0b0c10] border-[#252A3A] text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
                     }`}
                   />
+                </div>
+              </div>
+
+              {/* Papel & Gestor Responsável */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-slate-400">Papel / Nível de Acesso</label>
+                  <select
+                    value={editForm.roleType}
+                    onChange={e => setEditForm({ ...editForm, roleType: e.target.value as 'rh' | 'gestor' | 'colaborador' })}
+                    className={`w-full px-4 py-2.5 rounded-xl border outline-none cursor-pointer ${
+                      isDark ? 'bg-[#0b0c10] border-[#252A3A] text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                    }`}
+                  >
+                    <option value="colaborador">Colaborador (Equipe)</option>
+                    <option value="gestor">Gestor de Setor</option>
+                    <option value="rh">RH (Administrador Geral)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-slate-400">Gestor Responsável Direto</label>
+                  <select
+                    value={editForm.managerId}
+                    onChange={e => setEditForm({ ...editForm, managerId: e.target.value })}
+                    className={`w-full px-4 py-2.5 rounded-xl border outline-none cursor-pointer ${
+                      isDark ? 'bg-[#0b0c10] border-[#252A3A] text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                    }`}
+                  >
+                    <option value="">Sem gestor direto (Nenhum)</option>
+                    {gestoresList.map(g => (
+                      <option key={g.id} value={g.id}>
+                        {g.name} ({g.role || 'Gestor'})
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 

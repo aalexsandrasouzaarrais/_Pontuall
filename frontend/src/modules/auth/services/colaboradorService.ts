@@ -1,9 +1,9 @@
 import { supabase } from '@/shared/services/supabase';
-import { safeStorage } from '@/shared/utils/safeStorage';
 import { Employee } from '@/types';
 
 // Converte registro do banco BNE (TAB_Colaborador) para interface Employee do Frontend
 export function mapBneToEmployee(row: any): Employee {
+  const isRh = row.Tpo_Perfil === 'rh' || row.Flg_Gestor_Master === true;
   return {
     id: row.Idf_Colaborador,
     name: row.Nme_Colaborador,
@@ -16,6 +16,8 @@ export function mapBneToEmployee(row: any): Employee {
     registrationId: row.Cod_Matricula || '',
     companyId: row.Idf_Empresa,
     isMasterManager: row.Flg_Gestor_Master || false,
+    isRh: isRh,
+    roleType: row.Tpo_Perfil === 'rh' ? 'rh' : row.Tpo_Perfil === 'gestor' ? 'gestor' : 'colaborador',
     managerIds: row.managerIds || []
   };
 }
@@ -121,14 +123,16 @@ export async function createGestorSupabase(gestorData: {
   email: string;
   password: string;
   cnpj?: string;
+  companyName?: string;
   role?: string;
   department?: string;
   phone?: string;
+  isRh?: boolean;
 }): Promise<Employee> {
   const cleanEmail = gestorData.email.trim().toLowerCase();
   const rawCnpj = gestorData.cnpj ? gestorData.cnpj.replace(/\D/g, '') : '';
   let companyId: string | null = null;
-  let isMasterManager = false;
+  let isMasterManager = gestorData.isRh ?? false;
   let companyCnpj: string | undefined = undefined;
 
   // 1. Processa a Empresa por CNPJ
@@ -144,14 +148,14 @@ export async function createGestorSupabase(gestorData: {
 
       if (empExistente) {
         companyId = empExistente.Idf_Empresa;
-        isMasterManager = false; // Empresa já existia -> gestor secundário
       } else {
+        const companyNameVal = gestorData.companyName?.trim() || `Empresa ${companyCnpj}`;
         const { data: novaEmp, error: empErr } = await supabase
           .from('TAB_Empresa')
           .insert({
             Num_CNPJ: companyCnpj,
-            Nme_Razao_Social: `Empresa ${companyCnpj}`,
-            Nme_Fantasia: `Organização ${companyCnpj}`,
+            Nme_Empresa: companyNameVal,
+            Nme_Razao_Social: companyNameVal,
             Flg_Ativa: true
           })
           .select()
@@ -167,20 +171,21 @@ export async function createGestorSupabase(gestorData: {
     }
   }
 
+  const isRhFinal = gestorData.isRh || isMasterManager || (gestorData.role && gestorData.role.toLowerCase().includes('rh'));
   const matricula = `GST-${Math.floor(1000 + Math.random() * 9000)}`;
   const payload = {
     Cod_Matricula: matricula,
     Nme_Colaborador: gestorData.name.trim(),
     Eml_Corporativo: cleanEmail,
     Des_Senha_Hash: gestorData.password,
-    Tpo_Perfil: 'gestor',
-    Tpo_Cargo: gestorData.role?.trim() || 'Gestor Geral',
-    Des_Departamento: gestorData.department?.trim() || 'Gestão de Pessoas & Operações',
+    Tpo_Perfil: isRhFinal ? 'rh' : 'gestor',
+    Tpo_Cargo: gestorData.role?.trim() || (isRhFinal ? 'Gerente de RH & Administração Geral' : 'Gestor de Setor'),
+    Des_Departamento: gestorData.department?.trim() || (isRhFinal ? 'Recursos Humanos & Gestão Geral' : 'Gestão de Pessoas & Operações'),
     Des_Avatar_Url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
     Num_Telefone: gestorData.phone?.trim() || '(11) 98765-4321',
     Num_Horas_Semanais: 44,
     Idf_Empresa: companyId,
-    Flg_Gestor_Master: isMasterManager,
+    Flg_Gestor_Master: isRhFinal,
     Flg_Ativo: true
   };
 
@@ -198,7 +203,9 @@ export async function createGestorSupabase(gestorData: {
   const emp = mapBneToEmployee(data);
   emp.companyId = companyId || undefined;
   emp.companyCnpj = companyCnpj;
-  emp.isMasterManager = isMasterManager;
+  emp.isMasterManager = isRhFinal;
+  emp.isRh = isRhFinal;
+  emp.roleType = isRhFinal ? 'rh' : 'gestor';
   return emp;
 }
 
@@ -372,97 +379,22 @@ export async function updateColaboradorSupabase(emp: Partial<Employee> & { id: s
   }
 }
 
-// Atualiza a senha definitiva do colaborador no Supabase ou LocalStorage
+// Atualiza a senha definitiva do colaborador no Supabase (substituindo a temporária)
 export async function updateColaboradorPasswordSupabase(identifier: string, novaSenha: string): Promise<boolean> {
   try {
-    if (!identifier || !identifier.trim()) return false;
+    const { error } = await supabase
+      .from('TAB_Colaborador')
+      .update({ Des_Senha_Hash: novaSenha })
+      .or(`Cod_Matricula.eq.${identifier},Idf_Colaborador.eq.${identifier},Eml_Corporativo.ilike.${identifier}`);
 
-    const rawInput = identifier.trim();
-    const cleanNoSpace = rawInput.replace(/\s+/g, '');
-    const norm = rawInput.toLowerCase();
-    const normNoSpace = cleanNoSpace.toLowerCase();
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawInput);
-
-    let updatedInSupabase = false;
-
-    // 1. Tenta buscar e atualizar no Supabase
-    try {
-      let query = supabase.from('TAB_Colaborador').select('*');
-
-      if (isUuid) {
-        query = query.or(`Idf_Colaborador.eq.${rawInput},Cod_Matricula.ilike.%${rawInput}%,Eml_Corporativo.ilike.%${rawInput}%`);
-      } else {
-        query = query.or(`Cod_Matricula.ilike.%${rawInput}%,Cod_Matricula.ilike.%${cleanNoSpace}%,Eml_Corporativo.ilike.%${rawInput}%`);
-      }
-
-      const { data: list, error: findError } = await query.limit(1);
-
-      if (!findError && list && list.length > 0) {
-        const usuario = list[0];
-        const { error: updateError } = await supabase
-          .from('TAB_Colaborador')
-          .update({ Des_Senha_Hash: novaSenha })
-          .eq('Idf_Colaborador', usuario.Idf_Colaborador);
-
-        if (!updateError) {
-          updatedInSupabase = true;
-        }
-      }
-    } catch (supErr) {
-      console.warn('Aviso ao atualizar senha no Supabase:', supErr);
+    if (error) {
+      console.warn('Erro ao atualizar senha no Supabase:', error.message);
+      return false;
     }
 
-    // 2. Atualiza no registro local (safeStorage - pontual_registered_users) se existir
-    let updatedInLocal = false;
-    try {
-      const localUsersStr = safeStorage.getItem('pontual_registered_users');
-      if (localUsersStr) {
-        const localUsers = JSON.parse(localUsersStr);
-        let foundIndex = localUsers.findIndex((u: any) => {
-          const mat = (u.Cod_Matricula || u.matricula || '').toLowerCase();
-          const eml = (u.Eml_Corporativo || u.email || '').toLowerCase();
-          const id = (u.Idf_Colaborador || u.id || '').toLowerCase();
-          return mat.includes(norm) || mat.includes(normNoSpace) || eml.includes(norm) || id.includes(norm);
-        });
-
-        if (foundIndex >= 0) {
-          localUsers[foundIndex].Des_Senha_Hash = novaSenha;
-          localUsers[foundIndex].senha = novaSenha;
-          safeStorage.setItem('pontual_registered_users', JSON.stringify(localUsers));
-          updatedInLocal = true;
-        }
-      }
-    } catch (localErr) {
-      console.warn('Aviso ao atualizar senha em local storage:', localErr);
-    }
-
-    // Retorna true se atualizou no Supabase ou no localStorage local
-    if (updatedInSupabase || updatedInLocal) {
-      return true;
-    }
-
-    // 3. Fallback: Se o identificador tiver pelo menos 3 caracteres (ex: PNT-1635),
-    // salva o registro de senha atualizada em local storage para permitir o login imediato
-    if (rawInput.length >= 3) {
-      try {
-        const localUsersStr = safeStorage.getItem('pontual_registered_users');
-        const localUsers = localUsersStr ? JSON.parse(localUsersStr) : [];
-        localUsers.push({
-          Cod_Matricula: rawInput.toUpperCase(),
-          Nme_Colaborador: 'Colaborador',
-          Eml_Corporativo: `${normNoSpace}@pontual.com.br`,
-          Des_Senha_Hash: novaSenha,
-          Tpo_Perfil: 'colaborador',
-          Flg_Ativo: true
-        });
-        safeStorage.setItem('pontual_registered_users', JSON.stringify(localUsers));
-        return true;
-      } catch {}
-    }
-
-    return false;
-  } catch (err: any) {
-    console.warn('Erro ao atualizar senha:', err?.message || err);
+    return true;
+  } catch (err) {
+    console.warn('Erro ao atualizar senha no Supabase:', err);
     return false;
   }
 }

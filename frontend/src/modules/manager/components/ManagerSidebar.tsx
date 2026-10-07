@@ -37,6 +37,8 @@ interface ManagerSidebarProps {
     name: string;
     avatar: string;
     role?: string;
+    isRh?: boolean;
+    roleType?: 'rh' | 'gestor' | 'colaborador';
   };
   theme?: 'light' | 'dark';
   onToggleTheme?: () => void;
@@ -163,7 +165,7 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
             Pontual
           </span>
           <span className="text-[9px] font-bold text-[#F89847] uppercase tracking-wider">
-            Visão do Gestor
+            {currentUser?.isRh || currentUser?.roleType === 'rh' ? 'RH & ADMINISTRAÇÃO GERAL' : 'VISÃO DO GESTOR'}
           </span>
         </div>
       </div>

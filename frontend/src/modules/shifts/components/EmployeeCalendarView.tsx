@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Employee, Shift } from '@/types';
 import { calculateShiftDurationHours } from '@/shared/utils/dateUtils';
+import { getMutedShiftColor } from './OrbitCalendarView';
 
 interface EmployeeCalendarViewProps {
   employee: Employee;
@@ -56,13 +57,13 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
   isLightTheme = false,
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('Semanal');
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 8, 21)); // Default 21 Sep 2026
+  const [currentDate, setCurrentDate] = useState(new Date());
 
   const empShifts = useMemo(() => {
     return shifts.filter(s => s.employeeId === employee.id && s.status === 'published');
   }, [shifts, employee.id]);
 
-  const todayStr = formatDateToYYYYMMDD(new Date(2026, 8, 21));
+  const todayStr = formatDateToYYYYMMDD(new Date());
 
   // Navegação
   const handlePrev = () => {
@@ -86,7 +87,7 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
   };
 
   const handleToday = () => {
-    setCurrentDate(new Date(2026, 8, 21));
+    setCurrentDate(new Date());
   };
 
   // Título dinâmico do cabeçalho - exibe sempre apenas o nome do mês
@@ -382,27 +383,32 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
 
                 {weekDays.map((d) => (
                   <div key={d.dateString} className="flex flex-col gap-2.5 pt-1 relative z-10 min-h-[460px]">
-                    {d.shifts.map((s, idx) => {
+                    {d.shifts.map((s) => {
                       const isMeeting = s.type === 'meeting';
-                      const cardStyle = getEventCardStyle(s, idx);
+                      const mutedStyle = getMutedShiftColor(s, !isLightTheme);
 
                       return (
                         <div
                           key={s.id}
                           onClick={() => onShiftClick(s)}
-                          className={`relative p-3.5 rounded-2xl cursor-pointer transition-all hover:scale-[1.02] ${cardStyle}`}
+                          className="relative p-3.5 rounded-2xl cursor-pointer transition-all hover:scale-[1.02] shadow-md border overflow-hidden"
+                          style={{
+                            background: mutedStyle.bg,
+                            borderColor: mutedStyle.border,
+                            borderLeftColor: mutedStyle.accent,
+                            borderLeftWidth: '3.5px',
+                            color: mutedStyle.text,
+                          }}
                         >
                           {/* Title */}
-                          <div className="font-extrabold text-xs leading-tight mb-1 truncate">
+                          <div className="font-extrabold text-xs leading-tight mb-1 truncate" style={{ color: mutedStyle.text }}>
                             {s.title || 'Atendimento Geral'}
                           </div>
 
                           {/* Time & Meeting Icon */}
-                          <div className={`text-[10px] font-mono mb-3 flex items-center justify-between font-semibold ${
-                            isLightTheme ? 'text-slate-600' : 'text-white/70'
-                          }`}>
+                          <div className="text-[10px] font-mono mb-3 flex items-center justify-between font-semibold opacity-90" style={{ color: mutedStyle.text }}>
                             <span>{s.startTime} - {s.endTime}</span>
-                            {isMeeting && <Video className={`w-3.5 h-3.5 ${isLightTheme ? 'text-rose-600' : 'text-[#F89847]'}`} />}
+                            {isMeeting && <Video className="w-3.5 h-3.5" style={{ color: mutedStyle.accent }} />}
                           </div>
 
                           {/* Avatars Stack (matching reference image) */}
@@ -411,23 +417,17 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                               <img
                                 src={employee.avatar}
                                 alt={employee.name}
-                                className={`inline-block h-5 w-5 rounded-full object-cover ring-2 ${
-                                  isLightTheme ? 'ring-white/80' : 'ring-black/40'
-                                }`}
+                                className="inline-block h-5 w-5 rounded-full object-cover ring-2 ring-black/20"
                               />
                               {isMeeting && (
                                 <img
                                   src="https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80"
                                   alt="Beatriz"
-                                  className={`inline-block h-5 w-5 rounded-full object-cover ring-2 ${
-                                    isLightTheme ? 'ring-white/80' : 'ring-black/40'
-                                  }`}
+                                  className="inline-block h-5 w-5 rounded-full object-cover ring-2 ring-black/20"
                                 />
                               )}
                             </div>
-                            <span className={`text-[10px] font-bold ${
-                              isLightTheme ? 'text-slate-800' : 'text-white/90'
-                            }`}>
+                            <span className="text-[10px] font-bold opacity-90" style={{ color: mutedStyle.text }}>
                               {employee.name.split(' ')[0]}
                             </span>
                           </div>
@@ -501,18 +501,25 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                     {cell.dayNumber}
                   </div>
                   <div className="space-y-1">
-                    {cell.shifts.map((s, sIdx) => {
-                      const cardStyle = getEventCardStyle(s, sIdx);
+                    {cell.shifts.map((s) => {
+                      const mutedStyle = getMutedShiftColor(s, !isLightTheme);
                       return (
                         <div
                           key={s.id}
                           onClick={() => onShiftClick(s)}
-                          className={`px-2 py-1.5 rounded-xl border cursor-pointer text-left transition-all ${cardStyle}`}
+                          className="px-2 py-1.5 rounded-xl border cursor-pointer text-left transition-all hover:scale-[1.02]"
+                          style={{
+                            background: mutedStyle.bg,
+                            borderColor: mutedStyle.border,
+                            borderLeftColor: mutedStyle.accent,
+                            borderLeftWidth: '3px',
+                            color: mutedStyle.text,
+                          }}
                         >
-                          <div className="text-[9px] font-mono font-bold opacity-90">
+                          <div className="text-[9px] font-mono font-bold opacity-90" style={{ color: mutedStyle.text }}>
                             {s.startTime}
                           </div>
-                          <div className="text-[10px] font-bold truncate">
+                          <div className="text-[10px] font-bold truncate" style={{ color: mutedStyle.text }}>
                             {s.title || 'Turno'}
                           </div>
                         </div>
@@ -558,46 +565,60 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                 Nenhum turno agendado para este dia.
               </div>
             ) : (
-              dayShifts.map((s, idx) => (
-                <div
-                  key={s.id}
-                  onClick={() => onShiftClick(s)}
-                  className={`p-5 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${
-                    isLightTheme
-                      ? 'bg-[#faf0ac]/30 hover:bg-[#faf0ac]/60 border-amber-200/60 shadow-sm'
-                      : 'bg-[#2D1B14] hover:bg-[#3D251C] border-white/5'
-                  }`}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center border ${
-                      isLightTheme 
-                        ? 'bg-white border-amber-200 text-orange-600 shadow-2xs' 
-                        : 'bg-black/40 border-white/10 text-[#F89847]'
-                    }`}>
-                      <Clock className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h4 className={`text-sm font-extrabold mb-0.5 ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
-                        {s.title || 'Turno'}
-                      </h4>
-                      <div className={`text-xs font-mono font-bold ${isLightTheme ? 'text-orange-600' : 'text-[#F89847]'}`}>
-                        {s.startTime} às {s.endTime}
+              dayShifts.map((s) => {
+                const mutedStyle = getMutedShiftColor(s, !isLightTheme);
+                return (
+                  <div
+                    key={s.id}
+                    onClick={() => onShiftClick(s)}
+                    className="p-5 rounded-2xl border cursor-pointer transition-all flex items-center justify-between hover:scale-[1.01]"
+                    style={{
+                      background: mutedStyle.bg,
+                      borderColor: mutedStyle.border,
+                      borderLeftColor: mutedStyle.accent,
+                      borderLeftWidth: '4px',
+                      color: mutedStyle.text,
+                    }}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div 
+                        className="w-12 h-12 rounded-2xl flex items-center justify-center border shrink-0"
+                        style={{
+                          background: 'rgba(0,0,0,0.2)',
+                          borderColor: mutedStyle.border,
+                          color: mutedStyle.accent,
+                        }}
+                      >
+                        <Clock className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-extrabold mb-0.5" style={{ color: mutedStyle.text }}>
+                          {s.title || 'Turno'}
+                        </h4>
+                        <div className="text-xs font-mono font-bold opacity-90" style={{ color: mutedStyle.text }}>
+                          {s.startTime} às {s.endTime}
+                        </div>
                       </div>
                     </div>
+                    
+                    <div className="flex items-center gap-3">
+                       <div 
+                         className="flex items-center gap-2 px-3 py-1.5 rounded-full border"
+                         style={{
+                           background: 'rgba(0,0,0,0.2)',
+                           borderColor: mutedStyle.border,
+                           color: mutedStyle.text,
+                         }}
+                       >
+                          <img src={employee.avatar} className="w-5 h-5 rounded-full object-cover" alt="Avatar"/>
+                          <span className="text-xs font-bold" style={{ color: mutedStyle.text }}>
+                            {employee.name.split(' ')[0]}
+                          </span>
+                       </div>
+                    </div>
                   </div>
-                  
-                  <div className="flex items-center gap-3">
-                     <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${
-                       isLightTheme ? 'bg-white border-amber-200' : 'bg-black/40 border-white/5'
-                     }`}>
-                        <img src={employee.avatar} className="w-5 h-5 rounded-full" alt="Avatar"/>
-                        <span className={`text-xs font-bold ${isLightTheme ? 'text-slate-700' : 'text-white/80'}`}>
-                          {employee.name.split(' ')[0]}
-                        </span>
-                     </div>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
