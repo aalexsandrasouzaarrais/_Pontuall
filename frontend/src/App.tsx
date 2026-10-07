@@ -59,6 +59,7 @@ import {
   deleteShiftSupabase,
   deleteBulkShiftsSupabase
 } from '@/modules/shifts/services/shiftService';
+import { getRemindersSupabase } from '@/modules/shifts/services/reminderService';
 import {
   getJustificativasSupabase,
   createJustificativaSupabase,
@@ -72,7 +73,8 @@ import {
   Shift, 
   TimeOffRequest, 
   AbsenceJustification, 
-  NotificationItem 
+  NotificationItem,
+  ManagerReminder
 } from './types';
 import { 
   CheckCircle2, 
@@ -168,12 +170,13 @@ function AppContent() {
     const [requests, setRequests] = useState<TimeOffRequest[]>([]);
     const [justifications, setJustifications] = useState<AbsenceJustification[]>([]);
     const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+    const [reminders, setReminders] = useState<ManagerReminder[]>([]);
     
     // Employee Tabs
     const [employeeTab, setEmployeeTab] = useState<'overview' | 'calendar' | 'requests' | 'justifications' | 'chat'>('overview');
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-    // Sincronização e filtragem por empresa/gestor com o Supabase (TAB_Colaborador, TAB_Escala_Turno, TAB_Solicitacao_Colaborador, TAB_Justificativa_Ausencia)
+    // Sincronização e filtragem por empresa/gestor com o Supabase (TAB_Colaborador, TAB_Escala_Turno, TAB_Solicitacao_Colaborador, TAB_Justificativa_Ausencia, TAB_Lembrete)
     React.useEffect(() => {
       async function loadDataFromSupabase() {
         if (!isAuthenticated || !activeEmployee) return;
@@ -209,6 +212,16 @@ function AppContent() {
           const empIds = finalEmployees.map(e => e.id);
           const dbShifts = await getShiftsSupabase(empIds);
           setShifts((dbShifts && dbShifts.length > 0) ? dbShifts : (isDemoUser ? getInitialShifts() : []));
+
+          // Busca lembretes da gestão no Supabase
+          const dbReminders = await getRemindersSupabase();
+          if (dbReminders && dbReminders.length > 0) {
+            setReminders(dbReminders);
+          } else if (isDemoUser) {
+            setReminders(INITIAL_REMINDERS);
+          } else {
+            setReminders([]);
+          }
 
           // Busca solicitações e justificativas salvas no Supabase (TAB_Solicitacao_Colaborador e TAB_Justificativa_Ausencia)
           const dbRequests = await getSolicitacoesSupabase();
@@ -835,19 +848,27 @@ function AppContent() {
           {/* Main Content */}
           <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 relative">
             {/* Tab 1: Overview & Digital Punch Clock */}
-            {employeeTab === 'overview' && (
-              <EmployeeMainView
-                employee={activeEmployee}
-                shifts={shifts}
-                reminders={INITIAL_REMINDERS}
-                onCheckIn={handleCheckIn}
-                onNavigateToCalendar={() => setEmployeeTab('calendar')}
-                onNavigateToRequests={() => setEmployeeTab('requests')}
-                onNavigateToJustifications={() => setEmployeeTab('justifications')}
-                onShiftClick={handleOpenShiftDetails}
-                isLightTheme={!isDark}
-              />
-            )}
+            {employeeTab === 'overview' && (() => {
+              const filteredReminders = (reminders || []).filter(rem => {
+                if (rem.completed) return false;
+                if (!rem.assignedEmployeeIds || rem.assignedEmployeeIds.length === 0) return true;
+                return rem.assignedEmployeeIds.includes(activeEmployee.id);
+              });
+
+              return (
+                <EmployeeMainView
+                  employee={activeEmployee}
+                  shifts={shifts}
+                  reminders={filteredReminders}
+                  onCheckIn={handleCheckIn}
+                  onNavigateToCalendar={() => setEmployeeTab('calendar')}
+                  onNavigateToRequests={() => setEmployeeTab('requests')}
+                  onNavigateToJustifications={() => setEmployeeTab('justifications')}
+                  onShiftClick={handleOpenShiftDetails}
+                  isLightTheme={!isDark}
+                />
+              );
+            })()}
 
             {/* Tab 2: Monthly / Weekly Calendar */}
             {employeeTab === 'calendar' && (
