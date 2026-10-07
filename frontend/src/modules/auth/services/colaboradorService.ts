@@ -75,7 +75,7 @@ export async function createColaboradorSupabase(emp: Employee, creatorGestorId?:
     Nme_Colaborador: emp.name,
     Eml_Corporativo: emp.email,
     Des_Senha_Hash: matricula, // ID como senha provisória
-    Tpo_Perfil: 'colaborador',
+    Tpo_Perfil: emp.roleType === 'rh' ? 'rh' : emp.roleType === 'gestor' ? 'gestor' : (emp.isRh ? 'rh' : 'colaborador'),
     Tpo_Cargo: emp.role,
     Des_Departamento: emp.department,
     Des_Avatar_Url: emp.avatar,

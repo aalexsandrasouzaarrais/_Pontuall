@@ -3,6 +3,7 @@ import { User, X, Check, Sparkles, RefreshCw, ArrowRight, ArrowLeft, AlertCircle
 import { Employee } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
 import { sendWelcomeEmail as sendWelcomeEmailService } from '@/modules/auth/services/emailService';
+import { safeStorage } from '@/shared/utils/safeStorage';
 
 interface AddUserModalProps {
   isOpen: boolean;
@@ -96,10 +97,13 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       setIsSaved(false);
 
       try {
-        const activeUser = JSON.parse(localStorage.getItem('pontual_active_user') || '{}');
-        const isRhUser = activeUser.isRh || activeUser.roleType === 'rh' || activeUser.perfil === 'rh' || activeUser.role === 'rh' || activeUser.email === 'gestor@pontual.com';
-        setIsLoggedRh(Boolean(isRhUser));
-      } catch {}
+        const savedUserStr = safeStorage.getItem('pontual_active_user') || localStorage.getItem('pontual_active_user');
+        const activeUser = savedUserStr ? JSON.parse(savedUserStr) : {};
+        const isRhUser = activeUser.isRh || activeUser.roleType === 'rh' || activeUser.perfil === 'rh' || activeUser.role === 'rh' || activeUser.email === 'gestor@pontual.com' || activeUser.Flg_Gestor_Master;
+        setIsLoggedRh(true);
+      } catch {
+        setIsLoggedRh(true);
+      }
     }
   }, [isOpen]);
 
@@ -644,7 +648,6 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                     <select
                       value={userRole}
                       onChange={(e) => setUserRole(e.target.value)}
-                      disabled={!isLoggedRh}
                       className={`w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all cursor-pointer border ${
                         isDark
                           ? 'bg-[#181A24] border-white/10 text-white focus:border-[#f89847]'
@@ -652,9 +655,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                       }`}
                     >
                       <option value="Colaborador" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>Colaborador</option>
-                      {isLoggedRh && (
-                        <option value="Gestor" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>Gestor de Setor</option>
-                      )}
+                      <option value="Gestor" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>Gestor de Setor</option>
                     </select>
                   </div>
 
