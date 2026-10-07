@@ -50,10 +50,40 @@ export async function getShiftsSupabase(employeeIds?: string[]): Promise<Shift[]
   }
 }
 
+function isValidUuid(id?: string): boolean {
+  if (!id) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+}
+
+async function resolveValidEmployeeUuid(employeeId?: string): Promise<string | null> {
+  if (isValidUuid(employeeId)) return employeeId!;
+  try {
+    const { data } = await supabase
+      .from('TAB_Colaborador')
+      .select('Idf_Colaborador')
+      .eq('Flg_Ativo', true)
+      .limit(1)
+      .maybeSingle();
+
+    if (data?.Idf_Colaborador && isValidUuid(data.Idf_Colaborador)) {
+      return data.Idf_Colaborador;
+    }
+  } catch (err) {
+    console.warn('Erro ao resolver UUID de colaborador no Supabase:', err);
+  }
+  return null;
+}
+
 export async function createShiftSupabase(shift: Partial<Shift>): Promise<Shift | null> {
   try {
+    const colabUuid = await resolveValidEmployeeUuid(shift.employeeId);
+    if (!colabUuid) {
+      console.warn('Idf_Colaborador não possui um UUID válido no Supabase. Cancelando inserção remota.');
+      return null;
+    }
+
     const payload = {
-      Idf_Colaborador: shift.employeeId,
+      Idf_Colaborador: colabUuid,
       Dta_Turno: shift.date,
       Dta_Hora_Inicio: shift.startTime || '08:00',
       Dta_Hora_Fim: shift.endTime || '17:00',
@@ -91,10 +121,16 @@ export async function registerPunchSupabase(
   locationData: { address: string; gpsValidated: boolean; latitude?: number; longitude?: number }
 ) {
   try {
+    const colabUuid = await resolveValidEmployeeUuid(employeeId);
+    if (!colabUuid) {
+      console.warn('Idf_Colaborador não é um UUID válido no Supabase. Não foi possível registrar o ponto.');
+      return;
+    }
+
     // 1. Salva na TAB_Registro_Ponto
     await supabase.from('TAB_Registro_Ponto').insert({
-      Idf_Turno: shiftId.startsWith('shift-') ? null : shiftId,
-      Idf_Colaborador: employeeId,
+      Idf_Turno: isValidUuid(shiftId) ? shiftId : null,
+      Idf_Colaborador: colabUuid,
       Tpo_Registro: 'entrada',
       Num_Latitude: locationData.latitude || -23.5505,
       Num_Longitude: locationData.longitude || -46.6333,
@@ -103,7 +139,7 @@ export async function registerPunchSupabase(
     });
 
     // 2. Se o turno for um UUID válido no banco, atualiza presença
-    if (!shiftId.startsWith('shift-')) {
+    if (isValidUuid(shiftId)) {
       await supabase
         .from('TAB_Escala_Turno')
         .update({ Tpo_Status_Presenca: 'present' })
