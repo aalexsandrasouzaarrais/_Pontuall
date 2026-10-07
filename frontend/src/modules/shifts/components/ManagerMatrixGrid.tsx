@@ -69,7 +69,6 @@ interface ManagerMatrixGridProps {
   activeTab?: 'escala' | 'aprovacoes' | 'relatorios' | 'tarefas' | 'chat' | 'colaboradores';
   theme?: 'light' | 'dark';
   activeEmployee?: Employee;
-  isRh?: boolean;
   onUpdateEmployee?: (updated: Employee) => void;
   onDeactivateEmployee?: (employeeId: string) => void;
   onDeleteShift?: (id: string) => void;
@@ -93,7 +92,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   activeTab: sidebarTab,
   theme = 'dark',
   activeEmployee,
-  isRh: propsIsRh,
   onUpdateEmployee,
   onDeactivateEmployee,
   onDeleteShift,
@@ -104,7 +102,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   const activeTab = sidebarTab || internalActiveTab;
   const setActiveTab = setInternalActiveTab;
   const isDark = theme !== 'light';
-  const isRh = propsIsRh || activeEmployee?.isRh || activeEmployee?.roleType === 'rh' || activeEmployee?.isMasterManager;
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
@@ -199,6 +196,81 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           status: 'Aprovado',
           actionText: 'Homologado agora',
           feedback: 'Atestado validado e abonado integralmente.',
+        },
+        {
+          id: 'ap-2',
+          employeeId: 'emp-2',
+          employeeName: 'Beatriz Santos',
+          employeeRole: 'Especialista de Suporte',
+          employeeDept: 'Suporte Técnico',
+          employeeAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+          type: 'Troca de Turno',
+          reason: 'Solicitou troca com Thiago Oliveira',
+          date: '18/09/2026',
+          documentName: 'Não se aplica',
+          status: 'Recusado / Falta',
+          actionText: 'Recusado agora',
+          feedback: 'Incompatível com o limite de descanso entre jornadas.',
+        },
+        {
+          id: 'ap-3',
+          employeeId: 'emp-3',
+          employeeName: 'Rafael Mendes',
+          employeeRole: 'Operador de Escala',
+          employeeDept: 'Operações',
+          employeeAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+          type: 'Folga Compensatória',
+          reason: 'Banco de horas acumulado no plantão',
+          date: '14/09/2026',
+          documentName: 'Acordo banco',
+          status: 'Aprovado',
+          actionText: 'Homologado',
+          feedback: 'Compensação aprovada conforme saldo positivo em banco de horas.',
+        },
+        {
+          id: 'ap-4',
+          employeeId: 'emp-4',
+          employeeName: 'Mariana Costa',
+          employeeRole: 'Consultora de Vendas',
+          employeeDept: 'Comercial',
+          employeeAvatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
+          type: 'Falta Injustificada',
+          reason: 'Ausência não comunicada no turno matutino',
+          date: '11/09/2026',
+          documentName: 'Sem anexo',
+          status: 'Falta Lançada',
+          actionText: 'Registrada em folha',
+          feedback: 'Ausência sem aviso prévio. Desconto de DSR lançado no espelho.',
+        },
+        {
+          id: 'ap-5',
+          employeeId: 'emp-5',
+          employeeName: 'Thiago Oliveira',
+          employeeRole: 'Desenvolvedor Frontend',
+          employeeDept: 'Tecnologia',
+          employeeAvatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
+          type: 'Atestado Médico',
+          reason: 'Declaração de comparecimento vacinação',
+          date: '09/09/2026',
+          documentName: 'declaracao.pdf',
+          status: 'Aprovado',
+          actionText: 'Abonado pelo RH',
+          feedback: 'Declaração aceita e horas abonadas no fechamento.',
+        },
+        {
+          id: 'ap-6',
+          employeeId: 'emp-6',
+          employeeName: 'Juliana Lima',
+          employeeRole: 'Supervisora de Operações',
+          employeeDept: 'Operações',
+          employeeAvatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
+          type: 'Troca de Turno',
+          reason: 'Troca de plantão de domingo com Rafael Mendes por curso',
+          date: '20/09/2026',
+          documentName: 'Não se aplica',
+          status: 'Pendente',
+          actionText: 'Aguardando decisão',
+          feedback: '',
         },
       ]);
     } else {
@@ -1007,40 +1079,36 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 ))}
               </select>
 
-              {!isRh && (
-                <>
-                  <button 
-                    onClick={() => setIsDeleteModalOpen(true)}
-                    className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                    title="Excluir escalas em lote por período ou filtro"
-                  >
-                    <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-                    <span className="hidden sm:inline">Excluir Escalas</span>
-                  </button>
+              <button 
+                onClick={() => setIsDeleteModalOpen(true)}
+                className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Excluir escalas em lote por período ou filtro"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                <span className="hidden sm:inline">Excluir Escalas</span>
+              </button>
 
-                  <button 
-                    onClick={() => onNavigateToOrbit ? onNavigateToOrbit() : null}
-                    className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                    title="Abrir Templates de Escala no Calendário Orbit"
-                  >
-                    <Layers className="w-3.5 h-3.5 text-purple-600" />
-                    <span className="hidden sm:inline">Templates</span>
-                  </button>
+              <button 
+                onClick={() => onNavigateToOrbit ? onNavigateToOrbit() : null}
+                className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Abrir Templates de Escala no Calendário Orbit"
+              >
+                <Layers className="w-3.5 h-3.5 text-purple-600" />
+                <span className="hidden sm:inline">Templates</span>
+              </button>
 
-                  <button
-                    onClick={handlePublishDrafts}
-                    className="px-4 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-black flex items-center gap-1 transition-all shadow-xs"
-                  >
-                    <Zap className="w-3.5 h-3.5 text-amber-300 fill-current" />
-                    <span>Publicar Escala ({draftCount})</span>
-                  </button>
-                </>
-              )}
+              <button
+                onClick={handlePublishDrafts}
+                className="px-4 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-black flex items-center gap-1 transition-all shadow-xs"
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-300 fill-current" />
+                <span>Publicar Escala ({draftCount})</span>
+              </button>
             </div>
           </div>
 
           {/* MODO RASCUNHO ALERT BANNER */}
-          {!isRh && !isDraftPublished && draftCount > 0 && (
+          {!isDraftPublished && draftCount > 0 && (
             <div className="bg-amber-500 text-slate-950 p-3 sm:px-5 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-sm border border-amber-600/30">
               <div className="flex items-center gap-2 text-xs font-bold">
                 <span className="w-5 h-5 rounded-full bg-slate-950/20 text-slate-950 flex items-center justify-center text-xs font-black">!</span>
@@ -1271,30 +1339,39 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               }}
             />
 
-            {/* Hero Banner Dark com Luz Quente na Lateral Direita (Fiel à Imagem 1) */}
+            {/* Hero Banner com Luz Quente na Lateral Direita */}
             <div 
-              className="approvals-hero approvals-light-hero rounded-3xl p-6 sm:p-8 border border-white/10 shadow-2xl relative overflow-hidden"
-              style={{ 
-                backgroundColor: '#111216',
-                boxShadow: '0 20px 50px rgba(0,0,0,0.6)'
-              }}
+              className={`approvals-hero approvals-light-hero rounded-3xl p-6 sm:p-8 border shadow-2xl relative overflow-hidden ${
+                isDark ? 'border-white/10' : 'border-slate-200'
+              }`}
+              style={
+                isDark 
+                  ? { backgroundColor: '#111216', boxShadow: '0 20px 50px rgba(0,0,0,0.6)' }
+                  : { backgroundColor: '#f8fafc', boxShadow: '0 10px 30px rgba(0,0,0,0.04)' }
+              }
             >
               {/* Feixe quente alaranjado/vermelho da Landing Page */}
               <div 
                 className="approvals-light-hero-glow absolute -top-1/2 -right-10 w-[55%] h-[200%] pointer-events-none"
                 style={{
-                  background: 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.24) 0%, rgba(100, 12, 30, 0.22) 45%, transparent 75%)',
+                  background: isDark
+                    ? 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.24) 0%, rgba(100, 12, 30, 0.22) 45%, transparent 75%)'
+                    : 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.14) 0%, rgba(220, 100, 120, 0.08) 45%, transparent 75%)',
                   filter: 'blur(60px)',
                 }}
               />
 
               <div className="approvals-light-hero-content relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div className="approvals-light-hero-copy max-w-xl space-y-2">
-                  <div className="approvals-light-eyebrow inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-slate-300 border border-white/10 bg-white/5">
+                  <div className={`approvals-light-eyebrow inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                    isDark ? 'text-slate-300 border-white/10 bg-white/5' : 'text-slate-700 border-slate-300 bg-slate-200/60'
+                  }`}>
                     <span className="w-3.5 h-0.5 rounded-full" style={{ background: 'linear-gradient(90deg, #640C1E, #9F243C, #F59242)' }} />
                     CENTRAL DE GESTÃO & AUDITORIA DE PONTO
                   </div>
-                  <h1 className="approvals-light-title text-2xl sm:text-3xl font-black text-white tracking-tight leading-tight">
+                  <h1 className={`approvals-light-title text-2xl sm:text-3xl font-black tracking-tight leading-tight ${
+                    isDark ? 'text-white' : 'text-slate-900'
+                  }`}>
                     Aprovações e <br className="hidden sm:inline" />
                     <span style={{
                       background: 'linear-gradient(90deg, #F9DE97 0%, #F59242 52%, #9F243C 100%)',
@@ -1305,7 +1382,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     </span>
                   </h1>
                   
-                  <p className="approvals-light-description text-xs sm:text-sm text-slate-400 leading-relaxed">
+                  <p className={`approvals-light-description text-xs sm:text-sm leading-relaxed ${
+                    isDark ? 'text-slate-400' : 'text-slate-600'
+                  }`}>
                     Central unificada para análise de atestados médicos, gestão de ocorrências, homologação de justificativas e aprovação de trocas de escala em tempo real.
                   </p>
                 </div>
@@ -1323,7 +1402,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   </button>
                   <button
                     onClick={() => onNavigateToOrbit ? onNavigateToOrbit() : setActiveTab('escala')}
-                    className="approvals-light-secondary px-4 py-2.5 font-bold text-xs rounded-full text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-all flex items-center gap-1.5 cursor-pointer"
+                    className={`approvals-light-secondary px-4 py-2.5 font-bold text-xs rounded-full transition-all flex items-center gap-1.5 cursor-pointer border ${
+                      isDark 
+                        ? 'text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border-white/10' 
+                        : 'text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 border-slate-300 shadow-xs'
+                    }`}
                   >
                     <span>Ver Grade de Escalas →</span>
                   </button>
@@ -1331,7 +1414,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               </div>
             </div>
 
-            {/* KPI Cards Estilo Widget da Imagem 1 com Métricas de Aprovações/Faltas da Imagem 2 */}
+            {/* KPI Cards */}
             <div className="approvals-light-kpis grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
               {[
                 { 
@@ -1369,18 +1452,26 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               ].map((kpi, i) => (
                 <div 
                   key={i} 
-                  className="approval-kpi approvals-light-kpi p-5 rounded-2xl border border-[#282a33] space-y-2 transition-transform hover:-translate-y-1 hover:border-[#3b3e4c]" 
-                  style={{ background: '#15161b', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
+                  className={`approval-kpi approvals-light-kpi p-5 rounded-2xl border space-y-2 transition-all hover:-translate-y-1 ${
+                    isDark ? 'border-[#282a33] hover:border-[#3b3e4c]' : 'border-slate-200/90 hover:border-slate-300 shadow-xs'
+                  }`} 
+                  style={isDark ? { background: '#15161b', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' } : { background: '#ffffff' }}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="approvals-light-kpi-label text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">{kpi.label}</span>
+                    <span className={`approvals-light-kpi-label text-[11px] font-semibold uppercase tracking-wider block ${
+                      isDark ? 'text-slate-400' : 'text-slate-500'
+                    }`}>{kpi.label}</span>
                     <span 
                       className="approvals-light-kpi-dot w-2.5 h-2.5 rounded-full" 
                       style={{ background: kpi.dotColor, boxShadow: `0 0 8px ${kpi.dotGlow}` }}
                     />
                   </div>
-                  <div className="approvals-light-kpi-value text-3xl font-extrabold text-white font-sans">{kpi.value}</div>
-                  <span className="approvals-light-kpi-sub text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
+                  <div className={`approvals-light-kpi-value text-3xl font-extrabold font-sans ${
+                    isDark ? 'text-white' : 'text-slate-900'
+                  }`}>{kpi.value}</div>
+                  <span className={`approvals-light-kpi-sub text-[11px] font-medium flex items-center gap-1.5 ${
+                    isDark ? 'text-slate-500' : 'text-slate-600'
+                  }`}>
                     {kpi.hasDotInSub && (
                       <span className="w-1.5 h-1.5 rounded-full bg-[#F59242]" />
                     )}
@@ -1390,44 +1481,55 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               ))}
             </div>
 
-            {/* Filter Bar (Igual à da imagem 2 com os filtros e busca) */}
+            {/* Filter Bar */}
             <div 
-              className="approval-filter-bar approvals-light-filter p-4 rounded-2xl border border-[#282a33] flex flex-wrap items-center justify-between gap-3 relative z-10" 
-              style={{ background: '#15161b' }}
+              className={`approval-filter-bar approvals-light-filter p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-3 relative z-10 ${
+                isDark ? 'border-[#282a33]' : 'border-slate-200 shadow-xs'
+              }`} 
+              style={isDark ? { background: '#15161b' } : { background: '#f8fafc' }}
             >
               {/* Search & Departamentos */}
               <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[260px]">
                 <div className="relative flex-1 min-w-[220px]">
-                  <Search className="approvals-light-search-icon w-3.5 h-3.5 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <Search className="approvals-light-search-icon w-3.5 h-3.5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={approvalsSearch}
                     onChange={(e) => setApprovalsSearch(e.target.value)}
                     placeholder="Buscar por colaborador..."
-                    className="approvals-light-search w-full pl-9 pr-3 py-2 text-xs rounded-full text-white placeholder:text-slate-500 outline-none transition-colors"
-                    style={{ background: '#0e0f12', border: '1px solid #282a33' }}
+                    className={`approvals-light-search w-full pl-9 pr-3 py-2 text-xs rounded-full outline-none transition-colors border ${
+                      isDark 
+                        ? 'bg-[#0e0f12] border-[#282a33] text-white placeholder:text-slate-500' 
+                        : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-[#9F243C]'
+                    }`}
                   />
                 </div>
                 <select
                   value={approvalsDept}
                   onChange={(e) => setApprovalsDept(e.target.value)}
-                  className="approvals-light-department py-2 px-4 text-xs font-semibold rounded-full text-white outline-none cursor-pointer"
-                  style={{ background: '#0e0f12', border: '1px solid #282a33', colorScheme: 'dark' }}
+                  className={`approvals-light-department py-2 px-4 text-xs font-semibold rounded-full outline-none cursor-pointer border ${
+                    isDark 
+                      ? 'bg-[#0e0f12] border-[#282a33] text-white' 
+                      : 'bg-white border-slate-300 text-slate-800'
+                  }`}
+                  style={{ colorScheme: isDark ? 'dark' : 'light' }}
                 >
                   <option value="all">Todos os Departamentos</option>
                   {departments.map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
               </div>
 
-              {/* Status Filter Pills da Imagem 2 */}
-              <div className="approvals-light-status-filter flex items-center gap-1.5 bg-[#0e0f12] p-1 rounded-full border border-[#282a33]">
+              {/* Status Filter Pills */}
+              <div className={`approvals-light-status-filter flex items-center gap-1.5 p-1 rounded-full border ${
+                isDark ? 'bg-[#0e0f12] border-[#282a33]' : 'bg-slate-200/70 border-slate-300'
+              }`}>
                 <button
                   onClick={() => setApprovalsFilterTab('all')}
                   data-active={approvalsFilterTab === 'all' ? 'true' : 'false'}
                   className={`approvals-light-status-button px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
                     approvalsFilterTab === 'all'
                       ? 'bg-gradient-to-r from-[#640C1E] to-[#9F243C] text-[#F9DE97] shadow-md'
-                      : 'text-slate-400 hover:text-[#F9DE97]'
+                      : isDark ? 'text-slate-400 hover:text-[#F9DE97]' : 'text-slate-700 hover:text-slate-900'
                   }`}
                 >
                   Todos
@@ -1437,8 +1539,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   data-active={approvalsFilterTab === 'pending' ? 'true' : 'false'}
                   className={`approvals-light-status-button px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${
                     approvalsFilterTab === 'pending'
-                      ? 'bg-white/15 text-white font-black border border-white/20'
-                      : 'text-slate-400 hover:text-white'
+                      ? (isDark ? 'bg-white/15 text-white font-black border border-white/20' : 'bg-white text-slate-900 font-black border border-slate-300 shadow-xs')
+                      : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-700 hover:text-slate-900'
                   }`}
                 >
                   <span>Pendentes</span>
@@ -1453,8 +1555,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   data-active={approvalsFilterTab === 'approved' ? 'true' : 'false'}
                   className={`approvals-light-status-button px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
                     approvalsFilterTab === 'approved'
-                      ? 'bg-white/15 text-white font-black border border-white/20'
-                      : 'text-slate-400 hover:text-white'
+                      ? (isDark ? 'bg-white/15 text-white font-black border border-white/20' : 'bg-white text-slate-900 font-black border border-slate-300 shadow-xs')
+                      : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-700 hover:text-slate-900'
                   }`}
                 >
                   Aprovados
@@ -1464,8 +1566,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   data-active={approvalsFilterTab === 'rejected' ? 'true' : 'false'}
                   className={`approvals-light-status-button px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
                     approvalsFilterTab === 'rejected'
-                      ? 'bg-white/15 text-white font-black border border-white/20'
-                      : 'text-slate-400 hover:text-white'
+                      ? (isDark ? 'bg-white/15 text-white font-black border border-white/20' : 'bg-white text-slate-900 font-black border border-slate-300 shadow-xs')
+                      : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-700 hover:text-slate-900'
                   }`}
                 >
                   Faltas / Recusados
@@ -1484,14 +1586,18 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               </button>
             </div>
 
-            {/* Data Table igual à Imagem 2 + Coluna Adicional de Observação / Feedback para o Colaborador */}
+            {/* Data Table */}
             <div 
-              className="approval-table-card approvals-light-table rounded-2xl border border-[#282a33] overflow-hidden overflow-x-auto relative z-10 shadow-xl" 
-              style={{ background: '#15161b' }}
+              className={`approval-table-card approvals-light-table rounded-2xl border overflow-hidden overflow-x-auto relative z-10 shadow-xl ${
+                isDark ? 'border-[#282a33]' : 'border-slate-200'
+              }`} 
+              style={isDark ? { background: '#15161b' } : { background: '#ffffff' }}
             >
               <table className="approvals-light-data w-full border-collapse text-left text-xs font-sans min-w-[1000px]">
                 <thead>
-                  <tr className="border-b border-[#282a33] font-mono text-[10px] uppercase text-slate-400" style={{ background: '#101115' }}>
+                  <tr className={`border-b font-mono text-[10px] uppercase ${
+                    isDark ? 'border-[#282a33] bg-[#101115] text-slate-400' : 'border-slate-200 bg-slate-100/90 text-slate-700 font-bold'
+                  }`}>
                     <th className="p-3.5">COLABORADOR</th>
                     <th className="p-3.5">TIPO & JUSTIFICATIVA</th>
                     <th className="p-3.5">DATA / PERÍODO</th>
@@ -1512,8 +1618,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     filteredApprovals.map((row) => (
                       <tr 
                         key={row.id} 
-                        className="approvals-light-row border-b border-white/5 transition-colors hover:bg-white/[0.03]" 
-                        style={{ color: '#e2e8f0' }}
+                        className={`approvals-light-row border-b transition-colors ${
+                          isDark ? 'border-white/5 hover:bg-white/[0.03] text-slate-200' : 'border-slate-200/80 odd:bg-white even:bg-slate-50/60 hover:bg-slate-100/70 text-slate-800'
+                        }`} 
                       >
                         {/* Colaborador */}
                         <td className="p-3.5">
@@ -1521,20 +1628,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             <img 
                               src={row.employeeAvatar} 
                               alt={row.employeeName} 
-                              className="w-9 h-9 rounded-full object-cover ring-2 ring-white/10 shrink-0" 
+                              className={`w-9 h-9 rounded-full object-cover shrink-0 ${isDark ? 'ring-2 ring-white/10' : 'ring-2 ring-slate-200'}`} 
                             />
                             <div>
-                              <span className="font-bold text-white block text-xs leading-tight">{row.employeeName}</span>
-                              <span className="block text-[11px] text-slate-400 font-normal leading-tight mt-0.5">{row.employeeRole}</span>
+                              <span className={`font-bold block text-xs leading-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>{row.employeeName}</span>
+                              <span className={`block text-[11px] font-normal leading-tight mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{row.employeeRole}</span>
                             </div>
                           </div>
                         </td>
 
-                        {/* Tipo & Justificativa (com expandir inline e abrir modal detalhado) */}
+                        {/* Tipo & Justificativa */}
                         <td className="p-3.5 align-top">
                           <div className="space-y-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-bold text-white block text-xs leading-tight">{row.type}</span>
+                              <span className={`font-bold block text-xs leading-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>{row.type}</span>
                               <button
                                 type="button"
                                 onClick={() => setSelectedDetailOccurrence(row)}
@@ -1573,7 +1680,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
                         {/* Data / Período */}
                         <td className="p-3.5">
-                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/5 text-slate-300 font-mono text-[11px]">
+                          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border font-mono text-[11px] ${
+                            isDark ? 'bg-white/5 border-white/5 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'
+                          }`}>
                             <Calendar className="w-3.5 h-3.5 text-slate-400" />
                             <span>{row.date}</span>
                           </div>
@@ -1584,7 +1693,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           {row.documentName && row.documentName.toLowerCase().includes('.pdf') ? (
                             <button
                               onClick={() => alert(`Visualizando comprovante: ${row.documentName}`)}
-                              className="approvals-light-proof inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold text-[#f89847] bg-[#f89847]/10 border border-[#f89847]/25 hover:bg-[#f89847]/20 transition-all cursor-pointer"
+                              className={`approvals-light-proof inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold transition-all cursor-pointer border ${
+                                isDark 
+                                  ? 'text-[#f89847] bg-[#f89847]/10 border-[#f89847]/25 hover:bg-[#f89847]/20' 
+                                  : 'text-amber-800 bg-amber-50 border-amber-200 hover:bg-amber-100'
+                              }`}
                             >
                               <Paperclip className="w-3 h-3 text-[#f89847]" />
                               <span>{row.documentName}</span>
@@ -1622,14 +1735,18 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           )}
                         </td>
 
-                        {/* Observação / Feedback para o Colaborador (Coluna Adicionada conforme solicitado) */}
+                        {/* Observação / Feedback */}
                         <td className="p-3.5">
                           <input
                             type="text"
                             value={row.feedback}
                             onChange={(e) => handleUpdateFeedback(row.id, e.target.value)}
                             placeholder="Observação ou feedback para o colaborador (opcional)..."
-                            className="approvals-light-feedback w-full min-w-[220px] max-w-[320px] px-3 py-1.5 bg-[#0e0f12] border border-[#282a33] focus:border-[#ff601f] rounded-xl text-xs text-slate-200 placeholder:text-slate-600 outline-none transition-colors"
+                            className={`approvals-light-feedback w-full min-w-[220px] max-w-[320px] px-3 py-1.5 rounded-xl text-xs outline-none transition-colors border ${
+                              isDark 
+                                ? 'bg-[#0e0f12] border-[#282a33] text-slate-200 placeholder:text-slate-600 focus:border-[#ff601f]' 
+                                : 'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-[#9F243C]'
+                            }`}
                           />
                         </td>
 
@@ -1936,17 +2053,22 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             {isNewOccurrenceModalOpen && (
               <div className="approvals-light-modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
                 <div 
-                  className="approval-modal approvals-light-modal w-full max-w-lg rounded-2xl border border-white/10 p-6 space-y-4 shadow-2xl relative"
-                  style={{ background: '#15161b' }}
+                  className={`approval-modal approvals-light-modal w-full max-w-lg rounded-2xl border p-6 space-y-4 shadow-2xl relative ${
+                    isDark ? 'border-white/10 bg-[#15161b]' : 'border-slate-200 bg-white'
+                  }`}
                 >
-                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                  <div className={`flex items-center justify-between pb-3 border-b ${
+                    isDark ? 'border-white/10' : 'border-slate-200'
+                  }`}>
                     <div className="flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full bg-[#e90045]" />
-                      <h3 className="text-base font-bold text-white">Nova Solicitação / Lançar Falta</h3>
+                      <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Nova Solicitação / Lançar Falta</h3>
                     </div>
                     <button
                       onClick={() => setIsNewOccurrenceModalOpen(false)}
-                      className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
+                      className={`p-1 rounded-lg transition-colors ${
+                        isDark ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                      }`}
                     >
                       <X className="w-5 h-5" />
                     </button>
@@ -1954,11 +2076,14 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
                   <form onSubmit={handleSaveNewOccurrence} className="space-y-3.5 text-xs">
                     <div>
-                      <label className="block text-slate-400 mb-1 font-semibold">Colaborador</label>
+                      <label className={`block mb-1 font-semibold ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>Colaborador</label>
                       <select
                         value={newOccurrenceForm.employeeId}
                         onChange={(e) => setNewOccurrenceForm({ ...newOccurrenceForm, employeeId: e.target.value })}
-                        className="w-full px-3 py-2 bg-[#0e0f12] border border-[#282a33] rounded-xl text-white outline-none focus:border-[#ff601f]"
+                        className={`w-full px-3 py-2 border rounded-xl outline-none focus:border-[#ff601f] ${
+                          isDark ? 'bg-[#0e0f12] border-[#282a33] text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                        }`}
+                        style={{ colorScheme: isDark ? 'dark' : 'light' }}
                       >
                         {employees.map(emp => (
                           <option key={emp.id} value={emp.id}>{emp.name} ({emp.role} - {emp.department})</option>
@@ -1968,11 +2093,14 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-slate-400 mb-1 font-semibold">Tipo da Ocorrência</label>
+                        <label className={`block mb-1 font-semibold ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>Tipo da Ocorrência</label>
                         <select
                           value={newOccurrenceForm.type}
                           onChange={(e) => setNewOccurrenceForm({ ...newOccurrenceForm, type: e.target.value })}
-                          className="w-full px-3 py-2 bg-[#0e0f12] border border-[#282a33] rounded-xl text-white outline-none focus:border-[#ff601f]"
+                          className={`w-full px-3 py-2 border rounded-xl outline-none focus:border-[#ff601f] ${
+                            isDark ? 'bg-[#0e0f12] border-[#282a33] text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                          }`}
+                          style={{ colorScheme: isDark ? 'dark' : 'light' }}
                         >
                           <option value="Atestado Médico">Atestado Médico</option>
                           <option value="Troca de Turno">Troca de Turno</option>
@@ -1983,47 +2111,56 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       </div>
 
                       <div>
-                        <label className="block text-slate-400 mb-1 font-semibold">Data / Período</label>
+                        <label className={`block mb-1 font-semibold ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>Data / Período</label>
                         <input
                           type="text"
                           value={newOccurrenceForm.date}
                           onChange={(e) => setNewOccurrenceForm({ ...newOccurrenceForm, date: e.target.value })}
                           placeholder="Ex: 21/09/2026"
-                          className="w-full px-3 py-2 bg-[#0e0f12] border border-[#282a33] rounded-xl text-white outline-none focus:border-[#ff601f]"
+                          className={`w-full px-3 py-2 border rounded-xl outline-none focus:border-[#ff601f] ${
+                            isDark ? 'bg-[#0e0f12] border-[#282a33] text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-400'
+                          }`}
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-slate-400 mb-1 font-semibold">Motivo / Descrição</label>
+                      <label className={`block mb-1 font-semibold ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>Motivo / Descrição</label>
                       <textarea
                         rows={2}
                         value={newOccurrenceForm.reason}
                         onChange={(e) => setNewOccurrenceForm({ ...newOccurrenceForm, reason: e.target.value })}
                         placeholder="Descreva o motivo informado pelo colaborador ou justificativa..."
-                        className="w-full px-3 py-2 bg-[#0e0f12] border border-[#282a33] rounded-xl text-white outline-none focus:border-[#ff601f]"
+                        className={`w-full px-3 py-2 border rounded-xl outline-none focus:border-[#ff601f] ${
+                          isDark ? 'bg-[#0e0f12] border-[#282a33] text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-400'
+                        }`}
                         required
                       />
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-slate-400 mb-1 font-semibold">Comprovante / Anexo</label>
+                        <label className={`block mb-1 font-semibold ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>Comprovante / Anexo</label>
                         <input
                           type="text"
                           value={newOccurrenceForm.documentName}
                           onChange={(e) => setNewOccurrenceForm({ ...newOccurrenceForm, documentName: e.target.value })}
                           placeholder="Ex: atestado.pdf ou Não se aplica"
-                          className="w-full px-3 py-2 bg-[#0e0f12] border border-[#282a33] rounded-xl text-white outline-none focus:border-[#ff601f]"
+                          className={`w-full px-3 py-2 border rounded-xl outline-none focus:border-[#ff601f] ${
+                            isDark ? 'bg-[#0e0f12] border-[#282a33] text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-400'
+                          }`}
                         />
                       </div>
 
                       <div>
-                        <label className="block text-slate-400 mb-1 font-semibold">Status Inicial</label>
+                        <label className={`block mb-1 font-semibold ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>Status Inicial</label>
                         <select
                           value={newOccurrenceForm.status}
                           onChange={(e) => setNewOccurrenceForm({ ...newOccurrenceForm, status: e.target.value as any })}
-                          className="w-full px-3 py-2 bg-[#0e0f12] border border-[#282a33] rounded-xl text-white outline-none focus:border-[#ff601f]"
+                          className={`w-full px-3 py-2 border rounded-xl outline-none focus:border-[#ff601f] ${
+                            isDark ? 'bg-[#0e0f12] border-[#282a33] text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                          }`}
+                          style={{ colorScheme: isDark ? 'dark' : 'light' }}
                         >
                           <option value="Pendente">Pendente</option>
                           <option value="Aprovado">Aprovado</option>
@@ -2034,21 +2171,27 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     </div>
 
                     <div>
-                      <label className="block text-slate-400 mb-1 font-semibold">Observação ou Feedback para o Colaborador</label>
+                      <label className={`block mb-1 font-semibold ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>Observação ou Feedback para o Colaborador</label>
                       <input
                         type="text"
                         value={newOccurrenceForm.feedback}
                         onChange={(e) => setNewOccurrenceForm({ ...newOccurrenceForm, feedback: e.target.value })}
                         placeholder="Observação ou feedback para o colaborador (opcional)..."
-                        className="w-full px-3 py-2 bg-[#0e0f12] border border-[#282a33] rounded-xl text-white outline-none focus:border-[#ff601f]"
+                        className={`w-full px-3 py-2 border rounded-xl outline-none focus:border-[#ff601f] ${
+                          isDark ? 'bg-[#0e0f12] border-[#282a33] text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-400'
+                        }`}
                       />
                     </div>
 
-                    <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
+                    <div className={`flex items-center justify-end gap-3 pt-3 border-t ${
+                      isDark ? 'border-white/10' : 'border-slate-200'
+                    }`}>
                       <button
                         type="button"
                         onClick={() => setIsNewOccurrenceModalOpen(false)}
-                        className="px-4 py-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-colors font-semibold"
+                        className={`px-4 py-2 rounded-xl transition-colors font-semibold ${
+                          isDark ? 'text-slate-400 hover:text-white hover:bg-white/5' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                        }`}
                       >
                         Cancelar
                       </button>
@@ -2069,44 +2212,53 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         );
       })()}
 
-      {/* ─── TAB 3: RELATÓRIO DE PRESENÇAS (INSPIRADO NA IDENTIDADE VISUAL DA LP) ─── */}
+      {/* ─── TAB 3: RELATÓRIO DE PRESENÇAS ─── */}
       {activeTab === 'relatorios' && (
         <div className="attendance-report space-y-6 animate-in fade-in duration-200 relative">
           
-          {/* Efeito Glow de Fundo inspirado nas imagens da LP */}
+          {/* Efeito Glow de Fundo */}
           <div 
             className="attendance-report-glow absolute -top-12 right-0 w-[500px] h-[350px] pointer-events-none rounded-full"
             style={{
-                background: 'radial-gradient(circle, rgba(245, 146, 66, 0.16) 0%, rgba(159, 36, 60, 0.12) 45%, transparent 75%)',
+              background: 'radial-gradient(circle, rgba(245, 146, 66, 0.16) 0%, rgba(159, 36, 60, 0.12) 45%, transparent 75%)',
               filter: 'blur(90px)',
               zIndex: 0,
             }}
           />
 
-          {/* Hero Banner Dark com Luz Quente na Lateral Direita (Fiel à LP) */}
+          {/* Hero Banner */}
           <div 
-            className="approvals-hero attendance-report-hero rounded-3xl p-6 sm:p-8 border border-white/10 shadow-2xl relative overflow-hidden"
-            style={{ 
-              backgroundColor: '#111216',
-              boxShadow: '0 20px 50px rgba(0,0,0,0.6)'
-            }}
+            className={`approvals-hero attendance-report-hero rounded-3xl p-6 sm:p-8 border shadow-2xl relative overflow-hidden ${
+              isDark ? 'border-white/10' : 'border-slate-200'
+            }`}
+            style={
+              isDark 
+                ? { backgroundColor: '#111216', boxShadow: '0 20px 50px rgba(0,0,0,0.6)' }
+                : { backgroundColor: '#f8fafc', boxShadow: '0 10px 30px rgba(0,0,0,0.04)' }
+            }
           >
-            {/* Feixe quente alaranjado/vermelho da Landing Page */}
+            {/* Feixe quente alaranjado/vermelho */}
             <div 
               className="attendance-report-hero-glow absolute -top-1/2 -right-10 w-[55%] h-[200%] pointer-events-none"
               style={{
-                  background: 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.24) 0%, rgba(100, 12, 30, 0.22) 45%, transparent 75%)',
+                background: isDark
+                  ? 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.24) 0%, rgba(100, 12, 30, 0.22) 45%, transparent 75%)'
+                  : 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.14) 0%, rgba(220, 100, 120, 0.08) 45%, transparent 75%)',
                 filter: 'blur(60px)',
               }}
             />
 
             <div className="attendance-report-hero-content relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div className="max-w-xl space-y-2">
-                <div className="attendance-report-eyebrow inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-slate-300 border border-white/10 bg-white/5">
+                <div className={`attendance-report-eyebrow inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                  isDark ? 'text-slate-300 border-white/10 bg-white/5' : 'text-slate-700 border-slate-300 bg-slate-200/60'
+                }`}>
                   <span className="w-3.5 h-0.5 rounded-full" style={{ background: 'linear-gradient(90deg, #640C1E, #9F243C, #F59242)' }} />
                   GESTÃO INTELIGENTE DE EQUIPES
                 </div>
-                <h2 className="attendance-report-title text-2xl sm:text-3xl font-black text-white tracking-tight leading-tight">
+                <h2 className={`attendance-report-title text-2xl sm:text-3xl font-black tracking-tight leading-tight ${
+                  isDark ? 'text-white' : 'text-slate-900'
+                }`}>
                   Relatório de <br className="hidden sm:inline" />
                   <span style={{
                     background: 'linear-gradient(90deg, #F9DE97 0%, #F59242 52%, #9F243C 100%)',
@@ -2116,7 +2268,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     Presenças
                   </span>
                 </h2>
-                <p className="text-xs sm:text-sm text-slate-400">
+                <p className={`text-xs sm:text-sm ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                   Consolidação em tempo real de jornadas, faltas justificadas, assiduidade e histórico operacional.
                 </p>
               </div>
@@ -2136,7 +2288,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             </div>
           </div>
 
-          {/* KPI Cards Estilo Widget da LP */}
+          {/* KPI Cards */}
           <div className="attendance-report-kpis grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
             {[
               { label: 'Taxa de Presença', value: '96%', sub: '▲ +2.4% acima da meta', dotColor: '#49d982', dotGlow: '#49d982' },
@@ -2146,44 +2298,59 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             ].map((kpi, i) => (
               <div 
                 key={i} 
-                className="approval-kpi attendance-report-kpi p-5 rounded-2xl border border-[#282a33] space-y-2 transition-transform hover:-translate-y-1 hover:border-[#3b3e4c]" 
-                style={{ background: '#15161b', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
+                className={`approval-kpi attendance-report-kpi p-5 rounded-2xl border space-y-2 transition-all hover:-translate-y-1 ${
+                  isDark ? 'border-[#282a33] hover:border-[#3b3e4c]' : 'border-slate-200/90 hover:border-slate-300 shadow-xs'
+                }`} 
+                style={isDark ? { background: '#15161b', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' } : { background: '#ffffff' }}
               >
                 <div className="flex items-center justify-between">
-                  <span className="attendance-report-kpi-label text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">{kpi.label}</span>
+                  <span className={`attendance-report-kpi-label text-[11px] font-semibold uppercase tracking-wider block ${
+                    isDark ? 'text-slate-400' : 'text-slate-500'
+                  }`}>{kpi.label}</span>
                   <span 
                     className="attendance-report-kpi-dot w-2.5 h-2.5 rounded-full" 
                     style={{ background: kpi.dotColor, boxShadow: `0 0 8px ${kpi.dotGlow}` }}
                   />
                 </div>
-                <div className="attendance-report-kpi-value text-3xl font-extrabold text-white font-sans">{kpi.value}</div>
-                <span className="attendance-report-kpi-sub text-[11px] text-slate-500 font-medium block">{kpi.sub}</span>
+                <div className={`attendance-report-kpi-value text-3xl font-extrabold font-sans ${
+                  isDark ? 'text-white' : 'text-slate-900'
+                }`}>{kpi.value}</div>
+                <span className={`attendance-report-kpi-sub text-[11px] font-medium block ${
+                  isDark ? 'text-slate-500' : 'text-slate-600'
+                }`}>{kpi.sub}</span>
               </div>
             ))}
           </div>
 
           {/* Filter Bar */}
           <div 
-            className="approval-filter-bar attendance-report-filters p-4 rounded-2xl border border-[#282a33] flex flex-wrap items-center justify-between gap-3 relative z-10" 
-            style={{ background: '#15161b' }}
+            className={`approval-filter-bar attendance-report-filters p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-3 relative z-10 ${
+              isDark ? 'border-[#282a33]' : 'border-slate-200 shadow-xs'
+            }`} 
+            style={isDark ? { background: '#15161b' } : { background: '#f8fafc' }}
           >
             <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[260px]">
               <div className="relative flex-1 min-w-[200px]">
-                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   value={relatorioSearch}
                   onChange={(e) => setRelatorioSearch(e.target.value)}
                   placeholder="Filtrar por colaborador ou setor..."
-                  className="w-full pl-9 pr-3 py-2 text-xs rounded-full text-white placeholder:text-slate-500 outline-none transition-colors"
-                  style={{ background: '#0e0f12', border: '1px solid #282a33' }}
+                  className={`w-full pl-9 pr-3 py-2 text-xs rounded-full outline-none transition-colors border ${
+                    isDark 
+                      ? 'bg-[#0e0f12] border-[#282a33] text-white placeholder:text-slate-500' 
+                      : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-[#9F243C]'
+                  }`}
                 />
               </div>
               <select
                 value={relatorioStatus}
                 onChange={(e) => setRelatorioStatus(e.target.value)}
-                className="py-2 px-4 text-xs font-semibold rounded-full text-white outline-none cursor-pointer"
-                style={{ background: '#0e0f12', border: '1px solid #282a33', colorScheme: 'dark' }}
+                className={`py-2 px-4 text-xs font-semibold rounded-full outline-none cursor-pointer border ${
+                  isDark ? 'bg-[#0e0f12] border-[#282a33] text-white' : 'bg-white border-slate-300 text-slate-800'
+                }`}
+                style={{ colorScheme: isDark ? 'dark' : 'light' }}
               >
                 <option value="all">Todos os Status</option>
                 <option value="present">Presente</option>
@@ -2193,8 +2360,10 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               <select
                 value={relatorioDept}
                 onChange={(e) => setRelatorioDept(e.target.value)}
-                className="py-2 px-4 text-xs font-semibold rounded-full text-white outline-none cursor-pointer"
-                style={{ background: '#0e0f12', border: '1px solid #282a33', colorScheme: 'dark' }}
+                className={`py-2 px-4 text-xs font-semibold rounded-full outline-none cursor-pointer border ${
+                  isDark ? 'bg-[#0e0f12] border-[#282a33] text-white' : 'bg-white border-slate-300 text-slate-800'
+                }`}
+                style={{ colorScheme: isDark ? 'dark' : 'light' }}
               >
                 <option value="all">Todos os Departamentos</option>
                 {departments.map(d => <option key={d} value={d}>{d}</option>)}
@@ -2204,12 +2373,16 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
           {/* Data Table */}
           <div 
-            className="attendance-report-table rounded-2xl border border-[#282a33] overflow-hidden overflow-x-auto relative z-10" 
-            style={{ background: '#15161b' }}
+            className={`attendance-report-table rounded-2xl border overflow-hidden overflow-x-auto relative z-10 ${
+              isDark ? 'border-[#282a33]' : 'border-slate-200'
+            }`} 
+            style={isDark ? { background: '#15161b' } : { background: '#ffffff' }}
           >
             <table className="w-full border-collapse text-left text-xs font-sans min-w-[800px]">
               <thead>
-                <tr className="border-b border-[#282a33] font-mono text-[10px] uppercase text-slate-400" style={{ background: '#101115' }}>
+                <tr className={`border-b font-mono text-[10px] uppercase ${
+                  isDark ? 'border-[#282a33] bg-[#101115] text-slate-400' : 'border-slate-200 bg-slate-100/90 text-slate-700 font-bold'
+                }`}>
                   <th className="p-3.5">DATA</th>
                   <th className="p-3.5">COLABORADOR</th>
                   <th className="p-3.5">DEPARTAMENTO</th>
@@ -2232,29 +2405,32 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 }).map((row, idx) => (
                   <tr 
                     key={idx} 
-                    className="border-b border-white/5 transition-colors hover:bg-white/[0.03]" 
-                    style={{ color: '#e2e8f0' }}
+                    className={`border-b transition-colors ${
+                      isDark ? 'border-white/5 hover:bg-white/[0.03] text-slate-200' : 'border-slate-200/80 odd:bg-white even:bg-slate-50/60 hover:bg-slate-100/70 text-slate-800'
+                    }`} 
                   >
-                    <td className="p-3.5 font-mono text-[11px] text-slate-400">{row.date}</td>
+                    <td className={`p-3.5 font-mono text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{row.date}</td>
                     <td className="p-3.5">
                       <div className="flex items-center gap-2.5">
                         <div 
                           className="w-7 h-7 rounded-full p-[1.5px] shrink-0" 
                           style={{ background: 'linear-gradient(90deg, #640C1E, #9F243C, #F59242)' }}
                         >
-                  <div className="attendance-report-avatar w-full h-full rounded-full bg-[#15161b] flex items-center justify-center text-[10px] font-bold text-white uppercase">
+                          <div className={`attendance-report-avatar w-full h-full rounded-full flex items-center justify-center text-[10px] font-bold uppercase ${
+                            isDark ? 'bg-[#15161b] text-white' : 'bg-slate-100 text-slate-900'
+                          }`}>
                             {row.name.substring(0, 2)}
                           </div>
                         </div>
                         <div>
-                          <span className="font-bold text-white block">{row.name}</span>
-                          <span className="block text-[10px] text-slate-500 font-normal">{row.role}</span>
+                          <span className={`font-bold block ${isDark ? 'text-white' : 'text-slate-900'}`}>{row.name}</span>
+                          <span className={`block text-[10px] font-normal ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>{row.role}</span>
                         </div>
                       </div>
                     </td>
-                    <td className="p-3.5 text-slate-400 text-[11px]">{row.dept}</td>
-                    <td className="p-3.5 font-mono text-[11px] text-slate-300">{row.time}</td>
-                    <td className="p-3.5 font-mono font-bold text-white">{row.hours}</td>
+                    <td className={`p-3.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{row.dept}</td>
+                    <td className={`p-3.5 font-mono text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{row.time}</td>
+                    <td className={`p-3.5 font-mono font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{row.hours}</td>
                     <td className="p-3.5">
                       <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1.5" style={
                         row.status === 'Presente'
@@ -2273,8 +2449,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         {row.status}
                       </span>
                     </td>
-                    <td className="p-3.5 text-[11px] text-slate-400">{row.type}</td>
-                    <td className="p-3.5 text-slate-500 italic text-[11px] max-w-[260px] truncate">{row.obs}</td>
+                    <td className={`p-3.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{row.type}</td>
+                    <td className={`p-3.5 italic text-[11px] max-w-[260px] truncate ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>{row.obs}</td>
                   </tr>
                 ))}
               </tbody>
@@ -2320,36 +2496,36 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 label: 'Reunião',
                 dotColor: '#7c5cbf',
                 accentColor: '#7c5cbf',
-                bg: 'rgba(124, 92, 191, 0.10)',
-                border: 'rgba(124, 92, 191, 0.22)',
-                text: '#b49de0'
+                bg: isDark ? 'rgba(124, 92, 191, 0.10)' : 'rgba(124, 92, 191, 0.12)',
+                border: isDark ? 'rgba(124, 92, 191, 0.22)' : 'rgba(124, 92, 191, 0.30)',
+                text: isDark ? '#b49de0' : '#5b3a99'
               };
             case 'plantao':
               return {
                 label: 'Plantão',
                 dotColor: '#b58e1a',
                 accentColor: '#b58e1a',
-                bg: 'rgba(181, 142, 26, 0.10)',
-                border: 'rgba(181, 142, 26, 0.22)',
-                text: '#d4a832'
+                bg: isDark ? 'rgba(181, 142, 26, 0.10)' : 'rgba(181, 142, 26, 0.12)',
+                border: isDark ? 'rgba(181, 142, 26, 0.22)' : 'rgba(181, 142, 26, 0.30)',
+                text: isDark ? '#d4a832' : '#8c6808'
               };
             case 'treinamento':
               return {
                 label: 'Treinamento',
                 dotColor: '#2d7fa8',
                 accentColor: '#2d7fa8',
-                bg: 'rgba(45, 127, 168, 0.10)',
-                border: 'rgba(45, 127, 168, 0.22)',
-                text: '#6db8d8'
+                bg: isDark ? 'rgba(45, 127, 168, 0.10)' : 'rgba(45, 127, 168, 0.12)',
+                border: isDark ? 'rgba(45, 127, 168, 0.22)' : 'rgba(45, 127, 168, 0.30)',
+                text: isDark ? '#6db8d8' : '#1b6083'
               };
             default:
               return {
                 label: 'Atividade',
                 dotColor: '#c0541a',
                 accentColor: '#c0541a',
-                bg: 'rgba(192, 84, 26, 0.10)',
-                border: 'rgba(192, 84, 26, 0.22)',
-                text: '#d97c44'
+                bg: isDark ? 'rgba(192, 84, 26, 0.10)' : 'rgba(192, 84, 26, 0.12)',
+                border: isDark ? 'rgba(192, 84, 26, 0.22)' : 'rgba(192, 84, 26, 0.30)',
+                text: isDark ? '#d97c44' : '#a2400c'
               };
           }
         };
@@ -2367,12 +2543,14 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               }}
             />
 
-            {/* Hero Banner Dark com Luz Quente na Lateral Direita (Fiel às Fotos) */}
+            {/* Hero Banner com Luz Quente na Lateral Direita */}
             <div 
-              className="approvals-hero reminders-hero rounded-3xl p-6 sm:p-8 border border-white/10 shadow-2xl relative overflow-hidden"
+              className={`approvals-hero reminders-hero rounded-3xl p-6 sm:p-8 border shadow-2xl relative overflow-hidden ${
+                isDark ? 'border-white/10' : 'border-slate-200'
+              }`}
               style={{ 
-                backgroundColor: '#111216',
-                boxShadow: '0 20px 50px rgba(0,0,0,0.6)'
+                backgroundColor: isDark ? '#111216' : '#f8fafc',
+                boxShadow: isDark ? '0 20px 50px rgba(0,0,0,0.6)' : '0 10px 30px rgba(0,0,0,0.04)'
               }}
             >
               {/* Feixe quente suavizado */}
@@ -2386,11 +2564,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
               <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div className="max-w-2xl space-y-2">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-slate-300 border border-white/10 bg-white/5">
+                  <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                    isDark ? 'text-slate-300 border-white/10 bg-white/5' : 'text-slate-700 border-slate-300 bg-slate-200/60'
+                  }`}>
                     <span className="w-3.5 h-0.5 rounded-full" style={{ background: 'linear-gradient(90deg, #640c1e, #9F243C, #F59242)' }} />
                     GESTÃO OPERACIONAL & ROTINA
                   </div>
-                  <h1 className="reminders-title text-2xl sm:text-3xl font-black text-white tracking-tight leading-tight">
+                  <h1 className={`reminders-title text-2xl sm:text-3xl font-black tracking-tight leading-tight ${
+                    isDark ? 'text-white' : 'text-slate-900'
+                  }`}>
                     Lembretes e  <br className="hidden sm:inline" />
                     <span className="reminders-title-highlight" style={{
                       background: 'linear-gradient(90deg, #F9DE97 0%, #F59242 52%, #9F243C 100%)',
@@ -2400,7 +2582,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       Tarefas
                     </span>
                   </h1>
-                  <p className="reminders-description text-xs sm:text-sm text-slate-400 leading-relaxed">
+                  <p className={`reminders-description text-xs sm:text-sm leading-relaxed ${
+                    isDark ? 'text-slate-400' : 'text-slate-600'
+                  }`}>
                     Organize reuniões operacionais, controle prazos de publicação de escalas e monitore tarefas de alinhamento com a equipe em tempo real.
                   </p>
                 </div>
@@ -2420,79 +2604,83 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               </div>
             </div>
 
-            {/* Filter Bar (Igual à imagem de referência com busca, filtro de tipos em pill e filtro de responsáveis) */}
+            {/* Filter Bar */}
             <div 
-              className="approval-filter-bar reminders-filter-bar p-3.5 sm:p-4 rounded-2xl border border-[#282a33] flex flex-wrap items-center justify-between gap-3 relative z-10" 
-              style={{ background: '#15161b' }}
+              className={`approval-filter-bar reminders-filter-bar p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-3 relative z-10 ${
+                isDark ? 'border-[#282a33]' : 'border-slate-200 shadow-xs'
+              }`}
+              style={{ background: isDark ? '#15161b' : '#f8fafc' }}
             >
               {/* Search */}
               <div className="relative flex-1 min-w-[220px] max-w-md">
-                <Search className="reminders-search-icon w-3.5 h-3.5 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Search className={`reminders-search-icon w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 ${
+                  isDark ? 'text-slate-500' : 'text-slate-400'
+                }`} />
                 <input
                   type="text"
                   value={reminderSearch}
                   onChange={(e) => setReminderSearch(e.target.value)}
                   placeholder="Buscar tarefas por título, pauta, tag ou colaborador..."
-                  className="reminders-search-input w-full pl-9 pr-3 py-2 text-xs rounded-full text-white placeholder:text-slate-500 outline-none transition-colors"
-                  style={{ background: '#0e0f12', border: '1px solid #282a33' }}
+                  className={`reminders-search-input w-full pl-9 pr-3 py-2 text-xs rounded-full outline-none transition-colors border ${
+                    isDark ? 'bg-[#0e0f12] border-[#282a33] text-white placeholder:text-slate-500' : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-[#F59242]'
+                  }`}
                 />
               </div>
 
               {/* Type Filter Pills */}
-              <div className="reminders-type-filter flex items-center gap-1 bg-[#0e0f12] p-1 rounded-full border border-[#282a33] overflow-x-auto custom-scrollbar">
+              <div className={`reminders-type-filter flex items-center gap-1.5 p-1 rounded-full border ${
+                isDark ? 'bg-[#0e0f12] border-[#282a33]' : 'bg-slate-200/70 border-slate-300'
+              }`}>
                 {[
                   { id: 'all', label: 'Todos os Tipos' },
                   { id: 'reuniao', label: 'Reuniões' },
                   { id: 'atividade', label: 'Atividades' },
                   { id: 'plantao', label: 'Plantões' },
                   { id: 'treinamento', label: 'Treinamentos' },
-                ].map((tab) => {
-                  const isActive = reminderFilterType === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => setReminderFilterType(tab.id)}
-                      data-active={isActive ? 'true' : 'false'}
-                      className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                        isActive
-                          ? 'shadow-md'
-                          : 'text-slate-300 hover:text-[#F9DE97]'
-                      }`}
-                      style={
-                        isActive 
-                          ? { background: 'linear-gradient(90deg, #640c1e 0%, #9F243C 100%)', color: '#F9DE97', boxShadow: '0 2px 10px rgba(100, 12, 30, 0.4)' } 
-                          : undefined
-                      }
-                    >
-                      {tab.label}
-                    </button>
-                  );
-                })}
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setReminderFilterType(tab.id)}
+                    data-active={reminderFilterType === tab.id ? 'true' : 'false'}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                      reminderFilterType === tab.id
+                        ? 'bg-gradient-to-r from-[#640c1e] to-[#9F243C] text-[#F9DE97] shadow-md'
+                        : isDark
+                        ? 'text-slate-400 hover:text-[#F9DE97]'
+                        : 'text-slate-700 hover:text-slate-900'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
 
               {/* Filter by allocated collaborator */}
-              <div className="flex items-center gap-2 bg-[#0e0f12] px-3.5 py-1.5 rounded-full border border-[#282a33]">
+              <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border ${
+                isDark ? 'bg-[#0e0f12] border-[#282a33]' : 'bg-white border-slate-300'
+              }`}>
                 <Users className="w-3.5 h-3.5 text-[#F59242] shrink-0" />
                 <select
                   value={reminderCollaboratorFilter}
                   onChange={(e) => setReminderCollaboratorFilter(e.target.value)}
-                  className="bg-transparent text-xs font-semibold text-slate-200 outline-none cursor-pointer pr-1"
-                  style={{ colorScheme: 'dark' }}
+                  className={`bg-transparent text-xs font-semibold outline-none cursor-pointer pr-1 ${
+                    isDark ? 'text-slate-300' : 'text-slate-800'
+                  }`}
+                  style={{ colorScheme: isDark ? 'dark' : 'light' }}
                 >
-                  <option value="all" className="bg-[#15161b] text-white">Todos os Responsáveis</option>
+                  <option value="all" className={isDark ? 'bg-[#15161b] text-white' : 'bg-white text-slate-900'}>Todos os Responsáveis</option>
                   {allAssignablePeople.map((emp) => (
-                    <option key={emp.id} value={emp.id} className="bg-[#15161b] text-white">
+                    <option key={emp.id} value={emp.id} className={isDark ? 'bg-[#15161b] text-white' : 'bg-white text-slate-900'}>
                       {emp.name} ({emp.department})
                     </option>
                   ))}
                 </select>
               </div>
 
-              {/* Action Button */}
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleOpenNewReminderModal}
-                  className="reminders-primary-button px-5 py-2 font-bold text-xs rounded-full text-white flex items-center justify-center gap-2 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer shrink-0"
+                  className="reminders-primary-button px-5 py-2.5 font-bold text-xs rounded-full text-white flex items-center justify-center gap-2 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer shrink-0"
                   style={{ 
                     background: 'linear-gradient(90deg, #640c1e 0%, #9F243C 55%, #F59242 100%)',
                     boxShadow: '0 4px 18px rgba(100, 12, 30, 0.38)'
@@ -2503,13 +2691,17 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               </div>
             </div>
 
-            {/* Grid de Cards de Tarefas (Identidade Visual Dark das Fotos) */}
+            {/* Grid de Cards de Tarefas */}
             {filteredReminders.length === 0 ? (
-              <div className="reminders-empty-state flex flex-col items-center justify-center py-16 text-center border border-dashed border-[#282a33] rounded-3xl bg-[#15161b] relative z-10">
-                <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mb-3">
+              <div className={`reminders-empty-state flex flex-col items-center justify-center py-16 text-center border border-dashed rounded-3xl relative z-10 ${
+                isDark ? 'border-[#282a33] bg-[#15161b]' : 'border-slate-300 bg-slate-50/80'
+              }`}>
+                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-3 ${
+                  isDark ? 'bg-white/5' : 'bg-slate-200/60'
+                }`}>
                   <Sparkles className="w-6 h-6 text-slate-500" />
                 </div>
-                <h3 className="text-white font-bold text-sm">Nenhum lembrete ou tarefa encontrado</h3>
+                <h3 className={`font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>Nenhum lembrete ou tarefa encontrado</h3>
                 <p className="text-slate-500 text-xs mt-1 max-w-sm">
                   {reminderSearch || reminderCollaboratorFilter !== 'all' 
                     ? 'Tente ajustar sua busca ou limpar os filtros de colaboradores.' 
@@ -2529,12 +2721,16 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       key={rem.id}
                       className={`reminders-task-card group relative rounded-2xl p-5 border transition-all duration-200 flex flex-col justify-between overflow-hidden ${
                         rem.completed
-                          ? 'bg-[#15161b]/60 border-[#282a33]/60 opacity-75 hover:opacity-100'
-                          : 'bg-[#15161b] border-[#282a33] hover:border-white/20'
+                          ? isDark
+                            ? 'bg-[#15161b]/60 border-[#282a33]/60 opacity-75 hover:opacity-100'
+                            : 'bg-slate-100/80 border-slate-300/80 opacity-75 hover:opacity-100'
+                          : isDark
+                            ? 'bg-[#15161b] border-[#282a33] hover:border-white/20'
+                            : 'bg-white border-slate-200 hover:border-slate-300 shadow-xs'
                       }`}
                       data-reminder-type={rem.type}
                       style={{ 
-                        boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+                        boxShadow: isDark ? '0 4px 16px rgba(0,0,0,0.35)' : '0 2px 10px rgba(0,0,0,0.04)',
                         borderLeft: rem.completed ? undefined : `3px solid ${badge.accentColor}`,
                       }}
                     >
@@ -2556,7 +2752,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             />
                             {badge.label}
                           </span>
-                          <span className="reminder-tag text-[11px] font-mono text-slate-400 bg-[#0e0f12] px-2.5 py-0.5 rounded-lg border border-[#282a33]">
+                          <span className={`reminder-tag text-[11px] font-mono rounded-lg border px-2.5 py-0.5 ${
+                            isDark ? 'text-slate-400 bg-[#0e0f12] border-[#282a33]' : 'text-slate-700 bg-slate-100 border-slate-200'
+                          }`}>
                             #{rem.tag}
                           </span>
                         </div>
@@ -2572,7 +2770,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             className={`reminders-complete-button p-1.5 rounded-lg transition-colors cursor-pointer ${
                               rem.completed
                                 ? 'text-emerald-400 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30'
-                                : 'text-slate-400 hover:text-emerald-400 hover:bg-white/5 border border-white/5'
+                                : isDark
+                                ? 'text-slate-400 hover:text-emerald-400 hover:bg-white/5 border border-white/5'
+                                : 'text-slate-400 hover:text-emerald-600 hover:bg-slate-100 border border-slate-200'
                             }`}
                           >
                             <CheckCircle2 className="w-4 h-4" />
@@ -2580,7 +2780,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           <button
                             onClick={() => handleOpenEditReminderModal(rem)}
                             title="Editar lembrete / alocar pessoas"
-                            className="reminders-edit-button p-1.5 rounded-lg text-slate-400 hover:text-[#F59242] hover:bg-white/5 transition-colors cursor-pointer border border-transparent hover:border-[#F59242]/20"
+                            className={`reminders-edit-button p-1.5 rounded-lg transition-colors cursor-pointer border ${
+                              isDark 
+                                ? 'text-slate-400 hover:text-[#F59242] hover:bg-white/5 border-transparent hover:border-[#F59242]/20'
+                                : 'text-slate-400 hover:text-amber-600 hover:bg-slate-100 border-transparent hover:border-amber-300'
+                            }`}
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
@@ -2591,7 +2795,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                               }
                             }}
                             title="Excluir lembrete"
-                            className="reminders-delete-button p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-white/5 transition-colors cursor-pointer border border-transparent hover:border-rose-500/20"
+                            className={`reminders-delete-button p-1.5 rounded-lg transition-colors cursor-pointer border ${
+                              isDark
+                                ? 'text-slate-400 hover:text-rose-400 hover:bg-white/5 border-transparent hover:border-rose-500/20'
+                                : 'text-slate-400 hover:text-rose-600 hover:bg-slate-100 border-transparent hover:border-rose-200'
+                            }`}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -2601,17 +2809,23 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       {/* Content: Title & Description */}
                       <div className="space-y-1.5 mb-2">
                         <h3 className={`reminders-task-title font-bold text-sm tracking-tight leading-snug transition-colors ${
-                          rem.completed ? 'text-slate-500 line-through' : 'text-white group-hover:text-slate-200'
+                          rem.completed 
+                            ? (isDark ? 'text-slate-500 line-through' : 'text-slate-400 line-through') 
+                            : (isDark ? 'text-white group-hover:text-slate-200' : 'text-slate-900 group-hover:text-slate-700')
                         }`}>
                           {rem.title}
                         </h3>
-                        <p className="reminders-task-description text-xs text-slate-400 leading-relaxed line-clamp-2">
+                        <p className={`reminders-task-description text-xs leading-relaxed line-clamp-2 ${
+                          isDark ? 'text-slate-400' : 'text-slate-600'
+                        }`}>
                           {rem.description}
                         </p>
                       </div>
 
                       {/* Allocated Collaborators Banner */}
-                      <div className="my-2.5 p-2 rounded-xl bg-[#0e0f12] border border-[#282a33] flex items-center justify-between gap-2.5">
+                      <div className={`my-2.5 p-2 rounded-xl border flex items-center justify-between gap-2.5 ${
+                        isDark ? 'bg-[#0e0f12] border-[#282a33]' : 'bg-slate-100/90 border-slate-200'
+                      }`}>
                         <div className="flex items-center gap-2 min-w-0 flex-1">
                           {allocatedPeople.length > 0 ? (
                             <div className="flex items-center shrink-0">
@@ -2622,24 +2836,32 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                     src={person.avatar}
                                     alt={person.name}
                                     title={`${person.name} • ${person.role} (${person.department})`}
-                                    className="inline-block w-6 h-6 rounded-full ring-2 ring-[#15161b] object-cover"
+                                    className={`inline-block w-6 h-6 rounded-full ring-2 object-cover ${
+                                      isDark ? 'ring-[#15161b]' : 'ring-white'
+                                    }`}
                                   />
                                 ))}
                               </div>
                               {allocatedPeople.length > 3 && (
-                                <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-white/10 text-slate-300 font-mono">
+                                <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold font-mono ${
+                                  isDark ? 'bg-white/10 text-slate-300' : 'bg-slate-200 text-slate-700'
+                                }`}>
                                   +{allocatedPeople.length - 3}
                                 </span>
                               )}
                             </div>
                           ) : (
-                            <div className="w-6 h-6 rounded-full bg-white/5 border border-white/10 flex items-center justify-center shrink-0 text-slate-400">
+                            <div className={`w-6 h-6 rounded-full border flex items-center justify-center shrink-0 ${
+                              isDark ? 'bg-white/5 border-white/10 text-slate-400' : 'bg-slate-200/50 border-slate-300 text-slate-500'
+                            }`}>
                               <Users className="w-3 h-3" />
                             </div>
                           )}
 
                           <div className="min-w-0 flex-1">
-                            <span className="text-[9px] uppercase font-bold tracking-wider text-slate-400 block font-mono">
+                            <span className={`text-[9px] uppercase font-bold tracking-wider block font-mono ${
+                              isDark ? 'text-slate-400' : 'text-slate-500'
+                            }`}>
                               {allocatedPeople.length === 1 
                                 ? 'Pessoa Alocada' 
                                 : allocatedPeople.length > 1 
@@ -2647,7 +2869,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                 : 'Equipe / Responsáveis'}
                             </span>
                             <span 
-                              className="text-white font-medium truncate block text-xs" 
+                              className={`font-medium truncate block text-xs ${
+                                isDark ? 'text-white' : 'text-slate-900'
+                              }`} 
                               title={allocatedPeople.length > 0 ? allocatedPeople.map(p => p.name).join(', ') : rem.assigneeName || 'Equipe Geral'}
                             >
                               {allocatedPeople.length > 0 
@@ -2658,24 +2882,38 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         </div>
 
                         {allocatedPeople.length > 0 ? (
-                          <span className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-md text-[#F9DE97] bg-[#F59242]/10 border border-[#F59242]/20 font-mono">
+                          <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-md font-mono ${
+                            isDark 
+                              ? 'text-[#F9DE97] bg-[#F59242]/10 border border-[#F59242]/20'
+                              : 'text-amber-800 bg-amber-500/10 border border-amber-500/20'
+                          }`}>
                             {allocatedPeople.length === 1 ? '1 alocado' : `${allocatedPeople.length} alocados`}
                           </span>
                         ) : (
-                          <span className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-md text-slate-400 bg-white/5 border border-white/10 font-mono">
+                          <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-md font-mono ${
+                            isDark 
+                              ? 'text-slate-400 bg-white/5 border border-white/10'
+                              : 'text-slate-700 bg-slate-200/60 border border-slate-300/60'
+                          }`}>
                             Geral
                           </span>
                         )}
                       </div>
 
                       {/* Footer Row: Date, Time & Meeting Link */}
-                      <div className="pt-3 border-t border-white/5 flex flex-wrap items-center justify-between gap-2 text-xs">
-                        <div className="flex items-center gap-2 font-mono text-slate-400">
-                          <div className="reminder-meta-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0e0f12] border border-[#282a33] text-slate-300">
+                      <div className={`pt-3 border-t flex flex-wrap items-center justify-between gap-2 text-xs ${
+                        isDark ? 'border-white/5' : 'border-slate-100'
+                      }`}>
+                        <div className="flex items-center gap-2 font-mono">
+                          <div className={`reminder-meta-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${
+                            isDark ? 'bg-[#0e0f12] border-[#282a33] text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'
+                          }`}>
                             <Calendar className="reminder-meta-icon w-3.5 h-3.5 text-slate-400" />
                             <span>{rem.date}</span>
                           </div>
-                          <div className="reminder-meta-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0e0f12] border border-[#282a33] text-slate-300">
+                          <div className={`reminder-meta-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${
+                            isDark ? 'bg-[#0e0f12] border-[#282a33] text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'
+                          }`}>
                             <Clock className="reminder-meta-icon w-3.5 h-3.5 text-slate-400" />
                             <span>{rem.time}</span>
                           </div>
@@ -2686,17 +2924,17 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             href={rem.link}
                             target="_blank"
                             rel="noreferrer"
-                            className="reminder-call-button px-3.5 py-1.5 rounded-xl font-bold text-[11px] flex items-center gap-1.5 transition-all hover:opacity-80 shadow-sm text-white"
+                            className="reminder-call-button px-3.5 py-1.5 rounded-xl font-bold text-[11px] flex items-center gap-1.5 transition-all hover:opacity-80 shadow-xs text-white"
                             style={{
-                              background: '#1d5c42',
-                              border: '1px solid rgba(16,185,129,0.25)',
+                              background: isDark ? '#1d5c42' : '#10b981',
+                              border: isDark ? '1px solid rgba(16,185,129,0.25)' : '1px solid #059669',
                             }}
                           >
                             <Video className="w-3.5 h-3.5" />
                             <span>Acessar Chamada</span>
                           </a>
                         ) : (
-                          <span className="text-[11px] text-slate-500 font-mono">
+                          <span className={`text-[11px] font-mono ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                             {rem.tag}
                           </span>
                         )}
@@ -2717,14 +2955,18 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 }}
               >
                 <div
-                  className="reminders-modal relative w-full max-w-xl max-h-[90vh] rounded-3xl border border-white/10 shadow-2xl p-6 overflow-hidden flex flex-col space-y-4 my-auto bg-[#15161b]"
+                  className={`reminders-modal relative w-full max-w-xl max-h-[90vh] rounded-3xl border shadow-2xl p-6 overflow-hidden flex flex-col space-y-4 my-auto ${
+                    isDark ? 'border-white/10 bg-[#15161b]' : 'border-slate-200 bg-white'
+                  }`}
                   onClick={(e) => e.stopPropagation()}
                 >
                   {/* Modal Header */}
-                  <div className="flex items-center justify-between pb-3 border-b border-white/10 shrink-0">
+                  <div className={`flex items-center justify-between pb-3 border-b shrink-0 ${
+                    isDark ? 'border-white/10' : 'border-slate-200'
+                  }`}>
                     <div className="flex items-center gap-2.5">
                       <div className="w-2.5 h-2.5 rounded-full bg-[#F59242]" />
-                      <h3 className="text-base font-bold text-white">
+                      <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                         {editingReminderId ? 'Editar Lembrete / Tarefa' : 'Criar Novo Lembrete / Tarefa'}
                       </h3>
                     </div>
@@ -2733,7 +2975,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         setIsNewReminderModalOpen(false);
                         setEditingReminderId(null);
                       }}
-                      className="reminders-modal-close w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                      className={`reminders-modal-close w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+                        isDark ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                      }`}
                     >
                       <X className="w-4 h-4" />
                     </button>
@@ -2791,7 +3035,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     className="space-y-4 text-xs overflow-y-auto pr-1 flex-1"
                   >
                     <div>
-                      <label className="text-xs font-semibold text-slate-400 block mb-1">
+                      <label className={`text-xs font-semibold block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>
                         TÍTULO DO COMPROMISSO
                       </label>
                       <input
@@ -2800,30 +3044,34 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         value={newReminderData.title}
                         onChange={(e) => setNewReminderData({ ...newReminderData, title: e.target.value })}
                         placeholder="Ex: Alinhamento de Metas Mensais"
-                        className="w-full px-3.5 py-2.5 bg-[#0e0f12] border border-[#282a33] rounded-xl text-xs text-white placeholder:text-slate-500 outline-none focus:border-[#F59242] transition-colors"
+                        className={`w-full px-3.5 py-2.5 border rounded-xl text-xs outline-none focus:border-[#F59242] transition-colors ${
+                          isDark ? 'bg-[#0e0f12] border-[#282a33] text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-400'
+                        }`}
                       />
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-xs font-semibold text-slate-400 block mb-1">
+                        <label className={`text-xs font-semibold block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>
                           TIPO
                         </label>
                         <select
                           value={newReminderData.type}
                           onChange={(e) => setNewReminderData({ ...newReminderData, type: e.target.value as any })}
-                          className="w-full px-3 py-2.5 bg-[#0e0f12] border border-[#282a33] rounded-xl text-xs text-white outline-none focus:border-[#F59242] cursor-pointer"
-                          style={{ colorScheme: 'dark' }}
+                          className={`w-full px-3 py-2.5 border rounded-xl text-xs outline-none focus:border-[#F59242] cursor-pointer ${
+                            isDark ? 'bg-[#0e0f12] border-[#282a33] text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                          }`}
+                          style={{ colorScheme: isDark ? 'dark' : 'light' }}
                         >
-                          <option value="atividade">Atividade Operacional</option>
-                          <option value="reuniao">Reunião de Equipe</option>
-                          <option value="plantao">Plantão / Sobreaviso</option>
-                          <option value="treinamento">Treinamento / Onboarding</option>
+                          <option value="atividade" className={isDark ? 'bg-[#15161b] text-white' : 'bg-white text-slate-900'}>Atividade Operacional</option>
+                          <option value="reuniao" className={isDark ? 'bg-[#15161b] text-white' : 'bg-white text-slate-900'}>Reunião de Equipe</option>
+                          <option value="plantao" className={isDark ? 'bg-[#15161b] text-white' : 'bg-white text-slate-900'}>Plantão / Sobreaviso</option>
+                          <option value="treinamento" className={isDark ? 'bg-[#15161b] text-white' : 'bg-white text-slate-900'}>Treinamento / Onboarding</option>
                         </select>
                       </div>
 
                       <div>
-                        <label className="text-xs font-semibold text-slate-400 block mb-1">
+                        <label className={`text-xs font-semibold block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>
                           TAG / PROJETO
                         </label>
                         <input
@@ -2831,46 +3079,54 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           value={newReminderData.tag}
                           onChange={(e) => setNewReminderData({ ...newReminderData, tag: e.target.value })}
                           placeholder="Ex: Gestão, Suporte, Metas"
-                          className="w-full px-3 py-2.5 bg-[#0e0f12] border border-[#282a33] rounded-xl text-xs text-white placeholder:text-slate-500 outline-none focus:border-[#F59242] transition-colors"
+                          className={`w-full px-3 py-2.5 border rounded-xl text-xs outline-none focus:border-[#F59242] transition-colors ${
+                            isDark ? 'bg-[#0e0f12] border-[#282a33] text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-400'
+                          }`}
                         />
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-xs font-semibold text-slate-400 block mb-1">
+                        <label className={`text-xs font-semibold block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>
                           DATA
                         </label>
                         <input
                           type="date"
                           value={newReminderData.date}
                           onChange={(e) => setNewReminderData({ ...newReminderData, date: e.target.value })}
-                          className="w-full px-3 py-2.5 bg-[#0e0f12] border border-[#282a33] rounded-xl text-xs text-white outline-none focus:border-[#F59242] cursor-pointer"
-                          style={{ colorScheme: 'dark' }}
+                          className={`w-full px-3 py-2.5 border rounded-xl text-xs outline-none focus:border-[#F59242] cursor-pointer ${
+                            isDark ? 'bg-[#0e0f12] border-[#282a33] text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                          }`}
+                          style={{ colorScheme: isDark ? 'dark' : 'light' }}
                         />
                       </div>
 
                       <div>
-                        <label className="text-xs font-semibold text-slate-400 block mb-1">
+                        <label className={`text-xs font-semibold block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>
                           HORÁRIO
                         </label>
                         <input
                           type="time"
                           value={newReminderData.time}
                           onChange={(e) => setNewReminderData({ ...newReminderData, time: e.target.value })}
-                          className="w-full px-3 py-2.5 bg-[#0e0f12] border border-[#282a33] rounded-xl text-xs text-white outline-none focus:border-[#F59242] cursor-pointer"
-                          style={{ colorScheme: 'dark' }}
+                          className={`w-full px-3 py-2.5 border rounded-xl text-xs outline-none focus:border-[#F59242] cursor-pointer ${
+                            isDark ? 'bg-[#0e0f12] border-[#282a33] text-white' : 'bg-slate-50 border-slate-300 text-slate-900'
+                          }`}
+                          style={{ colorScheme: isDark ? 'dark' : 'light' }}
                         />
                       </div>
                     </div>
 
                     {/* ALOCAR PESSOAS / COLABORADORES RESPONSÁVEIS */}
-                    <div className="rounded-2xl bg-[#0e0f12] border border-[#282a33] p-3.5 space-y-3">
+                    <div className={`rounded-2xl border p-3.5 space-y-3 ${
+                      isDark ? 'bg-[#0e0f12] border-[#282a33]' : 'bg-slate-50 border-slate-200'
+                    }`}>
                       <div className="flex items-center justify-between flex-wrap gap-2">
                         <div className="flex items-center gap-2">
                           <Users className="w-4 h-4 text-[#F59242]" />
                           <div>
-                            <span className="text-xs font-bold text-white block">
+                            <span className={`text-xs font-bold block ${isDark ? 'text-white' : 'text-slate-900'}`}>
                               ALOCAR PESSOAS PARA A TAREFA
                             </span>
                             <span className="text-[10px] text-slate-400">
@@ -2889,7 +3145,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                 assignedEmployeeIds: allAssignablePeople.map(p => p.id)
                               }));
                             }}
-                            className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                            className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                              isDark ? 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white' : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+                            }`}
                           >
                             Selecionar Todos
                           </button>
@@ -2901,7 +3159,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                 assignedEmployeeIds: []
                               }));
                             }}
-                            className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                            className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                              isDark ? 'bg-white/5 hover:bg-white/10 text-slate-400 hover:text-rose-400' : 'bg-slate-200 hover:bg-slate-300 text-slate-600 hover:text-rose-600'
+                            }`}
                           >
                             Limpar
                           </button>
@@ -2910,13 +3170,17 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
                       {/* Mini Search inside modal */}
                       <div className="relative">
-                        <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <Search className={`w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 ${
+                          isDark ? 'text-slate-500' : 'text-slate-400'
+                        }`} />
                         <input
                           type="text"
                           value={collaboratorSearchInModal}
                           onChange={(e) => setCollaboratorSearchInModal(e.target.value)}
                           placeholder="Buscar colaborador por nome, cargo ou setor..."
-                          className="w-full pl-8 pr-3 py-1.5 bg-[#15161b] border border-[#282a33] rounded-lg text-xs text-white placeholder:text-slate-500 outline-none focus:border-[#F59242] transition-colors"
+                          className={`w-full pl-8 pr-3 py-1.5 border rounded-lg text-xs outline-none focus:border-[#F59242] transition-colors ${
+                            isDark ? 'bg-[#15161b] border-[#282a33] text-white placeholder:text-slate-500' : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400'
+                          }`}
                         />
                       </div>
 
@@ -2929,7 +3193,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             return (
                               <span
                                 key={id}
-                                className="inline-flex items-center gap-1.5 pl-1.5 pr-2 py-0.5 rounded-full text-[11px] font-medium bg-[#F59242]/15 border border-[#F59242]/30 text-amber-200"
+                                className={`inline-flex items-center gap-1.5 pl-1.5 pr-2 py-0.5 rounded-full text-[11px] font-medium border ${
+                                  isDark ? 'bg-[#F59242]/15 border-[#F59242]/30 text-amber-200' : 'bg-amber-500/15 border-amber-500/30 text-amber-900'
+                                }`}
                               >
                                 <img
                                   src={person.avatar}
@@ -2945,7 +3211,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                       assignedEmployeeIds: prev.assignedEmployeeIds.filter(item => item !== id)
                                     }));
                                   }}
-                                  className="hover:text-white transition-colors cursor-pointer"
+                                  className="hover:opacity-75 transition-opacity cursor-pointer"
                                 >
                                   <X className="w-3 h-3" />
                                 </button>
@@ -2985,14 +3251,18 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                 }}
                                 className={`p-2 rounded-xl border flex items-center gap-2.5 transition-all cursor-pointer select-none ${
                                   isSelected
-                                    ? 'bg-[#F59242]/15 border-[#F59242] shadow-sm'
-                                    : 'bg-[#15161b] border-[#282a33] hover:border-white/20'
+                                    ? isDark
+                                      ? 'bg-[#F59242]/15 border-[#F59242] shadow-sm'
+                                      : 'bg-amber-500/10 border-amber-500 shadow-xs'
+                                    : isDark
+                                      ? 'bg-[#15161b] border-[#282a33] hover:border-white/20'
+                                      : 'bg-white border-slate-200 hover:border-slate-300'
                                 }`}
                               >
                                 <div className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
                                   isSelected
                                     ? 'bg-[#F59242] border-[#F59242] text-black font-bold'
-                                    : 'border-slate-600 bg-black/40'
+                                    : isDark ? 'border-slate-600 bg-black/40' : 'border-slate-300 bg-white'
                                 }`}>
                                   {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
                                 </div>
@@ -3004,10 +3274,14 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                 />
 
                                 <div className="min-w-0 flex-1">
-                                  <span className={`block font-semibold text-xs truncate ${isSelected ? 'text-white' : 'text-slate-200'}`}>
+                                  <span className={`block font-semibold text-xs truncate ${
+                                    isSelected 
+                                      ? (isDark ? 'text-white' : 'text-amber-950') 
+                                      : (isDark ? 'text-slate-200' : 'text-slate-800')
+                                  }`}>
                                     {person.name}
                                   </span>
-                                  <span className="block text-[10px] text-slate-400 truncate">
+                                  <span className={`block text-[10px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                     {person.role} • {person.department}
                                   </span>
                                 </div>
@@ -3016,7 +3290,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           })}
                       </div>
 
-                      <div className="flex items-center justify-between text-[11px] pt-1 text-slate-400 font-mono">
+                      <div className={`flex items-center justify-between text-[11px] pt-1 font-mono ${
+                        isDark ? 'text-slate-400' : 'text-slate-500'
+                      }`}>
                         <span>
                           {newReminderData.assignedEmployeeIds.length === 0
                             ? 'Nenhuma pessoa alocada (será atribuído à Equipe Geral)'
@@ -3026,7 +3302,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     </div>
 
                     <div>
-                      <label className="text-xs font-semibold text-slate-400 block mb-1">
+                      <label className={`text-xs font-semibold block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>
                         LINK DE VÍDEO (OPCIONAL)
                       </label>
                       <input
@@ -3034,12 +3310,14 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         value={newReminderData.link}
                         onChange={(e) => setNewReminderData({ ...newReminderData, link: e.target.value })}
                         placeholder="https://meet.google.com/..."
-                        className="w-full px-3.5 py-2.5 bg-[#0e0f12] border border-[#282a33] rounded-xl text-xs text-white placeholder:text-slate-500 outline-none focus:border-[#F59242] transition-colors"
+                        className={`w-full px-3.5 py-2.5 border rounded-xl text-xs outline-none focus:border-[#F59242] transition-colors ${
+                          isDark ? 'bg-[#0e0f12] border-[#282a33] text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-400'
+                        }`}
                       />
                     </div>
 
                     <div>
-                      <label className="text-xs font-semibold text-slate-400 block mb-1">
+                      <label className={`text-xs font-semibold block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>
                         DESCRIÇÃO / PAUTA
                       </label>
                       <textarea
@@ -3047,19 +3325,25 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         value={newReminderData.description}
                         onChange={(e) => setNewReminderData({ ...newReminderData, description: e.target.value })}
                         placeholder="Descreva detalhes ou orientações para a equipe..."
-                        className="w-full px-3.5 py-2 bg-[#0e0f12] border border-[#282a33] rounded-xl text-xs text-white placeholder:text-slate-500 outline-none focus:border-[#F59242] transition-colors resize-none"
+                        className={`w-full px-3.5 py-2 border rounded-xl text-xs outline-none focus:border-[#F59242] transition-colors resize-none ${
+                          isDark ? 'bg-[#0e0f12] border-[#282a33] text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-300 text-slate-900 placeholder:text-slate-400'
+                        }`}
                       />
                     </div>
 
                     {/* Modal Footer Buttons */}
-                    <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10 shrink-0">
+                    <div className={`flex items-center justify-end gap-3 pt-3 border-t shrink-0 ${
+                      isDark ? 'border-white/10' : 'border-slate-200'
+                    }`}>
                       <button
                         type="button"
                         onClick={() => {
                           setIsNewReminderModalOpen(false);
                           setEditingReminderId(null);
                         }}
-                        className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                          isDark ? 'text-slate-400 hover:text-white hover:bg-white/5' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                        }`}
                       >
                         Cancelar
                       </button>
