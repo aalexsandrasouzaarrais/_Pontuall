@@ -53,8 +53,8 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
   };
 
   return <>
-    <div className={`flex flex-1 w-full min-h-[calc(100vh-50px)] overflow-hidden transition-colors duration-300 ${
-      isDark ? 'bg-[#0f1117]' : 'bg-[#f8fafc]'
+    <div className={`flex flex-1 w-full min-h-[calc(100vh-50px)] overflow-hidden transition-colors duration-300 manager-scope ${theme} ${
+      isDark ? 'bg-[#0f1117]' : 'bg-[#f8fafc] text-slate-800'
     }`}>
       <ManagerSidebar
         activeTab={activeTab}

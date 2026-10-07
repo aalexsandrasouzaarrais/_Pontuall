@@ -137,29 +137,50 @@ html.light ::-webkit-scrollbar-thumb:hover {
 }
 
 /* Backgrounds da página e containers no modo claro */
+html.light,
+html.light body,
 html.light .manager-scope,
+html.light .modal-scope,
+.manager-scope.light,
+.modal-scope.light {
+  color-scheme: light;
+}
+
+/* Backgrounds da página e containers no modo claro */
+html.light .manager-scope,
+html.light .manager-scope [class*="bg-[#0f1117]"],
 html.light .manager-scope [class*="bg-[#0F1117]"],
 html.light .manager-scope [class*="bg-[#101116]"],
 html.light .manager-scope [class*="bg-[#111216]"],
+html.light .manager-scope [class*="bg-[#0b0b0e]"],
 html.light .manager-scope [class*="bg-[#0B0B0E]"],
+.manager-scope.light,
+.manager-scope.light [class*="bg-[#0f1117]"],
 .manager-scope.light [class*="bg-[#0F1117]"],
 .manager-scope.light [class*="bg-[#101116]"],
 .manager-scope.light [class*="bg-[#111216]"],
+.manager-scope.light [class*="bg-[#0b0b0e]"],
 .manager-scope.light [class*="bg-[#0B0B0E]"] {
   background-color: #f8fafc !important;
 }
 
 /* Cards, painéis laterais e blocos brancos no modo claro */
+html.light .manager-scope [class*="bg-[#14151c]"],
 html.light .manager-scope [class*="bg-[#14151C]"],
 html.light .manager-scope [class*="bg-[#15161b]"],
+html.light .manager-scope [class*="bg-[#0b0c10]"],
 html.light .manager-scope [class*="bg-[#0B0C10]"],
+html.light .manager-scope aside[class*="bg-[#0f1117]"],
 html.light .manager-scope aside[class*="bg-[#0F1117]"],
 html.light .modal-scope [class*="bg-[#101116]"],
 html.light .modal-scope [class*="bg-[#111216]"],
 html.light .modal-scope [class*="bg-[#15161b]"],
+.manager-scope.light [class*="bg-[#14151c]"],
 .manager-scope.light [class*="bg-[#14151C]"],
 .manager-scope.light [class*="bg-[#15161b]"],
+.manager-scope.light [class*="bg-[#0b0c10]"],
 .manager-scope.light [class*="bg-[#0B0C10]"],
+.manager-scope.light aside[class*="bg-[#0f1117]"],
 .manager-scope.light aside[class*="bg-[#0F1117]"],
 .modal-scope.light [class*="bg-[#101116]"],
 .modal-scope.light [class*="bg-[#111216]"],
@@ -170,17 +191,23 @@ html.light .modal-scope [class*="bg-[#15161b]"],
 /* Sub-barras, headers secundários e fundos alternados no modo claro */
 html.light .manager-scope [class*="bg-[#0e0f12]"],
 html.light .manager-scope [class*="bg-[#0c0d12]"],
+html.light .manager-scope [class*="bg-[#12131a]"],
 html.light .manager-scope [class*="bg-[#12131A]"],
 html.light .manager-scope [class*="bg-[#121319]"],
+html.light .manager-scope [class*="bg-[#181920]"],
 html.light .manager-scope [class*="bg-[#181922]"],
+html.light .manager-scope [class*="bg-[#1a1c24]"],
 html.light .manager-scope [class*="bg-[#1A1C24]"],
 html.light .modal-scope [class*="bg-[#0e0f12]"],
 html.light .modal-scope [class*="bg-[#0d0e12]"],
 .manager-scope.light [class*="bg-[#0e0f12]"],
 .manager-scope.light [class*="bg-[#0c0d12]"],
+.manager-scope.light [class*="bg-[#12131a]"],
 .manager-scope.light [class*="bg-[#12131A]"],
 .manager-scope.light [class*="bg-[#121319]"],
+.manager-scope.light [class*="bg-[#181920]"],
 .manager-scope.light [class*="bg-[#181922]"],
+.manager-scope.light [class*="bg-[#1a1c24]"],
 .manager-scope.light [class*="bg-[#1A1C24]"],
 .modal-scope.light [class*="bg-[#0e0f12]"],
 .modal-scope.light [class*="bg-[#0d0e12]"] {
@@ -264,6 +291,11 @@ html.light .modal-scope .text-slate-200,
 }
 
 /* Inputs e caixas de seleção no modo claro */
+html.light input[type="text"],
+html.light input[type="search"],
+html.light input[type="date"],
+html.light select,
+html.light textarea,
 html.light .manager-scope input[type="text"],
 html.light .manager-scope input[type="search"],
 html.light .manager-scope input[type="date"],
@@ -279,6 +311,7 @@ html.light .manager-scope textarea,
   border-color: #cbd5e1 !important;
 }
 
+html.light input::placeholder,
 html.light .manager-scope input::placeholder,
 .manager-scope.light input::placeholder {
   color: #94a3b8 !important;

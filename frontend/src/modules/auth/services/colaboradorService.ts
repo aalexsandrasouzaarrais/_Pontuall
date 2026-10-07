@@ -135,35 +135,48 @@ export async function createGestorSupabase(gestorData: {
   let isMasterManager = gestorData.isRh ?? false;
   let companyCnpj: string | undefined = undefined;
 
-  // 1. Processa a Empresa por CNPJ
-  if (rawCnpj.length === 14) {
-    companyCnpj = rawCnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+  // 1. Processa a Empresa na TAB_Empresa
+  const companyNameVal = gestorData.companyName?.trim();
+  if (companyNameVal || rawCnpj.length > 0) {
+    if (rawCnpj.length === 14) {
+      companyCnpj = rawCnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+    } else if (rawCnpj.length > 0) {
+      companyCnpj = rawCnpj;
+    } else {
+      companyCnpj = `00.000.000/0001-${Math.floor(10 + Math.random() * 89)}`;
+    }
 
     try {
-      const { data: empExistente } = await supabase
-        .from('TAB_Empresa')
-        .select('Idf_Empresa')
-        .eq('Num_CNPJ', companyCnpj)
-        .maybeSingle();
+      let empExistente: any = null;
+      if (companyCnpj && companyCnpj !== '00.000.000/0001-00') {
+        const { data } = await supabase
+          .from('TAB_Empresa')
+          .select('Idf_Empresa')
+          .eq('Num_CNPJ', companyCnpj)
+          .maybeSingle();
+        empExistente = data;
+      }
 
       if (empExistente) {
         companyId = empExistente.Idf_Empresa;
       } else {
-        const companyNameVal = gestorData.companyName?.trim() || `Empresa ${companyCnpj}`;
+        const finalName = companyNameVal || `Empresa ${companyCnpj}`;
         const { data: novaEmp, error: empErr } = await supabase
           .from('TAB_Empresa')
           .insert({
             Num_CNPJ: companyCnpj,
-            Nme_Empresa: companyNameVal,
-            Nme_Razao_Social: companyNameVal,
+            Nme_Fantasia: finalName,
+            Nme_Razao_Social: finalName,
             Flg_Ativa: true
           })
           .select()
           .single();
 
-        if (!empErr && novaEmp) {
+        if (empErr) {
+          console.error('Erro ao inserir empresa em TAB_Empresa:', empErr.message);
+        } else if (novaEmp) {
           companyId = novaEmp.Idf_Empresa;
-          isMasterManager = true; // 1º Gestor cadastrado com este CNPJ -> Master/RH!
+          isMasterManager = true; // 1º Gestor cadastrado com esta empresa -> Master/RH!
         }
       }
     } catch (empException) {
