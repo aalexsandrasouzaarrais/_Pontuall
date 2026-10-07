@@ -200,6 +200,10 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
 
     const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
     const cleanId = employeeId.trim() || generateRandomId();
+    const isRhSelected = userRole === 'Administrador' || userRole === 'RH';
+    const isGestorSelected = userRole === 'Gestor';
+    const roleTypeVal: 'rh' | 'gestor' | 'colaborador' = isRhSelected ? 'rh' : isGestorSelected ? 'gestor' : 'colaborador';
+
     const newEmp: Employee = {
       id: `emp-${cleanId}`,
       registrationId: cleanId,
@@ -213,6 +217,9 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       contractType: employmentType as 'CLT' | 'PJ' | 'TEMPORARIO',
       workplace: 'Sede Pontual - Matriz',
       companyId: activeCompanyId,
+      roleType: roleTypeVal,
+      isRh: isRhSelected,
+      isMasterManager: isRhSelected,
       managerIds: activeGestorId ? [activeGestorId] : []
     };
 
