@@ -1,4 +1,3 @@
-import { getTodayDateString } from '@/shared/utils/dateUtils';
 import React, { useState, useEffect } from 'react';
 import { User, X, Check, Sparkles, RefreshCw, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Employee } from '@/types';
@@ -10,6 +9,8 @@ interface AddUserModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddEmployee: (employee: Employee) => void;
+  employees?: Employee[];
+  activeEmployee?: Employee;
   theme?: 'light' | 'dark';
 }
 
@@ -17,6 +18,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
   isOpen,
   onClose,
   onAddEmployee,
+  employees,
+  activeEmployee,
   theme: propTheme,
 }) => {
   const { theme: ctxTheme } = useTheme();
@@ -30,7 +33,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
   const [phone, setPhone] = useState('');
   const [employeeId, setEmployeeId] = useState('');
   const [sendWelcomeEmail, setSendWelcomeEmail] = useState(true);
-  const [startDate, setStartDate] = useState(getTodayDateString());
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Função para gerar uma matrícula aleatória única
   const generateRandomId = () => {
@@ -89,7 +92,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       setDepartment('Atendimento');
       setUserRole('Colaborador');
       setEmploymentType('CLT');
-      setStartDate(getTodayDateString());
+      setStartDate(new Date().toISOString().split('T')[0]);
       setSendWelcomeEmail(true);
       setFirstNameError(false);
       setLastNameError(false);
@@ -190,14 +193,16 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       return;
     }
 
-    let activeCompanyId: string | undefined = undefined;
-    let activeGestorId: string | undefined = undefined;
+    let activeCompanyId: string | undefined = activeEmployee?.companyId;
+    let activeGestorId: string | undefined = activeEmployee?.id;
 
-    try {
-      const activeUser = JSON.parse(safeStorage.getItem('pontual_active_user') || '{}');
-      activeCompanyId = activeUser.Idf_Empresa || activeUser.companyId;
-      activeGestorId = activeUser.Idf_Colaborador || activeUser.id;
-    } catch {}
+    if (!activeCompanyId || !activeGestorId) {
+      try {
+        const activeUser = JSON.parse(safeStorage.getItem('pontual_active_user') || '{}');
+        if (!activeCompanyId) activeCompanyId = activeUser.Idf_Empresa || activeUser.companyId;
+        if (!activeGestorId) activeGestorId = activeUser.Idf_Colaborador || activeUser.id;
+      } catch {}
+    }
 
     const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
     const cleanId = employeeId.trim() || generateRandomId();

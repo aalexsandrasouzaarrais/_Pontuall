@@ -106,9 +106,8 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
     const firstDayOfMonth = new Date(year, month, 1);
     const lastDayOfMonth = new Date(year, month + 1, 0);
 
-    // O cabeçalho do mês começa no DOMINGO (DOM, SEG, ..., SÁB),
-    // então o deslocamento inicial é o próprio getDay() (0 = Domingo).
-    const startDay = firstDayOfMonth.getDay();
+    let startDay = firstDayOfMonth.getDay();
+    startDay = startDay === 0 ? 6 : startDay - 1;
 
     const totalDays = lastDayOfMonth.getDate();
     const cells = [];

@@ -122,6 +122,18 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
           }`}>
             <div className="flex items-center gap-2">
               <span className={`text-[11px] font-semibold ${isLightTheme ? 'text-slate-600' : 'text-white/60'}`}>
+                Estado da Escala:
+              </span>
+              <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider flex items-center gap-1 ${
+                isLightTheme
+                  ? 'bg-rose-50 text-[#96183c] border border-rose-200'
+                  : 'bg-[#96183c]/30 text-[#F89847] border border-[#F89847]/40'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${isLightTheme ? 'bg-[#96183c]' : 'bg-[#F89847]'}`}></span> PUBLICADO OFICIAL
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`text-[11px] font-semibold ${isLightTheme ? 'text-slate-600' : 'text-white/60'}`}>
                 Presen&ccedil;a:
               </span>
               <span className={`text-[10px] px-2 py-0.5 rounded font-bold flex items-center gap-1 ${
@@ -185,7 +197,7 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                     <Calendar className={`w-3 h-3 ${isLightTheme ? 'text-slate-400' : 'text-white/40'}`} /> Data
                   </div>
                   <div className={`text-sm font-bold font-mono ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
-                    {shift.date ? shift.date.split('-').reverse().join('/') : '—'}
+                    {shift.date || '2026-09-04'}
                   </div>
                 </div>
                 <div>

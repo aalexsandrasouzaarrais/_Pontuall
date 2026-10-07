@@ -11,7 +11,6 @@ import {
   Clock
 } from 'lucide-react';
 import { Employee, Shift } from '@/types';
-import { addDaysLocal, getTodayDateString, startOfWeekSunday, toLocalDateString } from '@/shared/utils/dateUtils';
 
 interface DeleteShiftsModalProps {
   isOpen: boolean;
@@ -32,12 +31,16 @@ export const DeleteShiftsModal: React.FC<DeleteShiftsModalProps> = ({
 }) => {
   const isDark = theme !== 'light';
 
-  const todayStr = useMemo(() => getTodayDateString(), []);
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
   
   // Períodos pré-definidos
   const [periodPreset, setPeriodPreset] = useState<'week' | 'month' | 'next30' | 'all' | 'custom'>('month');
   const [startDate, setStartDate] = useState<string>(todayStr);
-  const [endDate, setEndDate] = useState<string>(() => toLocalDateString(addDaysLocal(new Date(), 30)));
+  const [endDate, setEndDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString().split('T')[0];
+  });
 
   // Filtros
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('all');
@@ -51,25 +54,31 @@ export const DeleteShiftsModal: React.FC<DeleteShiftsModalProps> = ({
       return { filterStart: '', filterEnd: '' };
     }
     if (periodPreset === 'week') {
-      const start = startOfWeekSunday(now);
-      const end = addDaysLocal(start, 6);
+      const day = now.getDay();
+      const start = new Date(now);
+      start.setDate(now.getDate() - day);
+      const end = new Date(start);
+      end.setDate(start.getDate() + 6);
       return {
-        filterStart: toLocalDateString(start),
-        filterEnd: toLocalDateString(end),
+        filterStart: start.toISOString().split('T')[0],
+        filterEnd: end.toISOString().split('T')[0],
       };
     }
     if (periodPreset === 'month') {
       const start = new Date(now.getFullYear(), now.getMonth(), 1);
       const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
       return {
-        filterStart: toLocalDateString(start),
-        filterEnd: toLocalDateString(end),
+        filterStart: start.toISOString().split('T')[0],
+        filterEnd: end.toISOString().split('T')[0],
       };
     }
     if (periodPreset === 'next30') {
+      const start = new Date(now);
+      const end = new Date(now);
+      end.setDate(now.getDate() + 30);
       return {
-        filterStart: toLocalDateString(now),
-        filterEnd: toLocalDateString(addDaysLocal(now, 30)),
+        filterStart: start.toISOString().split('T')[0],
+        filterEnd: end.toISOString().split('T')[0],
       };
     }
     // custom

@@ -1,10 +1,9 @@
-import { getTodayDateString } from '@/shared/utils/dateUtils';
 import React, { useState } from 'react';
 import { ManagerSidebar, ManagerTabId } from './ManagerSidebar';
 import { ManagerMatrixGrid } from '@/modules/shifts/components/ManagerMatrixGrid';
 import { OrbitCalendarView } from '@/modules/shifts/components/OrbitCalendarView';
 import { AddUserModal } from '@/modules/auth/components/AddUserModal';
-import { Employee, Shift } from '@/types';
+import { Employee, Shift, AbsenceJustification, TimeOffRequest } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
 
 interface ManagerViewProps {
@@ -25,12 +24,17 @@ interface ManagerViewProps {
   onSwitchToEmployee: () => void;
   pendingRequestsCount: number;
   onOpenProfile?: () => void;
+  justifications?: AbsenceJustification[];
+  requests?: TimeOffRequest[];
+  onApproveJustification?: (id: string) => void;
+  onRejectJustification?: (id: string) => void;
 }
 
 export const ManagerView: React.FC<ManagerViewProps> = ({
   employees, shifts, activeEmployee, notificationsCount, onAddShift, onUpdateShift, onDeleteShift, onDeleteShiftsBulk, onAddEmployee,
   onUpdateEmployee, onDeactivateEmployee, onOpenRequests, onOpenChat,
   onOpenNotifications, onSwitchToEmployee, pendingRequestsCount, onOpenProfile,
+  justifications, requests, onApproveJustification, onRejectJustification,
 }) => {
   const { theme, isDark, toggleTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(true);
@@ -38,7 +42,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
 
   const createShift = (date?: string, employeeId?: string) => onAddShift({
-    date: date || getTodayDateString(),
+    date: date || new Date().toISOString().slice(0, 10),
     employeeId: employeeId || employees[0]?.id,
     title: 'Novo turno', startTime: '09:00', endTime: '18:00', breakMinutes: 60,
   });
@@ -115,10 +119,21 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
             onDeactivateEmployee={onDeactivateEmployee}
             onDeleteShift={onDeleteShift}
             onDeleteShiftsBulk={onDeleteShiftsBulk}
+            justifications={justifications}
+            requests={requests}
+            onApproveJustification={onApproveJustification}
+            onRejectJustification={onRejectJustification}
           />
         )}
       </main>
     </div>
-    <AddUserModal isOpen={isAddUserModalOpen} onClose={() => setIsAddUserModalOpen(false)} onAddEmployee={onAddEmployee} employees={employees} theme={theme} />
+    <AddUserModal 
+      isOpen={isAddUserModalOpen} 
+      onClose={() => setIsAddUserModalOpen(false)} 
+      onAddEmployee={onAddEmployee} 
+      employees={employees} 
+      activeEmployee={activeEmployee}
+      theme={theme} 
+    />
   </>;
 };

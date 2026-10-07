@@ -23,6 +23,99 @@ export function mapBneToEmployee(row: any): Employee {
   };
 }
 
+// IDs do banco são UUID; IDs locais/demonstração (ex: 'mgr-1', 'emp-PNT-1234') não podem ir para colunas UUID.
+// Regex sem checagem de versão para aceitar também os UUIDs fixos do seed (ex: a0000000-0000-0000-0000-000000000001).
+export function isUuid(id?: string | null): boolean {
+  return !!id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
+
+// Carrega o mapa colaborador -> [gestores] a partir da tabela M:N TAB_Gestor_Colaborador.
+// Sem isso, após o F5 todos os colaboradores voltavam com managerIds vazio e sumiam da visão do gestor.
+async function getManagerLinksMap(colaboradorIds: string[]): Promise<Map<string, string[]>> {
+  const map = new Map<string, string[]>();
+  const ids = colaboradorIds.filter(isUuid);
+  if (ids.length === 0) return map;
+
+  const { data, error } = await supabase
+    .from('TAB_Gestor_Colaborador')
+    .select('Idf_Gestor, Idf_Colaborador')
+    .in('Idf_Colaborador', ids);
+
+  if (error) {
+    console.warn('Aviso ao buscar vínculos em TAB_Gestor_Colaborador:', error.message);
+    return map;
+  }
+
+  (data || []).forEach((v: any) => {
+    const list = map.get(v.Idf_Colaborador) || [];
+    if (!list.includes(v.Idf_Gestor)) list.push(v.Idf_Gestor);
+    map.set(v.Idf_Colaborador, list);
+  });
+  return map;
+}
+
+// Grava vínculos gestor -> colaborador. Se a tabela não tiver as colunas opcionais
+// (Idf_Empresa / Flg_Gestor_Principal, ausentes no schema_bne.sql original), repete com o payload mínimo.
+async function saveGestorLinks(colaboradorId: string, gestorIds: string[], companyId?: string | null): Promise<boolean> {
+  const validGestores = Array.from(new Set(gestorIds.filter(id => isUuid(id) && id !== colaboradorId)));
+  if (!isUuid(colaboradorId) || validGestores.length === 0) return true;
+
+  const fullPayload = validGestores.map((gestorId, index) => ({
+    Idf_Gestor: gestorId,
+    Idf_Colaborador: colaboradorId,
+    Idf_Empresa: isUuid(companyId) ? companyId : null,
+    Flg_Gestor_Principal: index === 0
+  }));
+
+  const { error } = await supabase
+    .from('TAB_Gestor_Colaborador')
+    .upsert(fullPayload, { onConflict: 'Idf_Gestor,Idf_Colaborador' });
+  if (!error) return true;
+
+  console.warn('Vínculo completo falhou, tentando payload mínimo:', error.message);
+  const minimalPayload = validGestores.map(gestorId => ({ Idf_Gestor: gestorId, Idf_Colaborador: colaboradorId }));
+  const { error: minimalError } = await supabase
+    .from('TAB_Gestor_Colaborador')
+    .upsert(minimalPayload, { onConflict: 'Idf_Gestor,Idf_Colaborador' });
+
+  if (minimalError) {
+    console.error('Erro ao gravar vínculo gestor-colaborador:', minimalError.message);
+    return false;
+  }
+  return true;
+}
+
+// Descobre a empresa de um colaborador/gestor diretamente no banco
+async function getEmpresaDoColaborador(colaboradorId?: string): Promise<string | null> {
+  if (!isUuid(colaboradorId)) return null;
+  const { data } = await supabase
+    .from('TAB_Colaborador')
+    .select('Idf_Empresa')
+    .eq('Idf_Colaborador', colaboradorId)
+    .maybeSingle();
+  return data?.Idf_Empresa || null;
+}
+
+// Busca um colaborador pelo ID (usado para reidratar a sessão após F5)
+export async function getColaboradorByIdSupabase(colaboradorId: string): Promise<Employee | null> {
+  if (!isUuid(colaboradorId)) return null;
+  try {
+    const { data, error } = await supabase
+      .from('TAB_Colaborador')
+      .select('*')
+      .eq('Idf_Colaborador', colaboradorId)
+      .eq('Flg_Ativo', true)
+      .maybeSingle();
+    if (error || !data) return null;
+    const links = await getManagerLinksMap([colaboradorId]);
+    const emp = mapBneToEmployee(data);
+    emp.managerIds = links.get(colaboradorId) || [];
+    return emp;
+  } catch {
+    return null;
+  }
+}
+
 // Busca colaboradores do Supabase com suporte a filtragem por empresa e gestor
 export async function getColaboradoresSupabase(filter?: { companyId?: string; gestorId?: string }): Promise<Employee[]> {
   try {
@@ -42,25 +135,59 @@ export async function getColaboradoresSupabase(filter?: { companyId?: string; ge
       return [];
     }
 
-    if (data && data.length > 0) {
-      let result = data.map(mapBneToEmployee);
+    let rows: any[] = data || [];
 
-      // Se gestorId for especificado (e NÃO for RH Master), realiza a filtragem pela tabela M:N TAB_Gestor_Colaborador
-      if (filter?.gestorId) {
-        const { data: vinculos } = await supabase
-          .from('TAB_Gestor_Colaborador')
-          .select('Idf_Colaborador')
-          .eq('Idf_Gestor', filter.gestorId);
+    // Auto-correção: colaboradores gravados sem Idf_Empresa, mas vinculados a gestores desta empresa,
+    // são incluídos e recebem a empresa (antes eles "sumiam" no F5 por causa do filtro por empresa).
+    if (filter?.companyId && isUuid(filter.companyId) && rows.length > 0) {
+      const companyMemberIds = rows.map(r => r.Idf_Colaborador);
+      const { data: links } = await supabase
+        .from('TAB_Gestor_Colaborador')
+        .select('Idf_Colaborador')
+        .in('Idf_Gestor', companyMemberIds);
 
-        if (vinculos && vinculos.length > 0) {
-          const idsPermitidos = new Set(vinculos.map((v: any) => v.Idf_Colaborador));
-          result = result.filter(emp => emp.id === filter.gestorId || idsPermitidos.has(emp.id));
+      const known = new Set(companyMemberIds);
+      const candidateIds = Array.from(new Set((links || []).map((l: any) => l.Idf_Colaborador)))
+        .filter((id: any) => !known.has(id)) as string[];
+
+      if (candidateIds.length > 0) {
+        const { data: orphans } = await supabase
+          .from('TAB_Colaborador')
+          .select('*')
+          .in('Idf_Colaborador', candidateIds)
+          .is('Idf_Empresa', null)
+          .eq('Flg_Ativo', true);
+
+        if (orphans && orphans.length > 0) {
+          rows = [...rows, ...orphans].sort((a, b) =>
+            String(a.Nme_Colaborador || '').localeCompare(String(b.Nme_Colaborador || ''), 'pt-BR')
+          );
+          const { error: healError } = await supabase
+            .from('TAB_Colaborador')
+            .update({ Idf_Empresa: filter.companyId })
+            .in('Idf_Colaborador', orphans.map((o: any) => o.Idf_Colaborador))
+            .is('Idf_Empresa', null);
+          if (healError) console.warn('Aviso ao corrigir empresa de colaboradores órfãos:', healError.message);
         }
       }
-
-      return result;
     }
-    return [];
+
+    if (rows.length === 0) return [];
+
+    const managerMap = await getManagerLinksMap(rows.map(r => r.Idf_Colaborador));
+    let result = rows.map(row => {
+      const emp = mapBneToEmployee(row);
+      emp.managerIds = managerMap.get(row.Idf_Colaborador) || [];
+      return emp;
+    });
+
+    // Gestor de setor (não-RH): vê a si mesmo + colaboradores vinculados a ele
+    if (filter?.gestorId) {
+      const gestorId = filter.gestorId;
+      result = result.filter(emp => emp.id === gestorId || (emp.managerIds || []).includes(gestorId));
+    }
+
+    return result;
   } catch (err: any) {
     console.error('Erro na chamada Supabase:', err.message);
     return [];
@@ -70,18 +197,28 @@ export async function getColaboradoresSupabase(filter?: { companyId?: string; ge
 // Salva um novo colaborador diretamente na tabela TAB_Colaborador e estabelece o vínculo M:N em TAB_Gestor_Colaborador
 export async function createColaboradorSupabase(emp: Employee, creatorGestorId?: string): Promise<Employee> {
   const matricula = emp.registrationId || `PNT-${Math.floor(1000 + Math.random() * 9000)}`;
+
+  // A empresa do novo cadastro é sempre a do gestor/RH que está cadastrando.
+  // Se o objeto não trouxer uma empresa válida, busca no banco a empresa do criador.
+  let companyId: string | null = isUuid(emp.companyId) ? emp.companyId! : null;
+  if (!companyId) {
+    companyId = await getEmpresaDoColaborador(creatorGestorId);
+  }
+
+  const perfil = emp.roleType === 'rh' ? 'rh' : emp.roleType === 'gestor' ? 'gestor' : (emp.isRh ? 'rh' : 'colaborador');
   const payload = {
     Cod_Matricula: matricula,
     Nme_Colaborador: emp.name,
     Eml_Corporativo: emp.email,
     Des_Senha_Hash: matricula, // ID como senha provisória
-    Tpo_Perfil: emp.roleType === 'rh' ? 'rh' : emp.roleType === 'gestor' ? 'gestor' : (emp.isRh ? 'rh' : 'colaborador'),
+    Tpo_Perfil: perfil,
     Tpo_Cargo: emp.role,
     Des_Departamento: emp.department,
     Des_Avatar_Url: emp.avatar,
     Num_Telefone: emp.phone,
     Num_Horas_Semanais: emp.standardHoursPerWeek || 40,
-    Idf_Empresa: emp.companyId || null,
+    Idf_Empresa: companyId,
+    Flg_Gestor_Master: perfil === 'rh',
     Flg_Ativo: true
   };
 
@@ -97,23 +234,15 @@ export async function createColaboradorSupabase(emp: Employee, creatorGestorId?:
   }
 
   // Estabelece os vínculos de gestores (M:N) na tabela TAB_Gestor_Colaborador
-  const gestoresParaVincular = new Set<string>();
-  if (creatorGestorId) gestoresParaVincular.add(creatorGestorId);
-  if (emp.managerIds) emp.managerIds.forEach(id => gestoresParaVincular.add(id));
+  const gestoresParaVincular: string[] = [];
+  if (creatorGestorId) gestoresParaVincular.push(creatorGestorId);
+  (emp.managerIds || []).forEach(id => { if (!gestoresParaVincular.includes(id)) gestoresParaVincular.push(id); });
+  const gestoresValidos = gestoresParaVincular.filter(id => isUuid(id) && id !== novoColaborador.Idf_Colaborador);
 
-  if (gestoresParaVincular.size > 0) {
-    const vinculosPayload = Array.from(gestoresParaVincular).map((gestorId, index) => ({
-      Idf_Gestor: gestorId,
-      Idf_Colaborador: novoColaborador.Idf_Colaborador,
-      Idf_Empresa: emp.companyId || null,
-      Flg_Gestor_Principal: index === 0
-    }));
-
-    await supabase.from('TAB_Gestor_Colaborador').insert(vinculosPayload);
-  }
+  await saveGestorLinks(novoColaborador.Idf_Colaborador, gestoresValidos, companyId);
 
   const mapped = mapBneToEmployee(novoColaborador);
-  mapped.managerIds = Array.from(gestoresParaVincular);
+  mapped.managerIds = gestoresValidos;
   return mapped;
 }
 
@@ -366,8 +495,7 @@ export async function deactivateColaboradorSupabase(
 // Atualiza dados cadastrais de um colaborador no Supabase
 export async function updateColaboradorSupabase(emp: Partial<Employee> & { id: string }): Promise<boolean> {
   try {
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(emp.id);
-    if (!isUuid) return true;
+    if (!isUuid(emp.id)) return true;
 
     const payload: any = {};
     if (emp.name) payload.Nme_Colaborador = emp.name;
@@ -375,6 +503,10 @@ export async function updateColaboradorSupabase(emp: Partial<Employee> & { id: s
     if (emp.department) payload.Des_Departamento = emp.department;
     if (emp.phone) payload.Num_Telefone = emp.phone;
     if (emp.standardHoursPerWeek) payload.Num_Horas_Semanais = emp.standardHoursPerWeek;
+    if (emp.roleType) {
+      payload.Tpo_Perfil = emp.roleType;
+      payload.Flg_Gestor_Master = emp.roleType === 'rh';
+    }
 
     const { error } = await supabase
       .from('TAB_Colaborador')
@@ -384,6 +516,21 @@ export async function updateColaboradorSupabase(emp: Partial<Employee> & { id: s
     if (error) {
       console.warn('Erro ao atualizar colaborador no Supabase:', error.message);
       return false;
+    }
+
+    // Sincroniza o "Gestor Responsável" escolhido na edição com a tabela M:N
+    if (emp.managerIds !== undefined) {
+      const novosGestores = emp.managerIds.filter(id => isUuid(id) && id !== emp.id);
+      const { error: delError } = await supabase
+        .from('TAB_Gestor_Colaborador')
+        .delete()
+        .eq('Idf_Colaborador', emp.id);
+      if (delError) {
+        console.warn('Erro ao limpar vínculos antigos do colaborador:', delError.message);
+        return false;
+      }
+      const companyId = isUuid(emp.companyId) ? emp.companyId! : await getEmpresaDoColaborador(emp.id);
+      return await saveGestorLinks(emp.id, novosGestores, companyId);
     }
     return true;
   } catch (err: any) {

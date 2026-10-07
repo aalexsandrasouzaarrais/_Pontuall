@@ -1,4 +1,3 @@
-import { getTodayDateString } from '@/shared/utils/dateUtils';
 import React, { useState } from 'react';
 import { 
   EmployeeSidebar 
@@ -48,10 +47,12 @@ import {
 } from './data/mockData';
 import { 
   getColaboradoresSupabase, 
+  getColaboradorByIdSupabase,
   createColaboradorSupabase,
   deactivateColaboradorSupabase,
   updateColaboradorSupabase,
-  syncGoogleUserWithSupabase
+  syncGoogleUserWithSupabase,
+  isUuid
 } from '@/modules/auth/services/colaboradorService';
 import { 
   getShiftsSupabase, 
@@ -182,28 +183,38 @@ function AppContent() {
       async function loadDataFromSupabase() {
         if (!isAuthenticated || !activeEmployee) return;
 
-        const isDemoUser = !activeEmployee.companyId && (
-          activeEmployee.id === 'mgr-1' || 
-          activeEmployee.id === 'mgr-2' ||
-          activeEmployee.id === 'emp-1' ||
-          activeEmployee.email === 'gestor@pontual.com' ||
-          activeEmployee.email === 'gestor.ti@pontual.com' ||
-          activeEmployee.email === 'colaborador@pontual.com'
+        // Se o usuário ativo for um UUID do Supabase e não tiver companyId carregado no safeStorage, reidrata do banco
+        let currentEmp = activeEmployee;
+        if (isUuid(activeEmployee.id) && !activeEmployee.companyId) {
+          const fresh = await getColaboradorByIdSupabase(activeEmployee.id);
+          if (fresh && fresh.companyId) {
+            currentEmp = { ...activeEmployee, ...fresh };
+            setActiveEmployee(currentEmp);
+          }
+        }
+
+        const isDemoUser = !currentEmp.companyId && (
+          currentEmp.id === 'mgr-1' || 
+          currentEmp.id === 'mgr-2' ||
+          currentEmp.id === 'emp-1' ||
+          currentEmp.email === 'gestor@pontual.com' ||
+          currentEmp.email === 'gestor.ti@pontual.com' ||
+          currentEmp.email === 'colaborador@pontual.com'
         );
 
         try {
-          const isRhUser = activeEmployee.isRh || activeEmployee.roleType === 'rh' || activeEmployee.isMasterManager;
+          const isRhUser = currentEmp.isRh || currentEmp.roleType === 'rh' || currentEmp.isMasterManager;
           const filter = {
-            companyId: activeEmployee.companyId || undefined,
-            gestorId: (isRhUser || !activeEmployee.companyId) ? undefined : activeEmployee.id
+            companyId: currentEmp.companyId || undefined,
+            gestorId: (isRhUser || !currentEmp.companyId) ? undefined : currentEmp.id
           };
 
           const dbEmployees = await getColaboradoresSupabase(filter);
           
           let finalEmployees: Employee[] = (dbEmployees && dbEmployees.length > 0) ? dbEmployees : (isDemoUser ? INITIAL_EMPLOYEES : []);
-          if (currentRole === 'employee' && activeEmployee && !isRhUser) {
-            if (!finalEmployees.some(e => e.id === activeEmployee.id || (e.email && activeEmployee.email && e.email.toLowerCase() === activeEmployee.email.toLowerCase()))) {
-              finalEmployees = [activeEmployee, ...finalEmployees];
+          if (currentRole === 'employee' && currentEmp && !isRhUser) {
+            if (!finalEmployees.some(e => e.id === currentEmp.id || (e.email && currentEmp.email && e.email.toLowerCase() === currentEmp.email.toLowerCase()))) {
+              finalEmployees = [currentEmp, ...finalEmployees];
             }
           }
 
@@ -214,8 +225,12 @@ function AppContent() {
           const dbShifts = await getShiftsSupabase(empIds);
           setShifts((dbShifts && dbShifts.length > 0) ? dbShifts : (isDemoUser ? getInitialShifts() : []));
 
-          // Busca lembretes da gestão no Supabase
-          const dbReminders = await getRemindersSupabase();
+          // Busca lembretes da gestão no Supabase filtrados por empresa e equipe
+          const dbReminders = await getRemindersSupabase({
+            companyId: currentEmp.companyId,
+            creatorId: currentEmp.id,
+            visibleEmployeeIds: empIds
+          });
           if (dbReminders && dbReminders.length > 0) {
             setReminders(dbReminders);
           } else if (isDemoUser) {
@@ -224,14 +239,15 @@ function AppContent() {
             setReminders([]);
           }
 
-          // Busca solicitações e justificativas salvas no Supabase (TAB_Solicitacao_Colaborador e TAB_Justificativa_Ausencia)
-          const dbRequests = await getSolicitacoesSupabase();
-          const dbJustifications = await getJustificativasSupabase();
+          // Busca solicitações e justificativas salvas no Supabase vinculadas à equipe
+          const validScopeIds = empIds.filter(isUuid);
+          const dbRequests = await getSolicitacoesSupabase(validScopeIds.length > 0 ? validScopeIds : undefined);
+          const dbJustifications = await getJustificativasSupabase(validScopeIds.length > 0 ? validScopeIds : undefined);
 
           const enrichedRequests = dbRequests.map(r => {
-            const emp = finalEmployees.find(e => e.id === r.employeeId || (e.email && activeEmployee.email && e.email.toLowerCase() === activeEmployee.email.toLowerCase())) 
+            const emp = finalEmployees.find(e => e.id === r.employeeId || (e.email && currentEmp.email && e.email.toLowerCase() === currentEmp.email.toLowerCase())) 
               || INITIAL_EMPLOYEES.find(e => e.id === r.employeeId) 
-              || (r.employeeId === activeEmployee.id ? activeEmployee : undefined);
+              || (r.employeeId === currentEmp.id ? currentEmp : undefined);
             const targetEmp = finalEmployees.find(e => e.id === r.targetEmployeeId) || INITIAL_EMPLOYEES.find(e => e.id === r.targetEmployeeId);
             return {
               ...r,
@@ -242,9 +258,9 @@ function AppContent() {
           });
 
           const enrichedJustifications = dbJustifications.map(j => {
-            const emp = finalEmployees.find(e => e.id === j.employeeId || (e.email && activeEmployee.email && e.email.toLowerCase() === activeEmployee.email.toLowerCase())) 
+            const emp = finalEmployees.find(e => e.id === j.employeeId || (e.email && currentEmp.email && e.email.toLowerCase() === currentEmp.email.toLowerCase())) 
               || INITIAL_EMPLOYEES.find(e => e.id === j.employeeId) 
-              || (j.employeeId === activeEmployee.id ? activeEmployee : undefined);
+              || (j.employeeId === currentEmp.id ? currentEmp : undefined);
             return {
               ...j,
               employeeName: emp?.name || j.employeeName || 'Colaborador',
@@ -478,7 +494,7 @@ function AppContent() {
       employeeName: activeEmployee.name,
       employeeAvatar: activeEmployee.avatar,
       type: req.type || 'swap',
-      date: req.date || getTodayDateString(),
+      date: req.date || new Date().toISOString().split('T')[0],
       shiftId: req.shiftId,
       targetEmployeeId: req.targetEmployeeId,
       targetEmployeeName: req.targetEmployeeName,
@@ -510,7 +526,7 @@ function AppContent() {
       employeeName: activeEmployee.name,
       employeeAvatar: activeEmployee.avatar,
       shiftId: just.shiftId || '',
-      date: just.date || getTodayDateString(),
+      date: just.date || new Date().toISOString().split('T')[0],
       reason: just.reason || '',
       documentName: just.documentName,
       documentType: just.documentType,
@@ -542,7 +558,7 @@ function AppContent() {
     const created: Shift = {
       id: `shift-${Date.now()}`,
       employeeId: newShiftData.employeeId || employees[0]?.id || 'emp-1',
-      date: newShiftData.date || getTodayDateString(),
+      date: newShiftData.date || new Date().toISOString().split('T')[0],
       startTime: newShiftData.startTime || '08:00',
       endTime: newShiftData.endTime || '17:00',
       breakMinutes: newShiftData.breakMinutes !== undefined ? newShiftData.breakMinutes : 60,
@@ -820,6 +836,10 @@ function AppContent() {
             onSwitchToEmployee={() => setCurrentRole('employee')}
             pendingRequestsCount={pendingRequestsCount}
             onOpenProfile={() => setIsProfileModalOpen(true)}
+            justifications={justifications}
+            requests={requests}
+            onApproveJustification={handleApproveJustification}
+            onRejectJustification={handleRejectJustification}
           />
         </div>
       ) : (

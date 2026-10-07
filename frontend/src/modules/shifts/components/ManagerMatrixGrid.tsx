@@ -39,7 +39,7 @@ import {
   Lock,
   Hash
 } from 'lucide-react';
-import { Employee, Shift, TimeOffRequest } from '@/types';
+import { Employee, Shift, TimeOffRequest, AbsenceJustification } from '@/types';
 import { supabase } from '@/shared/services/supabase';
 import { DEFAULT_TEAM_CHANNELS, ChatChannelItem, ChatMessage } from '@/modules/chat/components/ChatModal';
 import { 
@@ -51,7 +51,6 @@ import {
 } from '@/shared/utils/chatUtils';
 import { EmployeesManagementView } from '@/modules/manager/components/EmployeesManagementView';
 import { DeleteShiftsModal } from './DeleteShiftsModal';
-import { addDaysLocal, startOfWeekMonday, toLocalDateString } from '@/shared/utils/dateUtils';
 import {
   ReminderItem,
   getRemindersSupabase,
@@ -60,6 +59,7 @@ import {
   toggleCompletedSupabase,
   deleteReminderSupabase
 } from '../services/reminderService';
+import { updateJustificativaStatusSupabase } from '@/modules/requests/services/requestService';
 
 interface ManagerMatrixGridProps {
   employees: Employee[];
@@ -83,6 +83,10 @@ interface ManagerMatrixGridProps {
   onDeactivateEmployee?: (employeeId: string) => void;
   onDeleteShift?: (id: string) => void;
   onDeleteShiftsBulk?: (ids: string[]) => void;
+  justifications?: AbsenceJustification[];
+  requests?: TimeOffRequest[];
+  onApproveJustification?: (id: string) => void;
+  onRejectJustification?: (id: string) => void;
 }
 
 export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
@@ -107,6 +111,10 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   onDeactivateEmployee,
   onDeleteShift,
   onDeleteShiftsBulk,
+  justifications = [],
+  requests = [],
+  onApproveJustification,
+  onRejectJustification,
 }) => {
   // Active top tab state: 'escala' | 'aprovacoes' | 'relatorios' | 'tarefas' | 'chat' | 'colaboradores'
   const [internalActiveTab, setInternalActiveTab] = useState<'escala' | 'aprovacoes' | 'relatorios' | 'tarefas' | 'chat' | 'colaboradores'>(sidebarTab || 'aprovacoes');
@@ -186,6 +194,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     reason: string;
     date: string;
     documentName: string;
+    documentUrl?: string;
     status: 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente';
     actionText?: string;
     feedback: string;
@@ -211,21 +220,54 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         },
       ]);
     } else {
-      const validEmpIds = new Set(employees.map(e => e.id));
-      setApprovalsData(prev => prev.filter(item => item.employeeId && validEmpIds.has(item.employeeId)));
+      const mapped = (justifications || []).map(j => {
+        const emp = employees.find(e => e.id === j.employeeId);
+        return {
+          id: j.id,
+          employeeId: j.employeeId,
+          employeeName: j.employeeName || emp?.name || 'Colaborador',
+          employeeRole: emp?.role || 'Colaborador',
+          employeeDept: emp?.department || 'Geral',
+          employeeAvatar: j.employeeAvatar || emp?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+          type: 'Atestado Médico',
+          reason: j.reason,
+          date: j.date,
+          documentName: j.documentName || 'atestado.pdf',
+          documentUrl: j.documentUrl,
+          status: (j.status === 'approved' ? 'Aprovado' : j.status === 'rejected' ? 'Recusado / Falta' : 'Pendente') as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
+          actionText: j.status === 'approved' ? 'Homologado' : j.status === 'rejected' ? 'Não homologado' : undefined,
+          feedback: j.managerNotes || '',
+        };
+      });
+      setApprovalsData(mapped);
     }
-  }, [isDemoCompany, employees]);
+  }, [isDemoCompany, employees, justifications]);
 
-  const handleApproveOccurrence = (id: string) => {
+  const handleApproveOccurrence = async (id: string) => {
     setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, status: 'Aprovado', actionText: 'Homologado agora' } : item));
+    if (onApproveJustification) {
+      onApproveJustification(id);
+    } else {
+      await updateJustificativaStatusSupabase(id, 'approved', 'Homologado pelo gestor');
+    }
   };
 
-  const handleRejectOccurrence = (id: string) => {
+  const handleRejectOccurrence = async (id: string) => {
     setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, status: 'Recusado / Falta', actionText: 'Recusado agora' } : item));
+    if (onRejectJustification) {
+      onRejectJustification(id);
+    } else {
+      await updateJustificativaStatusSupabase(id, 'rejected', 'Recusado pelo gestor');
+    }
   };
 
-  const handleUpdateFeedback = (id: string, feedback: string) => {
+  const handleUpdateFeedback = async (id: string, feedback: string) => {
     setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, feedback } : item));
+    const target = approvalsData.find(i => i.id === id);
+    if (target) {
+      const dbStatus = target.status === 'Aprovado' ? 'approved' : target.status === 'Pendente' ? 'approved' : 'rejected';
+      await updateJustificativaStatusSupabase(id, dbStatus as any, feedback);
+    }
   };
 
   const handleSaveNewOccurrence = (e: React.FormEvent) => {
@@ -384,18 +426,21 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           }
         ]);
       } else {
-        const data = await getRemindersSupabase();
+        const data = await getRemindersSupabase({
+          companyId: activeEmployee?.companyId,
+          creatorId: activeEmployee?.id,
+          visibleEmployeeIds: employees.map(e => e.id)
+        });
         if (data && data.length > 0) {
           setReminders(data);
         } else {
-          const validEmpIds = new Set(employees.map(e => e.id));
-          setReminders(prev => prev.filter(rem => rem.assignedEmployeeIds?.some(id => validEmpIds.has(id))));
+          setReminders([]);
         }
       }
     }
 
     loadReminders();
-  }, [isDemoCompany, employees]);
+  }, [isDemoCompany, employees, activeEmployee?.id, activeEmployee?.companyId]);
 
   const [reminderSearch, setReminderSearch] = useState('');
   const [reminderFilterType, setReminderFilterType] = useState<string>('all');
@@ -417,7 +462,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     description: '',
     type: 'atividade',
     tag: 'Geral',
-    date: toLocalDateString(new Date()),
+    date: '2026-09-02',
     time: '09:00',
     link: '',
     assignedEmployeeIds: [],
@@ -430,7 +475,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       description: '',
       type: 'atividade',
       tag: 'Geral',
-      date: toLocalDateString(new Date()),
+      date: '2026-09-02',
       time: '09:00',
       link: '',
       assignedEmployeeIds: [],
@@ -624,35 +669,31 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   useEffect(() => {
     chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
-  // Semana exibida na matriz: segunda-feira da semana atual + deslocamento de semanas
-  const baseDate = useMemo(
-    () => addDaysLocal(startOfWeekMonday(new Date()), currentWeekOffset * 7),
-    [currentWeekOffset]
-  );
+  // Período de datas de exemplo para a matriz
+  const baseDate = new Date(2026, 7, 31); // 31 de Agosto de 2026
+  baseDate.setDate(baseDate.getDate() + currentWeekOffset * 7);
 
   const weekDays = useMemo(() => {
     const days = [];
     const dayNames = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM'];
     
     for (let i = 0; i < 7; i++) {
-      const d = addDaysLocal(baseDate, i);
+      const d = new Date(baseDate);
+      d.setDate(d.getDate() + i);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const dayNum = String(d.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${dayNum}`;
+
       days.push({
         date: d,
-        dateStr: toLocalDateString(d),
+        dateStr,
         dayName: dayNames[i],
         dayNumber: d.getDate(),
       });
     }
     return days;
   }, [baseDate]);
-
-  // Rótulo do período da semana (ex: "05 de out. – 11 de out. de 2026")
-  const weekRangeLabel = useMemo(() => {
-    const start = weekDays[0].date;
-    const end = weekDays[6].date;
-    const fmt = (d: Date) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
-    return `${fmt(start)} – ${fmt(end)} de ${end.getFullYear()}`;
-  }, [weekDays]);
 
   // Departamentos únicos
   const departments = useMemo(() => {
@@ -978,9 +1019,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
-                <span className="px-3 text-slate-900 font-mono">
-                  {currentWeekOffset === 0 ? 'Esta Semana' : currentWeekOffset > 0 ? `+${currentWeekOffset} sem.` : `${currentWeekOffset} sem.`}
-                </span>
+                <span className="px-3 text-slate-900 font-mono">Esta Semana</span>
                 <button
                   onClick={() => setCurrentWeekOffset(prev => prev + 1)}
                   className="p-1 rounded-lg hover:bg-white hover:text-purple-700 transition-colors"
@@ -990,7 +1029,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               </div>
 
               <span className="text-xs font-mono font-bold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
-                {weekRangeLabel}
+                31 de ago. – 06 de set. de 2026
               </span>
             </div>
 
@@ -1071,6 +1110,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-3 text-xs bg-white px-4 py-2 rounded-xl border border-slate-200 text-slate-600">
             <div className="flex items-center gap-3 flex-wrap">
               <span className="font-extrabold text-slate-900 uppercase font-mono text-[10px] tracking-wider">LEGENDA:</span>
+              <span className="flex items-center gap-1.5 text-xs font-semibold"><span className="w-2.5 h-2.5 rounded bg-purple-600" /> Publicado</span>
+              <span className="flex items-center gap-1.5 text-xs font-semibold"><span className="w-2.5 h-2.5 rounded bg-amber-400 border border-amber-500" /> Rascunho</span>
               <span className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700"><CheckCircle2 className="w-3.5 h-3.5" /> Presença</span>
               <span className="flex items-center gap-1.5 text-xs font-semibold text-rose-600"><XCircle className="w-3.5 h-3.5" /> Falta</span>
               <span className="flex items-center gap-1.5 text-xs font-semibold text-purple-700"><AlertCircle className="w-3.5 h-3.5" /> Justificado</span>
@@ -1178,6 +1219,12 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                       <span className="text-[9px] font-mono font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-md">
                                         {shift.hoursWorked || '8'}h
                                       </span>
+
+                                      {isDraft && (
+                                        <span className="text-[9px] font-mono font-extrabold bg-amber-100 text-amber-700 border border-amber-300 px-1.5 py-0.5 rounded-md uppercase">
+                                          Rascunho
+                                        </span>
+                                      )}
 
                                       {isPresent && (
                                         <span className="text-[9px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
@@ -1583,16 +1630,23 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
                         {/* Comprovante */}
                         <td className="p-3.5">
-                          {row.documentName && row.documentName.toLowerCase().includes('.pdf') ? (
+                          {row.documentUrl || (row.documentName && row.documentName.toLowerCase().includes('.')) ? (
                             <button
-                              onClick={() => alert(`Visualizando comprovante: ${row.documentName}`)}
+                              onClick={() => {
+                                if (row.documentUrl) {
+                                  window.open(row.documentUrl, '_blank');
+                                } else {
+                                  alert(`Visualizando comprovante: ${row.documentName}`);
+                                }
+                              }}
                               className="approvals-light-proof inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold text-[#f89847] bg-[#f89847]/10 border border-[#f89847]/25 hover:bg-[#f89847]/20 transition-all cursor-pointer"
+                              title="Clique para visualizar ou baixar o comprovante"
                             >
                               <Paperclip className="w-3 h-3 text-[#f89847]" />
-                              <span>{row.documentName}</span>
+                              <span>{row.documentName || 'Ver anexo'}</span>
                             </button>
                           ) : (
-                            <span className="text-slate-500 italic text-[11px]">{row.documentName}</span>
+                            <span className="text-slate-500 italic text-[11px]">{row.documentName || 'Sem anexo'}</span>
                           )}
                         </td>
 
@@ -2777,10 +2831,16 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           ...(updated || reminderPayload)
                         } : r));
                       } else {
-                        const created = await createReminderSupabase({
-                          ...reminderPayload,
-                          completed: false,
-                        });
+                        const created = await createReminderSupabase(
+                          {
+                            ...reminderPayload,
+                            completed: false,
+                          },
+                          {
+                            creatorId: activeEmployee?.id,
+                            companyId: activeEmployee?.companyId
+                          }
+                        );
                         if (created) {
                           setReminders(prev => [created, ...prev]);
                         } else {

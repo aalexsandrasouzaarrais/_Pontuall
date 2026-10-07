@@ -1,4 +1,3 @@
-import { getTodayDateString } from '@/shared/utils/dateUtils';
 import React, { useState } from 'react';
 import { X, FileText, Upload, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Employee, Shift, AbsenceJustification } from '@/types';
@@ -21,9 +20,10 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
   isLightTheme = false,
 }) => {
   const [selectedShiftId, setSelectedShiftId] = useState(shifts[0]?.id || '');
-  const [absenceDate, setAbsenceDate] = useState(getTodayDateString());
+  const [absenceDate, setAbsenceDate] = useState(new Date().toISOString().split('T')[0]);
   const [reason, setReason] = useState('');
   const [documentName, setDocumentName] = useState('');
+  const [documentUrl, setDocumentUrl] = useState('');
   const [isUploaded, setIsUploaded] = useState(false);
 
   if (!isOpen) return null;
@@ -33,6 +33,13 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
     if (file) {
       setDocumentName(file.name);
       setIsUploaded(true);
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          setDocumentUrl(reader.result);
+        }
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -55,10 +62,11 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
       employeeName: currentEmployee.name,
       employeeAvatar: currentEmployee.avatar,
       shiftId: selectedShiftId || undefined,
-      date: absenceDate || chosenShift?.date || getTodayDateString(),
+      date: absenceDate || chosenShift?.date || new Date().toISOString().split('T')[0],
       reason,
       documentName: documentName || 'Atestado_Medico_Anexo.pdf',
       documentType: 'application/pdf',
+      documentUrl: documentUrl || undefined,
       status: 'pending',
     });
 

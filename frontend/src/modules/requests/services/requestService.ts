@@ -1,10 +1,10 @@
-import { getTodayDateString } from '@/shared/utils/dateUtils';
 import { supabase } from '@/shared/services/supabase';
 import { TimeOffRequest, AbsenceJustification, Employee } from '@/types';
 
 function isValidUuid(id?: string): boolean {
   if (!id) return false;
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+  // Sem checagem de versão: os UUIDs fixos do seed (ex: b0000000-0000-0000-0000-000000000001) também são válidos
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 }
 
 export async function ensureColaboradorUuidSupabase(activeEmp?: Employee): Promise<string | null> {
@@ -31,18 +31,8 @@ export async function ensureColaboradorUuidSupabase(activeEmp?: Employee): Promi
     }
   }
 
-  try {
-    const { data: anyColab } = await supabase
-      .from('TAB_Colaborador')
-      .select('Idf_Colaborador')
-      .eq('Flg_Ativo', true)
-      .limit(1)
-      .maybeSingle();
-
-    if (anyColab?.Idf_Colaborador && isValidUuid(anyColab.Idf_Colaborador)) {
-      return anyColab.Idf_Colaborador;
-    }
-  } catch {}
+  // Obs: removido o fallback que pegava "qualquer colaborador ativo" (limit 1) —
+  // ele fazia atestados/solicitações serem gravados em nome de outra pessoa (e até de outra empresa).
 
   try {
     const matricula = activeEmp.registrationId || `MAT-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -93,11 +83,11 @@ export async function getJustificativasSupabase(empIds?: string[]): Promise<Abse
   try {
     let query = supabase.from('TAB_Justificativa_Ausencia').select('*');
 
-    if (empIds && empIds.length > 0) {
+    if (empIds) {
       const validEmpIds = empIds.filter(id => isValidUuid(id));
-      if (validEmpIds.length > 0) {
-        query = query.in('Idf_Colaborador', validEmpIds);
-      }
+      // Escopo informado mas sem IDs do banco: não traz atestados de outras empresas
+      if (validEmpIds.length === 0) return [];
+      query = query.in('Idf_Colaborador', validEmpIds);
     }
 
     const { data, error } = await query.order('Dta_Envio', { ascending: false });
@@ -149,7 +139,7 @@ export async function createJustificativaSupabase(
     const payload = {
       Idf_Colaborador: colabId,
       Idf_Turno: isValidUuid(just.shiftId) ? just.shiftId : null,
-      Dta_Ausencia: just.date || getTodayDateString(),
+      Dta_Ausencia: just.date || new Date().toISOString().split('T')[0],
       Des_Motivo: just.reason || 'Justificativa de Ausência / Atestado Médico',
       Cod_Cid_Atestado: (just as any).cidCode || null,
       Nme_Documento: just.documentName || 'Atestado_Medico.pdf',
@@ -228,11 +218,10 @@ export async function getSolicitacoesSupabase(empIds?: string[]): Promise<TimeOf
   try {
     let query = supabase.from('TAB_Solicitacao_Colaborador').select('*');
 
-    if (empIds && empIds.length > 0) {
+    if (empIds) {
       const validEmpIds = empIds.filter(id => isValidUuid(id));
-      if (validEmpIds.length > 0) {
-        query = query.in('Idf_Colaborador_Solicitante', validEmpIds);
-      }
+      if (validEmpIds.length === 0) return [];
+      query = query.in('Idf_Colaborador_Solicitante', validEmpIds);
     }
 
     const { data, error } = await query.order('Dta_Cadastro', { ascending: false });
@@ -286,7 +275,7 @@ export async function createSolicitacaoSupabase(
       Idf_Colaborador_Destino: isValidUuid(req.targetEmployeeId) ? req.targetEmployeeId : null,
       Idf_Turno: isValidUuid(req.shiftId) ? req.shiftId : null,
       Tpo_Solicitacao: req.type === 'swap' ? 'troca' : 'folga',
-      Dta_Solicitada: req.date || getTodayDateString(),
+      Dta_Solicitada: req.date || new Date().toISOString().split('T')[0],
       Des_Motivo: req.reason || 'Solicitação de Folga / Troca de Turno',
       Tpo_Status_Solicitacao: 'pending',
       Dta_Cadastro: new Date().toISOString(),

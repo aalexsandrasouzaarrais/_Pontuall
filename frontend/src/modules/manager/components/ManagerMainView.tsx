@@ -17,7 +17,6 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { Employee, Shift } from '@/types';
-import { getTodayDateString } from '@/shared/utils/dateUtils';
 
 interface ManagerMainViewProps {
   employees: Employee[];
@@ -49,10 +48,10 @@ export const ManagerMainView: React.FC<ManagerMainViewProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  const todayStr = getTodayDateString();
+  const todayStr = new Date().toISOString().split('T')[0];
 
   // Turnos da equipe hoje
-  const todayShifts = shifts.filter(s => s.date === todayStr);
+  const todayShifts = shifts.filter(s => s.date === todayStr || s.date === '2026-10-19');
   const presentCount = todayShifts.filter(s => s.attendanceStatus === 'present').length;
   const totalToday = todayShifts.length || 5;
 
