@@ -18,6 +18,7 @@ import {
 import { Employee, Shift, ManagerReminder } from '@/types';
 import { getWeekDates, calculateShiftDurationHours, getTodayDateString } from '@/shared/utils/dateUtils';
 import confetti from 'canvas-confetti';
+import { ReminderDetailModal } from './ReminderDetailModal';
 
 interface EmployeeMainViewProps {
   employee: Employee;
@@ -29,6 +30,7 @@ interface EmployeeMainViewProps {
   onNavigateToJustifications: () => void;
   onShiftClick: (shift: Shift) => void;
   isLightTheme: boolean;
+  employees?: Employee[];
 }
 
 export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
@@ -41,7 +43,9 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
   onNavigateToJustifications,
   onShiftClick,
   isLightTheme,
+  employees = [],
 }) => {
+  const [selectedReminder, setSelectedReminder] = useState<ManagerReminder | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isSimulatingGps, setIsSimulatingGps] = useState(false);
   const [checkInSuccess, setCheckInSuccess] = useState(false);
@@ -849,27 +853,29 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
             {reminders.map(rem => (
               <div
                 key={rem.id}
-                className={`p-3 rounded-2xl border flex items-center justify-between gap-3 ${
+                onClick={() => setSelectedReminder(rem)}
+                className={`group p-3 rounded-2xl border flex items-center justify-between gap-3 cursor-pointer transition-all duration-200 hover:scale-[1.008] ${
                   isLightTheme
-                    ? 'bg-slate-50 border-slate-200'
-                    : 'bg-white/5 border-white/10'
+                    ? 'bg-slate-50 border-slate-200 hover:bg-slate-100/80 hover:border-[#96183c]/30 hover:shadow-xs'
+                    : 'bg-white/5 border-white/10 hover:bg-white/[0.08] hover:border-[#f89642]/30 hover:shadow-md'
                 }`}
+                title="Toque para ver a descrição completa e detalhes do compromisso"
               >
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
                   <span
-                    className={`w-2 h-2 rounded-full ${
+                    className={`w-2 h-2 rounded-full shrink-0 ${
                       isLightTheme ? 'bg-[#96183c]' : 'bg-[#f89642]'
                     }`}
                   />
                   <span
-                    className={`text-xs font-bold ${
+                    className={`text-xs font-bold truncate group-hover:text-[#96183c] dark:group-hover:text-[#f89642] transition-colors ${
                       isLightTheme ? 'text-[#0F172A]' : 'text-white'
                     }`}
                   >
                     {rem.title}
                   </span>
                   <span
-                    className={`text-[10px] font-mono font-black px-2.5 py-0.5 rounded-full ${
+                    className={`text-[10px] font-mono font-black px-2.5 py-0.5 rounded-full shrink-0 ${
                       isLightTheme
                         ? 'bg-[#faf0ac] text-[#96183c] border border-[#f89642]/40'
                         : 'bg-rose-950/40 text-rose-300 border border-rose-500/30'
@@ -879,22 +885,44 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                   </span>
                 </div>
 
-                {rem.link && (
-                  <a
-                    href={rem.link}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-4 py-1.5 bg-gradient-to-r from-[#96183c] to-[#b32047] hover:opacity-95 text-white rounded-full text-xs font-black shrink-0 flex items-center gap-1.5 shadow-xs transition-all"
+                <div className="flex items-center gap-2 shrink-0">
+                  {rem.link && (
+                    <a
+                      href={rem.link}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      className="px-4 py-1.5 bg-gradient-to-r from-[#96183c] to-[#b32047] hover:opacity-95 text-white rounded-full text-xs font-black shrink-0 flex items-center gap-1.5 shadow-xs transition-all"
+                    >
+                      <Video className="w-3.5 h-3.5" />
+                      Entrar
+                    </a>
+                  )}
+
+                  <span
+                    className={`p-1 rounded-lg text-xs transition-colors opacity-60 group-hover:opacity-100 ${
+                      isLightTheme ? 'text-slate-400 group-hover:text-slate-800' : 'text-white/40 group-hover:text-white'
+                    }`}
+                    title="Ver detalhes"
                   >
-                    <Video className="w-3.5 h-3.5" />
-                    Entrar
-                  </a>
-                )}
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                  </span>
+                </div>
               </div>
             ))}
           </div>
         </div>
       )}
+
+      {/* MODAL DE DETALHES DO LEMBRETE */}
+      <ReminderDetailModal
+        isOpen={!!selectedReminder}
+        onClose={() => setSelectedReminder(null)}
+        reminder={selectedReminder}
+        employees={employees}
+        currentEmployee={employee}
+        isLightTheme={isLightTheme}
+      />
     </div>
   );
 };

@@ -112,7 +112,7 @@ export async function getJustificativasSupabase(empIds?: string[]): Promise<Abse
         documentUrl: row.Des_Url_Documento || '',
         status: (row.Tpo_Status === 'approved' || row.Tpo_Status === 'aprovado') ? 'approved' : (row.Tpo_Status === 'rejected' || row.Tpo_Status === 'recusado') ? 'rejected' : 'pending',
         submittedAt: row.Dta_Envio ? new Date(row.Dta_Envio).toLocaleDateString('pt-BR') : 'Hoje',
-        managerNotes: row.Des_Parecer_Gestor || ''
+        managerNotes: row.Des_Parecer_Gestor || row.Des_Motivo_Recusa || row.Des_Feedback || ''
       }));
     }
     return [];
@@ -238,7 +238,7 @@ export async function getSolicitacoesSupabase(empIds?: string[]): Promise<TimeOf
         employeeId: row.Idf_Colaborador_Solicitante,
         employeeName: '',
         employeeAvatar: '',
-        type: (row.Tpo_Solicitacao === 'troca' || row.Tpo_Solicitacao === 'swap') ? 'swap' : 'time_off',
+        type: ((row.Tpo_Solicitacao || '').toLowerCase() === 'troca' || (row.Tpo_Solicitacao || '').toLowerCase() === 'swap') ? 'swap' : 'time_off',
         date: row.Dta_Solicitada,
         shiftId: row.Idf_Turno || '',
         targetEmployeeId: row.Idf_Colaborador_Destino || '',
@@ -246,7 +246,7 @@ export async function getSolicitacoesSupabase(empIds?: string[]): Promise<TimeOf
         reason: row.Des_Motivo || '',
         status: (row.Tpo_Status_Solicitacao === 'approved' || row.Tpo_Status_Solicitacao === 'aprovado') ? 'approved' : (row.Tpo_Status_Solicitacao === 'rejected' || row.Tpo_Status_Solicitacao === 'recusado') ? 'rejected' : 'pending',
         createdAt: row.Dta_Cadastro ? new Date(row.Dta_Cadastro).toLocaleDateString('pt-BR') : 'Hoje',
-        managerNotes: row.Des_Parecer_Gestor || ''
+        managerNotes: row.Des_Parecer_Gestor || row.Des_Motivo_Recusa || row.Des_Feedback || ''
       }));
     }
     return [];

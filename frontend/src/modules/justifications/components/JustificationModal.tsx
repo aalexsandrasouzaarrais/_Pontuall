@@ -2,6 +2,7 @@ import { getTodayDateString } from '@/shared/utils/dateUtils';
 import React, { useState } from 'react';
 import { X, FileText, Upload, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Employee, Shift, AbsenceJustification } from '@/types';
+import { uploadDocumentSupabase } from '@/shared/services/storageService';
 
 interface JustificationModalProps {
   isOpen: boolean;
@@ -26,21 +27,35 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
   const [documentName, setDocumentName] = useState('');
   const [documentUrl, setDocumentUrl] = useState('');
   const [isUploaded, setIsUploaded] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setDocumentName(file.name);
       setIsUploaded(true);
+      setIsUploading(true);
+
       const reader = new FileReader();
       reader.onload = () => {
         if (typeof reader.result === 'string') {
-          setDocumentUrl(reader.result);
+          setDocumentUrl(prev => prev || (reader.result as string));
         }
       };
       reader.readAsDataURL(file);
+
+      try {
+        const uploadRes = await uploadDocumentSupabase(file);
+        if (uploadRes?.url) {
+          setDocumentUrl(uploadRes.url);
+        }
+      } catch (err) {
+        console.warn('Fallback para DataURL no anexo:', err);
+      } finally {
+        setIsUploading(false);
+      }
     }
   };
 

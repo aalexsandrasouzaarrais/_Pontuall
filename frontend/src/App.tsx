@@ -1,5 +1,5 @@
 import { getTodayDateString } from '@/shared/utils/dateUtils';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   EmployeeSidebar 
 } from '@/shared/components/EmployeeSidebar';
@@ -71,6 +71,13 @@ import {
   createSolicitacaoSupabase,
   updateSolicitacaoStatusSupabase
 } from '@/modules/requests/services/requestService';
+import {
+  getNotificationsSupabase,
+  createNotificationSupabase,
+  markAllNotificationsAsReadSupabase,
+  subscribeNotificationsRealtime
+} from '@/modules/notifications/services/notificationService';
+import { openDocumentSafe } from '@/shared/services/storageService';
 import { 
   Employee, 
   Shift, 
@@ -147,36 +154,26 @@ function AppContent() {
         );
         if (match && !parsed.Idf_Empresa && !parsed.companyId) return match;
 
-        if (
-          parsed.id === MANAGER_PROFILE.id ||
-          parsed.Idf_Colaborador === MANAGER_PROFILE.id ||
-          parsed.email?.toLowerCase() === MANAGER_PROFILE.email?.toLowerCase() ||
-          parsed.Eml_Corporativo?.toLowerCase() === MANAGER_PROFILE.email?.toLowerCase()
-        ) {
-          return MANAGER_PROFILE;
+          const isRhParsed = parsed.isRh !== undefined ? parsed.isRh : (parsed.roleType === 'rh' || parsed.perfil === 'rh' || parsed.email?.toLowerCase() === 'gestor@pontual.com');
+          return {
+            id: parsed.Idf_Colaborador || parsed.id || `emp-${Date.now()}`,
+            name: parsed.Nme_Colaborador || parsed.nome || parsed.name || 'Gestor',
+            role: parsed.Tpo_Cargo || parsed.cargo || parsed.role || 'Gestor Geral',
+            department: parsed.Des_Departamento || parsed.departamento || parsed.department || 'Gestão de Pessoas & Operações',
+            avatar: parsed.Des_Avatar_Url || parsed.avatar || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
+            email: parsed.Eml_Corporativo || parsed.email || '',
+            phone: parsed.Num_Telefone || parsed.phone || '(11) 98765-4321',
+            standardHoursPerWeek: parsed.Num_Horas_Semanais || parsed.standardHoursPerWeek || 44,
+            registrationId: parsed.Cod_Matricula || parsed.registrationId || 'GST-0001',
+            companyId: parsed.Idf_Empresa || parsed.companyId || undefined,
+            isMasterManager: parsed.Flg_Gestor_Master !== undefined ? parsed.Flg_Gestor_Master : (parsed.isMasterManager || false),
+            isRh: isRhParsed,
+            roleType: parsed.roleType || (isRhParsed ? 'rh' : (parsed.Flg_Gestor_Master || parsed.perfil === 'gestor' ? 'gestor' : 'colaborador')),
+            companyCnpj: parsed.companyCnpj || undefined,
+            managerIds: parsed.managerIds || []
+          };
         }
-
-        const isRhParsed = parsed.isRh !== undefined ? parsed.isRh : (parsed.roleType === 'rh' || parsed.perfil === 'rh' || parsed.email?.toLowerCase() === 'gestor@pontual.com');
-        const isColaborador = parsed.roleType === 'colaborador' || parsed.Tpo_Perfil === 'colaborador';
-        return {
-          id: parsed.Idf_Colaborador || parsed.id || `emp-${Date.now()}`,
-          name: parsed.Nme_Colaborador || parsed.nome || parsed.name || (isColaborador ? 'Colaborador' : 'Gestor'),
-          role: parsed.Tpo_Cargo || parsed.cargo || parsed.role || (isColaborador ? 'Colaborador' : 'Gestor Geral'),
-          department: parsed.Des_Departamento || parsed.departamento || parsed.department || 'Geral',
-          avatar: parsed.Des_Avatar_Url || parsed.avatar || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
-          email: parsed.Eml_Corporativo || parsed.email || '',
-          phone: parsed.Num_Telefone || parsed.phone || '(11) 98765-4321',
-          standardHoursPerWeek: parsed.Num_Horas_Semanais || parsed.standardHoursPerWeek || 44,
-          registrationId: parsed.Cod_Matricula || parsed.registrationId || (isRhParsed ? 'GST-0001' : 'COL-0001'),
-          companyId: parsed.Idf_Empresa || parsed.companyId || undefined,
-          isMasterManager: parsed.Flg_Gestor_Master !== undefined ? parsed.Flg_Gestor_Master : (parsed.isMasterManager || false),
-          isRh: isRhParsed,
-          roleType: parsed.roleType || (isRhParsed ? 'rh' : (parsed.Flg_Gestor_Master || parsed.perfil === 'gestor' || parsed.Tpo_Perfil === 'gestor' ? 'gestor' : 'colaborador')),
-          companyCnpj: parsed.companyCnpj || undefined,
-          managerIds: parsed.managerIds || []
-        };
-      }
-    } catch {}
+      } catch {}
       return INITIAL_EMPLOYEES[0];
     });
     const [shifts, setShifts] = useState<Shift[]>([]);
@@ -215,11 +212,9 @@ function AppContent() {
 
         try {
           const isRhUser = currentEmp.isRh || currentEmp.roleType === 'rh' || currentEmp.isMasterManager;
-          // Apenas filtra por gestor se o usuário logado for de fato um gestor no modo de gestão
-          const isSectorManager = (currentRole === 'manager' || currentEmp.roleType === 'gestor') && !isRhUser && currentRole !== 'employee';
           const filter = {
             companyId: currentEmp.companyId || undefined,
-            gestorId: (isSectorManager && currentEmp.companyId) ? currentEmp.id : undefined
+            gestorId: (isRhUser || !currentEmp.companyId) ? undefined : currentEmp.id
           };
 
           const dbEmployees = await getColaboradoresSupabase(filter);
@@ -228,14 +223,6 @@ function AppContent() {
           if (currentRole === 'employee' && currentEmp && !isRhUser) {
             if (!finalEmployees.some(e => e.id === currentEmp.id || (e.email && currentEmp.email && e.email.toLowerCase() === currentEmp.email.toLowerCase()))) {
               finalEmployees = [currentEmp, ...finalEmployees];
-            }
-          }
-
-          const meInDb = finalEmployees.find(e => e.id === currentEmp.id);
-          if (meInDb && meInDb.managerIds && meInDb.managerIds.length > 0) {
-            currentEmp.managerIds = meInDb.managerIds;
-            if (!activeEmployee.managerIds || activeEmployee.managerIds.length === 0) {
-              setActiveEmployee(prev => ({ ...prev, managerIds: meInDb.managerIds }));
             }
           }
 
@@ -266,7 +253,7 @@ function AppContent() {
           const dbJustifications = await getJustificativasSupabase(validScopeIds.length > 0 ? validScopeIds : undefined);
 
           const enrichedRequests = dbRequests.map(r => {
-            const emp = finalEmployees.find(e => e.id === r.employeeId) 
+            const emp = finalEmployees.find(e => e.id === r.employeeId || (e.email && currentEmp.email && e.email.toLowerCase() === currentEmp.email.toLowerCase())) 
               || INITIAL_EMPLOYEES.find(e => e.id === r.employeeId) 
               || (r.employeeId === currentEmp.id ? currentEmp : undefined);
             const targetEmp = finalEmployees.find(e => e.id === r.targetEmployeeId) || INITIAL_EMPLOYEES.find(e => e.id === r.targetEmployeeId);
@@ -279,7 +266,7 @@ function AppContent() {
           });
 
           const enrichedJustifications = dbJustifications.map(j => {
-            const emp = finalEmployees.find(e => e.id === j.employeeId) 
+            const emp = finalEmployees.find(e => e.id === j.employeeId || (e.email && currentEmp.email && e.email.toLowerCase() === currentEmp.email.toLowerCase())) 
               || INITIAL_EMPLOYEES.find(e => e.id === j.employeeId) 
               || (j.employeeId === currentEmp.id ? currentEmp : undefined);
             return {
@@ -309,7 +296,14 @@ function AppContent() {
             return Array.from(mapById.values());
           });
 
-          setNotifications(isDemoUser ? INITIAL_NOTIFICATIONS : []);
+          const dbNotifications = await getNotificationsSupabase(currentEmp.id);
+          if (dbNotifications && dbNotifications.length > 0) {
+            setNotifications(dbNotifications);
+          } else if (isDemoUser) {
+            setNotifications(INITIAL_NOTIFICATIONS);
+          } else {
+            setNotifications([]);
+          }
 
         } catch (err) {
           console.warn('Erro ao carregar dados do Supabase:', err);
@@ -318,6 +312,19 @@ function AppContent() {
 
       loadDataFromSupabase();
     }, [activeEmployee?.id, activeEmployee?.companyId, isAuthenticated]);
+
+    // WebSocket Realtime para notificações em tempo real
+    useEffect(() => {
+      if (!activeEmployee?.id) return;
+      const unsubscribe = subscribeNotificationsRealtime(activeEmployee.id, (newNotif) => {
+        setNotifications(prev => {
+          if (prev.some(n => n.id === newNotif.id)) return prev;
+          return [newNotif, ...prev];
+        });
+        showToast(newNotif.title, newNotif.message, 'info');
+      });
+      return () => unsubscribe();
+    }, [activeEmployee?.id]);
 
   // Modals state
   const [selectedShiftForDetail, setSelectedShiftForDetail] = useState<Shift | null>(null);
@@ -333,22 +340,6 @@ function AppContent() {
   React.useEffect(() => {
     const handleGoogleSession = async (session: any) => {
       if (!session?.user?.email) return;
-
-      const isOAuthRedirect = typeof window !== 'undefined' && 
-        (window.location.hash.includes('access_token') || window.location.search.includes('code='));
-
-      // Se já houver usuário autenticado no safeStorage e não for retorno explícito de login OAuth:
-      // não sobrescreve a sessão ativa após F5 com conta de sessão antiga do Supabase
-      const savedUserStr = safeStorage.getItem('pontual_active_user');
-      if (savedUserStr && !isOAuthRedirect) {
-        try {
-          const parsed = JSON.parse(savedUserStr);
-          const currentEmail = parsed.email || parsed.Eml_Corporativo;
-          if (currentEmail && currentEmail.toLowerCase() !== session.user.email.toLowerCase()) {
-            return;
-          }
-        } catch {}
-      }
 
       const googleMeta = session.user.user_metadata || {};
       const googlePicture = googleMeta.avatar_url || googleMeta.picture;
@@ -547,6 +538,17 @@ function AppContent() {
       const saved = await createSolicitacaoSupabase(req, activeEmployee);
       if (saved) {
         setRequests(prev => prev.map(r => r.id === tempId ? { ...saved, employeeName: activeEmployee.name, employeeAvatar: activeEmployee.avatar } : r));
+        // Notifica gestores
+        const managers = employees.filter(e => e.roleType === 'gestor' || e.isMasterManager || e.isRh);
+        managers.forEach(mgr => {
+          createNotificationSupabase({
+            targetEmployeeId: mgr.id,
+            title: req.type === 'swap' ? 'Nova Troca de Turno' : 'Nova Folga Compensatória',
+            message: `${activeEmployee.name} solicitou ${req.type === 'swap' ? 'troca de turno' : 'folga compensatória'} para ${req.date || 'data selecionada'}.`,
+            type: 'swap',
+            actionRequired: true,
+          });
+        });
       }
     } catch (err) {
       console.warn('Erro ao salvar solicitação no Supabase:', err);
@@ -583,6 +585,17 @@ function AppContent() {
       const saved = await createJustificativaSupabase(just, activeEmployee);
       if (saved) {
         setJustifications(prev => prev.map(j => j.id === tempId ? { ...saved, employeeName: activeEmployee.name, employeeAvatar: activeEmployee.avatar } : j));
+        // Notifica gestores/RH
+        const managers = employees.filter(e => e.roleType === 'gestor' || e.isMasterManager || e.isRh);
+        managers.forEach(mgr => {
+          createNotificationSupabase({
+            targetEmployeeId: mgr.id,
+            title: 'Novo Atestado / Justificativa',
+            message: `${activeEmployee.name} enviou atestado/comprovante para ${just.date || 'data de ausência'}.`,
+            type: 'justification',
+            actionRequired: true,
+          });
+        });
       }
     } catch (err) {
       console.warn('Erro ao salvar justificativa no Supabase:', err);
@@ -612,13 +625,25 @@ function AppContent() {
     };
     try {
       const saved = await createShiftSupabase(created);
-      setShifts(prev => [...prev, saved || created]);
+      const finalShift = saved || created;
+      setShifts(prev => [...prev, finalShift]);
+
+      if (finalShift.employeeId) {
+        await createNotificationSupabase({
+          targetEmployeeId: finalShift.employeeId,
+          title: 'Nova Escala Publicada',
+          message: `Você foi escalado(a) para o dia ${finalShift.date} das ${finalShift.startTime} às ${finalShift.endTime} (${finalShift.title || 'Turno'}).`,
+          type: 'shift_change',
+          actionRequired: false,
+        });
+      }
+      showToast('Escala Salva', `Turno adicionado para ${finalShift.date}.`, 'success');
     } catch {
       setShifts(prev => [...prev, created]);
     }
   };
 
-  const handleUpdateShift = (updated: Shift, notifyEmployee: boolean = true, changeReason?: string) => {
+  const handleUpdateShift = async (updated: Shift, notifyEmployee: boolean = true, changeReason?: string) => {
     const prevShift = shifts.find(s => s.id === updated.id);
     setShifts(prev => prev.map(s => s.id === updated.id ? updated : s));
 
@@ -637,6 +662,16 @@ function AppContent() {
         actionRequired: true,
       };
       setNotifications(prev => [newNotif, ...prev]);
+
+      if (updated.employeeId) {
+        await createNotificationSupabase({
+          targetEmployeeId: updated.employeeId,
+          title: 'Escala Alterada pelo Gestor',
+          message: `Sua escala no dia ${updated.date} foi alterada para ${updated.startTime} às ${updated.endTime} (${updated.title || 'Turno'}).${reasonMsg}`,
+          type: 'shift_change',
+          actionRequired: true,
+        });
+      }
     }
   };
 
@@ -663,34 +698,71 @@ function AppContent() {
     );
   };
 
-  const handleApproveRequest = async (id: string) => {
-    setRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'approved', managerNotes: 'Aprovado pelo gestor' } : r));
-    await updateSolicitacaoStatusSupabase(id, 'approved', 'Aprovado pelo gestor');
+  const handleApproveRequest = async (id: string, customFeedback?: string) => {
+    const feedback = customFeedback || 'Aprovado pelo gestor';
+    const target = requests.find(r => r.id === id);
+    setRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'approved', managerNotes: feedback } : r));
+    await updateSolicitacaoStatusSupabase(id, 'approved', feedback);
+    if (target?.employeeId) {
+      await createNotificationSupabase({
+        targetEmployeeId: target.employeeId,
+        title: 'Solicitação Aprovada',
+        message: `Sua solicitação de ${target.type === 'swap' ? 'troca de turno' : 'folga compensatória'} para ${target.date} foi aprovada. Parecer: "${feedback}".`,
+        type: 'approval',
+      });
+    }
     showToast('Solicitação Aprovada', 'A solicitação foi aprovada e salva no Supabase.', 'success');
   };
 
-  const handleRejectRequest = async (id: string) => {
-    setRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'rejected', managerNotes: 'Recusado pelo gestor' } : r));
-    await updateSolicitacaoStatusSupabase(id, 'rejected', 'Recusado pelo gestor');
+  const handleRejectRequest = async (id: string, customFeedback?: string) => {
+    const feedback = customFeedback || 'Recusado pelo gestor';
+    const target = requests.find(r => r.id === id);
+    setRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'rejected', managerNotes: feedback } : r));
+    await updateSolicitacaoStatusSupabase(id, 'rejected', feedback);
+    if (target?.employeeId) {
+      await createNotificationSupabase({
+        targetEmployeeId: target.employeeId,
+        title: 'Solicitação Recusada',
+        message: `Sua solicitação de ${target.type === 'swap' ? 'troca de turno' : 'folga compensatória'} para ${target.date} foi recusada. Motivo: "${feedback}".`,
+        type: 'approval',
+      });
+    }
     showToast('Solicitação Recusada', 'A solicitação foi recusada no Supabase.', 'info');
   };
 
-  const handleApproveJustification = async (id: string) => {
-    setJustifications(prev => prev.map(j => j.id === id ? { ...j, status: 'approved', managerNotes: 'Homologado pelo RH' } : j));
-    await updateJustificativaStatusSupabase(id, 'approved', 'Homologado pelo RH');
+  const handleApproveJustification = async (id: string, customFeedback?: string) => {
+    const feedback = customFeedback || 'Homologado pelo RH';
+    const target = justifications.find(j => j.id === id);
+    setJustifications(prev => prev.map(j => j.id === id ? { ...j, status: 'approved', managerNotes: feedback } : j));
+    await updateJustificativaStatusSupabase(id, 'approved', feedback);
+    if (target?.employeeId) {
+      await createNotificationSupabase({
+        targetEmployeeId: target.employeeId,
+        title: 'Atestado Homologado',
+        message: `Seu atestado médico para ${target.date} foi homologado. Parecer: "${feedback}".`,
+        type: 'justification',
+      });
+    }
     showToast('Atestado Homologado', 'O atestado/justificativa foi homologado e atualizado no Supabase.', 'success');
   };
 
-  const handleRejectJustification = async (id: string) => {
-    setJustifications(prev => prev.map(j => j.id === id ? { ...j, status: 'rejected', managerNotes: 'Não homologado' } : j));
-    await updateJustificativaStatusSupabase(id, 'rejected', 'Não homologado');
+  const handleRejectJustification = async (id: string, customFeedback?: string) => {
+    const feedback = customFeedback || 'Não homologado';
+    const target = justifications.find(j => j.id === id);
+    setJustifications(prev => prev.map(j => j.id === id ? { ...j, status: 'rejected', managerNotes: feedback } : j));
+    await updateJustificativaStatusSupabase(id, 'rejected', feedback);
+    if (target?.employeeId) {
+      await createNotificationSupabase({
+        targetEmployeeId: target.employeeId,
+        title: 'Atestado Recusado',
+        message: `Seu atestado médico para ${target.date} não foi homologado. Motivo: "${feedback}".`,
+        type: 'justification',
+      });
+    }
     showToast('Atestado Recusado', 'A justificativa foi marcada como não homologada no Supabase.', 'info');
   };
 
-  const handleLogout = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch {}
+  const handleLogout = () => {
     try {
       safeStorage.removeItem('pontual_active_user');
       safeStorage.removeItem('pontual_role');
@@ -878,6 +950,8 @@ function AppContent() {
             onOpenProfile={() => setIsProfileModalOpen(true)}
             justifications={justifications}
             requests={requests}
+            onApproveRequest={handleApproveRequest}
+            onRejectRequest={handleRejectRequest}
             onApproveJustification={handleApproveJustification}
             onRejectJustification={handleRejectJustification}
           />
@@ -899,26 +973,7 @@ function AppContent() {
             onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
             activeEmployee={activeEmployee}
             employees={employees}
-            onSelectEmployee={(emp) => {
-              setActiveEmployee(emp);
-              safeStorage.setItem('pontual_active_user', JSON.stringify({
-                ...emp,
-                Idf_Colaborador: emp.id,
-                Nme_Colaborador: emp.name,
-                Eml_Corporativo: emp.email,
-                Tpo_Perfil: emp.roleType || 'colaborador',
-                Tpo_Cargo: emp.role,
-                Des_Departamento: emp.department,
-                Des_Avatar_Url: emp.avatar,
-                Cod_Matricula: emp.registrationId,
-                Flg_Gestor_Master: emp.isMasterManager,
-                Flg_Ativo: true,
-                Idf_Empresa: emp.companyId,
-                companyId: emp.companyId,
-                isRh: emp.isRh,
-                roleType: emp.roleType
-              }));
-            }}
+            onSelectEmployee={setActiveEmployee}
             notifications={notifications}
             onOpenNotifications={() => setIsNotificationsModalOpen(true)}
             isLightTheme={!isDark}
@@ -946,6 +1001,7 @@ function AppContent() {
                   onNavigateToJustifications={() => setEmployeeTab('justifications')}
                   onShiftClick={handleOpenShiftDetails}
                   isLightTheme={!isDark}
+                  employees={employees}
                 />
               );
             })()}
@@ -1172,6 +1228,32 @@ function AppContent() {
                           </p>
                         </div>
 
+                        {req.managerNotes && (
+                          <div
+                            className={`mx-4 mb-2.5 p-2.5 rounded-xl border flex items-start gap-2 text-xs ${
+                              req.status === 'approved'
+                                ? !isDark
+                                  ? 'bg-emerald-50/90 border-emerald-200 text-emerald-800'
+                                  : 'bg-emerald-950/30 border-emerald-500/30 text-emerald-300'
+                                : req.status === 'rejected'
+                                ? !isDark
+                                  ? 'bg-rose-50/90 border-rose-200 text-rose-800'
+                                  : 'bg-rose-950/30 border-rose-500/30 text-rose-300'
+                                : !isDark
+                                ? 'bg-amber-50/90 border-amber-200 text-amber-800'
+                                : 'bg-amber-950/30 border-amber-500/30 text-amber-300'
+                            }`}
+                          >
+                            <MessageSquare className="w-3.5 h-3.5 shrink-0 mt-0.5 opacity-80" />
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[10px] font-bold font-mono uppercase block tracking-wider opacity-75">
+                                Parecer / Feedback da Gestão
+                              </span>
+                              <p className="leading-snug mt-0.5">{req.managerNotes}</p>
+                            </div>
+                          </div>
+                        )}
+
                         <div
                           className={`px-4 pb-3 flex items-center justify-between gap-2 border-t pt-2 ${
                             !isDark ? 'border-slate-200' : 'border-white/5'
@@ -1184,12 +1266,6 @@ function AppContent() {
                           >
                             Enviado: {req.createdAt}
                           </span>
-
-                          {req.managerNotes && (
-                            <span className="text-[10px] text-emerald-500 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-                              {req.managerNotes}
-                            </span>
-                          )}
                         </div>
                       </div>
                     ))
@@ -1379,28 +1455,62 @@ function AppContent() {
                           </p>
 
                           {just.documentName && (
-                            <div
-                              className={`flex items-center gap-2 rounded-lg px-3 py-2 ${
+                            <button
+                              type="button"
+                              onClick={() => openDocumentSafe(just.documentUrl, just.documentName)}
+                              title="Clique para visualizar o atestado"
+                              className={`w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-left transition-all cursor-pointer ${
                                 !isDark
-                                  ? 'bg-rose-50 border border-rose-200'
-                                  : 'bg-[#96183c]/10 border border-[#96183c]/25'
+                                  ? 'bg-rose-50 hover:bg-rose-100 border border-rose-200 text-[#96183c]'
+                                  : 'bg-[#96183c]/10 hover:bg-[#96183c]/20 border border-[#96183c]/25 text-[#f89642]'
                               }`}
                             >
-                              <FileText
-                                className={`w-3.5 h-3.5 shrink-0 ${
-                                  !isDark ? 'text-[#96183c]' : 'text-[#f89642]'
-                                }`}
-                              />
-                              <span
-                                className={`text-[11px] font-semibold truncate ${
-                                  !isDark ? 'text-[#96183c]' : 'text-[#faf0ac]'
-                                }`}
-                              >
-                                {just.documentName}
+                              <div className="flex items-center gap-2 min-w-0">
+                                <FileText
+                                  className={`w-3.5 h-3.5 shrink-0 ${
+                                    !isDark ? 'text-[#96183c]' : 'text-[#f89642]'
+                                  }`}
+                                />
+                                <span
+                                  className={`text-[11px] font-semibold truncate ${
+                                    !isDark ? 'text-[#96183c]' : 'text-[#faf0ac]'
+                                  }`}
+                                >
+                                  {just.documentName}
+                                </span>
+                              </div>
+                              <span className="text-[10px] font-medium underline opacity-80 shrink-0">
+                                Visualizar
                               </span>
-                            </div>
+                            </button>
                           )}
                         </div>
+
+                        {just.managerNotes && (
+                          <div
+                            className={`mx-4 mb-2.5 p-2.5 rounded-xl border flex items-start gap-2 text-xs ${
+                              just.status === 'approved'
+                                ? !isDark
+                                  ? 'bg-emerald-50/90 border-emerald-200 text-emerald-800'
+                                  : 'bg-emerald-950/30 border-emerald-500/30 text-emerald-300'
+                                : just.status === 'rejected'
+                                ? !isDark
+                                  ? 'bg-rose-50/90 border-rose-200 text-rose-800'
+                                  : 'bg-rose-950/30 border-rose-500/30 text-rose-300'
+                                : !isDark
+                                ? 'bg-amber-50/90 border-amber-200 text-amber-800'
+                                : 'bg-amber-950/30 border-amber-500/30 text-amber-300'
+                            }`}
+                          >
+                            <MessageSquare className="w-3.5 h-3.5 shrink-0 mt-0.5 opacity-80" />
+                            <div className="min-w-0 flex-1">
+                              <span className="text-[10px] font-bold font-mono uppercase block tracking-wider opacity-75">
+                                Parecer / Feedback da Gestão
+                              </span>
+                              <p className="leading-snug mt-0.5">{just.managerNotes}</p>
+                            </div>
+                          </div>
+                        )}
 
                         <div
                           className={`px-4 pb-3 border-t pt-2 ${
@@ -1497,7 +1607,12 @@ function AppContent() {
         isOpen={isNotificationsModalOpen}
         onClose={() => setIsNotificationsModalOpen(false)}
         notifications={notifications}
-        onMarkAllAsRead={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}
+        onMarkAllAsRead={() => {
+          setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+          if (activeEmployee?.id) {
+            markAllNotificationsAsReadSupabase(activeEmployee.id);
+          }
+        }}
         isLightTheme={!isDark}
       />
 

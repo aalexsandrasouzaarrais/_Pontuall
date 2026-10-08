@@ -59,8 +59,10 @@ import {
   updateReminderSupabase,
   toggleCompletedSupabase,
   deleteReminderSupabase
-} from '../services/reminderService';
-import { updateJustificativaStatusSupabase } from '@/modules/requests/services/requestService';
+} from '@/modules/shifts/services/reminderService';
+import { updateJustificativaStatusSupabase, updateSolicitacaoStatusSupabase } from '@/modules/requests/services/requestService';
+import { openDocumentSafe } from '@/shared/services/storageService';
+import { createNotificationSupabase } from '@/modules/notifications/services/notificationService';
 
 interface ManagerMatrixGridProps {
   employees: Employee[];
@@ -86,8 +88,10 @@ interface ManagerMatrixGridProps {
   onDeleteShiftsBulk?: (ids: string[]) => void;
   justifications?: AbsenceJustification[];
   requests?: TimeOffRequest[];
-  onApproveJustification?: (id: string) => void;
-  onRejectJustification?: (id: string) => void;
+  onApproveRequest?: (id: string, customFeedback?: string) => void;
+  onRejectRequest?: (id: string, customFeedback?: string) => void;
+  onApproveJustification?: (id: string, customFeedback?: string) => void;
+  onRejectJustification?: (id: string, customFeedback?: string) => void;
 }
 
 export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
@@ -114,6 +118,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   onDeleteShiftsBulk,
   justifications = [],
   requests = [],
+  onApproveRequest,
+  onRejectRequest,
   onApproveJustification,
   onRejectJustification,
 }) => {
@@ -202,7 +208,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   }>>([]);
 
   useEffect(() => {
-    if (isDemoCompany && (!justifications || justifications.length === 0)) {
+    if (isDemoCompany) {
       setApprovalsData([
         {
           id: 'ap-1',
@@ -221,15 +227,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         },
       ]);
     } else {
-      const mapped = (justifications || []).map(j => {
+      const mappedJustifications = (justifications || []).map(j => {
         const emp = employees.find(e => e.id === j.employeeId);
         return {
           id: j.id,
           employeeId: j.employeeId,
-          employeeName: emp?.name || j.employeeName || 'Colaborador',
+          employeeName: j.employeeName || emp?.name || 'Colaborador',
           employeeRole: emp?.role || 'Colaborador',
           employeeDept: emp?.department || 'Geral',
-          employeeAvatar: emp?.avatar || j.employeeAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+          employeeAvatar: j.employeeAvatar || emp?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
           type: 'Atestado Médico',
           reason: j.reason,
           date: j.date,
@@ -240,25 +246,72 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           feedback: j.managerNotes || '',
         };
       });
-      setApprovalsData(mapped);
+
+      const mappedRequests = (requests || []).map(r => {
+        const emp = employees.find(e => e.id === r.employeeId);
+        const targetEmp = employees.find(e => e.id === r.targetEmployeeId);
+        const typeLabel = r.type === 'swap' ? 'Troca de Turno' : 'Folga Compensatória';
+        const formattedReason = r.type === 'swap' && (r.targetEmployeeName || targetEmp?.name)
+          ? `${r.reason} (Com: ${r.targetEmployeeName || targetEmp?.name})`
+          : r.reason;
+
+        return {
+          id: r.id,
+          employeeId: r.employeeId,
+          employeeName: r.employeeName || emp?.name || 'Colaborador',
+          employeeRole: emp?.role || 'Colaborador',
+          employeeDept: emp?.department || 'Geral',
+          employeeAvatar: r.employeeAvatar || emp?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+          type: typeLabel,
+          reason: formattedReason,
+          date: r.date,
+          documentName: 'Não se aplica',
+          documentUrl: undefined,
+          status: (r.status === 'approved' ? 'Aprovado' : r.status === 'rejected' ? 'Recusado / Falta' : 'Pendente') as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
+          actionText: r.status === 'approved' ? 'Aprovado' : r.status === 'rejected' ? 'Recusado' : undefined,
+          feedback: r.managerNotes || '',
+        };
+      });
+
+      setApprovalsData([...mappedJustifications, ...mappedRequests]);
     }
-  }, [isDemoCompany, employees, justifications]);
+  }, [isDemoCompany, employees, justifications, requests]);
 
   const handleApproveOccurrence = async (id: string) => {
+    const targetItem = approvalsData.find(i => i.id === id);
+    const customFeedback = targetItem?.feedback?.trim() || undefined;
     setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, status: 'Aprovado', actionText: 'Homologado agora' } : item));
-    if (onApproveJustification) {
-      onApproveJustification(id);
+    const isRequest = requests.some(r => r.id === id);
+
+    if (isRequest) {
+      if (onApproveRequest) {
+        onApproveRequest(id, customFeedback);
+      } else {
+        await updateSolicitacaoStatusSupabase(id, 'approved', customFeedback || 'Aprovado pelo gestor');
+      }
+    } else if (onApproveJustification) {
+      onApproveJustification(id, customFeedback);
     } else {
-      await updateJustificativaStatusSupabase(id, 'approved', 'Homologado pelo gestor');
+      await updateJustificativaStatusSupabase(id, 'approved', customFeedback || 'Homologado pelo gestor');
     }
   };
 
   const handleRejectOccurrence = async (id: string) => {
+    const targetItem = approvalsData.find(i => i.id === id);
+    const customFeedback = targetItem?.feedback?.trim() || undefined;
     setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, status: 'Recusado / Falta', actionText: 'Recusado agora' } : item));
-    if (onRejectJustification) {
-      onRejectJustification(id);
+    const isRequest = requests.some(r => r.id === id);
+
+    if (isRequest) {
+      if (onRejectRequest) {
+        onRejectRequest(id, customFeedback);
+      } else {
+        await updateSolicitacaoStatusSupabase(id, 'rejected', customFeedback || 'Recusado pelo gestor');
+      }
+    } else if (onRejectJustification) {
+      onRejectJustification(id, customFeedback);
     } else {
-      await updateJustificativaStatusSupabase(id, 'rejected', 'Recusado pelo gestor');
+      await updateJustificativaStatusSupabase(id, 'rejected', customFeedback || 'Recusado pelo gestor');
     }
   };
 
@@ -266,8 +319,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, feedback } : item));
     const target = approvalsData.find(i => i.id === id);
     if (target) {
-      const dbStatus = target.status === 'Aprovado' ? 'approved' : target.status === 'Pendente' ? 'approved' : 'rejected';
-      await updateJustificativaStatusSupabase(id, dbStatus as any, feedback);
+      const isRequest = requests.some(r => r.id === id);
+      const dbStatus = target.status === 'Aprovado' ? 'approved' : target.status === 'Pendente' ? 'pending' : 'rejected';
+      if (isRequest) {
+        await updateSolicitacaoStatusSupabase(id, dbStatus as any, feedback);
+      } else {
+        await updateJustificativaStatusSupabase(id, dbStatus as any, feedback);
+      }
     }
   };
 
@@ -734,9 +792,23 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     return map;
   }, [shifts]);
 
-  const handlePublishDrafts = () => {
+  const handlePublishDrafts = async () => {
     setIsDraftPublished(true);
     setDraftCount(0);
+    try {
+      const employeeIds = Array.from(new Set(shifts.map(s => s.employeeId).filter(Boolean)));
+      for (const empId of employeeIds) {
+        await createNotificationSupabase({
+          targetEmployeeId: empId,
+          title: 'Escala Oficial Publicada',
+          message: 'A escala de trabalho foi publicada pelo gestor. Acesse sua grade para conferir seus turnos.',
+          type: 'shift_change',
+          actionRequired: false,
+        });
+      }
+    } catch (err) {
+      console.warn('Erro ao notificar publicação de escala:', err);
+    }
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -1631,13 +1703,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         <td className="p-3.5">
                           {row.documentUrl || (row.documentName && row.documentName.toLowerCase().includes('.')) ? (
                             <button
-                              onClick={() => {
-                                if (row.documentUrl) {
-                                  window.open(row.documentUrl, '_blank');
-                                } else {
-                                  alert(`Visualizando comprovante: ${row.documentName}`);
-                                }
-                              }}
+                              onClick={() => openDocumentSafe(row.documentUrl, row.documentName)}
                               className="approvals-light-proof inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold text-[#f89847] bg-[#f89847]/10 border border-[#f89847]/25 hover:bg-[#f89847]/20 transition-all cursor-pointer"
                               title="Clique para visualizar ou baixar o comprovante"
                             >
@@ -1900,7 +1966,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           </div>
                           <button
                             type="button"
-                            onClick={() => alert(`Visualizando comprovante anexo: ${selectedDetailOccurrence.documentName}`)}
+                            onClick={() => openDocumentSafe(selectedDetailOccurrence.documentUrl, selectedDetailOccurrence.documentName)}
                             className="text-xs font-bold text-white bg-[#f89847] hover:bg-[#ff601f] px-3 py-1 rounded-lg transition-all cursor-pointer shadow-xs"
                           >
                             Abrir Anexo

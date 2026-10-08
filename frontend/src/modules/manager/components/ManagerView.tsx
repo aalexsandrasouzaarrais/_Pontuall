@@ -27,15 +27,17 @@ interface ManagerViewProps {
   onOpenProfile?: () => void;
   justifications?: AbsenceJustification[];
   requests?: TimeOffRequest[];
-  onApproveJustification?: (id: string) => void;
-  onRejectJustification?: (id: string) => void;
+  onApproveRequest?: (id: string, customFeedback?: string) => void;
+  onRejectRequest?: (id: string, customFeedback?: string) => void;
+  onApproveJustification?: (id: string, customFeedback?: string) => void;
+  onRejectJustification?: (id: string, customFeedback?: string) => void;
 }
 
 export const ManagerView: React.FC<ManagerViewProps> = ({
   employees, shifts, activeEmployee, notificationsCount, onAddShift, onUpdateShift, onDeleteShift, onDeleteShiftsBulk, onAddEmployee,
   onUpdateEmployee, onDeactivateEmployee, onOpenRequests, onOpenChat,
   onOpenNotifications, onSwitchToEmployee, pendingRequestsCount, onOpenProfile,
-  justifications, requests, onApproveJustification, onRejectJustification,
+  justifications, requests, onApproveRequest, onRejectRequest, onApproveJustification, onRejectJustification,
 }) => {
   const { theme, isDark, toggleTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(true);
@@ -122,6 +124,8 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
             onDeleteShiftsBulk={onDeleteShiftsBulk}
             justifications={justifications}
             requests={requests}
+            onApproveRequest={onApproveRequest}
+            onRejectRequest={onRejectRequest}
             onApproveJustification={onApproveJustification}
             onRejectJustification={onRejectJustification}
           />
