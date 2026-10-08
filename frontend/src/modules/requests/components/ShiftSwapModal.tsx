@@ -52,11 +52,39 @@ export const ShiftSwapModal: React.FC<ShiftSwapModalProps> = ({
   };
 
   const otherEmployees = employees.filter(e => {
+    // 1. Não pode ser o próprio colaborador
     if (e.id === currentEmployee.id) return false;
-    // O colega é apenas a pessoa que faz parte da mesma empresa que ele
-    if (currentEmployee.companyId && e.companyId) {
-      return e.companyId === currentEmployee.companyId;
+
+    // 2. Não pode ser Gestor ou RH
+    if (e.isRh || e.isMasterManager) return false;
+    if (e.roleType === 'rh' || e.roleType === 'gestor') return false;
+    const roleLower = (e.role || '').toLowerCase();
+    if (
+      roleLower.includes('gestor') ||
+      roleLower.includes('gestora') ||
+      roleLower.includes('gerente') ||
+      roleLower.includes('rh') ||
+      roleLower.includes('recursos humanos')
+    ) {
+      return false;
     }
+
+    // 3. Não pode ser o próprio gestor do colaborador
+    const myManagers = currentEmployee.managerIds || [];
+    if (myManagers.includes(e.id)) return false;
+
+    // 4. Deve fazer parte da mesma empresa
+    if (currentEmployee.companyId && e.companyId && e.companyId !== currentEmployee.companyId) {
+      return false;
+    }
+
+    // 5. Deve ser colaborador do mesmo gestor que ele
+    const theirManagers = e.managerIds || [];
+    if (myManagers.length > 0) {
+      const sharesManager = myManagers.some(mId => theirManagers.includes(mId));
+      if (!sharesManager) return false;
+    }
+
     return true;
   });
 
@@ -208,7 +236,7 @@ export const ShiftSwapModal: React.FC<ShiftSwapModalProps> = ({
                   required
                 >
                   <option value="" className={isLightTheme ? 'bg-white text-slate-900' : 'bg-[#1a0010] text-white'}>
-                    {otherEmployees.length === 0 ? 'Nenhum colega da mesma empresa disponível para troca' : 'Selecione o colega...'}
+                    {otherEmployees.length === 0 ? 'Nenhum colega da mesma equipe/gestor disponível para troca' : 'Selecione o colega...'}
                   </option>
                   {otherEmployees.map(emp => (
                     <option

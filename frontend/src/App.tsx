@@ -231,6 +231,14 @@ function AppContent() {
             }
           }
 
+          const meInDb = finalEmployees.find(e => e.id === currentEmp.id);
+          if (meInDb && meInDb.managerIds && meInDb.managerIds.length > 0) {
+            currentEmp.managerIds = meInDb.managerIds;
+            if (!activeEmployee.managerIds || activeEmployee.managerIds.length === 0) {
+              setActiveEmployee(prev => ({ ...prev, managerIds: meInDb.managerIds }));
+            }
+          }
+
           setEmployees(finalEmployees);
 
           // Busca turnos estritamente dos colaboradores pertencentes à empresa/equipe
