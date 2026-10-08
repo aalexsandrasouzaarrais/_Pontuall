@@ -208,7 +208,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   }>>([]);
 
   useEffect(() => {
-    if (isDemoCompany) {
+    if (isDemoCompany && (!justifications || justifications.length === 0) && (!requests || requests.length === 0)) {
       setApprovalsData([
         {
           id: 'ap-1',
@@ -232,10 +232,10 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         return {
           id: j.id,
           employeeId: j.employeeId,
-          employeeName: j.employeeName || emp?.name || 'Colaborador',
+          employeeName: emp?.name || j.employeeName || 'Colaborador',
           employeeRole: emp?.role || 'Colaborador',
           employeeDept: emp?.department || 'Geral',
-          employeeAvatar: j.employeeAvatar || emp?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+          employeeAvatar: emp?.avatar || j.employeeAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
           type: 'Atestado Médico',
           reason: j.reason,
           date: j.date,
@@ -258,10 +258,10 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         return {
           id: r.id,
           employeeId: r.employeeId,
-          employeeName: r.employeeName || emp?.name || 'Colaborador',
+          employeeName: emp?.name || r.employeeName || 'Colaborador',
           employeeRole: emp?.role || 'Colaborador',
           employeeDept: emp?.department || 'Geral',
-          employeeAvatar: r.employeeAvatar || emp?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+          employeeAvatar: emp?.avatar || r.employeeAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
           type: typeLabel,
           reason: formattedReason,
           date: r.date,

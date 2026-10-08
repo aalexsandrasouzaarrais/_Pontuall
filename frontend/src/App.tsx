@@ -143,36 +143,34 @@ function AppContent() {
   const [activeEmployee, setActiveEmployee] = useState<Employee>(() => {
     try {
       const savedUserStr = safeStorage.getItem('pontual_active_user');
-      if (savedUserStr) {
-        const parsed = JSON.parse(savedUserStr);
-        const match = INITIAL_EMPLOYEES.find(e => 
-          e.id === parsed.id || 
-          e.id === parsed.Idf_Colaborador ||
-          e.email?.toLowerCase() === parsed.email?.toLowerCase() ||
-          e.email?.toLowerCase() === parsed.Eml_Corporativo?.toLowerCase() ||
-          (parsed.emailSecundario && e.email?.toLowerCase() === parsed.emailSecundario?.toLowerCase())
-        );
-        if (match && !parsed.Idf_Empresa && !parsed.companyId) return match;
-
-          const isRhParsed = parsed.isRh !== undefined ? parsed.isRh : (parsed.roleType === 'rh' || parsed.perfil === 'rh' || parsed.email?.toLowerCase() === 'gestor@pontual.com');
-          return {
-            id: parsed.Idf_Colaborador || parsed.id || `emp-${Date.now()}`,
-            name: parsed.Nme_Colaborador || parsed.nome || parsed.name || 'Gestor',
-            role: parsed.Tpo_Cargo || parsed.cargo || parsed.role || 'Gestor Geral',
-            department: parsed.Des_Departamento || parsed.departamento || parsed.department || 'Gestão de Pessoas & Operações',
-            avatar: parsed.Des_Avatar_Url || parsed.avatar || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
-            email: parsed.Eml_Corporativo || parsed.email || '',
-            phone: parsed.Num_Telefone || parsed.phone || '(11) 98765-4321',
-            standardHoursPerWeek: parsed.Num_Horas_Semanais || parsed.standardHoursPerWeek || 44,
-            registrationId: parsed.Cod_Matricula || parsed.registrationId || 'GST-0001',
-            companyId: parsed.Idf_Empresa || parsed.companyId || undefined,
-            isMasterManager: parsed.Flg_Gestor_Master !== undefined ? parsed.Flg_Gestor_Master : (parsed.isMasterManager || false),
-            isRh: isRhParsed,
-            roleType: parsed.roleType || (isRhParsed ? 'rh' : (parsed.Flg_Gestor_Master || parsed.perfil === 'gestor' ? 'gestor' : 'colaborador')),
-            companyCnpj: parsed.companyCnpj || undefined,
-            managerIds: parsed.managerIds || []
-          };
+        if (
+          parsed.id === MANAGER_PROFILE.id ||
+          parsed.Idf_Colaborador === MANAGER_PROFILE.id ||
+          parsed.email?.toLowerCase() === MANAGER_PROFILE.email?.toLowerCase() ||
+          parsed.Eml_Corporativo?.toLowerCase() === MANAGER_PROFILE.email?.toLowerCase()
+        ) {
+          return MANAGER_PROFILE;
         }
+
+        const isRhParsed = parsed.isRh !== undefined ? parsed.isRh : (parsed.roleType === 'rh' || parsed.perfil === 'rh' || parsed.email?.toLowerCase() === 'gestor@pontual.com');
+        const isColaborador = parsed.roleType === 'colaborador' || parsed.Tpo_Perfil === 'colaborador';
+        return {
+          id: parsed.Idf_Colaborador || parsed.id || `emp-${Date.now()}`,
+          name: parsed.Nme_Colaborador || parsed.nome || parsed.name || (isColaborador ? 'Colaborador' : 'Gestor'),
+          role: parsed.Tpo_Cargo || parsed.cargo || parsed.role || (isColaborador ? 'Colaborador' : 'Gestor Geral'),
+          department: parsed.Des_Departamento || parsed.departamento || parsed.department || 'Geral',
+          avatar: parsed.Des_Avatar_Url || parsed.avatar || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
+          email: parsed.Eml_Corporativo || parsed.email || '',
+          phone: parsed.Num_Telefone || parsed.phone || '(11) 98765-4321',
+          standardHoursPerWeek: parsed.Num_Horas_Semanais || parsed.standardHoursPerWeek || 44,
+          registrationId: parsed.Cod_Matricula || parsed.registrationId || (isRhParsed ? 'GST-0001' : 'COL-0001'),
+          companyId: parsed.Idf_Empresa || parsed.companyId || undefined,
+          isMasterManager: parsed.Flg_Gestor_Master !== undefined ? parsed.Flg_Gestor_Master : (parsed.isMasterManager || false),
+          isRh: isRhParsed,
+          roleType: parsed.roleType || (isRhParsed ? 'rh' : (parsed.Flg_Gestor_Master || parsed.perfil === 'gestor' || parsed.Tpo_Perfil === 'gestor' ? 'gestor' : 'colaborador')),
+          companyCnpj: parsed.companyCnpj || undefined,
+          managerIds: parsed.managerIds || []
+        };
       } catch {}
       return INITIAL_EMPLOYEES[0];
     });
@@ -212,9 +210,11 @@ function AppContent() {
 
         try {
           const isRhUser = currentEmp.isRh || currentEmp.roleType === 'rh' || currentEmp.isMasterManager;
+          // Apenas filtra por gestor se o usuário logado for de fato um gestor no modo de gestão
+          const isSectorManager = (currentRole === 'manager' || currentEmp.roleType === 'gestor') && !isRhUser && currentRole !== 'employee';
           const filter = {
             companyId: currentEmp.companyId || undefined,
-            gestorId: (isRhUser || !currentEmp.companyId) ? undefined : currentEmp.id
+            gestorId: (isSectorManager && currentEmp.companyId) ? currentEmp.id : undefined
           };
 
           const dbEmployees = await getColaboradoresSupabase(filter);
@@ -223,6 +223,14 @@ function AppContent() {
           if (currentRole === 'employee' && currentEmp && !isRhUser) {
             if (!finalEmployees.some(e => e.id === currentEmp.id || (e.email && currentEmp.email && e.email.toLowerCase() === currentEmp.email.toLowerCase()))) {
               finalEmployees = [currentEmp, ...finalEmployees];
+            }
+          }
+
+          const meInDb = finalEmployees.find(e => e.id === currentEmp.id);
+          if (meInDb && meInDb.managerIds && meInDb.managerIds.length > 0) {
+            currentEmp.managerIds = meInDb.managerIds;
+            if (!activeEmployee.managerIds || activeEmployee.managerIds.length === 0) {
+              setActiveEmployee(prev => ({ ...prev, managerIds: meInDb.managerIds }));
             }
           }
 
