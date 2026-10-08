@@ -110,6 +110,16 @@ export async function getColaboradorByIdSupabase(colaboradorId: string): Promise
     const links = await getManagerLinksMap([colaboradorId]);
     const emp = mapBneToEmployee(data);
     emp.managerIds = links.get(colaboradorId) || [];
+    if (!emp.companyId && emp.managerIds.length > 0) {
+      const managerEmpresa = await getEmpresaDoColaborador(emp.managerIds[0]);
+      if (managerEmpresa) {
+        emp.companyId = managerEmpresa;
+        await supabase
+          .from('TAB_Colaborador')
+          .update({ Idf_Empresa: managerEmpresa })
+          .eq('Idf_Colaborador', colaboradorId);
+      }
+    }
     return emp;
   } catch {
     return null;

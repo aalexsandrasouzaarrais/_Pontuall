@@ -51,7 +51,14 @@ export const ShiftSwapModal: React.FC<ShiftSwapModalProps> = ({
     onClose();
   };
 
-  const otherEmployees = employees.filter(e => e.id !== currentEmployee.id);
+  const otherEmployees = employees.filter(e => {
+    if (e.id === currentEmployee.id) return false;
+    // O colega é apenas a pessoa que faz parte da mesma empresa que ele
+    if (currentEmployee.companyId && e.companyId) {
+      return e.companyId === currentEmployee.companyId;
+    }
+    return true;
+  });
 
   return (
     <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 ${isLightTheme ? 'bg-slate-900/40 backdrop-blur-xs' : 'bg-black/70 backdrop-blur-md'} animate-in fade-in duration-200`}>
@@ -201,7 +208,7 @@ export const ShiftSwapModal: React.FC<ShiftSwapModalProps> = ({
                   required
                 >
                   <option value="" className={isLightTheme ? 'bg-white text-slate-900' : 'bg-[#1a0010] text-white'}>
-                    Selecione o colega...
+                    {otherEmployees.length === 0 ? 'Nenhum colega da mesma empresa disponível para troca' : 'Selecione o colega...'}
                   </option>
                   {otherEmployees.map(emp => (
                     <option

@@ -215,9 +215,11 @@ function AppContent() {
 
         try {
           const isRhUser = currentEmp.isRh || currentEmp.roleType === 'rh' || currentEmp.isMasterManager;
+          // Apenas filtra por gestor se o usuário logado for de fato um gestor no modo de gestão
+          const isSectorManager = (currentRole === 'manager' || currentEmp.roleType === 'gestor') && !isRhUser && currentRole !== 'employee';
           const filter = {
             companyId: currentEmp.companyId || undefined,
-            gestorId: (isRhUser || !currentEmp.companyId) ? undefined : currentEmp.id
+            gestorId: (isSectorManager && currentEmp.companyId) ? currentEmp.id : undefined
           };
 
           const dbEmployees = await getColaboradoresSupabase(filter);
