@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { X, Camera, Upload, Check, Sparkles, User, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Employee } from '@/types';
 import { updateColaboradorAvatarSupabase } from '@/modules/auth/services/colaboradorService';
+import { safeStorage } from '@/shared/utils/safeStorage';
 
 interface ProfileEditModalProps {
   isOpen: boolean;
@@ -73,14 +74,14 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
       // 1. Atualiza no Supabase na tabela TAB_Colaborador
       await updateColaboradorAvatarSupabase(currentUser.id, currentUser.email, finalUrl);
 
-      // 2. Atualiza no localStorage
+      // 2. Atualiza no safeStorage
       try {
-        const storedUser = localStorage.getItem('pontual_active_user');
+        const storedUser = safeStorage.getItem('pontual_active_user');
         if (storedUser) {
           const parsed = JSON.parse(storedUser);
           parsed.Des_Avatar_Url = finalUrl;
           parsed.avatar = finalUrl;
-          localStorage.setItem('pontual_active_user', JSON.stringify(parsed));
+          safeStorage.setItem('pontual_active_user', JSON.stringify(parsed));
         }
       } catch {}
 

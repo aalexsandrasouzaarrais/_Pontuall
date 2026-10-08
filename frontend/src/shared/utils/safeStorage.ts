@@ -10,10 +10,19 @@ export const safeStorage = {
   getItem: (key: string): string | null => {
     try {
       if (typeof window !== 'undefined' && 'sessionStorage' in window) {
-        return window.sessionStorage.getItem(key);
+        const val = window.sessionStorage.getItem(key);
+        if (val !== null) return val;
       }
     } catch {
-      // Ignora erro de segurança do navegador e utiliza memória
+      // Ignora erro de segurança do navegador
+    }
+    try {
+      if (typeof window !== 'undefined' && 'localStorage' in window) {
+        const val = window.localStorage.getItem(key);
+        if (val !== null) return val;
+      }
+    } catch {
+      // Ignora erro de segurança do navegador
     }
     return memoryStorageFallback[key] ?? null;
   },
@@ -23,9 +32,8 @@ export const safeStorage = {
       if (typeof window !== 'undefined' && 'sessionStorage' in window) {
         window.sessionStorage.setItem(key, value);
       }
-      // Limpa do localStorage para remover sessões persistentes antigas
       if (typeof window !== 'undefined' && 'localStorage' in window) {
-        window.localStorage.removeItem(key);
+        window.localStorage.setItem(key, value);
       }
     } catch {
       // Ignora erro de segurança do navegador e armazena em memória

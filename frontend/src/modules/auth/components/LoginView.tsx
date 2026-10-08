@@ -344,6 +344,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
       setIsSuccess(true);
       showFeedback(`Bem-vindo(a), ${matchedUser.Nme_Colaborador}! Redirecionando...`, 'success');
 
+      // Se houver sessão remanescente do Google OAuth de outra conta no Supabase, desloga para não conflitar no F5
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session && sessionData.session.user?.email?.toLowerCase() !== matchedUser.Eml_Corporativo?.toLowerCase()) {
+          await supabase.auth.signOut();
+        }
+      } catch {}
+
       const employeeObj = mapBneToEmployee(matchedUser);
       if (isRhUser) {
         employeeObj.isRh = true;
@@ -356,6 +364,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
       safeStorage.setItem('pontual_role', systemRole);
       safeStorage.setItem('pontual_active_user', JSON.stringify({
         ...matchedUser,
+        id: employeeObj.id,
+        name: employeeObj.name,
+        role: employeeObj.role,
+        department: employeeObj.department,
+        avatar: employeeObj.avatar,
+        email: employeeObj.email,
+        registrationId: employeeObj.registrationId,
+        companyId: employeeObj.companyId,
         isRh: isRhUser,
         roleType: isRhUser ? 'rh' : (matchedUser.Tpo_Perfil || 'gestor'),
         Flg_Gestor_Master: isRhUser

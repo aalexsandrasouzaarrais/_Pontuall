@@ -147,26 +147,36 @@ function AppContent() {
         );
         if (match && !parsed.Idf_Empresa && !parsed.companyId) return match;
 
-          const isRhParsed = parsed.isRh !== undefined ? parsed.isRh : (parsed.roleType === 'rh' || parsed.perfil === 'rh' || parsed.email?.toLowerCase() === 'gestor@pontual.com');
-          return {
-            id: parsed.Idf_Colaborador || parsed.id || `emp-${Date.now()}`,
-            name: parsed.Nme_Colaborador || parsed.nome || parsed.name || 'Gestor',
-            role: parsed.Tpo_Cargo || parsed.cargo || parsed.role || 'Gestor Geral',
-            department: parsed.Des_Departamento || parsed.departamento || parsed.department || 'Gestão de Pessoas & Operações',
-            avatar: parsed.Des_Avatar_Url || parsed.avatar || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
-            email: parsed.Eml_Corporativo || parsed.email || '',
-            phone: parsed.Num_Telefone || parsed.phone || '(11) 98765-4321',
-            standardHoursPerWeek: parsed.Num_Horas_Semanais || parsed.standardHoursPerWeek || 44,
-            registrationId: parsed.Cod_Matricula || parsed.registrationId || 'GST-0001',
-            companyId: parsed.Idf_Empresa || parsed.companyId || undefined,
-            isMasterManager: parsed.Flg_Gestor_Master !== undefined ? parsed.Flg_Gestor_Master : (parsed.isMasterManager || false),
-            isRh: isRhParsed,
-            roleType: parsed.roleType || (isRhParsed ? 'rh' : (parsed.Flg_Gestor_Master || parsed.perfil === 'gestor' ? 'gestor' : 'colaborador')),
-            companyCnpj: parsed.companyCnpj || undefined,
-            managerIds: parsed.managerIds || []
-          };
+        if (
+          parsed.id === MANAGER_PROFILE.id ||
+          parsed.Idf_Colaborador === MANAGER_PROFILE.id ||
+          parsed.email?.toLowerCase() === MANAGER_PROFILE.email?.toLowerCase() ||
+          parsed.Eml_Corporativo?.toLowerCase() === MANAGER_PROFILE.email?.toLowerCase()
+        ) {
+          return MANAGER_PROFILE;
         }
-      } catch {}
+
+        const isRhParsed = parsed.isRh !== undefined ? parsed.isRh : (parsed.roleType === 'rh' || parsed.perfil === 'rh' || parsed.email?.toLowerCase() === 'gestor@pontual.com');
+        const isColaborador = parsed.roleType === 'colaborador' || parsed.Tpo_Perfil === 'colaborador';
+        return {
+          id: parsed.Idf_Colaborador || parsed.id || `emp-${Date.now()}`,
+          name: parsed.Nme_Colaborador || parsed.nome || parsed.name || (isColaborador ? 'Colaborador' : 'Gestor'),
+          role: parsed.Tpo_Cargo || parsed.cargo || parsed.role || (isColaborador ? 'Colaborador' : 'Gestor Geral'),
+          department: parsed.Des_Departamento || parsed.departamento || parsed.department || 'Geral',
+          avatar: parsed.Des_Avatar_Url || parsed.avatar || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
+          email: parsed.Eml_Corporativo || parsed.email || '',
+          phone: parsed.Num_Telefone || parsed.phone || '(11) 98765-4321',
+          standardHoursPerWeek: parsed.Num_Horas_Semanais || parsed.standardHoursPerWeek || 44,
+          registrationId: parsed.Cod_Matricula || parsed.registrationId || (isRhParsed ? 'GST-0001' : 'COL-0001'),
+          companyId: parsed.Idf_Empresa || parsed.companyId || undefined,
+          isMasterManager: parsed.Flg_Gestor_Master !== undefined ? parsed.Flg_Gestor_Master : (parsed.isMasterManager || false),
+          isRh: isRhParsed,
+          roleType: parsed.roleType || (isRhParsed ? 'rh' : (parsed.Flg_Gestor_Master || parsed.perfil === 'gestor' || parsed.Tpo_Perfil === 'gestor' ? 'gestor' : 'colaborador')),
+          companyCnpj: parsed.companyCnpj || undefined,
+          managerIds: parsed.managerIds || []
+        };
+      }
+    } catch {}
       return INITIAL_EMPLOYEES[0];
     });
     const [shifts, setShifts] = useState<Shift[]>([]);
@@ -313,6 +323,22 @@ function AppContent() {
   React.useEffect(() => {
     const handleGoogleSession = async (session: any) => {
       if (!session?.user?.email) return;
+
+      const isOAuthRedirect = typeof window !== 'undefined' && 
+        (window.location.hash.includes('access_token') || window.location.search.includes('code='));
+
+      // Se já houver usuário autenticado no safeStorage e não for retorno explícito de login OAuth:
+      // não sobrescreve a sessão ativa após F5 com conta de sessão antiga do Supabase
+      const savedUserStr = safeStorage.getItem('pontual_active_user');
+      if (savedUserStr && !isOAuthRedirect) {
+        try {
+          const parsed = JSON.parse(savedUserStr);
+          const currentEmail = parsed.email || parsed.Eml_Corporativo;
+          if (currentEmail && currentEmail.toLowerCase() !== session.user.email.toLowerCase()) {
+            return;
+          }
+        } catch {}
+      }
 
       const googleMeta = session.user.user_metadata || {};
       const googlePicture = googleMeta.avatar_url || googleMeta.picture;
@@ -651,7 +677,10 @@ function AppContent() {
     showToast('Atestado Recusado', 'A justificativa foi marcada como não homologada no Supabase.', 'info');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch {}
     try {
       safeStorage.removeItem('pontual_active_user');
       safeStorage.removeItem('pontual_role');
@@ -860,7 +889,26 @@ function AppContent() {
             onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
             activeEmployee={activeEmployee}
             employees={employees}
-            onSelectEmployee={setActiveEmployee}
+            onSelectEmployee={(emp) => {
+              setActiveEmployee(emp);
+              safeStorage.setItem('pontual_active_user', JSON.stringify({
+                ...emp,
+                Idf_Colaborador: emp.id,
+                Nme_Colaborador: emp.name,
+                Eml_Corporativo: emp.email,
+                Tpo_Perfil: emp.roleType || 'colaborador',
+                Tpo_Cargo: emp.role,
+                Des_Departamento: emp.department,
+                Des_Avatar_Url: emp.avatar,
+                Cod_Matricula: emp.registrationId,
+                Flg_Gestor_Master: emp.isMasterManager,
+                Flg_Ativo: true,
+                Idf_Empresa: emp.companyId,
+                companyId: emp.companyId,
+                isRh: emp.isRh,
+                roleType: emp.roleType
+              }));
+            }}
             notifications={notifications}
             onOpenNotifications={() => setIsNotificationsModalOpen(true)}
             isLightTheme={!isDark}
