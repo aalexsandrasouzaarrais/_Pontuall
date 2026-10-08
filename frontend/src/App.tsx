@@ -256,7 +256,7 @@ function AppContent() {
           const dbJustifications = await getJustificativasSupabase(validScopeIds.length > 0 ? validScopeIds : undefined);
 
           const enrichedRequests = dbRequests.map(r => {
-            const emp = finalEmployees.find(e => e.id === r.employeeId || (e.email && currentEmp.email && e.email.toLowerCase() === currentEmp.email.toLowerCase())) 
+            const emp = finalEmployees.find(e => e.id === r.employeeId) 
               || INITIAL_EMPLOYEES.find(e => e.id === r.employeeId) 
               || (r.employeeId === currentEmp.id ? currentEmp : undefined);
             const targetEmp = finalEmployees.find(e => e.id === r.targetEmployeeId) || INITIAL_EMPLOYEES.find(e => e.id === r.targetEmployeeId);
@@ -269,7 +269,7 @@ function AppContent() {
           });
 
           const enrichedJustifications = dbJustifications.map(j => {
-            const emp = finalEmployees.find(e => e.id === j.employeeId || (e.email && currentEmp.email && e.email.toLowerCase() === currentEmp.email.toLowerCase())) 
+            const emp = finalEmployees.find(e => e.id === j.employeeId) 
               || INITIAL_EMPLOYEES.find(e => e.id === j.employeeId) 
               || (j.employeeId === currentEmp.id ? currentEmp : undefined);
             return {
