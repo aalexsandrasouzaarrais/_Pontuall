@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   Bell,
   ChevronDown,
+  ShieldCheck,
 } from "lucide-react";
 import { Employee, NotificationItem } from '@/types';
 import logoColaborador from '@/assets/logo-colaborador.png';
@@ -412,6 +413,29 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
                   <span className="w-1.5 h-1.5 rounded-full bg-[#22C55E] animate-pulse inline-block" />
                   Online • GPS Ativo
                 </div>
+
+                {/* Gestor Responsável */}
+                {(() => {
+                  const gestor = employees.find(e => activeEmployee.managerIds?.includes(e.id)) ||
+                    employees.find(e => e.id !== activeEmployee.id && e.department?.toLowerCase() === activeEmployee.department?.toLowerCase() && (e.roleType === 'gestor' || e.role.toLowerCase().includes('gestor') || e.role.toLowerCase().includes('gerente'))) ||
+                    (activeEmployee.roleType === 'colaborador' ? employees.find(e => e.id !== activeEmployee.id && (e.roleType === 'gestor' || e.isMasterManager || e.isRh)) : null);
+
+                  if (gestor && activeEmployee.roleType !== 'gestor' && !activeEmployee.isRh) {
+                    return (
+                      <div 
+                        onClick={onOpenProfile}
+                        className={`text-[10px] truncate flex items-center gap-1 mt-0.5 cursor-pointer hover:underline ${
+                          isLightTheme ? 'text-slate-500 hover:text-slate-800' : 'text-slate-400 hover:text-white'
+                        }`} 
+                        title={`Gestor responsável: ${gestor.name} (${gestor.role})`}
+                      >
+                        <ShieldCheck className="w-3 h-3 text-[#F89847] shrink-0" />
+                        <span className="truncate">Gestor: <strong className={isLightTheme ? 'text-slate-700' : 'text-slate-200'}>{gestor.name}</strong></span>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
 
                 {/* Employee select */}
                 <div className="mt-1 relative">
