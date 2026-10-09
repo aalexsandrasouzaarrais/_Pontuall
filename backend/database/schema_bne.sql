@@ -158,7 +158,8 @@ CREATE TABLE IF NOT EXISTS "TAB_Notificacao" (
     "Tpo_Notificacao" VARCHAR(50) NOT NULL, -- 'shift_change', 'approval', 'justification', 'reminder', 'system', 'swap'
     "Flg_Lida" BOOLEAN DEFAULT FALSE,
     "Flg_Acao_Requerida" BOOLEAN DEFAULT FALSE,
-    "Dta_Envio" TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+    "Dta_Envio" TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+    "Dta_Exclusao" TIMESTAMP WITH TIME ZONE NULL DEFAULT NULL -- Soft delete: expurgo físico após 60 dias
 );
 
 -- ----------------------------------------------------------------------------
