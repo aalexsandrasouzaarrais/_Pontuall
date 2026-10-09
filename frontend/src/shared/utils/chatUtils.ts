@@ -310,6 +310,11 @@ export function isMessageRelevantForUser(
     return false;
   }
 
+  // Mensagens direcionadas explicitamente ao usuário (1 a 1)
+  if (msg.recipient_id === userId) {
+    return true;
+  }
+
   const channel = (msg.channel || '').trim();
 
   // Se for mensagem direta 1-a-1: direct_id1_id2 ou cmp_xxx__direct_id1_id2

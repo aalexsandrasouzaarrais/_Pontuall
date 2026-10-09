@@ -126,19 +126,92 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     return isDemo ? INITIAL_EMPLOYEES : [];
   }, [employees, isDemo]);
 
-  // Lista de contatos disponíveis para conversa direta (1 a 1):
+  // Lista de contatos disponíveis para conversa direta (1 a 1), priorizando liderança (Gestor/RH)
   const directContacts = useMemo(() => {
-    return allEmployeesList.filter(e => e.id !== currentEmployee?.id);
-  }, [allEmployeesList, currentEmployee?.id]);
+    const list = allEmployeesList.filter(e => e.id !== currentEmployee?.id);
+    return list.sort((a, b) => {
+      const aIsLeader = (currentEmployee.managerIds && currentEmployee.managerIds.includes(a.id)) ||
+        a.roleType === 'gestor' || a.role?.toUpperCase().includes('GESTOR') || a.isRh || a.roleType === 'rh';
+      const bIsLeader = (currentEmployee.managerIds && currentEmployee.managerIds.includes(b.id)) ||
+        b.roleType === 'gestor' || b.role?.toUpperCase().includes('GESTOR') || b.isRh || b.roleType === 'rh';
+      if (aIsLeader && !bIsLeader) return -1;
+      if (!aIsLeader && bIsLeader) return 1;
+      return (a.name || '').localeCompare(b.name || '', 'pt-BR');
+    });
+  }, [allEmployeesList, currentEmployee?.id, currentEmployee?.managerIds]);
+
+  // Contagem de mensagens não lidas por contato em conversa direta
+  const [unreadDirectByContact, setUnreadDirectByContact] = useState<Record<string, number>>({});
+  const totalDirectUnread = useMemo(() => {
+    return Object.values(unreadDirectByContact).reduce((acc, c) => acc + c, 0);
+  }, [unreadDirectByContact]);
 
   // Seleção de colaborador/gestor para conversa direta
   const [selectedDirectEmployeeId, setSelectedDirectEmployeeId] = useState<string>('');
 
   useEffect(() => {
     if (directContacts.length > 0 && (!selectedDirectEmployeeId || !directContacts.some(e => e.id === selectedDirectEmployeeId))) {
-      setSelectedDirectEmployeeId(directContacts[0].id);
+      // Prioridade 1: Contato com mensagens diretas não lidas
+      const contactWithUnread = directContacts.find(e => (unreadDirectByContact[e.id] || 0) > 0);
+      if (contactWithUnread) {
+        setSelectedDirectEmployeeId(contactWithUnread.id);
+        return;
+      }
+
+      // Prioridade 2: Gestor ou RH vinculado ao colaborador
+      const managerContact = directContacts.find(e => 
+        (currentEmployee.managerIds && currentEmployee.managerIds.includes(e.id)) ||
+        e.roleType === 'gestor' ||
+        e.role?.toUpperCase().includes('GESTOR') ||
+        e.isRh ||
+        e.roleType === 'rh'
+      );
+      setSelectedDirectEmployeeId(managerContact ? managerContact.id : directContacts[0].id);
     }
-  }, [directContacts, selectedDirectEmployeeId]);
+  }, [directContacts, selectedDirectEmployeeId, currentEmployee, unreadDirectByContact]);
+
+  // Ao abrir o chat ou alterar empresa, busca mensagens diretas não lidas por contato
+  useEffect(() => {
+    if (!isOpen || !currentEmployee?.id) return;
+    const fetchRecentDirectStats = async () => {
+      try {
+        const lastReadTs = getChatLastReadTimestamp(currentEmployee.companyId, currentEmployee.id) || new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+        const { data } = await supabase
+          .from('messages')
+          .select('sender_id, created_at')
+          .or(`recipient_id.eq.${currentEmployee.id},channel.like.%direct_%${currentEmployee.id}%`)
+          .neq('sender_id', currentEmployee.id)
+          .gt('created_at', lastReadTs);
+
+        if (data && data.length > 0) {
+          const counts: Record<string, number> = {};
+          let latestSender = '';
+          data.forEach((m: any) => {
+            counts[m.sender_id] = (counts[m.sender_id] || 0) + 1;
+            latestSender = m.sender_id;
+          });
+          setUnreadDirectByContact(counts);
+          // Se houver um remetente recente, já posiciona nele
+          if (latestSender && directContacts.some(c => c.id === latestSender)) {
+            setSelectedDirectEmployeeId(latestSender);
+          }
+        }
+      } catch {}
+    };
+    fetchRecentDirectStats();
+  }, [isOpen, currentEmployee?.id, currentEmployee?.companyId, directContacts]);
+
+  // Limpa o contador de não lidas do contato que está ativo no momento
+  useEffect(() => {
+    if (chatType === 'direct' && selectedDirectEmployeeId) {
+      setUnreadDirectByContact(prev => {
+        if (!prev[selectedDirectEmployeeId]) return prev;
+        const next = { ...prev };
+        delete next[selectedDirectEmployeeId];
+        return next;
+      });
+    }
+  }, [chatType, selectedDirectEmployeeId]);
 
   const selectedDirectEmployee = useMemo(() => {
     return directContacts.find(e => e.id === selectedDirectEmployeeId) || null;
@@ -346,7 +419,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
       if (chatType === 'direct') {
         const pair = [currentEmployee.id, selectedDirectEmployee!.id].sort().join('_');
-        query = query.or(`channel.eq.direct_${pair},channel.like.%direct_${pair}`);
+        query = query.or(`channel.eq.direct_${pair},channel.like.%direct_${pair},and(sender_id.eq.${currentEmployee.id},recipient_id.eq.${selectedDirectEmployee!.id}),and(sender_id.eq.${selectedDirectEmployee!.id},recipient_id.eq.${currentEmployee.id})`);
       } else {
         query = query.eq('channel', currentChannel);
       }
@@ -445,8 +518,14 @@ export const ChatModal: React.FC<ChatModalProps> = ({
             ? [currentEmployee.id, selectedDirectEmployee.id].sort().join('_')
             : null;
           const isDirectMatch = Boolean(directPair && newMsg.channel && newMsg.channel.includes(`direct_${directPair}`));
+          const isDirectRecipientMatch = Boolean(
+            chatType === 'direct' &&
+            selectedDirectEmployee?.id &&
+            ((newMsg.sender_id === selectedDirectEmployee.id && newMsg.recipient_id === currentEmployee.id) ||
+             (newMsg.sender_id === currentEmployee.id && newMsg.recipient_id === selectedDirectEmployee.id))
+          );
 
-          if (newMsg.channel === currentChannel || isDirectMatch) {
+          if (newMsg.channel === currentChannel || isDirectMatch || isDirectRecipientMatch) {
             setMessages((prev) => {
               const filtered = prev.filter(
                 (m) =>
@@ -459,6 +538,18 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               if (filtered.some((m) => m.id === newMsg.id)) return filtered;
               return [...filtered, newMsg];
             });
+          } else if (newMsg.sender_id !== currentEmployee.id) {
+            // Se for mensagem direta direcionada ao usuário vinda de outro contato
+            const isDirectForMe = Boolean(
+              newMsg.recipient_id === currentEmployee.id ||
+              (newMsg.channel && newMsg.channel.includes('direct_') && newMsg.channel.includes(currentEmployee.id))
+            );
+            if (isDirectForMe) {
+              setUnreadDirectByContact(prev => ({
+                ...prev,
+                [newMsg.sender_id]: (prev[newMsg.sender_id] || 0) + 1
+              }));
+            }
           }
         }
       )
@@ -682,7 +773,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               <div className="flex items-center gap-2">
                 <h3 className="font-extrabold text-sm leading-tight truncate">
                   {chatType === 'direct' 
-                    ? (isManager ? `Direto com ${selectedDirectEmployee?.name || 'Colaborador'}` : 'Conversa com Gestão') 
+                    ? `Direto com ${selectedDirectEmployee?.name || 'Contato'}` 
                     : `#${activeGroup.name}`}
                 </h3>
                 {chatType === 'group' && activeGroup.badge && (
@@ -690,10 +781,15 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                     {activeGroup.badge}
                   </span>
                 )}
+                {chatType === 'direct' && selectedDirectEmployee && (
+                  <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-white/20 text-[#faf0ac] shrink-0 border border-white/25">
+                    {selectedDirectEmployee.isRh || selectedDirectEmployee.roleType === 'rh' ? 'RH' : (selectedDirectEmployee.roleType === 'gestor' || selectedDirectEmployee.role?.toUpperCase().includes('GESTOR') ? 'Gestão' : 'Equipe')}
+                  </span>
+                )}
               </div>
               <p className="text-[11px] text-[#faf0ac]/90 truncate">
                 {chatType === 'direct' 
-                  ? (isManager ? `${selectedDirectEmployee?.role || 'Colaborador'} • Canal Privado 1-a-1` : 'Camila Duarte (Gestora) • Canal Privado') 
+                  ? `${selectedDirectEmployee?.role || 'Colaborador'} • Canal Privado 1-a-1` 
                   : activeGroup.desc}
               </p>
             </div>
@@ -742,14 +838,19 @@ export const ChatModal: React.FC<ChatModalProps> = ({
           <button
             type="button"
             onClick={() => setChatType('direct')}
-            className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer relative ${
               chatType === 'direct'
                 ? 'bg-gradient-to-r from-[#96183C] to-[#F89847] text-white shadow-xs'
                 : (isLightTheme ? 'text-slate-600 hover:bg-slate-200' : 'text-slate-400 hover:text-white hover:bg-white/5')
             }`}
           >
             <Lock className="w-3.5 h-3.5" />
-            <span>{isManager ? 'Conversa Direta (1 a 1)' : 'Privado com a Gestora'}</span>
+            <span>Conversa Direta (1 a 1)</span>
+            {totalDirectUnread > 0 && (
+              <span className="px-1.5 py-0.2 bg-red-500 text-white rounded-full text-[10px] font-black animate-pulse">
+                {totalDirectUnread}
+              </span>
+            )}
           </button>
 
           <button
@@ -827,24 +928,31 @@ export const ChatModal: React.FC<ChatModalProps> = ({
           </div>
         )}
 
-        {/* Seletor horizontal de Colaboradores para conversa direta (apenas Gestor) */}
-        {chatType === 'direct' && isManager && (
+        {/* Seletor horizontal de Contatos para conversa direta (disponível para todos os usuários) */}
+        {chatType === 'direct' && directContacts.length > 0 && (
           <div className={`px-3 py-2 border-b flex items-center gap-1.5 overflow-x-auto no-scrollbar transition-colors shrink-0 ${
             isLightTheme ? 'bg-white border-slate-200' : 'bg-[#12131A] border-white/5'
           }`}>
             <span className={`text-[10px] font-black uppercase tracking-wider shrink-0 mr-1 ${
               isLightTheme ? 'text-slate-400' : 'text-slate-500'
             }`}>
-              {isRhUser ? 'Gestor de Setor:' : 'Contato:'}
+              Contatos:
             </span>
             {directContacts.map(emp => {
               const isSelected = selectedDirectEmployeeId === emp.id;
+              const unreadForEmp = unreadDirectByContact[emp.id] || 0;
+              const isContactManager = emp.roleType === 'gestor' || emp.role?.toUpperCase().includes('GESTOR');
+              const isContactRh = emp.isRh || emp.roleType === 'rh';
+
               return (
                 <button
                   key={emp.id}
                   type="button"
-                  onClick={() => setSelectedDirectEmployeeId(emp.id)}
-                  className={`shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                  onClick={() => {
+                    setSelectedDirectEmployeeId(emp.id);
+                    setUnreadDirectByContact(prev => ({ ...prev, [emp.id]: 0 }));
+                  }}
+                  className={`shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border relative ${
                     isSelected
                       ? (isLightTheme
                           ? 'bg-[#96183c] text-white border-[#96183c] shadow-xs'
@@ -854,8 +962,31 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                           : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:text-white')
                   }`}
                 >
-                  <img src={emp.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'} alt={emp.name} className="w-4 h-4 rounded-full object-cover shrink-0" />
-                  <span>{emp.name}</span>
+                  <div className="relative">
+                    <img
+                      src={emp.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                      alt={emp.name}
+                      className="w-4 h-4 rounded-full object-cover shrink-0"
+                    />
+                    {unreadForEmp > 0 && (
+                      <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500 ring-1 ring-white animate-pulse" />
+                    )}
+                  </div>
+                  <span className="max-w-[120px] truncate">{emp.name}</span>
+                  {(isContactManager || isContactRh) && (
+                    <span className={`text-[9px] px-1 py-0.2 rounded font-normal ${
+                      isSelected
+                        ? (isLightTheme ? 'bg-white/20 text-white' : 'bg-black/20 text-black font-bold')
+                        : (isLightTheme ? 'bg-slate-200 text-slate-600' : 'bg-white/10 text-slate-300')
+                    }`}>
+                      {isContactRh ? 'RH' : 'Gestão'}
+                    </span>
+                  )}
+                  {unreadForEmp > 0 && (
+                    <span className="ml-1 px-1.5 py-0.2 bg-red-500 text-white text-[9px] font-extrabold rounded-full">
+                      {unreadForEmp}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -886,7 +1017,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               <p className="text-xs text-slate-400">Nenhuma mensagem ainda.</p>
               <p className="text-[11px] text-slate-500 mt-1">
                 {chatType === 'direct'
-                  ? 'Envie uma mensagem direta para a gestora Camila Duarte.'
+                  ? `Envie uma mensagem direta para ${selectedDirectEmployee?.name || 'seu contato'}.`
                   : `Envie a primeira mensagem no canal #${activeGroup.name}!`}
               </p>
             </div>

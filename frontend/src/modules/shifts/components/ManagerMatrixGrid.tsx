@@ -787,7 +787,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       let query = supabase.from('messages').select('*');
       if (activeChatMode === 'direct' && activeEmployee?.id && selectedDirectEmployee?.id) {
         const pair = [activeEmployee.id, selectedDirectEmployee.id].sort().join('_');
-        query = query.or(`channel.eq.direct_${pair},channel.like.%direct_${pair}`);
+        query = query.or(`channel.eq.direct_${pair},channel.like.%direct_${pair},and(sender_id.eq.${activeEmployee.id},recipient_id.eq.${selectedDirectEmployee.id}),and(sender_id.eq.${selectedDirectEmployee.id},recipient_id.eq.${activeEmployee.id})`);
       } else {
         query = query.eq('channel', currentChatChannel);
       }
@@ -823,8 +823,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             ? [activeEmployee.id, selectedDirectEmployee.id].sort().join('_')
             : null;
           const isDirectMatch = Boolean(directPair && newMsg.channel && newMsg.channel.includes(`direct_${directPair}`));
+          const isDirectRecipientMatch = Boolean(
+            activeChatMode === 'direct' &&
+            selectedDirectEmployee?.id &&
+            activeEmployee?.id &&
+            ((newMsg.sender_id === selectedDirectEmployee.id && newMsg.recipient_id === activeEmployee.id) ||
+             (newMsg.sender_id === activeEmployee.id && newMsg.recipient_id === selectedDirectEmployee.id))
+          );
 
-          if (newMsg.channel === currentChatChannel || isDirectMatch) {
+          if (newMsg.channel === currentChatChannel || isDirectMatch || isDirectRecipientMatch) {
             setChatMessages(prev => {
               const filtered = prev.filter(m => !(m.id.startsWith('temp-') && m.text === newMsg.text && m.sender_id === newMsg.sender_id));
               if (filtered.some(m => m.id === newMsg.id)) return filtered;
