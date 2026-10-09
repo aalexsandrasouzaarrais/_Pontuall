@@ -97,6 +97,10 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
 
   const hasMetGoal = hoursWorked >= goalHours;
 
+  const directManager = employees.find(e => employee.managerIds?.includes(e.id)) ||
+    employees.find(e => e.id !== employee.id && e.department?.toLowerCase() === employee.department?.toLowerCase() && (e.roleType === 'gestor' || e.role.toLowerCase().includes('gestor') || e.role.toLowerCase().includes('gerente'))) ||
+    (employee.roleType === 'colaborador' ? employees.find(e => e.id !== employee.id && (e.roleType === 'gestor' || e.isMasterManager || e.isRh)) : null);
+
   const handlePunchClock = () => {
     if (!todayShift) return;
 
@@ -171,6 +175,18 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
           <div className="flex-1 space-y-4">
             {/* Big Clean Digital Clock & Date */}
             <div>
+              {/* Badge de Gestor Direto */}
+              {directManager && employee.roleType !== 'gestor' && !employee.isRh && (
+                <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold mb-2.5 border transition-all ${
+                  isLightTheme 
+                    ? 'bg-amber-50/90 border-amber-200 text-amber-900 shadow-2xs' 
+                    : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+                }`}>
+                  <ShieldCheck className="w-3.5 h-3.5 text-[#f89847] shrink-0" />
+                  <span>Gestor Direto: <strong className="font-extrabold">{directManager.name}</strong> ({directManager.role})</span>
+                </div>
+              )}
+
               <div
                 className={`text-4xl sm:text-5xl font-black tracking-tight font-sans ${
                   isLightTheme ? 'text-[#0F172A]' : 'text-white'

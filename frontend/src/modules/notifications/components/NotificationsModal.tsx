@@ -4,6 +4,7 @@ import {
   X,
   Bell,
   CheckCircle2,
+  Trash2,
 } from 'lucide-react';
 import { NotificationItem } from '@/types';
 
@@ -12,6 +13,8 @@ interface NotificationsModalProps {
   onClose: () => void;
   notifications: NotificationItem[];
   onMarkAllAsRead: () => void;
+  onClearAll?: () => void;
+  onDeleteNotification?: (id: string) => void;
   isLightTheme?: boolean;
 }
 
@@ -20,6 +23,8 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
   onClose,
   notifications,
   onMarkAllAsRead,
+  onClearAll,
+  onDeleteNotification,
   isLightTheme = false,
 }) => {
   if (!isOpen) return null;
@@ -102,7 +107,7 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
         </div>
 
         {/* Barra de Ações */}
-        <div className={`px-6 sm:px-7 py-3 border-b flex items-center justify-between ${
+        <div className={`px-6 sm:px-7 py-3 border-b flex items-center justify-between gap-3 ${
           isLightTheme ? 'bg-slate-50/80 border-slate-200' : 'bg-[#0C0D10] border-[#292C35]'
         }`}>
 
@@ -117,15 +122,41 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
             </span>
           </div>
 
-          {/* Marcar como lidas */}
-          <button
-            onClick={onMarkAllAsRead}
-            className={`text-xs sm:text-[13px] font-bold transition-colors cursor-pointer hover:underline ${
-              isLightTheme ? 'text-[#96183c] hover:text-[#f89642]' : 'text-[#F47B3B] hover:text-[#FDBA74]'
-            }`}
-          >
-            Marcar todas como lidas
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Marcar como lidas */}
+            {notifications.some(n => !n.read) && (
+              <button
+                onClick={onMarkAllAsRead}
+                className={`text-xs sm:text-[13px] font-bold transition-colors cursor-pointer hover:underline ${
+                  isLightTheme ? 'text-[#96183c] hover:text-[#f89642]' : 'text-[#F47B3B] hover:text-[#FDBA74]'
+                }`}
+              >
+                Marcar como lidas
+              </button>
+            )}
+
+            {notifications.some(n => !n.read) && onClearAll && notifications.length > 0 && (
+              <span className={`text-xs ${isLightTheme ? 'text-slate-300' : 'text-slate-700'}`}>|</span>
+            )}
+
+            {/* Apagar todas as notificações */}
+            {onClearAll && notifications.length > 0 && (
+              <button
+                onClick={() => {
+                  if (window.confirm('Tem certeza de que deseja apagar todas as notificações? Esta ação não pode ser desfeita.')) {
+                    onClearAll();
+                  }
+                }}
+                className={`inline-flex items-center gap-1.5 text-xs sm:text-[13px] font-bold transition-colors cursor-pointer hover:underline ${
+                  isLightTheme ? 'text-rose-600 hover:text-rose-700' : 'text-rose-400 hover:text-rose-300'
+                }`}
+                title="Apagar todas as notificações permanentemente"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Apagar todas</span>
+              </button>
+            )}
+          </div>
 
         </div>
 
@@ -188,11 +219,32 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({
                         {n.title}
                       </h4>
 
-                      <span className={`text-[11px] sm:text-xs font-mono whitespace-nowrap pt-0.5 ${
-                        isLightTheme ? 'text-slate-400' : 'text-[#8591A5]'
-                      }`}>
-                        {n.timestamp}
-                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className={`text-[11px] sm:text-xs font-mono whitespace-nowrap pt-0.5 ${
+                          isLightTheme ? 'text-slate-400' : 'text-[#8591A5]'
+                        }`}>
+                          {n.timestamp}
+                        </span>
+
+                        {onDeleteNotification && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteNotification(n.id);
+                            }}
+                            className={`p-1 rounded-lg transition-colors cursor-pointer ${
+                              isLightTheme
+                                ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
+                                : 'text-slate-500 hover:text-rose-400 hover:bg-white/10'
+                            }`}
+                            title="Apagar notificação"
+                            aria-label="Apagar notificação"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
 
                     </div>
 

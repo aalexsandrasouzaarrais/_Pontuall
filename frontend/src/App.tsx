@@ -75,7 +75,9 @@ import {
   getNotificationsSupabase,
   createNotificationSupabase,
   markAllNotificationsAsReadSupabase,
-  subscribeNotificationsRealtime
+  subscribeNotificationsRealtime,
+  deleteNotificationSupabase,
+  clearAllNotificationsSupabase
 } from '@/modules/notifications/services/notificationService';
 import { openDocumentSafe } from '@/shared/services/storageService';
 import { 
@@ -442,6 +444,22 @@ function AppContent() {
     }));
     setEmployees(prev => prev.map(e => e.id === activeEmployee.id ? { ...e, avatar: newAvatarUrl } : e));
     showToast('Foto Atualizada', 'Sua foto de perfil foi alterada com sucesso.', 'success');
+  };
+
+  // Apaga uma notificação específica
+  const handleDeleteNotification = async (notifId: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== notifId));
+    await deleteNotificationSupabase(notifId);
+  };
+
+  // Apaga todas as notificações do usuário ativo
+  const handleClearAllNotifications = async () => {
+    if (notifications.length === 0) return;
+    setNotifications([]);
+    if (activeEmployee?.id) {
+      await clearAllNotificationsSupabase(activeEmployee.id);
+    }
+    showToast('Notificações Apagadas', 'Todas as notificações foram removidas com sucesso.', 'info');
   };
 
   // Floating Toast Notification
@@ -1621,6 +1639,8 @@ function AppContent() {
             markAllNotificationsAsReadSupabase(activeEmployee.id);
           }
         }}
+        onClearAll={handleClearAllNotifications}
+        onDeleteNotification={handleDeleteNotification}
         isLightTheme={!isDark}
       />
 
@@ -1649,6 +1669,7 @@ function AppContent() {
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
         currentUser={activeEmployee}
+        employees={employees}
         onUpdateAvatar={handleUpdateAvatar}
         theme={theme}
       />
