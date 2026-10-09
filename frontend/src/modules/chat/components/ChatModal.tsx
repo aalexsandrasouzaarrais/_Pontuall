@@ -27,7 +27,10 @@ import {
   compressImageFile, 
   parseChatMessage, 
   serializeChatMessage,
-  sendChatMessageToSupabase
+  sendChatMessageToSupabase,
+  getScopedChatChannel,
+  getScopedDirectChannel,
+  getDisplayChatChannel
 } from '@/shared/utils/chatUtils';
 
 interface ChatModalProps {
@@ -111,43 +114,48 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     return isRhUser || roleUpper.includes('GESTOR') || roleUpper.includes('GERENTE') || currentEmployee?.id === 'mgr-1';
   }, [currentEmployee, isRhUser]);
 
-  // Lista completa de colaboradores cadastrados
+  const companyKey = useMemo(() => {
+    return (currentEmployee?.companyId || 'demo').replace(/[^a-zA-Z0-9_-]/g, '_');
+  }, [currentEmployee?.companyId]);
+
+  const isDemo = !currentEmployee?.companyId;
+
+  // Lista de colaboradores cadastrados na empresa
   const allEmployeesList = useMemo(() => {
-    return employees && employees.length > 0 ? employees : INITIAL_EMPLOYEES;
-  }, [employees]);
+    if (employees && employees.length > 0) return employees;
+    return isDemo ? INITIAL_EMPLOYEES : [];
+  }, [employees, isDemo]);
 
   // Lista de contatos disponíveis para conversa direta (1 a 1):
-  // Se for RH: o RH tem chat EXCLUSIVO com os Gestores de Setor da sua empresa!
   const directContacts = useMemo(() => {
+    const list = allEmployeesList.filter(e => e.id !== currentEmployee?.id);
     if (isRhUser) {
-      return allEmployeesList.filter(e => 
-        e.id !== currentEmployee?.id && 
-        (e.roleType === 'gestor' || e.role?.toLowerCase().includes('gestor') || e.role?.toLowerCase().includes('gerente'))
+      const managers = list.filter(e => 
+        e.roleType === 'gestor' || e.role?.toLowerCase().includes('gestor') || e.role?.toLowerCase().includes('gerente')
       );
+      return managers.length > 0 ? managers : list;
     }
-    return allEmployeesList.filter(e => e.id !== currentEmployee?.id);
+    return list;
   }, [allEmployeesList, currentEmployee?.id, isRhUser]);
 
   // Seleção de colaborador/gestor para conversa direta
-  const [selectedDirectEmployeeId, setSelectedDirectEmployeeId] = useState<string>(() => {
-    return directContacts[0]?.id || 'emp-1';
-  });
+  const [selectedDirectEmployeeId, setSelectedDirectEmployeeId] = useState<string>('');
 
   useEffect(() => {
-    if (directContacts.length > 0 && !directContacts.some(e => e.id === selectedDirectEmployeeId)) {
+    if (directContacts.length > 0 && (!selectedDirectEmployeeId || !directContacts.some(e => e.id === selectedDirectEmployeeId))) {
       setSelectedDirectEmployeeId(directContacts[0].id);
     }
   }, [directContacts, selectedDirectEmployeeId]);
 
   const selectedDirectEmployee = useMemo(() => {
-    return directContacts.find(e => e.id === selectedDirectEmployeeId) || directContacts[0] || allEmployeesList[0];
-  }, [directContacts, selectedDirectEmployeeId, allEmployeesList]);
+    return directContacts.find(e => e.id === selectedDirectEmployeeId) || null;
+  }, [directContacts, selectedDirectEmployeeId]);
 
-  // Lista dinâmica de grupos/canais disponíveis
+  // Lista dinâmica de grupos/canais disponíveis isolada por empresa
   const [teamChannels, setTeamChannels] = useState<ChatChannelItem[]>(() => {
     try {
-      const saved = localStorage.getItem('pontuall_team_channels');
-      const deletedStr = localStorage.getItem('pontuall_deleted_channels');
+      const saved = localStorage.getItem(`pontuall_team_channels_${companyKey}`);
+      const deletedStr = localStorage.getItem(`pontuall_deleted_channels_${companyKey}`);
       const deletedIds = new Set(deletedStr ? JSON.parse(deletedStr) : []);
 
       if (saved) {
@@ -161,6 +169,27 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     return DEFAULT_TEAM_CHANNELS;
   });
 
+  // Atualiza canais ao alternar de empresa
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`pontuall_team_channels_${companyKey}`);
+      const deletedStr = localStorage.getItem(`pontuall_deleted_channels_${companyKey}`);
+      const deletedIds = new Set(deletedStr ? JSON.parse(deletedStr) : []);
+
+      if (saved) {
+        const parsed: ChatChannelItem[] = JSON.parse(saved);
+        setTeamChannels(parsed.filter(c => !deletedIds.has(c.id)).map(c => ({
+          ...c,
+          badge: ['Online', 'Ativo', 'RH'].includes(c.badge) ? '' : c.badge
+        })));
+      } else {
+        setTeamChannels(DEFAULT_TEAM_CHANNELS);
+      }
+    } catch {
+      setTeamChannels(DEFAULT_TEAM_CHANNELS);
+    }
+  }, [companyKey]);
+
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   // Filtra apenas os canais aos quais o colaborador pertence
@@ -172,10 +201,14 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     });
   }, [teamChannels, currentEmployee.id, isManager]);
 
-  // Canal atual ativo no banco
-  const currentChannel = chatType === 'direct'
-    ? (isManager ? `direct_${selectedDirectEmployeeId}` : `direct_${currentEmployee.id}`)
-    : selectedGroupId;
+  // Canal atual ativo no banco (isolado por empresa/participantes)
+  const currentChannel = useMemo(() => {
+    if (chatType === 'direct') {
+      if (!selectedDirectEmployee?.id) return `cmp_${companyKey}__direct_none`;
+      return getScopedDirectChannel(currentEmployee?.companyId, currentEmployee?.id, selectedDirectEmployee.id);
+    }
+    return getScopedChatChannel(currentEmployee?.companyId, selectedGroupId);
+  }, [chatType, selectedDirectEmployee?.id, selectedGroupId, currentEmployee?.companyId, currentEmployee?.id, companyKey]);
 
   const activeGroup = useMemo(() => {
     return visibleGroupChannels.find(c => c.id === selectedGroupId) || visibleGroupChannels[0] || {
@@ -209,7 +242,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     const syncChannels = async () => {
       const deletedIds = new Set<string>();
       try {
-        const savedDeleted = localStorage.getItem('pontuall_deleted_channels');
+        const savedDeleted = localStorage.getItem(`pontuall_deleted_channels_${companyKey}`);
         if (savedDeleted) {
           JSON.parse(savedDeleted).forEach((id: string) => deletedIds.add(id));
         }
@@ -222,7 +255,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
           const loaded: ChatChannelItem[] = data
             .filter((d: any) => !deletedIds.has(d.id))
             .map((d: any) => ({
-              id: d.id,
+              id: getDisplayChatChannel(d.id),
               name: d.name,
               desc: d.description || '',
               badge: d.badge || 'Equipe',
@@ -234,26 +267,29 @@ export const ChatModal: React.FC<ChatModalProps> = ({
             const map = new Map(prev.filter(p => !deletedIds.has(p.id)).map(p => [p.id, p]));
             loaded.forEach(item => map.set(item.id, item));
             const merged = Array.from(map.values());
-            try { localStorage.setItem('pontuall_team_channels', JSON.stringify(merged)); } catch {}
+            try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(merged)); } catch {}
             return merged;
           });
         }
       } catch {}
 
-      // 2. Descobre canais criados gravados no histórico da tabela messages
+      // 2. Descobre canais criados gravados no histórico da tabela messages para esta empresa
       try {
+        const groupPrefix = `cmp_${companyKey}__grupo_%`;
         const { data: groupMsgs } = await supabase
           .from('messages')
           .select('channel, recipient_id, text')
-          .like('channel', 'grupo_%');
+          .like('channel', groupPrefix);
 
         if (groupMsgs && groupMsgs.length > 0) {
           const foundMap = new Map<string, ChatChannelItem>();
 
           for (const msg of groupMsgs) {
-            if (!msg.channel || foundMap.has(msg.channel) || deletedIds.has(msg.channel)) continue;
+            if (!msg.channel) continue;
+            const rawId = getDisplayChatChannel(msg.channel);
+            if (foundMap.has(rawId) || deletedIds.has(rawId)) continue;
 
-            let name = msg.channel.replace('grupo_', '');
+            let name = rawId.replace('grupo_', '');
             let desc = 'Grupo de comunicação da equipe';
             let badge = 'Equipe';
             let members: string[] | undefined = undefined;
@@ -274,8 +310,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               }
             }
 
-            foundMap.set(msg.channel, {
-              id: msg.channel,
+            foundMap.set(rawId, {
+              id: rawId,
               name: name,
               desc: desc,
               badge: badge,
@@ -291,7 +327,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                 if (!map.has(key)) map.set(key, val);
               });
               const merged = Array.from(map.values());
-              try { localStorage.setItem('pontuall_team_channels', JSON.stringify(merged)); } catch {}
+              try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(merged)); } catch {}
               return merged;
             });
           }
@@ -300,13 +336,19 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     };
 
     syncChannels();
-  }, [isOpen]);
+  }, [isOpen, companyKey]);
 
   // Carrega as mensagens do canal ativo e escuta novas em tempo real
   useEffect(() => {
     if (!isOpen) return;
 
     const fetchMessages = async () => {
+      if (chatType === 'direct' && !selectedDirectEmployee?.id) {
+        setMessages([]);
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('messages')
         .select('*')
@@ -351,15 +393,15 @@ export const ChatModal: React.FC<ChatModalProps> = ({
             const deletedId = newMsg.recipient_id.replace('group_deleted:', '');
             setTeamChannels((prev) => {
               const filtered = prev.filter(c => c.id !== deletedId);
-              try { localStorage.setItem('pontuall_team_channels', JSON.stringify(filtered)); } catch {}
+              try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(filtered)); } catch {}
               return filtered;
             });
 
             try {
-              const deletedList = JSON.parse(localStorage.getItem('pontuall_deleted_channels') || '[]');
+              const deletedList = JSON.parse(localStorage.getItem(`pontuall_deleted_channels_${companyKey}`) || '[]');
               if (!deletedList.includes(deletedId)) {
                 deletedList.push(deletedId);
-                localStorage.setItem('pontuall_deleted_channels', JSON.stringify(deletedList));
+                localStorage.setItem(`pontuall_deleted_channels_${companyKey}`, JSON.stringify(deletedList));
               }
             } catch {}
 
@@ -370,10 +412,11 @@ export const ChatModal: React.FC<ChatModalProps> = ({
           }
 
           // Se a nova mensagem for de um grupo recém-criado, sincroniza a lista de grupos
-          if (newMsg.channel && newMsg.channel.startsWith('grupo_')) {
+          const rawChannelId = newMsg.channel ? getDisplayChatChannel(newMsg.channel) : '';
+          if (rawChannelId.startsWith('grupo_')) {
             setTeamChannels((prev) => {
-              if (prev.some(p => p.id === newMsg.channel)) return prev;
-              let name = newMsg.channel!.replace('grupo_', '');
+              if (prev.some(p => p.id === rawChannelId)) return prev;
+              let name = rawChannelId.replace('grupo_', '');
               let desc = 'Novo grupo criado pela gestão';
               let badge = 'Equipe';
               let members: string[] | undefined = undefined;
@@ -393,8 +436,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                 return prev;
               }
 
-              const updated = [...prev, { id: newMsg.channel!, name, desc, badge, members, unread: 0 }];
-              try { localStorage.setItem('pontuall_team_channels', JSON.stringify(updated)); } catch {}
+              const updated = [...prev, { id: rawChannelId, name, desc, badge, members, unread: 0 }];
+              try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(updated)); } catch {}
               return updated;
             });
           }
@@ -453,7 +496,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     setPendingAttachment(null);
 
     // Feedback imediato na tela (Optimistic UI)
-    const directRecipient = isManager ? selectedDirectEmployeeId : 'gestor-camila';
+    const directRecipient = chatType === 'direct' ? (selectedDirectEmployee?.id || null) : null;
     const optimisticMsg: ChatMessage = {
       id: `temp-${Date.now()}`,
       sender_id: currentEmployee.id,
@@ -464,7 +507,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       attachment: attachmentToSend ? JSON.stringify(attachmentToSend) : null,
       created_at: new Date().toISOString(),
       channel: currentChannel,
-      recipient_id: chatType === 'direct' ? directRecipient : null,
+      recipient_id: directRecipient,
     };
     setMessages((prev) => [...prev, optimisticMsg]);
 
@@ -477,7 +520,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         text: rawText,
         attachment: attachmentToSend,
         channel: currentChannel,
-        recipient_id: chatType === 'direct' ? directRecipient : null,
+        recipient_id: directRecipient,
       });
 
       if (error) {
@@ -512,13 +555,15 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     const updated = [...teamChannels, newChan];
     setTeamChannels(updated);
     try {
-      localStorage.setItem('pontuall_team_channels', JSON.stringify(updated));
+      localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(updated));
     } catch {}
+
+    const scopedGroupId = getScopedChatChannel(currentEmployee?.companyId, newChan.id);
 
     try {
       await supabase.from('chat_channels').insert([
         {
-          id: newChan.id,
+          id: scopedGroupId,
           name: newChan.name,
           description: newChan.desc,
           badge: newChan.badge,
@@ -542,9 +587,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({
           sender_id: currentEmployee.id,
           sender_name: currentEmployee.name,
           sender_role: currentEmployee.role || 'GESTORA',
-          sender_avatar: currentEmployee.avatar || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
+          sender_avatar: currentEmployee.avatar || '',
           text: `🎉 Novo grupo criado por ${currentEmployee.name}: #${newChan.name} - ${newChan.desc}`,
-          channel: newChan.id,
+          channel: scopedGroupId,
           recipient_id: `group_meta:${metaPayload}`,
         }
       ]);
@@ -565,19 +610,20 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     setIsDeleting(true);
     const groupId = activeGroup.id;
     const groupName = activeGroup.name;
+    const scopedGroupId = getScopedChatChannel(currentEmployee?.companyId, groupId);
 
     try {
-      await supabase.from('messages').delete().eq('channel', groupId);
+      await supabase.from('messages').delete().or(`channel.eq.${scopedGroupId},channel.eq.${groupId}`);
     } catch {}
 
     try {
-      await supabase.from('chat_channels').delete().eq('id', groupId);
+      await supabase.from('chat_channels').delete().or(`id.eq.${scopedGroupId},id.eq.${groupId}`);
     } catch {}
 
     try {
       await supabase.from('messages').insert([
         {
-          channel: 'geral',
+          channel: getScopedChatChannel(currentEmployee?.companyId, 'geral'),
           text: `🗑️ O grupo #${groupName} foi excluído por ${currentEmployee.name}.`,
           recipient_id: `group_deleted:${groupId}`,
           sender_id: currentEmployee.id,
@@ -590,15 +636,15 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
     setTeamChannels(prev => {
       const updated = prev.filter(c => c.id !== groupId);
-      try { localStorage.setItem('pontuall_team_channels', JSON.stringify(updated)); } catch {}
+      try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(updated)); } catch {}
       return updated;
     });
 
     try {
-      const deletedList = JSON.parse(localStorage.getItem('pontuall_deleted_channels') || '[]');
+      const deletedList = JSON.parse(localStorage.getItem(`pontuall_deleted_channels_${companyKey}`) || '[]');
       if (!deletedList.includes(groupId)) {
         deletedList.push(groupId);
-        localStorage.setItem('pontuall_deleted_channels', JSON.stringify(deletedList));
+        localStorage.setItem(`pontuall_deleted_channels_${companyKey}`, JSON.stringify(deletedList));
       }
     } catch {}
 

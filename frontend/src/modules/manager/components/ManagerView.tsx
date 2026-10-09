@@ -24,6 +24,8 @@ interface ManagerViewProps {
   onOpenNotifications: () => void;
   onSwitchToEmployee: () => void;
   pendingRequestsCount: number;
+  unreadChatCount?: number;
+  onResetUnreadChat?: () => void;
   onOpenProfile?: () => void;
   justifications?: AbsenceJustification[];
   requests?: TimeOffRequest[];
@@ -36,13 +38,19 @@ interface ManagerViewProps {
 export const ManagerView: React.FC<ManagerViewProps> = ({
   employees, shifts, activeEmployee, notificationsCount, onAddShift, onUpdateShift, onDeleteShift, onDeleteShiftsBulk, onAddEmployee,
   onUpdateEmployee, onDeactivateEmployee, onOpenRequests, onOpenChat,
-  onOpenNotifications, onSwitchToEmployee, pendingRequestsCount, onOpenProfile,
+  onOpenNotifications, onSwitchToEmployee, pendingRequestsCount, unreadChatCount, onResetUnreadChat, onOpenProfile,
   justifications, requests, onApproveRequest, onRejectRequest, onApproveJustification, onRejectJustification,
 }) => {
   const { theme, isDark, toggleTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(true);
   const [activeTab, setActiveTab] = useState<ManagerTabId>('orbit');
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+
+  React.useEffect(() => {
+    if (activeTab === 'chat') {
+      onResetUnreadChat?.();
+    }
+  }, [activeTab, onResetUnreadChat]);
 
   const createShift = (date?: string, employeeId?: string) => onAddShift({
     date: date || getTodayDateString(),
@@ -74,6 +82,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
         pendingRequestsCount={pendingRequestsCount}
         notificationsCount={notificationsCount}
         onOpenNotifications={onOpenNotifications}
+        unreadChatCount={unreadChatCount}
         currentUser={activeEmployee}
         theme={theme}
         onToggleTheme={toggleTheme}
@@ -114,6 +123,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
             onSwitchToEmployee={onSwitchToEmployee}
             onOpenChat={onOpenChat}
             onOpenNotifications={onOpenNotifications}
+            unreadChatCount={unreadChatCount}
             onNavigateToOrbit={() => setActiveTab('orbit')}
             theme={theme}
             activeEmployee={activeEmployee}

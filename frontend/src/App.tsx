@@ -30,6 +30,7 @@ import {
 import { 
   ChatModal 
 } from '@/modules/chat/components/ChatModal';
+import { useUnreadChatCount } from '@/shared/hooks/useUnreadChatCount';
 import { 
   LoginView 
 } from '@/modules/auth/components/LoginView';
@@ -75,9 +76,7 @@ import {
   getNotificationsSupabase,
   createNotificationSupabase,
   markAllNotificationsAsReadSupabase,
-  subscribeNotificationsRealtime,
-  deleteNotificationSupabase,
-  clearAllNotificationsSupabase
+  subscribeNotificationsRealtime
 } from '@/modules/notifications/services/notificationService';
 import { openDocumentSafe } from '@/shared/services/storageService';
 import { 
@@ -346,6 +345,11 @@ function AppContent() {
   const [isManagerRequestsModalOpen, setIsManagerRequestsModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
+  const { unreadCount: unreadChatCount, resetUnreadCount: resetUnreadChatCount } = useUnreadChatCount({
+    activeEmployee,
+    isChatOpen: isChatModalOpen,
+  });
+
   // Monitora autenticação via Google Workspace (OAuth redirect)
   React.useEffect(() => {
     const handleGoogleSession = async (session: any) => {
@@ -444,22 +448,6 @@ function AppContent() {
     }));
     setEmployees(prev => prev.map(e => e.id === activeEmployee.id ? { ...e, avatar: newAvatarUrl } : e));
     showToast('Foto Atualizada', 'Sua foto de perfil foi alterada com sucesso.', 'success');
-  };
-
-  // Apaga uma notificação específica
-  const handleDeleteNotification = async (notifId: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== notifId));
-    await deleteNotificationSupabase(notifId);
-  };
-
-  // Apaga todas as notificações do usuário ativo
-  const handleClearAllNotifications = async () => {
-    if (notifications.length === 0) return;
-    setNotifications([]);
-    if (activeEmployee?.id) {
-      await clearAllNotificationsSupabase(activeEmployee.id);
-    }
-    showToast('Notificações Apagadas', 'Todas as notificações foram removidas com sucesso.', 'info');
   };
 
   // Floating Toast Notification
@@ -973,6 +961,8 @@ function AppContent() {
             onOpenNotifications={() => setIsNotificationsModalOpen(true)}
             onSwitchToEmployee={() => setCurrentRole('employee')}
             pendingRequestsCount={pendingRequestsCount}
+            unreadChatCount={unreadChatCount}
+            onResetUnreadChat={resetUnreadChatCount}
             onOpenProfile={() => setIsProfileModalOpen(true)}
             justifications={justifications}
             requests={requests}
@@ -1002,6 +992,7 @@ function AppContent() {
             onSelectEmployee={setActiveEmployee}
             notifications={notifications}
             onOpenNotifications={() => setIsNotificationsModalOpen(true)}
+            unreadChatCount={unreadChatCount}
             isLightTheme={!isDark}
             onOpenProfile={() => setIsProfileModalOpen(true)}
           />
@@ -1578,6 +1569,11 @@ function AppContent() {
                   >
                     <MessageSquare className="w-4 h-4 text-[#faf0ac]" />
                     <span>Abrir Chat da Equipe</span>
+                    {unreadChatCount > 0 && (
+                      <span className="px-2 py-0.5 bg-white text-[#96183c] rounded-full text-[11px] font-extrabold shadow-sm">
+                        {unreadChatCount} {unreadChatCount === 1 ? 'nova' : 'novas'}
+                      </span>
+                    )}
                   </button>
                 </div>
               </div>
@@ -1639,28 +1635,16 @@ function AppContent() {
             markAllNotificationsAsReadSupabase(activeEmployee.id);
           }
         }}
-        onClearAll={handleClearAllNotifications}
-        onDeleteNotification={handleDeleteNotification}
         isLightTheme={!isDark}
       />
 
       <ChatModal
         isOpen={isChatModalOpen}
-        onClose={() => setIsChatModalOpen(false)}
-        currentEmployee={
-          currentRole === 'manager'
-            ? (employees.find(e => e.role?.toLowerCase().includes('gerente') || e.role?.toLowerCase().includes('gestor')) || {
-                id: 'gestor-camila',
-                name: 'Camila Duarte',
-                role: 'Gestora Geral',
-                department: 'Gestão de Pessoas & Operações',
-                avatar: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
-                email: 'gestor@pontual.com',
-                phone: '(11) 98765-4321',
-                standardHoursPerWeek: 44
-              })
-            : activeEmployee
-        }
+        onClose={() => {
+          setIsChatModalOpen(false);
+          resetUnreadChatCount();
+        }}
+        currentEmployee={activeEmployee}
         employees={employees}
         isLightTheme={!isDark}
       />
@@ -1669,7 +1653,6 @@ function AppContent() {
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
         currentUser={activeEmployee}
-        employees={employees}
         onUpdateAvatar={handleUpdateAvatar}
         theme={theme}
       />

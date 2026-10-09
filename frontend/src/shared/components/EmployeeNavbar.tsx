@@ -20,6 +20,7 @@ interface EmployeeNavbarProps {
   onEmployeeTabChange: (tab: 'overview' | 'calendar' | 'requests' | 'justifications' | 'chat') => void;
   notifications: NotificationItem[];
   onOpenNotifications: () => void;
+  unreadChatCount?: number;
   onSwitchToManager?: () => void;
   onOpenProfile?: () => void;
 }
@@ -32,6 +33,7 @@ export const EmployeeNavbar: React.FC<EmployeeNavbarProps> = ({
   onEmployeeTabChange,
   notifications,
   onOpenNotifications,
+  unreadChatCount,
   onSwitchToManager,
   onOpenProfile,
 }) => {
@@ -184,7 +186,12 @@ export const EmployeeNavbar: React.FC<EmployeeNavbarProps> = ({
               }`}
             >
               <MessageSquare className="w-3.5 h-3.5 text-purple-600" />
-              Chat da Equipe
+              <span>Chat da Equipe</span>
+              {unreadChatCount !== undefined && unreadChatCount > 0 && (
+                <span className="min-w-[18px] h-[18px] px-1 bg-[#96183C] text-white rounded-full text-[10px] font-extrabold flex items-center justify-center shadow-xs">
+                  {unreadChatCount}
+                </span>
+              )}
             </button>
           </nav>
         </div>

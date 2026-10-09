@@ -224,3 +224,112 @@ function formatBytes(bytes: number): string {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + (sizes[i] || 'MB');
 }
+
+/**
+ * Retorna o canal do banco isolado por empresa/inquilino (multi-tenant).
+ * Evita vazamento de histórico e mensagens entre empresas diferentes ou contas recém-cadastradas.
+ */
+export function getScopedChatChannel(companyId?: string | null, rawChannel: string = 'geral'): string {
+  const cleanCompany = (companyId || 'demo').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const cleanChan = (rawChannel || 'geral').trim();
+  if (cleanChan.startsWith(`cmp_${cleanCompany}__`)) return cleanChan;
+  return `cmp_${cleanCompany}__${cleanChan}`;
+}
+
+/**
+ * Retorna o canal de mensagem privada 1-a-1 isolado por empresa e pelo par ordenado de participantes.
+ * Desta forma ambos os participantes sempre entram no mesmo canal seguro.
+ */
+export function getScopedDirectChannel(companyId?: string | null, user1Id?: string | null, user2Id?: string | null): string {
+  const cleanCompany = (companyId || 'demo').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const u1 = (user1Id || 'user_a').trim();
+  const u2 = (user2Id || 'user_b').trim();
+  const pair = [u1, u2].sort().join('_');
+  return `cmp_${cleanCompany}__direct_${pair}`;
+}
+
+/**
+ * Extrai o nome amigável do canal a partir de um canal isolado (ex: cmp_xxx__geral -> geral).
+ */
+export function getDisplayChatChannel(scopedChannel: string): string {
+  if (!scopedChannel) return 'geral';
+  if (scopedChannel.includes('__')) {
+    const parts = scopedChannel.split('__');
+    return parts.slice(1).join('__');
+  }
+  return scopedChannel;
+}
+
+/**
+ * Retorna a chave do localStorage para registrar o último momento em que o usuário leu as mensagens.
+ */
+export function getChatLastReadStorageKey(companyId?: string | null, userId?: string | null): string {
+  const cleanCompany = (companyId || 'demo').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const cleanUser = (userId || 'anon').replace(/[^a-zA-Z0-9_-]/g, '_');
+  return `pontuall_chat_last_read_${cleanCompany}_${cleanUser}`;
+}
+
+/**
+ * Lê o timestamp (ISO) da última leitura do chat pelo usuário nesta empresa.
+ */
+export function getChatLastReadTimestamp(companyId?: string | null, userId?: string | null): string | null {
+  try {
+    const key = getChatLastReadStorageKey(companyId, userId);
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Salva o timestamp (ISO) da leitura do chat pelo usuário nesta empresa.
+ */
+export function setChatLastReadTimestamp(companyId?: string | null, userId?: string | null, timestamp?: string): void {
+  try {
+    const key = getChatLastReadStorageKey(companyId, userId);
+    const ts = timestamp || new Date().toISOString();
+    localStorage.setItem(key, ts);
+  } catch {}
+}
+
+/**
+ * Verifica se uma mensagem recebida do Supabase pertence ao escopo desta empresa
+ * e deve ser contabilizada como não lida pelo usuário ativo.
+ */
+export function isMessageRelevantForUser(
+  msg: { channel?: string; sender_id?: string; recipient_id?: string; text?: string },
+  userId?: string | null,
+  companyId?: string | null
+): boolean {
+  if (!msg || !userId) return false;
+
+  // Mensagens enviadas pelo próprio usuário logado não contam como não lidas
+  if (msg.sender_id === userId) return false;
+
+  // Metadados de exclusão ou criação de grupos não são mensagens de bate-papo
+  if (msg.recipient_id?.startsWith('group_deleted:') || msg.recipient_id?.startsWith('group_meta:')) {
+    return false;
+  }
+
+  const cleanCompany = (companyId || 'demo').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const prefix = `cmp_${cleanCompany}__`;
+  const channel = (msg.channel || '').trim();
+
+  // A mensagem deve pertencer à mesma empresa
+  if (!channel.startsWith(prefix)) {
+    return false;
+  }
+
+  // Se for mensagem direta 1-a-1: cmp_empresa__direct_id1_id2
+  if (channel.startsWith(`${prefix}direct_`)) {
+    const suffix = channel.replace(`${prefix}direct_`, '');
+    const participants = suffix.split('_');
+    // Só é relevante se o usuário ativo for um dos participantes
+    return participants.includes(userId) || msg.recipient_id === userId;
+  }
+
+  // Canal de grupo da empresa (geral, escalas, etc.)
+  return true;
+}
+
+

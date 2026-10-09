@@ -33,6 +33,7 @@ interface ManagerSidebarProps {
   pendingRequestsCount: number;
   notificationsCount?: number;
   onOpenNotifications?: () => void;
+  unreadChatCount?: number;
   currentUser?: {
     name: string;
     avatar: string;
@@ -53,6 +54,7 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
   pendingRequestsCount,
   notificationsCount,
   onOpenNotifications,
+  unreadChatCount,
   currentUser,
   theme = 'dark',
   onToggleTheme,
@@ -91,6 +93,7 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
       id: 'chat',
       label: 'Chat da Equipe',
       icon: <MessageSquare className="w-5 h-5" />,
+      badge: unreadChatCount && unreadChatCount > 0 ? unreadChatCount : undefined,
     },
   ];
 
