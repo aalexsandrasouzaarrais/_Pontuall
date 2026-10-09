@@ -784,11 +784,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         return;
       }
 
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('channel', currentChatChannel)
-        .order('created_at', { ascending: true });
+      let query = supabase.from('messages').select('*');
+      if (activeChatMode === 'direct' && activeEmployee?.id && selectedDirectEmployee?.id) {
+        const pair = [activeEmployee.id, selectedDirectEmployee.id].sort().join('_');
+        query = query.or(`channel.eq.direct_${pair},channel.like.%direct_${pair}`);
+      } else {
+        query = query.eq('channel', currentChatChannel);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: true });
 
       if (!error && data) {
         setChatMessages(prev => {
@@ -807,14 +811,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
     const interval = setInterval(fetchMessages, 3000);
 
+    const realtimeSubId = `mgrid_chat_rt_${activeEmployee?.id || 'mgr'}_${Date.now()}`;
     const realtimeChannel = supabase
-      .channel(`manager_grid_chat_${currentChatChannel}`)
+      .channel(realtimeSubId)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
         (payload) => {
           const newMsg = payload.new as ChatMessage;
-          if (newMsg.channel === currentChatChannel) {
+          const directPair = (activeChatMode === 'direct' && selectedDirectEmployee?.id && activeEmployee?.id)
+            ? [activeEmployee.id, selectedDirectEmployee.id].sort().join('_')
+            : null;
+          const isDirectMatch = Boolean(directPair && newMsg.channel && newMsg.channel.includes(`direct_${directPair}`));
+
+          if (newMsg.channel === currentChatChannel || isDirectMatch) {
             setChatMessages(prev => {
               const filtered = prev.filter(m => !(m.id.startsWith('temp-') && m.text === newMsg.text && m.sender_id === newMsg.sender_id));
               if (filtered.some(m => m.id === newMsg.id)) return filtered;
@@ -829,7 +839,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       clearInterval(interval);
       supabase.removeChannel(realtimeChannel);
     };
-  }, [activeTab, currentChatChannel]);
+  }, [activeTab, currentChatChannel, activeChatMode, selectedDirectEmployee?.id, activeEmployee?.id]);
 
   useEffect(() => {
     chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -1157,7 +1167,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
             {/* Tab 5: Chat Equipe */}
             <button
-              onClick={() => (onOpenChat ? onOpenChat() : setActiveTab('chat'))}
+              onClick={() => setActiveTab('chat')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
                 activeTab === 'chat'
                   ? 'bg-white text-purple-900 shadow-xs border border-slate-200 font-black'

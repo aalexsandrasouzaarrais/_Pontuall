@@ -26,6 +26,7 @@ interface ManagerViewProps {
   pendingRequestsCount: number;
   unreadChatCount?: number;
   onResetUnreadChat?: () => void;
+  onChatViewActive?: (isActive: boolean) => void;
   onOpenProfile?: () => void;
   justifications?: AbsenceJustification[];
   requests?: TimeOffRequest[];
@@ -38,7 +39,7 @@ interface ManagerViewProps {
 export const ManagerView: React.FC<ManagerViewProps> = ({
   employees, shifts, activeEmployee, notificationsCount, onAddShift, onUpdateShift, onDeleteShift, onDeleteShiftsBulk, onAddEmployee,
   onUpdateEmployee, onDeactivateEmployee, onOpenRequests, onOpenChat,
-  onOpenNotifications, onSwitchToEmployee, pendingRequestsCount, unreadChatCount, onResetUnreadChat, onOpenProfile,
+  onOpenNotifications, onSwitchToEmployee, pendingRequestsCount, unreadChatCount, onResetUnreadChat, onChatViewActive, onOpenProfile,
   justifications, requests, onApproveRequest, onRejectRequest, onApproveJustification, onRejectJustification,
 }) => {
   const { theme, isDark, toggleTheme } = useTheme();
@@ -49,8 +50,11 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
   React.useEffect(() => {
     if (activeTab === 'chat') {
       onResetUnreadChat?.();
+      onChatViewActive?.(true);
+    } else {
+      onChatViewActive?.(false);
     }
-  }, [activeTab, onResetUnreadChat]);
+  }, [activeTab, onResetUnreadChat, onChatViewActive]);
 
   const createShift = (date?: string, employeeId?: string) => onAddShift({
     date: date || getTodayDateString(),

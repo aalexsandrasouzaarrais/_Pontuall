@@ -43,12 +43,8 @@ export function useUnreadChatCount({ activeEmployee, isChatOpen = false }: UseUn
     const cleanCompany = (companyId || 'demo').replace(/[^a-zA-Z0-9_-]/g, '_');
     const prefix = `cmp_${cleanCompany}__`;
 
-    // Garante timestamp inicial caso o usuário nunca tenha aberto o chat
-    let lastRead = getChatLastReadTimestamp(companyId, userId);
-    if (!lastRead) {
-      lastRead = new Date().toISOString();
-      setChatLastReadTimestamp(companyId, userId, lastRead);
-    }
+    // Se ainda não abriu o chat nesta máquina, busca mensagens recentes das últimas 48h
+    const currentLastRead = getChatLastReadTimestamp(companyId, userId) || new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
 
     const fetchUnread = async () => {
       // Se o chat estiver com o foco ativo neste instante, mantém em 0
@@ -57,15 +53,15 @@ export function useUnreadChatCount({ activeEmployee, isChatOpen = false }: UseUn
         return;
       }
 
-      const currentLastRead = getChatLastReadTimestamp(companyId, userId) || lastRead;
+      const lastReadTs = getChatLastReadTimestamp(companyId, userId) || currentLastRead;
 
       try {
         const { data, error } = await supabase
           .from('messages')
           .select('id, channel, sender_id, recipient_id, created_at')
-          .like('channel', `${prefix}%`)
           .neq('sender_id', userId)
-          .gt('created_at', currentLastRead);
+          .gt('created_at', lastReadTs)
+          .or(`channel.like.${prefix}%,channel.like.%direct_%${userId}%,recipient_id.eq.${userId}`);
 
         if (!error && data) {
           const relevant = data.filter((msg) =>
@@ -81,7 +77,7 @@ export function useUnreadChatCount({ activeEmployee, isChatOpen = false }: UseUn
     fetchUnread();
 
     // Sincronização em tempo real via Supabase Realtime
-    const channelName = `realtime_unread_${cleanCompany}_${userId}_${Date.now()}`;
+    const channelName = `realtime_unread_${userId}_${Date.now()}`;
     const channel = supabase
       .channel(channelName)
       .on(

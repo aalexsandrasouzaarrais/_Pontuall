@@ -88,7 +88,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Modo: 'direct' (1-on-1 com a Gestora ou Colaborador) ou 'group' (canais da equipe)
-  const [chatType, setChatType] = useState<'direct' | 'group'>('direct');
+  const [chatType, setChatType] = useState<'direct' | 'group'>('group');
   const [selectedGroupId, setSelectedGroupId] = useState<string>('geral');
 
   // Modais secundários: Ver Integrantes, Confirmar Exclusão e Criar Novo Grupo
@@ -128,15 +128,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
   // Lista de contatos disponíveis para conversa direta (1 a 1):
   const directContacts = useMemo(() => {
-    const list = allEmployeesList.filter(e => e.id !== currentEmployee?.id);
-    if (isRhUser) {
-      const managers = list.filter(e => 
-        e.roleType === 'gestor' || e.role?.toLowerCase().includes('gestor') || e.role?.toLowerCase().includes('gerente')
-      );
-      return managers.length > 0 ? managers : list;
-    }
-    return list;
-  }, [allEmployeesList, currentEmployee?.id, isRhUser]);
+    return allEmployeesList.filter(e => e.id !== currentEmployee?.id);
+  }, [allEmployeesList, currentEmployee?.id]);
 
   // Seleção de colaborador/gestor para conversa direta
   const [selectedDirectEmployeeId, setSelectedDirectEmployeeId] = useState<string>('');
@@ -349,11 +342,16 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         return;
       }
 
-      const { data, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('channel', currentChannel)
-        .order('created_at', { ascending: true });
+      let query = supabase.from('messages').select('*');
+
+      if (chatType === 'direct') {
+        const pair = [currentEmployee.id, selectedDirectEmployee!.id].sort().join('_');
+        query = query.or(`channel.eq.direct_${pair},channel.like.%direct_${pair}`);
+      } else {
+        query = query.eq('channel', currentChannel);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: true });
 
       if (error) {
         console.error('Erro ao buscar mensagens do Supabase:', error);
@@ -380,8 +378,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     const interval = setInterval(fetchMessages, 3000);
 
     // Canal Realtime do Supabase via WebSocket
+    const channelSubId = `chat_rt_${currentEmployee.id}_${Date.now()}`;
     const channel = supabase
-      .channel(`chat_realtime_${currentChannel}`)
+      .channel(channelSubId)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
@@ -442,7 +441,12 @@ export const ChatModal: React.FC<ChatModalProps> = ({
             });
           }
 
-          if (newMsg.channel === currentChannel) {
+          const directPair = (chatType === 'direct' && selectedDirectEmployee?.id)
+            ? [currentEmployee.id, selectedDirectEmployee.id].sort().join('_')
+            : null;
+          const isDirectMatch = Boolean(directPair && newMsg.channel && newMsg.channel.includes(`direct_${directPair}`));
+
+          if (newMsg.channel === currentChannel || isDirectMatch) {
             setMessages((prev) => {
               const filtered = prev.filter(
                 (m) =>
@@ -464,7 +468,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       clearInterval(interval);
       supabase.removeChannel(channel);
     };
-  }, [isOpen, currentChannel, selectedGroupId, currentEmployee.id, isManager]);
+  }, [isOpen, currentChannel, chatType, selectedDirectEmployee?.id, selectedGroupId, currentEmployee.id, isManager]);
 
   if (!isOpen) return null;
 

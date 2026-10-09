@@ -240,12 +240,11 @@ export function getScopedChatChannel(companyId?: string | null, rawChannel: stri
  * Retorna o canal de mensagem privada 1-a-1 isolado por empresa e pelo par ordenado de participantes.
  * Desta forma ambos os participantes sempre entram no mesmo canal seguro.
  */
-export function getScopedDirectChannel(companyId?: string | null, user1Id?: string | null, user2Id?: string | null): string {
-  const cleanCompany = (companyId || 'demo').replace(/[^a-zA-Z0-9_-]/g, '_');
+export function getScopedDirectChannel(_companyId?: string | null, user1Id?: string | null, user2Id?: string | null): string {
   const u1 = (user1Id || 'user_a').trim();
   const u2 = (user2Id || 'user_b').trim();
   const pair = [u1, u2].sort().join('_');
-  return `cmp_${cleanCompany}__direct_${pair}`;
+  return `direct_${pair}`;
 }
 
 /**
@@ -311,25 +310,29 @@ export function isMessageRelevantForUser(
     return false;
   }
 
-  const cleanCompany = (companyId || 'demo').replace(/[^a-zA-Z0-9_-]/g, '_');
-  const prefix = `cmp_${cleanCompany}__`;
   const channel = (msg.channel || '').trim();
 
-  // A mensagem deve pertencer à mesma empresa
-  if (!channel.startsWith(prefix)) {
-    return false;
-  }
-
-  // Se for mensagem direta 1-a-1: cmp_empresa__direct_id1_id2
-  if (channel.startsWith(`${prefix}direct_`)) {
-    const suffix = channel.replace(`${prefix}direct_`, '');
-    const participants = suffix.split('_');
-    // Só é relevante se o usuário ativo for um dos participantes
+  // Se for mensagem direta 1-a-1: direct_id1_id2 ou cmp_xxx__direct_id1_id2
+  if (channel.includes('direct_')) {
+    const parts = channel.split('direct_')[1] || '';
+    const participants = parts.split('_');
     return participants.includes(userId) || msg.recipient_id === userId;
   }
 
-  // Canal de grupo da empresa (geral, escalas, etc.)
-  return true;
+  // Se for canal corporativo (#geral, #escalas, #gestao):
+  const cleanCompany = (companyId || 'demo').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const expectedPrefix = `cmp_${cleanCompany}__`;
+
+  if (channel.startsWith(expectedPrefix)) {
+    return true;
+  }
+
+  // Mensagens sem prefixo (compatibilidade com histórico legado da empresa demo)
+  if (cleanCompany === 'demo' && (channel === 'geral' || channel === 'escalas' || channel === 'gestao' || channel.startsWith('grupo_'))) {
+    return true;
+  }
+
+  return false;
 }
 
 

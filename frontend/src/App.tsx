@@ -346,10 +346,11 @@ function AppContent() {
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
   const [isManagerRequestsModalOpen, setIsManagerRequestsModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isChatViewActive, setIsChatViewActive] = useState(false);
 
   const { unreadCount: unreadChatCount, resetUnreadCount: resetUnreadChatCount } = useUnreadChatCount({
     activeEmployee,
-    isChatOpen: isChatModalOpen,
+    isChatOpen: isChatModalOpen || isChatViewActive,
   });
 
   // Monitora autenticação via Google Workspace (OAuth redirect)
@@ -981,6 +982,7 @@ function AppContent() {
             pendingRequestsCount={pendingRequestsCount}
             unreadChatCount={unreadChatCount}
             onResetUnreadChat={resetUnreadChatCount}
+            onChatViewActive={setIsChatViewActive}
             onOpenProfile={() => setIsProfileModalOpen(true)}
             justifications={justifications}
             requests={requests}

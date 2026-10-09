@@ -459,10 +459,19 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
           phone: '(11) 98765-4321',
           standardHoursPerWeek: 44,
           registrationId: matricula,
+          companyId: cleanCnpj ? `emp-${cleanCnpj}` : `emp-${Date.now()}`,
+          companyCnpj: cleanCnpj || undefined,
           isRh: true,
           isMasterManager: true,
           roleType: 'rh'
         };
+      }
+
+      if (!createdEmployee.companyId) {
+        createdEmployee.companyId = cleanCnpj ? `emp-${cleanCnpj}` : `emp-${Date.now()}`;
+      }
+      if (!createdEmployee.companyCnpj && cleanCnpj) {
+        createdEmployee.companyCnpj = cleanCnpj;
       }
 
       // 2. Registra também no storage para suporte offline/local
