@@ -100,9 +100,9 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
   const currentWidth = collapsed ? 72 : 260;
   const unreadCount = notificationsCount !== undefined ? notificationsCount : 0;
   const displayUser = currentUser || {
-    name: 'Camila Duarte',
-    avatar: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
-    role: 'Gestora de Escalas & RH',
+    name: 'Gestor',
+    avatar: 'https://ui-avatars.com/api/?name=Gestor&background=96183c&color=fff&size=150',
+    role: 'Gestão Geral',
   };
 
   return (

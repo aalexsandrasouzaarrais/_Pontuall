@@ -7,7 +7,6 @@ import {
   MessageSquare,
   ChevronLeft,
   Bell,
-  ChevronDown,
   ShieldCheck,
 } from "lucide-react";
 import { Employee, NotificationItem } from '@/types';
@@ -437,48 +436,17 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
                   return null;
                 })()}
 
-                {/* Employee select */}
-                <div className="mt-1 relative">
-                  <select
-                    value={activeEmployee.id}
-                    onChange={(e) => {
-                      const found = employees.find(
-                        (emp) => emp.id === e.target.value
-                      );
-
-                      if (found) {
-                        onSelectEmployee(found);
-                      }
-                    }}
-                    className={`w-full border text-[10px] font-semibold rounded-md px-2 py-1 pr-6 appearance-none focus:outline-none focus:border-[#F89847]/50 cursor-pointer truncate transition-colors ${
-                      isLightTheme
-                        ? "bg-slate-50 border-slate-200 text-slate-700"
-                        : "bg-[#1E2230] border-[#222634] text-slate-300"
-                    }`}
-                    aria-label="Selecionar colaborador"
-                  >
-                    {employees.map((emp) => (
-                      <option
-                        key={emp.id}
-                        value={emp.id}
-                        className={
-                          isLightTheme
-                            ? "bg-white text-slate-800"
-                            : "bg-[#1E2230] text-white"
-                        }
-                      >
-                        {emp.name}
-                      </option>
-                    ))}
-                  </select>
-
-                  <ChevronDown
-                    className={`absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none ${
-                      isLightTheme
-                        ? "text-slate-500"
-                        : "text-slate-400"
-                    }`}
-                  />
+                {/* Cargo / Matrícula do Colaborador logado */}
+                <div
+                  className={`mt-1 text-[10px] font-semibold truncate ${
+                    isLightTheme ? "text-slate-500" : "text-slate-400"
+                  }`}
+                  title={`${activeEmployee.role || 'Colaborador'}${activeEmployee.registrationId ? ` (Mat. ${activeEmployee.registrationId})` : ''}`}
+                >
+                  <span>{activeEmployee.role || 'Colaborador'}</span>
+                  {activeEmployee.registrationId && (
+                    <span className="opacity-75 font-mono ml-1">#{activeEmployee.registrationId}</span>
+                  )}
                 </div>
               </div>
             </div>

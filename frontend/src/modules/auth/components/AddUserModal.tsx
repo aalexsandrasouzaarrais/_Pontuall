@@ -217,7 +217,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       name: fullName,
       role: role.trim(),
       department: department.trim() || 'Operações',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName || 'Colaborador')}&background=96183c&color=fff&size=150`,
       email: email.trim() || `${firstName.toLowerCase().replace(/\s+/g, '')}@pontual.com.br`,
       phone: phone.trim() || '(11) 98765-4321',
       standardHoursPerWeek: employmentType === 'PJ' ? 40 : 44,
@@ -463,7 +463,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                       isDark ? 'ring-[#f89847] bg-black/40' : 'ring-[#96183c] bg-white'
                     }`}>
                       <img
-                        src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
+                        src={`https://ui-avatars.com/api/?name=${encodeURIComponent(`${firstName || 'Novo'} ${lastName || 'Colaborador'}`)}&background=96183c&color=fff&size=150`}
                         alt="Avatar"
                         className="w-full h-full object-cover"
                       />
@@ -476,7 +476,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                     <span className={`text-[10px] mt-0.5 ${
                       isDark ? 'text-slate-400' : 'text-slate-500'
                     }`}>
-                      Automático
+                      Vinculada ao e-mail
                     </span>
                   </div>
                 </div>

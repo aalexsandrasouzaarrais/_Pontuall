@@ -38,15 +38,7 @@ import {
   ProfileEditModal 
 } from '@/shared/components/ProfileEditModal';
 import { supabase } from '@/shared/services/supabase';
-import { 
-  INITIAL_EMPLOYEES, 
-  getInitialShifts, 
-  INITIAL_REQUESTS, 
-  INITIAL_JUSTIFICATIONS, 
-  INITIAL_NOTIFICATIONS, 
-  INITIAL_REMINDERS,
-  MANAGER_PROFILE
-} from './data/mockData';
+
 import { 
   getColaboradoresSupabase, 
   getColaboradorByIdSupabase,
@@ -98,8 +90,6 @@ import {
   Sparkles, 
   AlertCircle, 
   Plus, 
-  ShieldCheck, 
-  User, 
   SlidersHorizontal, 
   LayoutGrid, 
   MessageSquare, 
@@ -146,25 +136,19 @@ function AppContent() {
   const [activeEmployee, setActiveEmployee] = useState<Employee>(() => {
     try {
       const savedUserStr = safeStorage.getItem('pontual_active_user');
-        if (
-          parsed.id === MANAGER_PROFILE.id ||
-          parsed.Idf_Colaborador === MANAGER_PROFILE.id ||
-          parsed.email?.toLowerCase() === MANAGER_PROFILE.email?.toLowerCase() ||
-          parsed.Eml_Corporativo?.toLowerCase() === MANAGER_PROFILE.email?.toLowerCase()
-        ) {
-          return MANAGER_PROFILE;
-        }
-
-        const isRhParsed = parsed.isRh !== undefined ? parsed.isRh : (parsed.roleType === 'rh' || parsed.perfil === 'rh' || parsed.email?.toLowerCase() === 'gestor@pontual.com');
+      if (savedUserStr) {
+        const parsed = JSON.parse(savedUserStr);
+        const isRhParsed = parsed.isRh !== undefined ? parsed.isRh : (parsed.roleType === 'rh' || parsed.perfil === 'rh');
         const isColaborador = parsed.roleType === 'colaborador' || parsed.Tpo_Perfil === 'colaborador';
+        const fullName = parsed.Nme_Colaborador || parsed.nome || parsed.name || (isColaborador ? 'Colaborador' : 'Gestor');
         return {
           id: parsed.Idf_Colaborador || parsed.id || `emp-${Date.now()}`,
-          name: parsed.Nme_Colaborador || parsed.nome || parsed.name || (isColaborador ? 'Colaborador' : 'Gestor'),
+          name: fullName,
           role: parsed.Tpo_Cargo || parsed.cargo || parsed.role || (isColaborador ? 'Colaborador' : 'Gestor Geral'),
           department: parsed.Des_Departamento || parsed.departamento || parsed.department || 'Geral',
-          avatar: parsed.Des_Avatar_Url || parsed.avatar || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
+          avatar: parsed.Des_Avatar_Url || parsed.avatar || (parsed.Eml_Corporativo || parsed.email ? `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=96183c&color=fff&size=150` : ''),
           email: parsed.Eml_Corporativo || parsed.email || '',
-          phone: parsed.Num_Telefone || parsed.phone || '(11) 98765-4321',
+          phone: parsed.Num_Telefone || parsed.phone || '',
           standardHoursPerWeek: parsed.Num_Horas_Semanais || parsed.standardHoursPerWeek || 44,
           registrationId: parsed.Cod_Matricula || parsed.registrationId || (isRhParsed ? 'GST-0001' : 'COL-0001'),
           companyId: parsed.Idf_Empresa || parsed.companyId || undefined,
@@ -174,155 +158,124 @@ function AppContent() {
           companyCnpj: parsed.companyCnpj || undefined,
           managerIds: parsed.managerIds || []
         };
-      } catch {}
-      return INITIAL_EMPLOYEES[0];
-    });
-    const [shifts, setShifts] = useState<Shift[]>([]);
-    const [requests, setRequests] = useState<TimeOffRequest[]>([]);
-    const [justifications, setJustifications] = useState<AbsenceJustification[]>([]);
-    const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-    const [reminders, setReminders] = useState<ManagerReminder[]>([]);
-    
-    // Employee Tabs
-    const [employeeTab, setEmployeeTab] = useState<'overview' | 'calendar' | 'requests' | 'justifications' | 'chat'>('overview');
-    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+      }
+    } catch {}
+    return {
+      id: '',
+      name: 'Usuário',
+      role: 'Colaborador',
+      department: 'Geral',
+      avatar: '',
+      email: '',
+      phone: '',
+      standardHoursPerWeek: 44,
+      roleType: 'colaborador'
+    };
+  });
+  const [shifts, setShifts] = useState<Shift[]>([]);
+  const [requests, setRequests] = useState<TimeOffRequest[]>([]);
+  const [justifications, setJustifications] = useState<AbsenceJustification[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [reminders, setReminders] = useState<ManagerReminder[]>([]);
+  
+  // Employee Tabs
+  const [employeeTab, setEmployeeTab] = useState<'overview' | 'calendar' | 'requests' | 'justifications' | 'chat'>('overview');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-    // Sincronização e filtragem por empresa/gestor com o Supabase (TAB_Colaborador, TAB_Escala_Turno, TAB_Solicitacao_Colaborador, TAB_Justificativa_Ausencia, TAB_Lembrete)
-    React.useEffect(() => {
-      async function loadDataFromSupabase() {
-        if (!isAuthenticated || !activeEmployee) return;
+  // Sincronização e filtragem por empresa/gestor com o Supabase
+  React.useEffect(() => {
+    async function loadDataFromSupabase() {
+      if (!isAuthenticated || !activeEmployee?.id) return;
 
-        // Se o usuário ativo for um UUID do Supabase e não tiver companyId carregado no safeStorage, reidrata do banco
-        let currentEmp = activeEmployee;
-        if (isUuid(activeEmployee.id) && !activeEmployee.companyId) {
-          const fresh = await getColaboradorByIdSupabase(activeEmployee.id);
-          if (fresh && fresh.companyId) {
-            currentEmp = { ...activeEmployee, ...fresh };
-            setActiveEmployee(currentEmp);
-          }
-        }
-
-        const isDemoUser = !currentEmp.companyId && (
-          currentEmp.id === 'mgr-1' || 
-          currentEmp.id === 'mgr-2' ||
-          currentEmp.id === 'emp-1' ||
-          currentEmp.email === 'gestor@pontual.com' ||
-          currentEmp.email === 'gestor.ti@pontual.com' ||
-          currentEmp.email === 'colaborador@pontual.com'
-        );
-
-        try {
-          const isRhUser = currentEmp.isRh || currentEmp.roleType === 'rh' || currentEmp.isMasterManager;
-          // Apenas filtra por gestor se o usuário logado for de fato um gestor no modo de gestão
-          const isSectorManager = (currentRole === 'manager' || currentEmp.roleType === 'gestor') && !isRhUser && currentRole !== 'employee';
-          const filter = {
-            companyId: currentEmp.companyId || undefined,
-            gestorId: (isSectorManager && currentEmp.companyId) ? currentEmp.id : undefined
-          };
-
-          const dbEmployees = await getColaboradoresSupabase(filter);
-          
-          let finalEmployees: Employee[] = (dbEmployees && dbEmployees.length > 0) ? dbEmployees : (isDemoUser ? INITIAL_EMPLOYEES : []);
-          if (currentRole === 'employee' && currentEmp && !isRhUser) {
-            if (!finalEmployees.some(e => e.id === currentEmp.id || (e.email && currentEmp.email && e.email.toLowerCase() === currentEmp.email.toLowerCase()))) {
-              finalEmployees = [currentEmp, ...finalEmployees];
-            }
-          }
-
-          const meInDb = finalEmployees.find(e => e.id === currentEmp.id);
-          if (meInDb && meInDb.managerIds && meInDb.managerIds.length > 0) {
-            currentEmp.managerIds = meInDb.managerIds;
-            if (!activeEmployee.managerIds || activeEmployee.managerIds.length === 0) {
-              setActiveEmployee(prev => ({ ...prev, managerIds: meInDb.managerIds }));
-            }
-          }
-
-          setEmployees(finalEmployees);
-
-          // Busca turnos estritamente dos colaboradores pertencentes à empresa/equipe
-          const empIds = finalEmployees.map(e => e.id);
-          const dbShifts = await getShiftsSupabase(empIds);
-          setShifts((dbShifts && dbShifts.length > 0) ? dbShifts : (isDemoUser ? getInitialShifts() : []));
-
-          // Busca lembretes da gestão no Supabase filtrados por empresa e equipe
-          const dbReminders = await getRemindersSupabase({
-            companyId: currentEmp.companyId,
-            creatorId: currentEmp.id,
-            visibleEmployeeIds: empIds
-          });
-          if (dbReminders && dbReminders.length > 0) {
-            setReminders(dbReminders);
-          } else if (isDemoUser) {
-            setReminders(INITIAL_REMINDERS);
-          } else {
-            setReminders([]);
-          }
-
-          // Busca solicitações e justificativas salvas no Supabase vinculadas à equipe
-          const validScopeIds = empIds.filter(isUuid);
-          const dbRequests = await getSolicitacoesSupabase(validScopeIds.length > 0 ? validScopeIds : undefined);
-          const dbJustifications = await getJustificativasSupabase(validScopeIds.length > 0 ? validScopeIds : undefined);
-
-          const enrichedRequests = dbRequests.map(r => {
-            const emp = finalEmployees.find(e => e.id === r.employeeId || (e.email && currentEmp.email && e.email.toLowerCase() === currentEmp.email.toLowerCase())) 
-              || INITIAL_EMPLOYEES.find(e => e.id === r.employeeId) 
-              || (r.employeeId === currentEmp.id ? currentEmp : undefined);
-            const targetEmp = finalEmployees.find(e => e.id === r.targetEmployeeId) || INITIAL_EMPLOYEES.find(e => e.id === r.targetEmployeeId);
-            return {
-              ...r,
-              employeeName: emp?.name || r.employeeName || 'Colaborador',
-              employeeAvatar: emp?.avatar || r.employeeAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-              targetEmployeeName: targetEmp?.name || r.targetEmployeeName || ''
-            };
-          });
-
-          const enrichedJustifications = dbJustifications.map(j => {
-            const emp = finalEmployees.find(e => e.id === j.employeeId || (e.email && currentEmp.email && e.email.toLowerCase() === currentEmp.email.toLowerCase())) 
-              || INITIAL_EMPLOYEES.find(e => e.id === j.employeeId) 
-              || (j.employeeId === currentEmp.id ? currentEmp : undefined);
-            return {
-              ...j,
-              employeeName: emp?.name || j.employeeName || 'Colaborador',
-              employeeAvatar: emp?.avatar || j.employeeAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
-            };
-          });
-
-          setRequests(prev => {
-            const mapById = new Map<string, TimeOffRequest>();
-            if (isDemoUser) {
-              INITIAL_REQUESTS.forEach(r => mapById.set(r.id, r));
-            }
-            enrichedRequests.forEach(r => mapById.set(r.id, r));
-            prev.forEach(r => { if (!mapById.has(r.id)) mapById.set(r.id, r); });
-            return Array.from(mapById.values());
-          });
-
-          setJustifications(prev => {
-            const mapById = new Map<string, AbsenceJustification>();
-            if (isDemoUser) {
-              INITIAL_JUSTIFICATIONS.forEach(j => mapById.set(j.id, j));
-            }
-            enrichedJustifications.forEach(j => mapById.set(j.id, j));
-            prev.forEach(j => { if (!mapById.has(j.id)) mapById.set(j.id, j); });
-            return Array.from(mapById.values());
-          });
-
-          const dbNotifications = await getNotificationsSupabase(currentEmp.id);
-          if (dbNotifications && dbNotifications.length > 0) {
-            setNotifications(dbNotifications);
-          } else if (isDemoUser) {
-            setNotifications(INITIAL_NOTIFICATIONS);
-          } else {
-            setNotifications([]);
-          }
-
-        } catch (err) {
-          console.warn('Erro ao carregar dados do Supabase:', err);
+      let currentEmp = activeEmployee;
+      if (isUuid(activeEmployee.id) && !activeEmployee.companyId) {
+        const fresh = await getColaboradorByIdSupabase(activeEmployee.id);
+        if (fresh && fresh.companyId) {
+          currentEmp = { ...activeEmployee, ...fresh };
+          setActiveEmployee(currentEmp);
         }
       }
 
-      loadDataFromSupabase();
-    }, [activeEmployee?.id, activeEmployee?.companyId, isAuthenticated]);
+      try {
+        const isRhUser = currentEmp.isRh || currentEmp.roleType === 'rh' || currentEmp.isMasterManager;
+        const isSectorManager = (currentRole === 'manager' || currentEmp.roleType === 'gestor') && !isRhUser && currentRole !== 'employee';
+        const filter = {
+          companyId: currentEmp.companyId || undefined,
+          gestorId: (isSectorManager && currentEmp.companyId) ? currentEmp.id : undefined
+        };
+
+        const dbEmployees = await getColaboradoresSupabase(filter);
+        
+        let finalEmployees: Employee[] = (dbEmployees && dbEmployees.length > 0) ? dbEmployees : [];
+        if (currentRole === 'employee' && currentEmp && !isRhUser) {
+          if (!finalEmployees.some(e => e.id === currentEmp.id || (e.email && currentEmp.email && e.email.toLowerCase() === currentEmp.email.toLowerCase()))) {
+            finalEmployees = [currentEmp, ...finalEmployees];
+          }
+        }
+
+        const meInDb = finalEmployees.find(e => e.id === currentEmp.id);
+        if (meInDb && meInDb.managerIds && meInDb.managerIds.length > 0) {
+          currentEmp.managerIds = meInDb.managerIds;
+          if (!activeEmployee.managerIds || activeEmployee.managerIds.length === 0) {
+            setActiveEmployee(prev => ({ ...prev, managerIds: meInDb.managerIds }));
+          }
+        }
+
+        setEmployees(finalEmployees);
+
+        // Busca turnos estritamente dos colaboradores pertencentes à empresa/equipe
+        const empIds = finalEmployees.map(e => e.id);
+        const dbShifts = await getShiftsSupabase(empIds);
+        setShifts(dbShifts || []);
+
+        // Busca lembretes da gestão no Supabase filtrados por empresa e equipe
+        const dbReminders = await getRemindersSupabase({
+          companyId: currentEmp.companyId,
+          creatorId: currentEmp.id,
+          visibleEmployeeIds: empIds
+        });
+        setReminders(dbReminders || []);
+
+        // Busca solicitações e justificativas salvas no Supabase vinculadas à equipe
+        const validScopeIds = empIds.filter(isUuid);
+        const dbRequests = await getSolicitacoesSupabase(validScopeIds.length > 0 ? validScopeIds : undefined);
+        const dbJustifications = await getJustificativasSupabase(validScopeIds.length > 0 ? validScopeIds : undefined);
+
+        const enrichedRequests = (dbRequests || []).map(r => {
+          const emp = finalEmployees.find(e => e.id === r.employeeId || (e.email && currentEmp.email && e.email.toLowerCase() === currentEmp.email.toLowerCase())) 
+            || (r.employeeId === currentEmp.id ? currentEmp : undefined);
+          const targetEmp = finalEmployees.find(e => e.id === r.targetEmployeeId);
+          return {
+            ...r,
+            employeeName: emp?.name || r.employeeName || 'Colaborador',
+            employeeAvatar: emp?.avatar || r.employeeAvatar || '',
+            targetEmployeeName: targetEmp?.name || r.targetEmployeeName || ''
+          };
+        });
+
+        const enrichedJustifications = (dbJustifications || []).map(j => {
+          const emp = finalEmployees.find(e => e.id === j.employeeId || (e.email && currentEmp.email && e.email.toLowerCase() === currentEmp.email.toLowerCase())) 
+            || (j.employeeId === currentEmp.id ? currentEmp : undefined);
+          return {
+            ...j,
+            employeeName: emp?.name || j.employeeName || 'Colaborador',
+            employeeAvatar: emp?.avatar || j.employeeAvatar || ''
+          };
+        });
+
+        setRequests(enrichedRequests);
+        setJustifications(enrichedJustifications);
+
+        const dbNotifications = await getNotificationsSupabase(currentEmp.id);
+        setNotifications(dbNotifications || []);
+
+      } catch (err) {
+        console.warn('Erro ao carregar dados do Supabase:', err);
+      }
+    }
+
+    loadDataFromSupabase();
+  }, [activeEmployee?.id, activeEmployee?.companyId, isAuthenticated]);
 
     // WebSocket Realtime para notificações em tempo real
     useEffect(() => {
@@ -880,44 +833,8 @@ function AppContent() {
           />
         </div>
 
-        {/* Center/Right: Switcher de Perfil + Botão de Tema */}
+        {/* Right: Botão de Tema + Botão Sair */}
         <div className="flex items-center gap-3 ml-auto">
-          {/* Switcher Pill de Perfil */}
-          <div className={`flex items-center gap-1.5 p-1 rounded-full border transition-colors ${
-            !isDark ? 'bg-slate-100 border-slate-200' : 'bg-[#151822] border-[#252A3A]'
-          }`}>
-            <button
-              onClick={() => {
-                setCurrentRole('manager');
-                safeStorage.setItem('pontual_role', 'manager');
-              }}
-              className={`px-3.5 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                currentRole === 'manager'
-                  ? 'text-white shadow-md font-black'
-                  : !isDark ? 'text-slate-600 hover:text-slate-900' : 'text-slate-400 hover:text-white'
-              }`}
-              style={currentRole === 'manager' ? { background: 'linear-gradient(135deg, #96183c, #f89847)' } : {}}
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>👔 Visão do Gestor</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setCurrentRole('employee');
-                safeStorage.setItem('pontual_role', 'employee');
-              }}
-              className={`px-3.5 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                currentRole === 'employee'
-                  ? 'text-white shadow-md font-black'
-                  : !isDark ? 'text-[#96183c] hover:text-slate-900' : 'text-slate-400 hover:text-white'
-              }`}
-              style={currentRole === 'employee' ? { background: 'linear-gradient(135deg, #96183c, #f89847)' } : {}}
-            >
-              <User className="w-3.5 h-3.5" />
-              <span>👤 Portal do Colaborador</span>
-            </button>
-          </div>
 
           {/* Botão de Tema Moderno (Claro / Escuro) ativo tanto para Gestor quanto para Colaborador */}
           <button
@@ -978,7 +895,6 @@ function AppContent() {
             onOpenRequests={() => setIsManagerRequestsModalOpen(true)}
             onOpenChat={() => setIsChatModalOpen(true)}
             onOpenNotifications={() => setIsNotificationsModalOpen(true)}
-            onSwitchToEmployee={() => setCurrentRole('employee')}
             pendingRequestsCount={pendingRequestsCount}
             unreadChatCount={unreadChatCount}
             onResetUnreadChat={resetUnreadChatCount}
