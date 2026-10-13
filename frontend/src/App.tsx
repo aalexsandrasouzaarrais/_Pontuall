@@ -100,6 +100,7 @@ import {
   X 
 } from 'lucide-react';
 import { ThemeProvider, useTheme } from '@/shared/context/ThemeContext';
+import { showPolishedToast, PolishedToaster, type RimVariant } from '@/components/ui/halo-toast';
 import { safeStorage } from '@/shared/utils/safeStorage';
 import logoWideDark from './assets/logo-pontual-wide-dark.png';
 import logoWideLight from './assets/logo-pontual-wide.png';
@@ -422,20 +423,18 @@ function AppContent() {
     showToast('Notificações Apagadas', 'Todas as notificações foram removidas com sucesso.', 'info');
   };
 
-  // Floating Toast Notification
-  const [toast, setToast] = useState<{
-    id: number;
-    title: string;
-    message: string;
-    type?: 'success' | 'info' | 'error';
-  } | null>(null);
-
+  // Floating Halo Toast Notification
   const showToast = (title: string, message: string, type: 'success' | 'info' | 'error' = 'success') => {
-    const id = Date.now();
-    setToast({ id, title, message, type });
-    setTimeout(() => {
-      setToast(current => (current?.id === id ? null : current));
-    }, 5000);
+    const rimVariant: RimVariant = type === 'error' ? 'destructive' : type === 'success' ? 'success' : 'default';
+    showPolishedToast({
+      id: 'pontual-toast',
+      title,
+      description: message,
+      rimVariant,
+      politeness: type === 'error' ? 'alert' : 'status',
+      closeButton: true,
+      duration: 5000,
+    });
   };
 
 
@@ -1596,40 +1595,8 @@ function AppContent() {
         theme={theme}
       />
 
-      {/* Floating Toast Notification */}
-      {toast && (
-        <div className="fixed top-5 right-5 z-[9999] max-w-sm w-full animate-in slide-in-from-top-3 fade-in duration-200">
-          <div
-            className={`p-4 rounded-2xl shadow-2xl border flex items-start gap-3 backdrop-blur-md ${
-              isDark 
-                ? 'bg-[#181A24]/95 border-emerald-500/40 text-white shadow-black/70' 
-                : 'bg-white/95 border-emerald-500/40 text-slate-800 shadow-slate-300/60'
-            }`}
-            style={{ borderLeft: '4px solid #10b981' }}
-          >
-            <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-            </div>
-            <div className="flex-1 min-w-0 pr-1">
-              <h4 className="text-sm font-bold text-emerald-600 dark:text-emerald-400 leading-tight">
-                {toast.title}
-              </h4>
-              <p className={`text-xs mt-1 leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                {toast.message}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setToast(null)}
-              className={`p-1 rounded-lg transition-colors cursor-pointer ${
-                isDark ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
-              }`}
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Halo Toaster */}
+      <PolishedToaster position="top-right" />
     </div>
   );
 }
