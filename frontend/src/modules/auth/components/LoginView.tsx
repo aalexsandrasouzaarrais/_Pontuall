@@ -19,52 +19,7 @@ interface LoginViewProps {
   externalFeedback?: { message: string; type: 'error' | 'warning' | 'success' } | null;
 }
 
-// Usuários locais de fallback caso a rede esteja offline
-const DEFAULT_FALLBACK_USERS = [
-  {
-    id: 'mgr-1',
-    nome: 'Camila Duarte',
-    email: 'gestor@pontual.com',
-    emailSecundario: 'rh@pontual.com',
-    senha: '123456',
-    perfil: 'rh',
-    role: 'rh',
-    cargo: 'Gerente de RH & Administração Geral',
-    departamento: 'Recursos Humanos & Gestão Geral',
-    isRh: true,
-    Flg_Gestor_Master: true,
-    avatar: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80'
-  },
-  {
-    id: 'mgr-2',
-    nome: 'Roberto Alves',
-    email: 'gestor.ti@pontual.com',
-    emailSecundario: 'roberto.alves@employer.com.br',
-    senha: '123456',
-    perfil: 'gestor',
-    role: 'manager',
-    cargo: 'Gestor de Setor - TI & Atendimento',
-    departamento: 'Tecnologia & Atendimento',
-    isRh: false,
-    Flg_Gestor_Master: false,
-    avatar: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150&auto=format&fit=crop&q=80'
-  },
-  {
-    id: 'emp-1',
-    nome: 'Lucas Silva',
-    email: 'colaborador@pontual.com',
-    emailSecundario: 'lucas.silva@employer.com.br',
-    senha: '123456',
-    perfil: 'colaborador',
-    role: 'employee',
-    cargo: 'Analista de Atendimento',
-    departamento: 'Atendimento',
-    isRh: false,
-    Flg_Gestor_Master: false,
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-    managerIds: ['mgr-2']
-  }
-];
+
 
 export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFeedback }) => {
   const { theme, setTheme } = useTheme();
@@ -281,31 +236,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         } catch {}
       }
 
-      // Se ainda não encontrou, tenta os usuários fixos de fallback
-      if (!matchedUser) {
-        const norm = cleanInput.toLowerCase();
-        const fallback = DEFAULT_FALLBACK_USERS.find(
-          (u) =>
-            u.email.toLowerCase() === norm ||
-            (u.emailSecundario && u.emailSecundario.toLowerCase() === norm)
-        );
-        if (fallback) {
-          matchedUser = {
-            Idf_Colaborador: fallback.id,
-            Nme_Colaborador: fallback.nome,
-            Eml_Corporativo: fallback.email,
-            Des_Senha_Hash: fallback.senha,
-            Tpo_Perfil: fallback.perfil,
-            Tpo_Cargo: fallback.cargo,
-            Des_Departamento: fallback.departamento,
-            Des_Avatar_Url: fallback.avatar,
-            Flg_Gestor_Master: fallback.Flg_Gestor_Master || false,
-            isRh: fallback.isRh || false,
-            roleType: fallback.perfil,
-            Flg_Ativo: true,
-          };
-        }
-      }
+
 
       if (!matchedUser) {
         showFeedback('Usuário não cadastrado. Verifique o email ou ID informado.', 'error');

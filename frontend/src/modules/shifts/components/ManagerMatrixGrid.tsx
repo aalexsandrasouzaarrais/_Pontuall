@@ -184,17 +184,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     feedback: '',
   });
 
-  // Identifica se estamos na conta de demonstração (Employer RH demo)
-  const isDemoCompany = useMemo(() => {
-    return employees.some(e => 
-      e.id === 'emp-1' || 
-      e.id === 'mgr-1' || 
-      e.email?.toLowerCase() === 'colaborador@pontual.com' ||
-      e.email?.toLowerCase() === 'gestor@pontual.com' ||
-      e.email?.toLowerCase() === 'camila.duarte@employer.com.br'
-    );
-  }, [employees]);
-
   const [approvalsData, setApprovalsData] = useState<Array<{
     id: string;
     employeeId?: string;
@@ -213,74 +202,54 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   }>>([]);
 
   useEffect(() => {
-    if (isDemoCompany && (!justifications || justifications.length === 0) && (!requests || requests.length === 0)) {
-      setApprovalsData([
-        {
-          id: 'ap-1',
-          employeeId: 'emp-1',
-          employeeName: 'Lucas Silva',
-          employeeRole: 'Analista de Atendimento',
-          employeeDept: 'Atendimento',
-          employeeAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-          type: 'Atestado Médico',
-          reason: 'Consulta odontológica e repouso (CID K01)',
-          date: '16/09/2026',
-          documentName: 'atestado.pdf',
-          status: 'Aprovado',
-          actionText: 'Homologado agora',
-          feedback: 'Atestado validado e abonado integralmente.',
-        },
-      ]);
-    } else {
-      const mappedJustifications = (justifications || []).map(j => {
-        const emp = employees.find(e => e.id === j.employeeId);
-        return {
-          id: j.id,
-          employeeId: j.employeeId,
-          employeeName: emp?.name || j.employeeName || 'Colaborador',
-          employeeRole: emp?.role || 'Colaborador',
-          employeeDept: emp?.department || 'Geral',
-          employeeAvatar: emp?.avatar || j.employeeAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-          type: 'Atestado Médico',
-          reason: j.reason,
-          date: j.date,
-          documentName: j.documentName || 'atestado.pdf',
-          documentUrl: j.documentUrl,
-          status: (j.status === 'approved' ? 'Aprovado' : j.status === 'rejected' ? 'Recusado / Falta' : 'Pendente') as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
-          actionText: j.status === 'approved' ? 'Homologado' : j.status === 'rejected' ? 'Não homologado' : undefined,
-          feedback: j.managerNotes || '',
-        };
-      });
+    const mappedJustifications = (justifications || []).map(j => {
+      const emp = employees.find(e => e.id === j.employeeId);
+      return {
+        id: j.id,
+        employeeId: j.employeeId,
+        employeeName: emp?.name || j.employeeName || 'Colaborador',
+        employeeRole: emp?.role || 'Colaborador',
+        employeeDept: emp?.department || 'Geral',
+        employeeAvatar: emp?.avatar || j.employeeAvatar || '',
+        type: 'Atestado Médico',
+        reason: j.reason,
+        date: j.date,
+        documentName: j.documentName || 'atestado.pdf',
+        documentUrl: j.documentUrl,
+        status: (j.status === 'approved' ? 'Aprovado' : j.status === 'rejected' ? 'Recusado / Falta' : 'Pendente') as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
+        actionText: j.status === 'approved' ? 'Homologado' : j.status === 'rejected' ? 'Não homologado' : undefined,
+        feedback: j.managerNotes || '',
+      };
+    });
 
-      const mappedRequests = (requests || []).map(r => {
-        const emp = employees.find(e => e.id === r.employeeId);
-        const targetEmp = employees.find(e => e.id === r.targetEmployeeId);
-        const typeLabel = r.type === 'swap' ? 'Troca de Turno' : 'Folga Compensatória';
-        const formattedReason = r.type === 'swap' && (r.targetEmployeeName || targetEmp?.name)
-          ? `${r.reason} (Com: ${r.targetEmployeeName || targetEmp?.name})`
-          : r.reason;
+    const mappedRequests = (requests || []).map(r => {
+      const emp = employees.find(e => e.id === r.employeeId);
+      const targetEmp = employees.find(e => e.id === r.targetEmployeeId);
+      const typeLabel = r.type === 'swap' ? 'Troca de Turno' : 'Folga Compensatória';
+      const formattedReason = r.type === 'swap' && (r.targetEmployeeName || targetEmp?.name)
+        ? `${r.reason} (Com: ${r.targetEmployeeName || targetEmp?.name})`
+        : r.reason;
 
-        return {
-          id: r.id,
-          employeeId: r.employeeId,
-          employeeName: emp?.name || r.employeeName || 'Colaborador',
-          employeeRole: emp?.role || 'Colaborador',
-          employeeDept: emp?.department || 'Geral',
-          employeeAvatar: emp?.avatar || r.employeeAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-          type: typeLabel,
-          reason: formattedReason,
-          date: r.date,
-          documentName: 'Não se aplica',
-          documentUrl: undefined,
-          status: (r.status === 'approved' ? 'Aprovado' : r.status === 'rejected' ? 'Recusado / Falta' : 'Pendente') as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
-          actionText: r.status === 'approved' ? 'Aprovado' : r.status === 'rejected' ? 'Recusado' : undefined,
-          feedback: r.managerNotes || '',
-        };
-      });
+      return {
+        id: r.id,
+        employeeId: r.employeeId,
+        employeeName: emp?.name || r.employeeName || 'Colaborador',
+        employeeRole: emp?.role || 'Colaborador',
+        employeeDept: emp?.department || 'Geral',
+        employeeAvatar: emp?.avatar || r.employeeAvatar || '',
+        type: typeLabel,
+        reason: formattedReason,
+        date: r.date,
+        documentName: 'Não se aplica',
+        documentUrl: undefined,
+        status: (r.status === 'approved' ? 'Aprovado' : r.status === 'rejected' ? 'Recusado / Falta' : 'Pendente') as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
+        actionText: r.status === 'approved' ? 'Aprovado' : r.status === 'rejected' ? 'Recusado' : undefined,
+        feedback: r.managerNotes || '',
+      };
+    });
 
-      setApprovalsData([...mappedJustifications, ...mappedRequests]);
-    }
-  }, [isDemoCompany, employees, justifications, requests]);
+    setApprovalsData([...mappedJustifications, ...mappedRequests]);
+  }, [employees, justifications, requests]);
 
   const handleApproveOccurrence = async (id: string) => {
     const targetItem = approvalsData.find(i => i.id === id);
@@ -394,117 +363,32 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       });
     }
 
-    if (isDemoCompany) {
-      return [
-        { date: '2026-08-31', name: 'Lucas Silva', role: 'Analista de Atendimento', dept: 'Atendimento', time: '08:00 – 17:00', hours: '8h', status: 'Presente', type: 'Regular', obs: 'Check-in validado via GPS na sede.' },
-        { date: '2026-08-31', name: 'Beatriz Santos', role: 'Especialista de Suporte', dept: 'Suporte Técnico', time: '09:00 – 18:00', hours: '8h', status: 'Presente', type: 'Reunião', obs: 'Apresentação de indicadores de SLA Q3.' },
-        { date: '2026-08-31', name: 'Rafael Mendes', role: 'Operador de Escala', dept: 'Operações', time: '07:00 – 16:00', hours: '8h', status: 'Presente', type: 'Regular', obs: '—' },
-        { date: '2026-08-31', name: 'Mariana Costa', role: 'Consultora de Vendas', dept: 'Comercial', time: '08:30 – 17:30', hours: '8h', status: 'Justificado', type: 'Regular', obs: 'Consulta médica agendada no período matutino - Atestado enviado.' },
-        { date: '2026-09-01', name: 'Lucas Silva', role: 'Analista de Atendimento', dept: 'Atendimento', time: '08:00 – 17:00', hours: '8h', status: 'Presente', type: 'Regular', obs: '—' },
-        { date: '2026-09-01', name: 'Beatriz Santos', role: 'Especialista de Suporte', dept: 'Suporte Técnico', time: '09:00 – 18:00', hours: '8h', status: 'Ausente', type: 'Regular', obs: 'No-show registrado (falta não justificada)' },
-        { date: '2026-09-01', name: 'Rafael Mendes', role: 'Operador de Escala', dept: 'Operações', time: '07:00 – 16:00', hours: '8h', status: 'Presente', type: 'Regular', obs: '—' },
-        { date: '2026-09-01', name: 'Thiago Oliveira', role: 'Desenvolvedor Frontend', dept: 'Tecnologia', time: '10:00 – 19:00', hours: '8h', status: 'Presente', type: 'Plantão', obs: 'Suporte aos deploys de homologação.' },
-      ];
-    }
-
     return [];
-  }, [shifts, employees, isDemoCompany]);
+  }, [shifts, employees]);
 
   // Tab 4 (Tarefas) State - Orbit Visual Identity
   const allAssignablePeople = useMemo(() => {
-    const list = [...employees];
-    if (isDemoCompany) {
-      const hasManager = list.some(e => e.name.toLowerCase().includes('camila'));
-      if (!hasManager) {
-        list.unshift({
-          id: 'mgr-1',
-          name: 'Camila Duarte',
-          role: 'Gerente Geral',
-          department: 'Gestão & Operações',
-          avatar: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
-          email: 'camila.duarte@employer.com.br',
-          phone: '(11) 99999-0000',
-          standardHoursPerWeek: 40,
-          contractType: 'CLT',
-        });
-      }
-    }
-    return list;
-  }, [employees, isDemoCompany]);
+    return [...employees];
+  }, [employees]);
 
   const [reminders, setReminders] = useState<ReminderItem[]>([]);
 
   useEffect(() => {
     async function loadReminders() {
-      if (isDemoCompany) {
-        setReminders([
-          {
-            id: 'rem-1',
-            type: 'reuniao',
-            tag: 'Metas Corporativas',
-            title: 'Alinhamento Semanal de Metas Q3',
-            description: 'Revisão dos indicadores de NPS e tempo de resposta da equipe.',
-            date: '2026-08-28',
-            time: '14:00',
-            link: 'https://meet.google.com/abc-defg-hij',
-            assigneeName: 'Camila Duarte, Lucas Silva, Beatriz Santos',
-            assignedEmployeeIds: ['mgr-1', 'emp-1', 'emp-2'],
-            completed: false,
-          },
-          {
-            id: 'rem-2',
-            type: 'atividade',
-            tag: 'Gestão de Escalas',
-            title: 'Publicar Escala de Setembro',
-            description: 'Validar solicitações de folga e atestados antes do fechamento do mês.',
-            date: '2026-08-29',
-            time: '16:30',
-            assigneeName: 'Camila Duarte, Rafael Mendes',
-            assignedEmployeeIds: ['mgr-1', 'emp-3'],
-            completed: false,
-          },
-          {
-            id: 'rem-3',
-            type: 'plantao',
-            tag: 'Operacional',
-            title: 'Supervisão de Plantão de Fim de Semana',
-            description: 'Garantir escala de contingência e cobertura de suporte aos chamados críticos.',
-            date: '2026-08-30',
-            time: '08:00',
-            assigneeName: 'Rafael Mendes, Juliana Lima',
-            assignedEmployeeIds: ['emp-3', 'emp-6'],
-            completed: true,
-          },
-          {
-            id: 'rem-4',
-            type: 'treinamento',
-            tag: 'Onboarding & Treinamento',
-            title: 'Treinamento de Novos Analistas CLT',
-            description: 'Apresentação das políticas de pontualidade, intervalos e rotina de registro.',
-            date: '2026-09-01',
-            time: '10:00',
-            link: 'https://meet.google.com/tech-treinamento',
-            assigneeName: 'Lucas Silva, Mariana Costa',
-            assignedEmployeeIds: ['emp-1', 'emp-4'],
-            completed: false,
-          }
-        ]);
+      const data = await getRemindersSupabase({
+        companyId: activeEmployee?.companyId,
+        creatorId: activeEmployee?.id,
+        visibleEmployeeIds: employees.map(e => e.id)
+      });
+      if (data && data.length > 0) {
+        setReminders(data);
       } else {
-        const data = await getRemindersSupabase({
-          companyId: activeEmployee?.companyId,
-          creatorId: activeEmployee?.id,
-          visibleEmployeeIds: employees.map(e => e.id)
-        });
-        if (data && data.length > 0) {
-          setReminders(data);
-        } else {
-          setReminders([]);
-        }
+        setReminders([]);
       }
     }
 
     loadReminders();
-  }, [isDemoCompany, employees, activeEmployee?.id, activeEmployee?.companyId]);
+  }, [employees, activeEmployee?.id, activeEmployee?.companyId]);
 
   const [reminderSearch, setReminderSearch] = useState('');
   const [reminderFilterType, setReminderFilterType] = useState<string>('all');
@@ -1203,13 +1087,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
             <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
               <img
-                src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80"
-                alt="Camila Duarte"
+                src={activeEmployee?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(activeEmployee?.name || 'Gestor')}&background=96183c&color=fff&size=150`}
+                alt={activeEmployee?.name || 'Gestor'}
                 className="w-8 h-8 rounded-full object-cover ring-2 ring-purple-600"
               />
               <div className="hidden lg:block text-left text-[11px] leading-tight">
-                <span className="block font-black text-slate-900">Camila Duarte</span>
-                <span className="text-slate-500 text-[9px] font-mono">Gestora Master</span>
+                <span className="block font-black text-slate-900">{activeEmployee?.name || 'Gestão'}</span>
+                <span className="text-slate-500 text-[9px] font-mono">{activeEmployee?.role || (isRh ? 'Gestora Master' : 'Gestor')}</span>
               </div>
             </div>
           </div>

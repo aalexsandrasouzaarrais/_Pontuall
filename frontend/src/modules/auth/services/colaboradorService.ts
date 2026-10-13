@@ -10,9 +10,8 @@ export function mapBneToEmployee(row: any): Employee {
     name: row.Nme_Colaborador,
     role: row.Tpo_Cargo || 'Colaborador',
     department: row.Des_Departamento || 'Geral',
-    avatar: row.Des_Avatar_Url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+    avatar: row.Des_Avatar_Url || (row.Nme_Colaborador ? `https://ui-avatars.com/api/?name=${encodeURIComponent(row.Nme_Colaborador)}&background=96183c&color=fff&size=150` : ''),
     email: row.Eml_Corporativo,
-    phone: row.Num_Telefone || '(11) 99999-9999',
     standardHoursPerWeek: row.Num_Horas_Semanais || 40,
     registrationId: row.Cod_Matricula || '',
     companyId: row.Idf_Empresa,
@@ -333,7 +332,7 @@ export async function createGestorSupabase(gestorData: {
     Tpo_Perfil: isRhFinal ? 'rh' : 'gestor',
     Tpo_Cargo: gestorData.role?.trim() || (isRhFinal ? 'Gerente de RH & Administração Geral' : 'Gestor de Setor'),
     Des_Departamento: gestorData.department?.trim() || (isRhFinal ? 'Recursos Humanos & Gestão Geral' : 'Gestão de Pessoas & Operações'),
-    Des_Avatar_Url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
+    Des_Avatar_Url: `https://ui-avatars.com/api/?name=${encodeURIComponent(gestorData.name.trim())}&background=96183c&color=fff&size=150`,
     Num_Telefone: gestorData.phone?.trim() || '(11) 98765-4321',
     Num_Horas_Semanais: 44,
     Idf_Empresa: companyId,
@@ -440,7 +439,7 @@ export async function syncGoogleUserWithSupabase(googleUser: {
     // Se a conta já existe previamente no sistema, permite o acesso
     if (existing) {
       // Atualiza foto de perfil do Google caso não tenha uma foto personalizada
-      if (googleUser.picture && (!existing.Des_Avatar_Url || existing.Des_Avatar_Url.includes('unsplash'))) {
+      if (googleUser.picture && (!existing.Des_Avatar_Url || existing.Des_Avatar_Url.includes('unsplash') || existing.Des_Avatar_Url.includes('ui-avatars'))) {
         try {
           await supabase
             .from('TAB_Colaborador')

@@ -21,7 +21,6 @@ import {
 } from 'lucide-react';
 import { Employee } from '@/types';
 import { supabase } from '@/shared/services/supabase';
-import { INITIAL_EMPLOYEES } from '@/data/mockData';
 import { 
   ChatAttachment, 
   compressImageFile, 
@@ -118,13 +117,10 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     return (currentEmployee?.companyId || 'demo').replace(/[^a-zA-Z0-9_-]/g, '_');
   }, [currentEmployee?.companyId]);
 
-  const isDemo = !currentEmployee?.companyId;
-
   // Lista de colaboradores cadastrados na empresa
   const allEmployeesList = useMemo(() => {
-    if (employees && employees.length > 0) return employees;
-    return isDemo ? INITIAL_EMPLOYEES : [];
-  }, [employees, isDemo]);
+    return employees || [];
+  }, [employees]);
 
   // Lista de contatos disponíveis para conversa direta (1 a 1), priorizando liderança (Gestor/RH)
   const directContacts = useMemo(() => {
@@ -805,7 +801,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                 title="Ver participantes deste canal"
               >
                 <Users className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{groupMembersList.length + 1} membros</span>
+                <span className="hidden sm:inline">{groupMembersList.length} membros</span>
               </button>
             )}
 
@@ -1274,7 +1270,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                   </div>
                   <div>
                     <h4 className="font-extrabold text-xs leading-tight">Integrantes do Canal</h4>
-                    <p className="text-[10px] text-[#faf0ac]/90">#{activeGroup.name} • {groupMembersList.length + 1} membros</p>
+                    <p className="text-[10px] text-[#faf0ac]/90">#{activeGroup.name} • {groupMembersList.length} membros</p>
                   </div>
                 </div>
                 <button
@@ -1286,35 +1282,11 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                 </button>
               </div>
 
-              {/* Lista com Gestora e Colaboradores */}
+              {/* Lista de Membros do Canal */}
               <div className="p-3 overflow-y-auto space-y-2 flex-1">
-                {/* Gestora */}
-                <div className={`p-2.5 rounded-2xl border flex items-center justify-between ${
-                  isLightTheme ? 'bg-amber-50/70 border-amber-200' : 'bg-amber-500/10 border-amber-500/30'
-                }`}>
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <img
-                      src="https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80"
-                      alt="Camila Duarte"
-                      className="w-8 h-8 rounded-full object-cover ring-2 ring-[#F59242]"
-                    />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-xs font-black truncate">Camila Duarte</p>
-                        <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider bg-[#F59242] text-black">
-                          Gestora
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-slate-400">Criadora do canal • Gestão</p>
-                    </div>
-                  </div>
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20 shrink-0"></span>
-                </div>
-
-                {/* Colaboradores Membros */}
                 <div className="pt-1">
                   <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-1 mb-1.5">
-                    Colaboradores ({groupMembersList.length})
+                    Participantes ({groupMembersList.length})
                   </p>
                   <div className="space-y-1.5">
                     {groupMembersList.map((emp) => {
@@ -1330,7 +1302,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
                             <img
-                              src={emp.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                              src={emp.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(emp.name)}&background=96183c&color=fff&size=150`}
                               alt={emp.name}
                               className="w-7 h-7 rounded-full object-cover ring-1 ring-white/20"
                             />

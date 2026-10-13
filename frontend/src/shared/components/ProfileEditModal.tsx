@@ -518,7 +518,7 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
                   } space-y-1.5 text-xs`}>
                     <div className="flex items-center gap-2">
                       <Mail className="w-3.5 h-3.5 text-[#f89847] shrink-0" />
-                      <span className="font-mono text-[11px] truncate">{manager.email || 'gestor@pontual.com'}</span>
+                      <span className="font-mono text-[11px] truncate">{manager.email || 'Não informado'}</span>
                     </div>
 
                     {manager.phone && (

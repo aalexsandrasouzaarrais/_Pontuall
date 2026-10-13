@@ -22,7 +22,7 @@ interface ManagerViewProps {
   onOpenRequests: () => void;
   onOpenChat: () => void;
   onOpenNotifications: () => void;
-  onSwitchToEmployee: () => void;
+  onSwitchToEmployee?: () => void;
   pendingRequestsCount: number;
   unreadChatCount?: number;
   onResetUnreadChat?: () => void;
