@@ -427,12 +427,9 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
           {/* 2. DESTAQUE PRINCIPAL: QUEM É O GESTOR DESTE COLABORADOR */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-[#f89847]" />
-                <h4 className={`text-xs font-black uppercase tracking-wider ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                  Liderança & Gestão Responsável
-                </h4>
-              </div>
+              <h4 className={`text-xs font-black uppercase tracking-wider ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                Liderança & Gestão Responsável
+              </h4>
               <span className={`text-[10px] font-mono font-bold ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                 Hierarquia Direta
               </span>
@@ -441,25 +438,27 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
             {isUserLideranca ? (
               /* Caso o próprio usuário ativo seja um Gestor ou RH */
               <div
-                className={`p-4 rounded-2xl border flex items-start gap-3.5 ${
+                className={`p-4 rounded-xl border flex flex-col justify-center ${
                   isDark
-                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-200'
-                    : 'bg-amber-50 border-amber-200 text-amber-900'
+                    ? 'bg-white/5 text-slate-200'
+                    : 'bg-slate-50 text-slate-800'
                 }`}
+                style={{ borderColor: '#8A202A' }}
               >
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white shrink-0 shadow-md">
-                  <ShieldCheck className="w-5 h-5" />
-                </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-extrabold text-xs sm:text-sm">
+                    <span className={`font-bold text-xs sm:text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
                       Você possui perfil de Gestão / Liderança
                     </span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 border border-amber-500/40">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      isDark
+                        ? 'bg-[#8A202A]/20 border border-[#8A202A]/50 text-slate-200'
+                        : 'bg-[#8A202A]/10 border border-[#8A202A]/30 text-[#8A202A]'
+                    }`}>
                       {currentUser.roleType === 'rh' ? 'RH Administrador' : 'Gestor de Setor'}
                     </span>
                   </div>
-                  <p className={`text-xs mt-1 leading-relaxed ${isDark ? 'text-amber-300/80' : 'text-amber-800'}`}>
+                  <p className={`text-xs mt-1 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     Você é responsável pela aprovação de escalas, pontos e solicitações da sua equipe. Colaboradores do seu setor reportam diretamente a você.
                   </p>
                 </div>
