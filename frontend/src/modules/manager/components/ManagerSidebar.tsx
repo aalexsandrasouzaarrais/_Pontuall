@@ -97,7 +97,23 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
     },
   ];
 
-  const currentWidth = collapsed ? 72 : 260;
+  const [isMobile, setIsMobile] = React.useState(() => {
+    if (typeof window !== "undefined") {
+      return window.innerWidth < 768;
+    }
+    return false;
+  });
+
+  React.useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  const isActuallyCollapsed = isMobile || collapsed;
+  const currentWidth = isActuallyCollapsed ? 72 : 260;
   const unreadCount = notificationsCount !== undefined ? notificationsCount : 0;
   const displayUser = currentUser || {
     name: 'Gestor',
@@ -108,7 +124,7 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
   return (
     <aside
       aria-label="Navegação do Gestor"
-      aria-expanded={!collapsed}
+      aria-expanded={!isActuallyCollapsed}
       style={{
         width: `${currentWidth}px`,
         minWidth: `${currentWidth}px`,
@@ -120,19 +136,19 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
           : 'bg-[#0F1117] border-r border-[#222634] shadow-2xl'
       }`}
     >
-      {/* Toggle Button */}
+      {/* Toggle Button - Apenas no desktop (hidden md:flex), impedindo expansão no mobile */}
       <button
         type="button"
         onClick={onToggleCollapse}
-        title={collapsed ? 'Expandir barra lateral' : 'Recolher barra lateral'}
-        className={`absolute -right-3 top-6 w-6 h-6 rounded-full border text-sm flex items-center justify-center shadow-lg z-50 cursor-pointer hover:scale-110 transition-all duration-200 ${
+        title={isActuallyCollapsed ? 'Expandir barra lateral' : 'Recolher barra lateral'}
+        className={`hidden md:flex absolute -right-3 top-6 w-6 h-6 rounded-full border text-sm items-center justify-center shadow-lg z-50 cursor-pointer hover:scale-110 transition-all duration-200 ${
           isLightTheme
             ? 'bg-white border-slate-200 text-slate-500 hover:text-white hover:bg-[#96183C]'
             : 'bg-[#1E2230] border-[#222634] text-slate-400 hover:text-white hover:bg-[#96183C]'
         }`}
       >
         <ChevronLeft
-          className={`w-3.5 h-3.5 transition-transform duration-300 ${collapsed ? 'rotate-180' : 'rotate-0'}`}
+          className={`w-3.5 h-3.5 transition-transform duration-300 ${isActuallyCollapsed ? 'rotate-180' : 'rotate-0'}`}
         />
       </button>
 
@@ -161,7 +177,7 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
 
         <div
           className={`flex flex-col whitespace-nowrap overflow-hidden pl-2 pr-3 transition-all duration-300 ${
-            collapsed ? 'opacity-0 -translate-x-2 pointer-events-none max-w-0' : 'opacity-100 translate-x-0'
+            isActuallyCollapsed ? 'opacity-0 -translate-x-2 pointer-events-none max-w-0' : 'opacity-100 translate-x-0'
           }`}
         >
           <span className={`font-extrabold text-sm tracking-tight leading-tight ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
@@ -221,7 +237,7 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
                 </span>
 
                 {/* Badge collapsed */}
-                {collapsed && item.badge !== undefined && (
+                {isActuallyCollapsed && item.badge !== undefined && (
                   <span
                     className={`absolute top-2 right-3 min-w-[18px] h-[18px] px-1 bg-[#96183C] text-white rounded-full text-[10px] font-extrabold flex items-center justify-center border-2 shadow-sm ${
                       isLightTheme ? 'border-white' : 'border-[#0F1117]'
@@ -235,21 +251,21 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
               {/* Label expanded */}
               <span
                 className={`text-[13px] whitespace-nowrap overflow-hidden flex-1 pr-2 transition-all duration-300 ${
-                  collapsed ? 'opacity-0 -translate-x-2 pointer-events-none max-w-0' : 'opacity-100 translate-x-0'
+                  isActuallyCollapsed ? 'opacity-0 -translate-x-2 pointer-events-none max-w-0' : 'opacity-100 translate-x-0'
                 }`}
               >
                 {item.label}
               </span>
 
               {/* Badge expanded */}
-              {!collapsed && item.badge !== undefined && (
+              {!isActuallyCollapsed && item.badge !== undefined && (
                 <span className="mr-3 min-w-[20px] h-5 px-1.5 bg-[#96183C] text-white rounded-full text-[11px] font-extrabold flex items-center justify-center">
                   {item.badge}
                 </span>
               )}
 
               {/* Tooltip when collapsed */}
-              {collapsed && (
+              {isActuallyCollapsed && (
                 <span
                   className={`pointer-events-none absolute left-[76px] px-2.5 py-1.5 rounded-lg border text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-all duration-200 shadow-xl z-50 ${
                     isLightTheme
@@ -299,19 +315,19 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
 
             <span
               className={`text-[13px] whitespace-nowrap overflow-hidden flex-1 pr-2 transition-all duration-300 ${
-                collapsed ? 'opacity-0 -translate-x-2 pointer-events-none max-w-0' : 'opacity-100 translate-x-0'
+                isActuallyCollapsed ? 'opacity-0 -translate-x-2 pointer-events-none max-w-0' : 'opacity-100 translate-x-0'
               }`}
             >
               Notificações
             </span>
 
-            {!collapsed && unreadCount > 0 && (
+            {!isActuallyCollapsed && unreadCount > 0 && (
               <span className="mr-3 min-w-[20px] h-5 px-1.5 bg-gradient-to-br from-[#96183C] to-[#F89847] text-white rounded-full text-[11px] font-extrabold flex items-center justify-center">
                 {unreadCount}
               </span>
             )}
 
-            {collapsed && (
+            {isActuallyCollapsed && (
               <span
                 className={`pointer-events-none absolute left-[76px] px-2.5 py-1.5 rounded-lg border text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-all duration-200 shadow-xl z-50 ${
                   isLightTheme
@@ -331,7 +347,7 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
             isLightTheme ? 'border-slate-200' : 'border-[#222634]'
           }`}
         >
-          {collapsed ? (
+          {isActuallyCollapsed ? (
             <div className="w-full flex items-center justify-center py-1">
               <button
                 type="button"
@@ -395,7 +411,7 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
               type="button"
               onClick={onToggleTheme}
               aria-label={isLightTheme ? 'Ativar tema escuro' : 'Ativar tema claro'}
-              title={collapsed ? (isLightTheme ? 'Modo Escuro' : 'Modo Claro') : undefined}
+              title={isActuallyCollapsed ? (isLightTheme ? 'Modo Escuro' : 'Modo Claro') : undefined}
               className={`group relative flex items-center h-10 w-full rounded-xl text-left cursor-pointer transition-all duration-200 outline-none font-semibold ${
                 isLightTheme
                   ? 'text-slate-600 hover:text-[#96183C] hover:bg-slate-100'
@@ -413,12 +429,12 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
               <span
                 className={`text-xs whitespace-nowrap overflow-hidden flex-1 pr-2 transition-all duration-300 font-medium ${
                   isLightTheme ? 'text-slate-700' : 'text-slate-300'
-                } ${collapsed ? 'opacity-0 -translate-x-2 pointer-events-none max-w-0' : 'opacity-100 translate-x-0'}`}
+                } ${isActuallyCollapsed ? 'opacity-0 -translate-x-2 pointer-events-none max-w-0' : 'opacity-100 translate-x-0'}`}
               >
                 {isLightTheme ? '🌙 Modo Escuro' : '☀️ Modo Claro'}
               </span>
 
-              {collapsed && (
+              {isActuallyCollapsed && (
                 <span
                   className={`pointer-events-none absolute left-[76px] px-2.5 py-1.5 rounded-lg border text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-all duration-200 shadow-xl z-50 ${
                     isLightTheme
