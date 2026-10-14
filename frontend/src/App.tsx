@@ -833,20 +833,20 @@ function AppContent() {
           />
         </div>
 
-        {/* Right: Perfil + Tema + Sair */}
+        {/* Right: Perfil (mobile) + Tema + Sair (desktop) */}
         <div className="flex items-center gap-2 sm:gap-2.5 ml-auto">
-          {/* Foto de Perfil */}
+          {/* Foto de Perfil — Apenas no Mobile (no desktop já fica na barra lateral) */}
           <button
             type="button"
             onClick={() => setIsProfileModalOpen(true)}
             aria-label="Meu Perfil"
             title="Meu Perfil"
-            className="relative cursor-pointer shrink-0 group"
+            className="md:hidden relative cursor-pointer shrink-0 group"
           >
             <img
               src={activeEmployee.avatar}
               alt={activeEmployee.name}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover ring-2 ring-[#F89847]/70 group-hover:ring-[#F89847] group-hover:scale-105 active:scale-95 transition-all shadow-xs"
+              className="w-7 h-7 rounded-full object-cover ring-2 ring-[#F89847]/70 group-hover:ring-[#F89847] active:scale-95 transition-all shadow-xs"
             />
             <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border border-white dark:border-[#0D0F15]" />
           </button>
@@ -871,6 +871,22 @@ function AppContent() {
             <span className="hidden sm:inline font-semibold">
               {!isDark ? 'Escuro' : 'Claro'}
             </span>
+          </button>
+
+          {/* Botão Sair / Logout — Apenas no Desktop */}
+          <button
+            type="button"
+            onClick={handleLogout}
+            aria-label="Sair da conta"
+            title="Sair da conta e voltar ao Login"
+            className={`hidden md:flex items-center gap-1.5 px-3 py-2 rounded-xl border transition-all cursor-pointer ${
+              !isDark
+                ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:border-rose-300'
+                : 'border-rose-900/40 bg-rose-950/20 text-rose-300 hover:bg-rose-900/40 hover:text-white'
+            }`}
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span className="font-semibold">Sair</span>
           </button>
         </div>
       </header>
