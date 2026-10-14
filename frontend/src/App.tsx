@@ -312,6 +312,32 @@ function AppContent() {
     const handleGoogleSession = async (session: any) => {
       if (!session?.user?.email) return;
 
+      const isOAuthRedirect = typeof window !== 'undefined' && 
+        (window.location.hash.includes('access_token') || window.location.search.includes('code='));
+
+      const hasActiveSession = !!safeStorage.getItem('pontual_active_user');
+
+      // Se NÃO for retorno explícito de login OAuth e o usuário NÃO estiver previamente autenticado:
+      // NÃO efetua auto-login no F5 ou ao abrir o link! Permanece na tela de login.
+      if (!isOAuthRedirect && !hasActiveSession) {
+        return;
+      }
+
+      // Se já houver usuário ativo no storage e não for retorno explícito de login OAuth:
+      // não sobrescreve a sessão ativa após F5 com conta de sessão antiga do Supabase
+      if (hasActiveSession && !isOAuthRedirect) {
+        try {
+          const savedUserStr = safeStorage.getItem('pontual_active_user');
+          if (savedUserStr) {
+            const parsed = JSON.parse(savedUserStr);
+            const currentEmail = parsed.email || parsed.Eml_Corporativo;
+            if (currentEmail && currentEmail.toLowerCase() !== session.user.email.toLowerCase()) {
+              return;
+            }
+          }
+        } catch {}
+      }
+
       const googleMeta = session.user.user_metadata || {};
       const googlePicture = googleMeta.avatar_url || googleMeta.picture;
       const googleName = googleMeta.full_name || googleMeta.name || session.user.email.split('@')[0];
@@ -366,7 +392,11 @@ function AppContent() {
         Des_Avatar_Url: emp.avatar,
         Cod_Matricula: emp.registrationId,
         Flg_Gestor_Master: emp.isMasterManager,
-        Flg_Ativo: true
+        Flg_Ativo: true,
+        Idf_Empresa: emp.companyId,
+        companyId: emp.companyId,
+        isRh: emp.isRh,
+        roleType: emp.roleType
       }));
 
       setActiveEmployee(emp);
@@ -381,14 +411,24 @@ function AppContent() {
     };
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
+      const isOAuthRedirect = typeof window !== 'undefined' && 
+        (window.location.hash.includes('access_token') || window.location.search.includes('code='));
+      const hasActiveSession = !!safeStorage.getItem('pontual_active_user');
+
+      if (session && (isOAuthRedirect || hasActiveSession)) {
         handleGoogleSession(session);
       }
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user?.email) {
-        await handleGoogleSession(session);
+        const isOAuthRedirect = typeof window !== 'undefined' && 
+          (window.location.hash.includes('access_token') || window.location.search.includes('code='));
+        const hasActiveSession = !!safeStorage.getItem('pontual_active_user');
+
+        if (isOAuthRedirect || hasActiveSession) {
+          await handleGoogleSession(session);
+        }
       }
     });
 
@@ -790,10 +830,39 @@ function AppContent() {
     showToast('Atestado Recusado', 'A justificativa foi marcada como não homologada no Supabase.', 'info');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn('Erro ao deslogar do Supabase:', err);
+    }
     try {
       safeStorage.removeItem('pontual_active_user');
       safeStorage.removeItem('pontual_role');
+      safeStorage.removeItem('pontual_google_avatar');
+
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.removeItem('pontual_active_user');
+        window.sessionStorage.removeItem('pontual_role');
+        window.sessionStorage.removeItem('pontual_google_avatar');
+        window.localStorage.removeItem('pontual_active_user');
+        window.localStorage.removeItem('pontual_role');
+        window.localStorage.removeItem('pontual_google_avatar');
+
+        // Limpa tokens de autenticação do Supabase residuais no storage
+        try {
+          Object.keys(window.localStorage || {}).forEach(k => {
+            if (k.startsWith('sb-') && k.endsWith('-auth-token')) {
+              window.localStorage.removeItem(k);
+            }
+          });
+          Object.keys(window.sessionStorage || {}).forEach(k => {
+            if (k.startsWith('sb-') && k.endsWith('-auth-token')) {
+              window.sessionStorage.removeItem(k);
+            }
+          });
+        } catch {}
+      }
     } catch {}
     setIsAuthenticated(false);
   };
@@ -875,8 +944,23 @@ function AppContent() {
           />
         </div>
 
-        {/* Right: Botão de Tema + Botão Sair */}
-        <div className="flex items-center gap-3 ml-auto">
+        {/* Right: Perfil (mobile) + Tema + Sair (desktop) */}
+        <div className="flex items-center gap-2 sm:gap-2.5 ml-auto">
+          {/* Foto de Perfil — Apenas no Mobile (no desktop já fica na barra lateral) */}
+          <button
+            type="button"
+            onClick={() => setIsProfileModalOpen(true)}
+            aria-label="Meu Perfil"
+            title="Meu Perfil"
+            className="md:hidden relative cursor-pointer shrink-0 group"
+          >
+            <img
+              src={activeEmployee.avatar}
+              alt={activeEmployee.name}
+              className="w-7 h-7 rounded-full object-cover ring-2 ring-[#F89847]/70 group-hover:ring-[#F89847] active:scale-95 transition-all shadow-xs"
+            />
+            <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border border-white dark:border-[#0D0F15]" />
+          </button>
 
           {/* Botão de Tema Moderno (Claro / Escuro) ativo tanto para Gestor quanto para Colaborador */}
           <button
@@ -884,7 +968,7 @@ function AppContent() {
             onClick={toggleTheme}
             aria-label={!isDark ? 'Ativar tema escuro' : 'Ativar tema claro'}
             title={!isDark ? 'Ativar tema escuro' : 'Ativar tema claro'}
-            className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl border transition-all cursor-pointer ${
               !isDark
                 ? 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200/80 hover:text-slate-900'
                 : 'border-[#252A3A] bg-[#151822] text-slate-300 hover:text-white hover:bg-[#96183c] hover:border-[#96183c]'
@@ -900,20 +984,20 @@ function AppContent() {
             </span>
           </button>
 
-          {/* Botão Sair / Logout para retornar ao Login */}
+          {/* Botão Sair / Logout — Apenas no Desktop */}
           <button
             type="button"
             onClick={handleLogout}
             aria-label="Sair da conta"
             title="Sair da conta e voltar ao Login"
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border transition-all cursor-pointer ${
+            className={`hidden md:flex items-center gap-1.5 px-3 py-2 rounded-xl border transition-all cursor-pointer ${
               !isDark
                 ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:border-rose-300'
                 : 'border-rose-900/40 bg-rose-950/20 text-rose-300 hover:bg-rose-900/40 hover:text-white'
             }`}
           >
             <LogOut className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline font-semibold">Sair</span>
+            <span className="font-semibold">Sair</span>
           </button>
         </div>
       </header>
@@ -952,8 +1036,8 @@ function AppContent() {
         </div>
       ) : (
         /* EMPLOYEE VIEW */
-        <div className={`flex-1 flex overflow-hidden ${(employeeTab === 'requests' || employeeTab === 'justifications') ? (!isDark ? 'bg-[#f4f5f8]' : 'colaborador-page-container') : (!isDark ? 'bg-[#f4f5f8]' : 'bg-[#050104]')}`}>
-          {/* Full-height Collapsible Sidebar */}
+        <div className={`flex-1 flex flex-col md:flex-row overflow-hidden ${(employeeTab === 'requests' || employeeTab === 'justifications') ? (!isDark ? 'bg-[#f4f5f8]' : 'colaborador-page-container') : (!isDark ? 'bg-[#f4f5f8]' : 'bg-[#050104]')}`}>
+          {/* Full-height Collapsible Sidebar on Desktop / Horizontal Sub-Header Bar on Mobile */}
           <EmployeeSidebar
             activeTab={employeeTab}
             onTabChange={(tab) => {
@@ -967,7 +1051,26 @@ function AppContent() {
             onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
             activeEmployee={activeEmployee}
             employees={employees}
-            onSelectEmployee={setActiveEmployee}
+            onSelectEmployee={(emp) => {
+              setActiveEmployee(emp);
+              safeStorage.setItem('pontual_active_user', JSON.stringify({
+                ...emp,
+                Idf_Colaborador: emp.id,
+                Nme_Colaborador: emp.name,
+                Eml_Corporativo: emp.email,
+                Tpo_Perfil: emp.roleType || 'colaborador',
+                Tpo_Cargo: emp.role,
+                Des_Departamento: emp.department,
+                Des_Avatar_Url: emp.avatar,
+                Cod_Matricula: emp.registrationId,
+                Flg_Gestor_Master: emp.isMasterManager,
+                Flg_Ativo: true,
+                Idf_Empresa: emp.companyId,
+                companyId: emp.companyId,
+                isRh: emp.isRh,
+                roleType: emp.roleType
+              }));
+            }}
             notifications={notifications}
             onOpenNotifications={() => setIsNotificationsModalOpen(true)}
             unreadChatCount={unreadChatCount}
@@ -1635,6 +1738,7 @@ function AppContent() {
         currentUser={activeEmployee}
         employees={employees}
         onUpdateAvatar={handleUpdateAvatar}
+        onLogout={handleLogout}
         theme={theme}
       />
 

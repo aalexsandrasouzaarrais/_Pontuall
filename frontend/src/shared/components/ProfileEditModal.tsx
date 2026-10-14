@@ -162,7 +162,7 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
   // Restaurar foto da conta Google (caso use e-mail Google Workspace)
   const handleRestoreGooglePhoto = () => {
     try {
-      const googleSessionUser = localStorage.getItem('pontual_google_avatar');
+      const googleSessionUser = safeStorage.getItem('pontual_google_avatar');
       if (googleSessionUser) {
         setPreviewUrl(googleSessionUser);
         setErrorMessage(null);
