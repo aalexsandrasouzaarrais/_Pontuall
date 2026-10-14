@@ -23,6 +23,7 @@ export type EmployeeTabId =
 interface SidebarItem {
   id: EmployeeTabId;
   label: string;
+  shortLabel?: string;
   icon: React.ReactNode;
   badge?: number | string;
 }
@@ -62,26 +63,31 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
     {
       id: "overview",
       label: "Minha Presença & Ponto",
+      shortLabel: "Presença",
       icon: <Clock className="w-5 h-5" />,
     },
     {
       id: "calendar",
       label: "Calendário",
+      shortLabel: "Escala",
       icon: <CalendarDays className="w-5 h-5" />,
     },
     {
       id: "requests",
       label: "Folgas & Trocas",
+      shortLabel: "Folgas",
       icon: <ArrowLeftRight className="w-5 h-5" />,
     },
     {
       id: "justifications",
       label: "Atestados",
+      shortLabel: "Atestados",
       icon: <FileText className="w-5 h-5" />,
     },
     {
       id: "chat",
       label: "Chat",
+      shortLabel: "Chat",
       icon: <MessageSquare className="w-5 h-5" />,
       badge: unreadChatCount && unreadChatCount > 0 ? unreadChatCount : undefined,
     },
@@ -102,26 +108,103 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // No mobile a sidebar é SEMPRE fixa e recolhida, não permitindo expansão
   const isActuallyCollapsed = isMobile || collapsed;
   const currentWidth = isActuallyCollapsed ? 72 : 260;
 
   return (
-    <aside
-      aria-label="Navegação do Colaborador"
-      aria-expanded={!isActuallyCollapsed}
-      style={{
-        width: `${currentWidth}px`,
-        minWidth: `${currentWidth}px`,
-        transition:
-          "width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-      }}
-      className={`flex flex-col select-none relative flex-shrink-0 self-stretch transition-colors duration-300 ${
-        isLightTheme
-          ? "bg-white border-r border-slate-200 shadow-2xl shadow-slate-200/60"
-          : "bg-[#0F1117] border-r border-[#222634] shadow-2xl"
-      }`}
-    >
+    <>
+      {/* ── BARRA DE NAVEGAÇÃO MOBILE HORIZONTAL (Embaixo do Header) ── */}
+      <nav
+        aria-label="Navegação Mobile do Colaborador"
+        className={`md:hidden w-full flex items-center justify-center px-3 py-1.5 border-b select-none shrink-0 z-40 transition-colors duration-200 ${
+          isLightTheme
+            ? "bg-white/95 border-slate-200/90 shadow-2xs backdrop-blur-md"
+            : "bg-[#0F1117]/95 border-[#222634] shadow-sm backdrop-blur-md"
+        }`}
+      >
+        <div className="flex items-center justify-around w-full max-w-md mx-auto py-0.5">
+          {navItems.map((item) => {
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onTabChange(item.id)}
+                aria-label={item.label}
+                title={item.label}
+                aria-current={isActive ? "page" : undefined}
+                className={`relative flex items-center justify-center h-10 w-11 sm:w-13 rounded-2xl transition-all duration-200 cursor-pointer ${
+                  isActive
+                    ? isLightTheme
+                      ? "bg-gradient-to-r from-[#96183C]/18 to-[#F89847]/18 text-[#96183C] shadow-xs"
+                      : "bg-gradient-to-r from-[#96183C]/35 to-[#F89847]/20 text-[#F89847] border border-[#F89847]/40 shadow-xs"
+                    : isLightTheme
+                    ? "text-slate-500 hover:text-[#96183C] hover:bg-slate-100"
+                    : "text-slate-400 hover:text-white hover:bg-white/5"
+                }`}
+              >
+                <div className="relative flex items-center justify-center">
+                  <span className={`transition-transform duration-200 ${isActive ? "scale-110" : ""}`}>
+                    {item.icon}
+                  </span>
+                  {item.badge !== undefined && (
+                    <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 px-1 bg-[#96183C] text-white rounded-full text-[9px] font-black flex items-center justify-center shadow-xs">
+                      {item.badge}
+                    </span>
+                  )}
+                </div>
+                {isActive && (
+                  <span
+                    className="absolute bottom-1 left-2.5 right-2.5 h-0.5 rounded-full"
+                    style={{
+                      background: "linear-gradient(90deg, #96183C, #F89847)",
+                    }}
+                  />
+                )}
+              </button>
+            );
+          })}
+
+          {/* Notificações na Sidebar Mobile */}
+          <button
+            type="button"
+            onClick={onOpenNotifications}
+            aria-label="Notificações"
+            title="Notificações"
+            className={`relative flex items-center justify-center h-10 w-11 sm:w-13 rounded-2xl transition-all duration-200 cursor-pointer ${
+              isLightTheme
+                ? "text-slate-500 hover:text-[#96183C] hover:bg-slate-100"
+                : "text-slate-400 hover:text-white hover:bg-white/5"
+            }`}
+          >
+            <div className="relative flex items-center justify-center">
+              <Bell className="w-5 h-5 transition-transform duration-200 hover:scale-110" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 px-1 bg-gradient-to-br from-[#96183C] to-[#F89847] text-white rounded-full text-[9px] font-black flex items-center justify-center shadow-xs">
+                  {unreadCount}
+                </span>
+              )}
+            </div>
+          </button>
+        </div>
+      </nav>
+
+      {/* ── SIDEBAR VERTICAL DESKTOP (≥ 768px) ── */}
+      <aside
+        aria-label="Navegação do Colaborador"
+        aria-expanded={!isActuallyCollapsed}
+        style={{
+          width: `${currentWidth}px`,
+          minWidth: `${currentWidth}px`,
+          transition:
+            "width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+        }}
+        className={`hidden md:flex flex-col select-none relative flex-shrink-0 self-stretch transition-colors duration-300 ${
+          isLightTheme
+            ? "bg-white border-r border-slate-200 shadow-2xl shadow-slate-200/60"
+            : "bg-[#0F1117] border-r border-[#222634] shadow-2xl"
+        }`}
+      >
       {/* Toggle Button - Apenas no desktop (hidden md:flex), impedindo expansão no mobile */}
       <button
         type="button"
@@ -471,5 +554,6 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
         </div>
       </div>
     </aside>
+  </>
   );
 };
