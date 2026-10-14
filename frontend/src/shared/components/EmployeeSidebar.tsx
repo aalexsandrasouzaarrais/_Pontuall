@@ -87,12 +87,29 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
     },
   ];
 
-  const currentWidth = collapsed ? 72 : 260;
+  const [isMobile, setIsMobile] = React.useState(() => {
+    if (typeof window !== "undefined") {
+      return window.innerWidth < 768;
+    }
+    return false;
+  });
+
+  React.useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  // No mobile a sidebar é SEMPRE fixa e recolhida, não permitindo expansão
+  const isActuallyCollapsed = isMobile || collapsed;
+  const currentWidth = isActuallyCollapsed ? 72 : 260;
 
   return (
     <aside
       aria-label="Navegação do Colaborador"
-      aria-expanded={!collapsed}
+      aria-expanded={!isActuallyCollapsed}
       style={{
         width: `${currentWidth}px`,
         minWidth: `${currentWidth}px`,
@@ -105,16 +122,16 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
           : "bg-[#0F1117] border-r border-[#222634] shadow-2xl"
       }`}
     >
-      {/* Toggle Button */}
+      {/* Toggle Button - Apenas no desktop (hidden md:flex), impedindo expansão no mobile */}
       <button
         type="button"
         onClick={onToggleCollapse}
         title={
-          collapsed
+          isActuallyCollapsed
             ? "Expandir barra lateral"
             : "Recolher barra lateral"
         }
-        className={`absolute -right-3 top-6 w-6 h-6 rounded-full border text-sm flex items-center justify-center shadow-lg z-50 cursor-pointer hover:scale-110 transition-all duration-200 ${
+        className={`hidden md:flex absolute -right-3 top-6 w-6 h-6 rounded-full border text-sm items-center justify-center shadow-lg z-50 cursor-pointer hover:scale-110 transition-all duration-200 ${
           isLightTheme
             ? "bg-white border-slate-200 text-slate-500 hover:text-white hover:bg-[#96183C]"
             : "bg-[#1E2230] border-[#222634] text-slate-400 hover:text-white hover:bg-[#96183C]"
@@ -122,7 +139,7 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
       >
         <ChevronLeft
           className={`w-3.5 h-3.5 transition-transform duration-300 ${
-            collapsed ? "rotate-180" : "rotate-0"
+            isActuallyCollapsed ? "rotate-180" : "rotate-0"
           }`}
         />
       </button>
@@ -158,7 +175,7 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
   {/* Texto */}
   <div
     className={`flex flex-col whitespace-nowrap overflow-hidden pl-2 pr-3 transition-all duration-300 ${
-      collapsed
+      isActuallyCollapsed
         ? "opacity-0 -translate-x-2 pointer-events-none max-w-0"
         : "opacity-100 translate-x-0"
     }`}
@@ -226,7 +243,7 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
                 </span>
 
                 {/* Badge collapsed */}
-                {collapsed && item.badge !== undefined && (
+                {isActuallyCollapsed && item.badge !== undefined && (
                   <span
                     className={`absolute top-2 right-3 min-w-[18px] h-[18px] px-1 bg-[#96183C] text-white rounded-full text-[10px] font-extrabold flex items-center justify-center border-2 shadow-sm ${
                       isLightTheme
@@ -242,7 +259,7 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
               {/* Label expanded */}
               <span
                 className={`text-[13px] whitespace-nowrap overflow-hidden flex-1 pr-2 transition-all duration-300 ${
-                  collapsed
+                  isActuallyCollapsed
                     ? "opacity-0 -translate-x-2 pointer-events-none max-w-0"
                     : "opacity-100 translate-x-0"
                 }`}
@@ -251,14 +268,14 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
               </span>
 
               {/* Badge expanded */}
-              {!collapsed && item.badge !== undefined && (
+              {!isActuallyCollapsed && item.badge !== undefined && (
                 <span className="mr-3 min-w-[20px] h-5 px-1.5 bg-[#96183C] text-white rounded-full text-[11px] font-extrabold flex items-center justify-center">
                   {item.badge}
                 </span>
               )}
 
               {/* Tooltip when collapsed */}
-              {collapsed && (
+              {isActuallyCollapsed && (
                 <span
                   className={`pointer-events-none absolute left-[76px] px-2.5 py-1.5 rounded-lg border text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-all duration-200 shadow-xl z-50 ${
                     isLightTheme
@@ -312,7 +329,7 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
 
             <span
               className={`text-[13px] whitespace-nowrap overflow-hidden flex-1 pr-2 transition-all duration-300 ${
-                collapsed
+                isActuallyCollapsed
                   ? "opacity-0 -translate-x-2 pointer-events-none max-w-0"
                   : "opacity-100 translate-x-0"
               }`}
@@ -320,13 +337,13 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
               Notificações
             </span>
 
-            {!collapsed && unreadCount > 0 && (
+            {!isActuallyCollapsed && unreadCount > 0 && (
               <span className="mr-3 min-w-[20px] h-5 px-1.5 bg-gradient-to-br from-[#96183C] to-[#F89847] text-white rounded-full text-[11px] font-extrabold flex items-center justify-center">
                 {unreadCount}
               </span>
             )}
 
-            {collapsed && (
+            {isActuallyCollapsed && (
               <span
                 className={`pointer-events-none absolute left-[76px] px-2.5 py-1.5 rounded-lg border text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-all duration-200 shadow-xl z-50 ${
                   isLightTheme
@@ -349,7 +366,7 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
               : "border-[#222634]"
           }`}
         >
-          {collapsed ? (
+          {isActuallyCollapsed ? (
             /* Collapsed: just avatar */
             <div className="group relative flex justify-center">
               <button
