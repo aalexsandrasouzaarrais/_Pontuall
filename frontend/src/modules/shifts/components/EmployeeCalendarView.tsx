@@ -611,9 +611,7 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
               )}
 
               {selectedDayShifts.map((s, idx) => {
-                const isMeeting = s.type === 'meeting';
                 const isOnCall = s.type === 'on_call';
-                const duration = getShiftDuration(s.startTime, s.endTime, s.breakMinutes);
                 const mutedStyle = getMutedShiftColor(s, !isLightTheme);
 
                 return (
@@ -638,60 +636,6 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                         color: mutedStyle.text,
                       }}
                     >
-                      {/* Linha Superior: Categoria & Duração */}
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1"
-                            style={{
-                              backgroundColor: 'rgba(0,0,0,0.2)',
-                              color: mutedStyle.accent,
-                            }}
-                          >
-                            {isMeeting ? (
-                              <>
-                                <Video className="w-3 h-3" />
-                                Reunião
-                              </>
-                            ) : isOnCall ? (
-                              <>
-                                <Clock className="w-3 h-3" />
-                                Plantão 12x36
-                              </>
-                            ) : (
-                              <>
-                                <Clock className="w-3 h-3" />
-                                Turno Regular
-                              </>
-                            )}
-                          </span>
-
-                          <span
-                            className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold"
-                            style={{
-                              backgroundColor: 'rgba(0,0,0,0.15)',
-                              color: mutedStyle.text,
-                            }}
-                          >
-                            {duration}h totais
-                          </span>
-                        </div>
-
-                        {/* Status de Presença */}
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                          s.attendanceStatus === 'present'
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                            : s.attendanceStatus === 'absent'
-                              ? 'bg-red-500/20 text-red-300 border border-red-500/40'
-                              : 'bg-white/10 text-zinc-300 border border-white/10'
-                        }`}>
-                          {s.attendanceStatus === 'present'
-                            ? '✓ Presente'
-                            : s.attendanceStatus === 'absent'
-                              ? 'Falta'
-                              : 'Agendado'}
-                        </span>
-                      </div>
 
                       {/* Título do Turno */}
                       <h4

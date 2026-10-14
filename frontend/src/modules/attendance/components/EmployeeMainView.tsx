@@ -163,16 +163,13 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
             >
               <path d="M10 90 Q 55 15, 105 55 T 190 35 T 270 75 T 350 25" stroke="#f89642" strokeWidth="2.8" />
               <path d="M130 130 C 170 95, 220 170, 280 135 C 320 110, 345 150, 355 165" stroke="#96183c" strokeWidth="2.4" />
-              <circle cx="110" cy="55" r="5" fill="#faf0ac" stroke="#f89642" strokeWidth="1.5" />
-              <circle cx="230" cy="45" r="4" fill="#f89642" stroke="none" />
-              <circle cx="310" cy="85" r="4.5" fill="#96183c" stroke="none" />
             </svg>
           </div>
         )}
 
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-start justify-between gap-6">
           {/* Left Column: Big Digital Clock, Date & Shift Box */}
-          <div className="flex-1 space-y-4">
+          <div className="flex-1 space-y-4 text-center sm:text-left">
             {/* Big Clean Digital Clock & Date */}
             <div>
               <div
@@ -203,7 +200,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
 
             {/* Today's Shift Card */}
             <div
-              className={`rounded-xl p-3 sm:p-3.5 border transition-all duration-300 max-w-md ${
+              className={`rounded-xl p-3 sm:p-3.5 border transition-all duration-300 max-w-md mx-auto sm:mx-0 text-left ${
                 isLightTheme
                   ? 'bg-slate-50 border-slate-200 shadow-2xs'
                   : 'bg-white/5 border-white/10'
