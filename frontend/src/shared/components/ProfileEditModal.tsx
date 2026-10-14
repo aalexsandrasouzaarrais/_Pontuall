@@ -15,8 +15,7 @@ import {
   Clock, 
   Briefcase, 
   Sparkles,
-  ChevronRight,
-  LogOut
+  ChevronRight
 } from 'lucide-react';
 import { Employee } from '@/types';
 import { updateColaboradorAvatarSupabase } from '@/modules/auth/services/colaboradorService';
@@ -28,7 +27,6 @@ interface ProfileEditModalProps {
   currentUser: Employee;
   employees?: Employee[];
   onUpdateAvatar: (newAvatarUrl: string) => void;
-  onLogout?: () => void;
   theme?: 'light' | 'dark';
 }
 
@@ -38,7 +36,6 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
   currentUser,
   employees = [],
   onUpdateAvatar,
-  onLogout,
   theme = 'dark',
 }) => {
   const isDark = theme !== 'light';
@@ -611,7 +608,7 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
                   Posto de Atuação / Sede
                 </span>
                 <span className={`text-xs font-bold mt-0.5 block ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  {currentUser.workplace || 'Sede Employer - Matriz (GPS Validado)'}
+                  {currentUser.workplace || 'Não informado / Central'}
                 </span>
               </div>
             </div>
@@ -621,30 +618,16 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
 
         {/* Footer Actions */}
         <div
-          className={`px-6 py-4 flex items-center justify-between gap-3 border-t shrink-0 ${
+          className={`px-6 py-4 flex items-center justify-between border-t shrink-0 ${
             isDark ? 'border-white/10 bg-[#0e1017]' : 'border-slate-200 bg-slate-50'
           }`}
         >
-          {onLogout ? (
-            <button
-              type="button"
-              onClick={() => {
-                onClose();
-                onLogout();
-              }}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 dark:text-rose-400 transition-all cursor-pointer active:scale-95"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Sair da conta</span>
-            </button>
-          ) : (
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                Pontual Gestão de Escalas & Ponto GPS
-              </span>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              Pontual Gestão de Escalas & Ponto GPS
+            </span>
+          </div>
 
           <button
             type="button"

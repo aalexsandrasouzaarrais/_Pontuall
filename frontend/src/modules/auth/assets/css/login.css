@@ -869,85 +869,20 @@ html.light .pontual-login-page .icon-login--light {
         padding: 24px 16px;
     }
 
-    /* Mobile: Transforma as 3 caixas separadas em UMA ÚNICA caixa integrada para ocupar menos espaço */
     .pontual-login-page .steps {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 4px;
-        padding: 6px 4px;
-        margin-top: 10px;
-        border-radius: 16px;
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.25);
+        grid-template-columns: 1fr;
+        gap: 8px;
     }
 
-    .pontual-login-page.theme-light .steps,
-    html.light .pontual-login-page .steps {
-        background: #ffffff;
-        border: 1px solid rgba(255, 255, 255, 0.85);
-        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
-    }
-
-    .pontual-login-page .step,
-    .pontual-login-page.theme-light .step,
-    html.light .pontual-login-page .step {
-        flex-direction: column;
+    .pontual-login-page .step {
+        flex-direction: row;
         align-items: center;
-        justify-content: center;
-        text-align: center;
         min-height: auto;
-        padding: 7px 4px;
-        border-radius: 11px;
-        background: transparent !important;
-        border: 1px solid transparent !important;
-        box-shadow: none !important;
-        transform: none !important;
-        gap: 5px;
-    }
-
-    .pontual-login-page .step:hover,
-    .pontual-login-page.theme-light .step:hover,
-    html.light .pontual-login-page .step:hover {
-        transform: none !important;
-        background: rgba(255, 255, 255, 0.04) !important;
-        border-color: transparent !important;
-        box-shadow: none !important;
-    }
-
-    .pontual-login-page.theme-light .step:hover,
-    html.light .pontual-login-page .step:hover {
-        background: rgba(150, 24, 60, 0.04) !important;
-    }
-
-    .pontual-login-page .step.active,
-    .pontual-login-page .step.completed {
-        background: rgba(248, 150, 66, 0.14) !important;
-        border: 1px solid rgba(248, 150, 66, 0.35) !important;
-        box-shadow: 0 2px 8px rgba(248, 150, 66, 0.15) !important;
-        transform: none !important;
-    }
-
-    .pontual-login-page.theme-light .step.active,
-    .pontual-login-page.theme-light .step.completed,
-    html.light .pontual-login-page .step.active,
-    html.light .pontual-login-page .step.completed {
-        background: rgba(248, 150, 66, 0.12) !important;
-        border: 1px solid rgba(248, 150, 66, 0.40) !important;
-        box-shadow: 0 2px 8px rgba(248, 150, 66, 0.12) !important;
-        transform: none !important;
-    }
-
-    .pontual-login-page .step-number {
-        width: 22px;
-        height: 22px;
-        font-size: 10.5px;
+        padding: 10px 14px;
     }
 
     .pontual-login-page .step-text {
-        font-size: 10px;
-        line-height: 1.15;
-        text-align: center;
+        font-size: 11px;
     }
 }
 
@@ -1477,83 +1412,4 @@ html.light .pontual-login-page .strength-label.medium {
 .pontual-login-page.theme-light .strength-label.strong,
 html.light .pontual-login-page .strength-label.strong {
     color: #16a34a;
-}
-
-/* =========================================================
-   MOBILE: UNIFICA AS 3 CAIXAS DAS ETAPAS EM UMA ÚNICA CAIXA
-   (Ocupa muito menos espaço vertical na tela mobile)
-========================================================= */
-@media (max-width: 768px) {
-    .pontual-login-page .steps,
-    .pontual-login-page.theme-light .steps,
-    html.light .pontual-login-page .steps {
-        display: grid !important;
-        grid-template-columns: repeat(3, 1fr) !important;
-        gap: 4px !important;
-        padding: 6px !important;
-        margin-top: 10px !important;
-        margin-bottom: 8px !important;
-        border-radius: 16px !important;
-    }
-
-    .pontual-login-page.theme-light .steps,
-    html.light .pontual-login-page .steps {
-        background: #ffffff !important;
-        border: 1px solid rgba(255, 255, 255, 0.9) !important;
-        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12) !important;
-    }
-
-    .pontual-login-page.theme-dark .steps {
-        background: rgba(255, 255, 255, 0.05) !important;
-        border: 1px solid rgba(255, 255, 255, 0.12) !important;
-        box-shadow: 0 4px 18px rgba(0, 0, 0, 0.28) !important;
-    }
-
-    .pontual-login-page .step,
-    .pontual-login-page.theme-light .step,
-    html.light .pontual-login-page .step {
-        flex-direction: column !important;
-        align-items: center !important;
-        justify-content: center !important;
-        text-align: center !important;
-        min-height: auto !important;
-        height: auto !important;
-        padding: 6px 3px !important;
-        border-radius: 11px !important;
-        background: transparent !important;
-        border: 1px solid transparent !important;
-        box-shadow: none !important;
-        transform: none !important;
-        gap: 4px !important;
-    }
-
-    .pontual-login-page.theme-light .step.active,
-    .pontual-login-page.theme-light .step.completed,
-    html.light .pontual-login-page .step.active,
-    html.light .pontual-login-page .step.completed {
-        background: rgba(248, 150, 66, 0.12) !important;
-        border: 1px solid rgba(248, 150, 66, 0.40) !important;
-        box-shadow: 0 2px 8px rgba(248, 150, 66, 0.15) !important;
-    }
-
-    .pontual-login-page.theme-dark .step.active,
-    .pontual-login-page.theme-dark .step.completed {
-        background: rgba(248, 150, 66, 0.15) !important;
-        border: 1px solid rgba(248, 150, 66, 0.35) !important;
-        box-shadow: 0 2px 8px rgba(248, 150, 66, 0.15) !important;
-    }
-
-    .pontual-login-page .step-number {
-        width: 22px !important;
-        height: 22px !important;
-        min-width: 22px !important;
-        min-height: 22px !important;
-        font-size: 10px !important;
-    }
-
-    .pontual-login-page .step-text {
-        font-size: 9.5px !important;
-        line-height: 1.15 !important;
-        text-align: center !important;
-    }
 }

@@ -301,7 +301,7 @@ export const ManagerMainView: React.FC<ManagerMainViewProps> = ({
                     </span>
                     <div className="flex items-center gap-1 mt-0.5">
                       <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded ${
-                        isPj ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
+                        isPj ? 'bg-purple-100 text-purple-800' : emp.contractType === 'TEMPORARIO' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'
                       }`}>
                         {emp.contractType || 'CLT'}
                       </span>
@@ -312,13 +312,34 @@ export const ManagerMainView: React.FC<ManagerMainViewProps> = ({
 
                 <div className="text-right shrink-0">
                   {isPresent ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
-                      GPS OK
-                    </span>
+                    empShift?.checkInLocation?.reportedWorkplace ? (
+                      <span
+                        className="inline-flex items-center gap-1 text-[10px] font-bold text-sky-700 bg-sky-100 px-2 py-0.5 rounded-full"
+                        title={`Posto Declarado: ${empShift.checkInLocation.reportedWorkplace} (${empShift.checkInLocation.address})`}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-sky-600" />
+                        Externo OK
+                      </span>
+                    ) : empShift?.checkInLocation?.gpsValidated !== false ? (
+                      <span
+                        className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full"
+                        title={empShift?.checkInLocation?.address || 'GPS Validado no Posto'}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                        GPS OK
+                      </span>
+                    ) : (
+                      <span
+                        className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full"
+                        title={`Fora do perímetro a ${empShift.checkInLocation?.distanceMeters || 'vários'} metros. Local: ${empShift.checkInLocation?.address}`}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-pulse" />
+                        Fora Raio ({empShift.checkInLocation?.distanceMeters}m)
+                      </span>
+                    )
                   ) : (
                     <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-600 bg-slate-200/80 px-2 py-0.5 rounded-full">
-                      Escala OK
+                      Pendente
                     </span>
                   )}
                 </div>

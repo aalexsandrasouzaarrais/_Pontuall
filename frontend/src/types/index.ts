@@ -37,6 +37,17 @@ export interface ShiftColor {
   description?: string;
 }
 
+export interface ShiftPunchLocation {
+  latitude: number;
+  longitude: number;
+  address: string;
+  gpsValidated: boolean;
+  accuracy?: number;
+  distanceMeters?: number;
+  reportedWorkplace?: string;
+  timestamp?: string;
+}
+
 export interface Shift {
   id: string;
   employeeId: string;
@@ -53,13 +64,19 @@ export interface Shift {
   projectTag?: string;
   color?: ShiftColor;
   workplace?: string;
-  checkInTime?: string;
-  checkInLocation?: {
-    latitude: number;
-    longitude: number;
-    address: string;
-    gpsValidated: boolean;
+  workplaceLocation?: {
+    id?: string;
+    name: string;
+    address?: string;
+    latitude?: number;
+    longitude?: number;
+    radiusMeters?: number;
+    isRemote?: boolean;
   };
+  checkInTime?: string;
+  checkInLocation?: ShiftPunchLocation;
+  checkOutTime?: string;
+  checkOutLocation?: ShiftPunchLocation;
 }
 
 export interface ShiftTemplate {
@@ -67,6 +84,16 @@ export interface ShiftTemplate {
   name: string;
   description: string;
   category: string;
+  workplace?: string;
+  workplaceLocation?: {
+    id?: string;
+    name: string;
+    address?: string;
+    latitude?: number;
+    longitude?: number;
+    radiusMeters?: number;
+    isRemote?: boolean;
+  };
   days: {
     dayOfWeek: number;
     startTime: string;
@@ -74,6 +101,16 @@ export interface ShiftTemplate {
     type: ShiftType;
     breakMinutes?: number;
     title?: string;
+    workplace?: string;
+    workplaceLocation?: {
+      id?: string;
+      name: string;
+      address?: string;
+      latitude?: number;
+      longitude?: number;
+      radiusMeters?: number;
+      isRemote?: boolean;
+    };
   }[];
 }
 

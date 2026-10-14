@@ -13,18 +13,42 @@ import {
   ShieldCheck,
   Building,
   Check,
-  ArrowUpRight
+  ArrowUpRight,
+  RotateCcw,
+  History,
+  FileText,
+  X
 } from 'lucide-react';
 import { Employee, Shift, ManagerReminder } from '@/types';
 import { getWeekDates, calculateShiftDurationHours, getTodayDateString } from '@/shared/utils/dateUtils';
-import confetti from 'canvas-confetti';
 import { ReminderDetailModal } from './ReminderDetailModal';
+import { getCurrentCoordinates, reverseGeocode, validateGeofence, calculateHaversineDistance } from '@/shared/utils/geolocation';
+import { findWorkplaceByName, getStoredWorkplaces } from '@/shared/services/workplaceService';
+import { supabase } from '@/shared/services/supabase';
+
+const formatDistance = (meters?: number) => {
+  if (meters === undefined || meters === null) return '0 m';
+  if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
+  return `${Math.round(meters)} m`;
+};
 
 interface EmployeeMainViewProps {
   employee: Employee;
   shifts: Shift[];
   reminders: ManagerReminder[];
-  onCheckIn: (shiftId: string, locationData: { address: string; gpsValidated: boolean }) => void;
+  onCheckIn: (
+    shiftId: string,
+    locationData: {
+      address: string;
+      gpsValidated: boolean;
+      latitude?: number;
+      longitude?: number;
+      accuracy?: number;
+      distanceMeters?: number;
+      reportedWorkplace?: string;
+    },
+    punchType?: 'entrada' | 'saida'
+  ) => void;
   onNavigateToCalendar: () => void;
   onNavigateToRequests: () => void;
   onNavigateToJustifications: () => void;
@@ -47,8 +71,12 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
 }) => {
   const [selectedReminder, setSelectedReminder] = useState<ManagerReminder | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [isSimulatingGps, setIsSimulatingGps] = useState(false);
+  const [isCapturingGps, setIsCapturingGps] = useState(false);
+  const [gpsError, setGpsError] = useState<string | null>(null);
+  const [temporaryWorkplaceName, setTemporaryWorkplaceName] = useState('');
   const [checkInSuccess, setCheckInSuccess] = useState(false);
+  const [isResettingPunch, setIsResettingPunch] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -101,32 +129,171 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
     employees.find(e => e.id !== employee.id && e.department?.toLowerCase() === employee.department?.toLowerCase() && (e.roleType === 'gestor' || e.role.toLowerCase().includes('gestor') || e.role.toLowerCase().includes('gerente'))) ||
     (employee.roleType === 'colaborador' ? employees.find(e => e.id !== employee.id && (e.roleType === 'gestor' || e.isMasterManager || e.isRh)) : null);
 
-  const handlePunchClock = () => {
+  const isTemporaryWorker =
+    employee.contractType === 'TEMPORARIO' ||
+    todayShift?.workplace?.toLowerCase().includes('temporario') ||
+    todayShift?.workplace?.toLowerCase().includes('externo');
+
+  const currentShiftWorkplace =
+    todayShift?.workplaceLocation ||
+    findWorkplaceByName(todayShift?.workplace) ||
+    findWorkplaceByName(todayShift?.department) ||
+    findWorkplaceByName(employee.workplace) ||
+    getStoredWorkplaces()[0];
+
+  const hasCheckedIn = Boolean(todayShift?.checkInTime);
+  const hasCheckedOut = Boolean(todayShift?.checkOutTime);
+
+  const workplaceMapsUrl = currentShiftWorkplace?.latitude && currentShiftWorkplace?.longitude
+    ? `https://www.google.com/maps/dir/?api=1&destination=${currentShiftWorkplace.latitude},${currentShiftWorkplace.longitude}`
+    : currentShiftWorkplace?.address
+    ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(currentShiftWorkplace.address)}`
+    : null;
+
+  const punchLat = todayShift?.checkInLocation?.latitude;
+  const punchLng = todayShift?.checkInLocation?.longitude;
+  const punchOutLat = todayShift?.checkOutLocation?.latitude;
+  const punchOutLng = todayShift?.checkOutLocation?.longitude;
+  const targetLat = currentShiftWorkplace?.latitude;
+  const targetLng = currentShiftWorkplace?.longitude;
+  const targetRadius = currentShiftWorkplace?.radiusMeters || 200;
+
+  let dynamicDistance = todayShift?.checkInLocation?.distanceMeters;
+  let isGpsValidDynamic = todayShift?.checkInLocation?.gpsValidated;
+
+  if (
+    punchLat !== undefined &&
+    punchLng !== undefined &&
+    punchLat !== 0 &&
+    punchLng !== 0 &&
+    targetLat !== undefined &&
+    targetLng !== undefined &&
+    targetLat !== 0 &&
+    targetLng !== 0
+  ) {
+    dynamicDistance = calculateHaversineDistance(punchLat, punchLng, targetLat, targetLng);
+    isGpsValidDynamic = dynamicDistance <= targetRadius;
+  }
+
+  let dynamicOutDistance = todayShift?.checkOutLocation?.distanceMeters;
+  let isGpsOutValidDynamic = todayShift?.checkOutLocation?.gpsValidated;
+
+  if (
+    punchOutLat !== undefined &&
+    punchOutLng !== undefined &&
+    punchOutLat !== 0 &&
+    punchOutLng !== 0 &&
+    targetLat !== undefined &&
+    targetLng !== undefined &&
+    targetLat !== 0 &&
+    targetLng !== 0
+  ) {
+    dynamicOutDistance = calculateHaversineDistance(punchOutLat, punchOutLng, targetLat, targetLng);
+    isGpsOutValidDynamic = dynamicOutDistance <= targetRadius;
+  }
+
+  const calculateTodayWorkedHours = () => {
+    if (!todayShift?.checkInTime || !todayShift?.checkOutTime) return null;
+    const [inH, inM] = todayShift.checkInTime.split(':').map(Number);
+    const [outH, outM] = todayShift.checkOutTime.split(':').map(Number);
+    let diffMinutes = (outH * 60 + outM) - (inH * 60 + inM);
+    if (diffMinutes < 0) diffMinutes += 24 * 60;
+    const h = Math.floor(diffMinutes / 60);
+    const m = diffMinutes % 60;
+    return `${h}h${m > 0 ? ` ${m}m` : ''}`;
+  };
+
+  const handleResetTodayPunch = async () => {
     if (!todayShift) return;
+    setIsResettingPunch(true);
+    try {
+      if (todayShift.id) {
+        await supabase.from('TAB_Registro_Ponto').delete().eq('Idf_Turno', todayShift.id);
+      }
+      if (employee.id) {
+        await supabase
+          .from('TAB_Registro_Ponto')
+          .delete()
+          .eq('Idf_Colaborador', employee.id)
+          .gte('Dat_Registro', `${todayStr}T00:00:00`);
+      }
+    } catch (err) {
+      console.warn('Erro ao limpar ponto:', err);
+    } finally {
+      setIsResettingPunch(false);
+    }
+    todayShift.attendanceStatus = 'pending';
+    todayShift.checkInTime = undefined;
+    todayShift.checkInLocation = undefined;
+    todayShift.checkOutTime = undefined;
+    todayShift.checkOutLocation = undefined;
+    onCheckIn(todayShift.id, {
+      address: '',
+      gpsValidated: false,
+    }, 'entrada');
+  };
 
-    setIsSimulatingGps(true);
+  const handlePunchClock = async (forceType?: 'entrada' | 'saida') => {
+    if (!todayShift) return;
+    const punchType: 'entrada' | 'saida' = forceType || (hasCheckedIn ? 'saida' : 'entrada');
+    setGpsError(null);
+    setIsCapturingGps(true);
 
-    setTimeout(() => {
-      setIsSimulatingGps(false);
-      setCheckInSuccess(true);
+    try {
+      // 1. Obtém coordenadas reais do GPS do navegador/aparelho via HTML5 Geolocation
+      const coords = await getCurrentCoordinates();
 
-      onCheckIn(todayShift.id, {
-        address: 'Sede Employer - Av. Paulista, 1000 - SP (GPS Validado)',
-        gpsValidated: true,
-      });
+      // 2. Geocodificação reversa gratuita via OpenStreetMap Nominatim (com fallback BigDataCloud)
+      const geoAddress = await reverseGeocode(coords.latitude, coords.longitude);
+      const formattedAddress = geoAddress.formattedAddress;
 
-      try {
-        confetti({
-          particleCount: 70,
-          spread: 60,
-          origin: { y: 0.7 },
-        });
-      } catch {
-        // ignore
+      // 3. Validação de Geofence contra o local alocado para o turno/colaborador
+      let gpsValidated = true;
+      let distanceMeters = 0;
+      let reportedWorkplace: string | undefined = undefined;
+
+      if (isTemporaryWorker) {
+        // Se for temporário ou turno externo, registra o posto informado
+        reportedWorkplace = temporaryWorkplaceName.trim() || 'Posto Externo / Temporário';
+        gpsValidated = true;
+      } else {
+        // Busca o posto de trabalho configurado no turno ou no cadastro do colaborador
+        const targetWorkplace = currentShiftWorkplace;
+
+        if (targetWorkplace && !targetWorkplace.isRemote && targetWorkplace.latitude !== 0) {
+          const geofenceResult = validateGeofence(
+            coords.latitude,
+            coords.longitude,
+            targetWorkplace.latitude,
+            targetWorkplace.longitude,
+            targetWorkplace.radiusMeters || 200
+          );
+          gpsValidated = geofenceResult.isValid;
+          distanceMeters = geofenceResult.distanceMeters;
+        } else {
+          gpsValidated = true;
+        }
       }
 
-      setTimeout(() => setCheckInSuccess(false), 4000);
-    }, 1000);
+      // 4. Executa o check-in com dados reais e tipo (entrada ou saida)
+      onCheckIn(todayShift.id, {
+        address: formattedAddress,
+        gpsValidated,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        accuracy: coords.accuracy,
+        distanceMeters,
+        reportedWorkplace,
+      }, punchType);
+
+      setCheckInSuccess(true);
+      setTimeout(() => setCheckInSuccess(false), 5000);
+    } catch (err: any) {
+      console.error('Erro na captura de ponto GPS:', err);
+      setGpsError(err.message || 'Não foi possível capturar sua localização. Verifique as permissões de GPS.');
+    } finally {
+      setIsCapturingGps(false);
+    }
   };
 
   return (
@@ -137,41 +304,29 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
     >
       {/* 1. TOP SECTION: HERO WITH DIGITAL CLOCK & FLOATING PROOF WIDGET */}
       <div
-        className={`rounded-[32px] p-6 sm:p-8 relative overflow-hidden transition-all duration-300 border ${
+        className={`rounded-3xl p-6 sm:p-7 relative overflow-hidden transition-all duration-300 border ${
           isLightTheme
-            ? 'border-slate-200 shadow-sm'
-            : 'bg-gradient-to-br from-[#1a0010] via-[#0d0008] to-[#0a0308] border-[rgba(150,24,60,0.4)] shadow-2xl'
+            ? 'bg-white border-slate-200/90 shadow-sm'
+            : 'bg-[#13161f] border-white/10 shadow-xl'
         }`}
-        style={
-          isLightTheme
-            ? {
-                background:
-                  'radial-gradient(ellipse 70% 120% at 100% 30%, rgba(248, 150, 66, 0.18) 0%, rgba(150, 24, 60, 0.08) 40%, rgba(255, 255, 255, 0) 75%), #ffffff',
-              }
-            : {}
-        }
       >
-        {/* Abstract continuous background art / doodles */}
-        {isLightTheme && (
-          <div className="absolute inset-0 pointer-events-none overflow-hidden z-0 select-none opacity-65">
-            <svg
-              className="absolute right-8 top-1 w-[400px] h-[200px] text-[#96183c] stroke-current"
-              viewBox="0 0 360 180"
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M10 90 Q 55 15, 105 55 T 190 35 T 270 75 T 350 25" stroke="#f89642" strokeWidth="2.8" />
-              <path d="M130 130 C 170 95, 220 170, 280 135 C 320 110, 345 150, 355 165" stroke="#96183c" strokeWidth="2.4" />
-            </svg>
-          </div>
-        )}
-
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-start justify-between gap-6">
           {/* Left Column: Big Digital Clock, Date & Shift Box */}
-          <div className="flex-1 space-y-4 text-center sm:text-left">
+          <div className="flex-1 space-y-4">
             {/* Big Clean Digital Clock & Date */}
             <div>
+              {/* Badge de Gestor Direto */}
+              {directManager && employee.roleType !== 'gestor' && !employee.isRh && (
+                <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold mb-2.5 border transition-all ${
+                  isLightTheme 
+                    ? 'bg-amber-50/90 border-amber-200 text-amber-900 shadow-2xs' 
+                    : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+                }`}>
+                  <ShieldCheck className="w-3.5 h-3.5 text-[#f89847] shrink-0" />
+                  <span>Gestor Direto: <strong className="font-extrabold">{directManager.name}</strong> ({directManager.role})</span>
+                </div>
+              )}
+
               <div
                 className={`text-4xl sm:text-5xl font-black tracking-tight font-sans ${
                   isLightTheme ? 'text-[#0F172A]' : 'text-white'
@@ -200,7 +355,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
 
             {/* Today's Shift Card */}
             <div
-              className={`rounded-xl p-3 sm:p-3.5 border transition-all duration-300 max-w-md mx-auto sm:mx-0 text-left ${
+              className={`rounded-xl p-3 sm:p-3.5 border transition-all duration-300 max-w-md ${
                 isLightTheme
                   ? 'bg-slate-50 border-slate-200 shadow-2xs'
                   : 'bg-white/5 border-white/10'
@@ -275,20 +430,52 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                     {todayShift.title || 'Atendimento Geral - Turno Manhã'}
                   </div>
 
-                  {/* GPS Proximity status */}
+                  {/* Informações do Posto de Trabalho e Endereço */}
                   <div
-                    className={`pt-1.5 border-t flex items-center gap-1.5 text-[10.5px] font-semibold ${
+                    className={`pt-2 border-t space-y-1 text-xs ${
                       isLightTheme
                         ? 'border-slate-200 text-slate-600'
-                        : 'border-white/10 text-white/60'
+                        : 'border-white/10 text-white/70'
                     }`}
                   >
-                    <span
-                      className={`w-1.5 h-1.5 rounded-full ${
-                        isLightTheme ? 'bg-[#96183c]' : 'bg-[#F89847]'
-                      }`}
-                    />
-                    <span>Validação GPS: Posto Sede SP (Dentro do raio de 100m)</span>
+                    <div className="flex items-center gap-1.5">
+                      <MapPin
+                        className={`w-3.5 h-3.5 shrink-0 ${
+                          isLightTheme ? 'text-[#96183c]' : 'text-[#F89847]'
+                        }`}
+                      />
+                      <span className="font-bold text-xs truncate">
+                        {currentShiftWorkplace?.name || todayShift.workplace || 'Posto Presencial'}
+                      </span>
+                      {currentShiftWorkplace?.isRemote ? (
+                        <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500 font-bold border border-blue-500/20 shrink-0">
+                          Remoto
+                        </span>
+                      ) : (
+                        <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-bold border border-emerald-500/20 shrink-0">
+                          Presencial ({currentShiftWorkplace?.radiusMeters || 200}m)
+                        </span>
+                      )}
+                    </div>
+                    {currentShiftWorkplace?.address && !currentShiftWorkplace.isRemote && (
+                      <div className="pl-5 pt-0.5 space-y-1">
+                        <p className="text-[10.5px] text-slate-400 line-clamp-1">
+                          {currentShiftWorkplace.address}
+                        </p>
+                        {workplaceMapsUrl && (
+                          <a
+                            href={workplaceMapsUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/30 transition-all shadow-2xs cursor-pointer"
+                            title="Abrir rota no Google Maps"
+                          >
+                            <ExternalLink className="w-2.5 h-2.5" />
+                            <span>🗺️ Como Chegar (Google Maps)</span>
+                          </a>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -308,73 +495,255 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
             </div>
           </div>
 
-          {/* Right Column: Floating Proof / Check-In Widget */}
-          <div className="shrink-0 lg:w-72">
+          {/* Right Column: Floating Proof / Check-In Widget (Entrada e Saída) */}
+          <div className="shrink-0 lg:w-80">
             <div
               className={`rounded-3xl p-5 border transition-all duration-300 ${
                 isLightTheme
-                  ? 'bg-white border-slate-200 shadow-sm hover:shadow-md'
-                  : 'bg-white/5 border-white/10'
+                  ? 'bg-white border-slate-200 shadow-sm'
+                  : 'bg-[#151821] border-white/10 shadow-lg'
               }`}
             >
-              {todayShift?.attendanceStatus === 'present' ? (
+              {/* Feedback de Confirmação Digital */}
+              {checkInSuccess && (
+                <div className="mb-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-xs flex items-center gap-2.5 animate-in fade-in duration-200">
+                  <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-bold text-[11px]">Ponto Registrado com Sucesso</p>
+                    <p className="text-[10px] font-mono opacity-80">Protocolo #{Date.now().toString().slice(-6)} • Horário Oficial de Brasília</p>
+                  </div>
+                </div>
+              )}
+
+              {hasCheckedIn && hasCheckedOut ? (
+                /* ESTADO 1: JORNADA COMPLETA (ENTRADA + SAÍDA BATIDAS) */
                 <div className="space-y-3">
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#96183c] to-[#b32047] text-white flex items-center justify-center font-black shadow-sm shrink-0">
-                      <Check className="w-5 h-5 stroke-[3]" />
+                    <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-xs shrink-0">
+                      <Check className="w-5 h-5 stroke-[2.5]" />
                     </div>
                     <div>
                       <h4
-                        className={`text-sm font-black leading-tight ${
-                          isLightTheme ? 'text-[#0F172A]' : 'text-white'
+                        className={`text-sm font-bold leading-tight ${
+                          isLightTheme ? 'text-slate-900' : 'text-white'
                         }`}
                       >
-                        Presença Registrada!
+                        Jornada Concluída
                       </h4>
                       <p
-                        className={`text-[11px] font-semibold mt-0.5 ${
-                          isLightTheme ? 'text-slate-600' : 'text-white/70'
+                        className={`text-[11px] font-medium mt-0.5 ${
+                          isLightTheme ? 'text-slate-500' : 'text-slate-400'
                         }`}
                       >
-                        Check-in às {todayShift.checkInTime || '07:58'} via GPS.
+                        Total trabalhado hoje: <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{calculateTodayWorkedHours() || '8h'}</strong>
                       </p>
                     </div>
                   </div>
 
+                  {/* Detalhes de Entrada e Saída */}
                   <div
-                    className={`pt-2 border-t ${
+                    className={`pt-2 border-t space-y-2 ${
                       isLightTheme ? 'border-slate-100' : 'border-white/10'
                     }`}
                   >
+                    {/* Entrada */}
                     <div
-                      className={`rounded-xl px-3 py-1.5 text-[11px] font-black font-mono text-center shadow-2xs ${
-                        isLightTheme
-                          ? 'bg-[#faf0ac]/80 border border-[#f89642]/60 text-[#96183c]'
-                          : 'bg-[#96183c]/30 border border-[#f89642]/40 text-white'
+                      className={`rounded-xl p-2.5 text-[10px] space-y-1 ${
+                        isLightTheme ? 'bg-slate-50 border border-slate-200 text-slate-700' : 'bg-white/5 border border-white/10 text-white/90'
                       }`}
                     >
-                      Local: Sede Employer - SP
+                      <div className="flex items-center justify-between font-bold">
+                        <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1">🟢 Entrada: {todayShift.checkInTime}</span>
+                        {isGpsValidDynamic ? (
+                          <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-mono font-semibold">GPS OK ({formatDistance(dynamicDistance)})</span>
+                        ) : (
+                          <span className="text-[9px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-500 font-mono font-semibold">Fora ({formatDistance(dynamicDistance)})</span>
+                        )}
+                      </div>
+                      <p className="text-[9.5px] text-slate-400 truncate">{todayShift.checkInLocation?.address || 'Localização Registrada'}</p>
                     </div>
+
+                    {/* Saída */}
+                    <div
+                      className={`rounded-xl p-2.5 text-[10px] space-y-1 ${
+                        isLightTheme ? 'bg-slate-50 border border-slate-200 text-slate-700' : 'bg-white/5 border border-white/10 text-white/90'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between font-bold">
+                        <span className="text-rose-600 dark:text-rose-400 flex items-center gap-1">🛑 Saída: {todayShift.checkOutTime}</span>
+                        {isGpsOutValidDynamic ? (
+                          <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-mono font-semibold">GPS OK ({formatDistance(dynamicOutDistance)})</span>
+                        ) : (
+                          <span className="text-[9px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-500 font-mono font-semibold">Fora ({formatDistance(dynamicOutDistance)})</span>
+                        )}
+                      </div>
+                      <p className="text-[9.5px] text-slate-400 truncate">{todayShift.checkOutLocation?.address || 'Localização Registrada'}</p>
+                    </div>
+
+                    {/* Botão de Histórico */}
+                    <button
+                      type="button"
+                      onClick={() => setIsHistoryOpen(true)}
+                      className="w-full mt-2 py-2 px-3 rounded-xl border border-slate-200 dark:border-white/10 text-[10.5px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <History className="w-3.5 h-3.5" />
+                      <span>Meu Histórico de Batidas</span>
+                    </button>
+
+                    {/* Botão para limpar ponto e testar novamente */}
+                    <button
+                      type="button"
+                      onClick={handleResetTodayPunch}
+                      disabled={isResettingPunch}
+                      className="w-full py-1.5 px-3 rounded-xl border border-dashed border-slate-300 dark:border-white/20 text-[10px] font-semibold text-slate-500 dark:text-white/60 hover:text-amber-500 hover:border-amber-400 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <RotateCcw className={`w-3 h-3 ${isResettingPunch ? 'animate-spin' : ''}`} />
+                      {isResettingPunch ? 'Limpando...' : 'Limpar Ponto de Teste'}
+                    </button>
                   </div>
                 </div>
-              ) : (
-                <div className="space-y-3 text-center">
+              ) : hasCheckedIn ? (
+                /* ESTADO 2: ENTRADA JÁ REGISTRADA, SAÍDA PENDENTE */
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-slate-800 dark:bg-white/10 text-white flex items-center justify-center font-bold shadow-xs shrink-0">
+                      <Clock className="w-5 h-5 text-emerald-400" />
+                    </div>
+                    <div>
+                      <h4
+                        className={`text-sm font-bold leading-tight ${
+                          isLightTheme ? 'text-slate-900' : 'text-white'
+                        }`}
+                      >
+                        Expediente em Andamento
+                      </h4>
+                      <p
+                        className={`text-[11px] font-medium mt-0.5 ${
+                          isLightTheme ? 'text-slate-500' : 'text-slate-400'
+                        }`}
+                      >
+                        Entrada às <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{todayShift.checkInTime}</strong>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Resumo da Entrada */}
+                  <div
+                    className={`rounded-xl p-2.5 text-[10px] space-y-1 ${
+                      isLightTheme ? 'bg-slate-50 border border-slate-200 text-slate-700' : 'bg-white/5 border border-white/10 text-white/90'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between font-bold">
+                      <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1">🟢 Entrada: {todayShift.checkInTime}</span>
+                      {isGpsValidDynamic ? (
+                        <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-mono font-semibold">GPS OK ({formatDistance(dynamicDistance)})</span>
+                      ) : (
+                        <span className="text-[9px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-500 font-mono font-semibold">Fora ({formatDistance(dynamicDistance)})</span>
+                      )}
+                    </div>
+                    <p className="text-[9.5px] text-slate-400 truncate">{todayShift.checkInLocation?.address || 'Localização Registrada'}</p>
+                  </div>
+
+                  {/* Botão de Bater Saída */}
                   <button
                     type="button"
-                    onClick={handlePunchClock}
-                    disabled={isSimulatingGps}
-                    className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#96183c] via-[#b32047] to-[#f89642] hover:opacity-95 text-white font-black text-xs shadow-md shadow-[#96183c]/30 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    onClick={() => handlePunchClock('saida')}
+                    disabled={isCapturingGps}
+                    className="w-full py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    <span>{isSimulatingGps ? '📡' : '⏱️'}</span>
-                    <span>{isSimulatingGps ? 'VALIDANDO GPS...' : 'REGISTRAR PONTO AGORA'}</span>
+                    <Clock className="w-4 h-4" />
+                    <span>{isCapturingGps ? 'Obtendo GPS e Endereço...' : 'Registrar Saída'}</span>
                   </button>
+
+                  {/* Mensagem de Erro de GPS amigável se a permissão for negada */}
+                  {gpsError && (
+                    <div className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 text-[11px] font-semibold text-left">
+                      ⚠️ {gpsError}
+                    </div>
+                  )}
+
+                  {/* Botão de Histórico */}
+                  <button
+                    type="button"
+                    onClick={() => setIsHistoryOpen(true)}
+                    className="w-full mt-2 py-1.5 px-3 rounded-xl border border-slate-200 dark:border-white/10 text-[10.5px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <History className="w-3.5 h-3.5" />
+                    <span>Meu Histórico de Batidas</span>
+                  </button>
+
+                  {/* Botão para limpar ponto e testar novamente */}
+                  <button
+                    type="button"
+                    onClick={handleResetTodayPunch}
+                    disabled={isResettingPunch}
+                    className="w-full py-1.5 px-3 rounded-xl border border-dashed border-slate-300 dark:border-white/20 text-[10px] font-semibold text-slate-500 dark:text-white/60 hover:text-amber-500 hover:border-amber-400 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <RotateCcw className={`w-3 h-3 ${isResettingPunch ? 'animate-spin' : ''}`} />
+                    {isResettingPunch ? 'Limpando...' : 'Limpar Ponto de Teste'}
+                  </button>
+                </div>
+              ) : (
+                /* ESTADO 3: ENTRADA PENDENTE (NENHUM PONTO BATIDO AINDA) */
+                <div className="space-y-3">
+                  {/* Se for colaborador temporário, exibe campo para declarar o posto/cliente */}
+                  {isTemporaryWorker && (
+                    <div className="text-left space-y-1 mb-2">
+                      <label
+                        className={`text-[10px] font-bold uppercase tracking-wider block ${
+                          isLightTheme ? 'text-slate-600' : 'text-slate-300'
+                        }`}
+                      >
+                        Posto / Cliente Atendido:
+                      </label>
+                      <input
+                        type="text"
+                        value={temporaryWorkplaceName}
+                        onChange={(e) => setTemporaryWorkplaceName(e.target.value)}
+                        placeholder="Ex: Stand Feira Anhembi, Obra Torre B..."
+                        className={`w-full px-3 py-2 text-xs rounded-xl border font-medium outline-hidden transition-all ${
+                          isLightTheme
+                            ? 'bg-slate-50 border-slate-300 text-slate-800 focus:border-slate-600'
+                            : 'bg-white/10 border-white/20 text-white focus:border-white/40'
+                        }`}
+                      />
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => handlePunchClock('entrada')}
+                    disabled={isCapturingGps}
+                    className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <Clock className="w-4 h-4" />
+                    <span>{isCapturingGps ? 'Obtendo GPS e Endereço...' : 'Registrar Entrada'}</span>
+                  </button>
+
+                  {/* Mensagem de Erro de GPS amigável se a permissão for negada */}
+                  {gpsError && (
+                    <div className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 text-[11px] font-semibold text-left">
+                      ⚠️ {gpsError}
+                    </div>
+                  )}
+
                   <p
-                    className={`text-[10px] font-mono font-bold ${
+                    className={`text-[10.5px] font-medium text-center ${
                       isLightTheme ? 'text-slate-500' : 'text-slate-400'
                     }`}
                   >
-                    Localização capturada via GPS criptografado
+                    Início da jornada com geolocalização auditável
                   </p>
+
+                  {/* Botão de Histórico */}
+                  <button
+                    type="button"
+                    onClick={() => setIsHistoryOpen(true)}
+                    className="w-full pt-1 text-[10.5px] font-semibold text-slate-500 dark:text-slate-400 hover:underline flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <History className="w-3.5 h-3.5" />
+                    <span>Ver Histórico de Batidas</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -924,6 +1293,119 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
         currentEmployee={employee}
         isLightTheme={isLightTheme}
       />
+
+      {/* MODAL DE HISTÓRICO DE BATIDAS / FOLHA DE PONTO DO COLABORADOR */}
+      {isHistoryOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div
+            className={`w-full max-w-2xl rounded-2xl border shadow-2xl overflow-hidden flex flex-col max-h-[85vh] ${
+              isLightTheme ? 'bg-white border-slate-200 text-slate-800' : 'bg-[#151821] border-white/10 text-white'
+            }`}
+          >
+            {/* Header */}
+            <div className={`px-5 py-4 border-b flex items-center justify-between ${
+              isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'
+            }`}>
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center">
+                  <History className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold">Meu Histórico de Batidas</h3>
+                  <p className="text-[11px] text-slate-400">Extrato de presenças e jornadas registradas via GPS</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsHistoryOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Content Table */}
+            <div className="p-4 overflow-y-auto space-y-2 flex-1">
+              {empShifts.length === 0 ? (
+                <div className="text-center py-10 text-xs text-slate-400 font-medium">
+                  Nenhum registro de turno localizado para o período.
+                </div>
+              ) : (
+                empShifts.map((shift) => {
+                  const hasIn = Boolean(shift.checkInTime);
+                  const hasOut = Boolean(shift.checkOutTime);
+                  return (
+                    <div
+                      key={shift.id}
+                      className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
+                        isLightTheme ? 'bg-slate-50/70 border-slate-200' : 'bg-white/[0.03] border-white/10'
+                      }`}
+                    >
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-[12px]">{shift.date.split('-').reverse().join('/')}</span>
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                            shift.attendanceStatus === 'present'
+                              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                              : 'bg-slate-200 text-slate-700 dark:bg-white/10 dark:text-white/70'
+                          }`}>
+                            {shift.attendanceStatus === 'present' ? 'Presente' : 'Pendente'}
+                          </span>
+                        </div>
+                        <p className="text-[10.5px] text-slate-400">
+                          Turno: {shift.startTime} – {shift.endTime} • {shift.workplace || 'Posto Presencial'}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-3 shrink-0">
+                        {/* Entrada */}
+                        <div className="text-right">
+                          <span className="block text-[9px] uppercase font-bold text-slate-400">Entrada</span>
+                          <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                            {hasIn ? shift.checkInTime : '—'}
+                          </span>
+                        </div>
+
+                        {/* Saída */}
+                        <div className="text-right">
+                          <span className="block text-[9px] uppercase font-bold text-slate-400">Saída</span>
+                          <span className="font-mono font-bold text-rose-600 dark:text-rose-400">
+                            {hasOut ? shift.checkOutTime : '—'}
+                          </span>
+                        </div>
+
+                        {/* GPS Badge */}
+                        <div className="text-right min-w-[70px]">
+                          <span className="block text-[9px] uppercase font-bold text-slate-400">GPS</span>
+                          <span className={`text-[9.5px] font-bold ${
+                            shift.checkInLocation?.gpsValidated !== false ? 'text-emerald-500' : 'text-amber-500'
+                          }`}>
+                            {hasIn ? (shift.checkInLocation?.gpsValidated !== false ? '✓ Validado' : '⚠ Fora') : '—'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className={`px-5 py-3 border-t flex items-center justify-between text-[11px] text-slate-400 ${
+              isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'
+            }`}>
+              <span>Conforme requisitos da Portaria MTP 671/2021</span>
+              <button
+                type="button"
+                onClick={() => setIsHistoryOpen(false)}
+                className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs cursor-pointer"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -97,7 +97,6 @@ import {
   Sun, 
   Moon, 
   LogOut,
-  Bell,
   X 
 } from 'lucide-react';
 import { ThemeProvider, useTheme } from '@/shared/context/ThemeContext';
@@ -440,36 +439,79 @@ function AppContent() {
 
 
 
-  // Check-In handler for employee
-  const handleCheckIn = (shiftId: string, locationData: { address: string; gpsValidated: boolean }) => {
+  // Check-In / Check-Out handler for employee
+  const handleCheckIn = (
+    shiftId: string,
+    locationData: {
+      address: string;
+      gpsValidated: boolean;
+      latitude?: number;
+      longitude?: number;
+      accuracy?: number;
+      distanceMeters?: number;
+      reportedWorkplace?: string;
+    },
+    punchType: 'entrada' | 'saida' = 'entrada'
+  ) => {
     const now = new Date();
     const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     
-    // Salva o registro de ponto na TAB_Registro_Ponto no Supabase
-    registerPunchSupabase(shiftId, activeEmployee.id, locationData);
+    // Salva o registro de ponto na TAB_Registro_Ponto no Supabase com coordenadas reais e tipo
+    registerPunchSupabase(shiftId, activeEmployee.id, locationData, punchType);
 
     setShifts(prev => prev.map(s => {
       if (s.id === shiftId) {
-        return {
-          ...s,
-          attendanceStatus: 'present',
-          checkInTime: timeStr,
-          checkInLocation: {
-            latitude: -23.5505,
-            longitude: -46.6333,
-            address: locationData.address,
-            gpsValidated: locationData.gpsValidated,
-          }
-        };
+        if (punchType === 'saida') {
+          return {
+            ...s,
+            checkOutTime: timeStr,
+            checkOutLocation: {
+              latitude: locationData.latitude ?? -23.5505,
+              longitude: locationData.longitude ?? -46.6333,
+              address: locationData.address,
+              gpsValidated: locationData.gpsValidated,
+              accuracy: locationData.accuracy,
+              distanceMeters: locationData.distanceMeters,
+              reportedWorkplace: locationData.reportedWorkplace,
+              timestamp: now.toISOString(),
+            }
+          };
+        } else {
+          return {
+            ...s,
+            attendanceStatus: 'present',
+            checkInTime: timeStr,
+            checkInLocation: {
+              latitude: locationData.latitude ?? -23.5505,
+              longitude: locationData.longitude ?? -46.6333,
+              address: locationData.address,
+              gpsValidated: locationData.gpsValidated,
+              accuracy: locationData.accuracy,
+              distanceMeters: locationData.distanceMeters,
+              reportedWorkplace: locationData.reportedWorkplace,
+              timestamp: now.toISOString(),
+            }
+          };
+        }
       }
       return s;
     }));
 
-    // Add confirmation notification
+    // Mensagem contextual para o colaborador
+    let statusMsg = 'GPS Validado no Posto';
+    if (locationData.reportedWorkplace) {
+      statusMsg = `Posto declarado: ${locationData.reportedWorkplace}`;
+    } else if (!locationData.gpsValidated && locationData.distanceMeters) {
+      statusMsg = `Aviso: Ponto registrado a ${locationData.distanceMeters}m do posto alocado`;
+    }
+
+    const isExit = punchType === 'saida';
     const newNotif: NotificationItem = {
       id: `notif-${Date.now()}`,
-      title: 'Ponto Registrado com Sucesso!',
-      message: `Sua presença foi confirmada às ${timeStr} na Sede Employer (GPS Validado).`,
+      title: isExit
+        ? (locationData.gpsValidated ? 'Saída Registrada com Sucesso!' : 'Saída Registrada (Aviso de Perímetro)')
+        : (locationData.gpsValidated ? 'Entrada Registrada com Sucesso!' : 'Entrada Registrada (Aviso de Perímetro)'),
+      message: `${isExit ? 'Saída' : 'Presença'} confirmada às ${timeStr} (${statusMsg}). Local: ${locationData.address}`,
       type: 'system',
       timestamp: 'Agora',
       read: false,
@@ -833,23 +875,8 @@ function AppContent() {
           />
         </div>
 
-        {/* Right: Perfil (mobile) + Tema + Sair (desktop) */}
-        <div className="flex items-center gap-2 sm:gap-2.5 ml-auto">
-          {/* Foto de Perfil — Apenas no Mobile (no desktop já fica na barra lateral) */}
-          <button
-            type="button"
-            onClick={() => setIsProfileModalOpen(true)}
-            aria-label="Meu Perfil"
-            title="Meu Perfil"
-            className="md:hidden relative cursor-pointer shrink-0 group"
-          >
-            <img
-              src={activeEmployee.avatar}
-              alt={activeEmployee.name}
-              className="w-7 h-7 rounded-full object-cover ring-2 ring-[#F89847]/70 group-hover:ring-[#F89847] active:scale-95 transition-all shadow-xs"
-            />
-            <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border border-white dark:border-[#0D0F15]" />
-          </button>
+        {/* Right: Botão de Tema + Botão Sair */}
+        <div className="flex items-center gap-3 ml-auto">
 
           {/* Botão de Tema Moderno (Claro / Escuro) ativo tanto para Gestor quanto para Colaborador */}
           <button
@@ -857,7 +884,7 @@ function AppContent() {
             onClick={toggleTheme}
             aria-label={!isDark ? 'Ativar tema escuro' : 'Ativar tema claro'}
             title={!isDark ? 'Ativar tema escuro' : 'Ativar tema claro'}
-            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl border transition-all cursor-pointer ${
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all cursor-pointer ${
               !isDark
                 ? 'border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-200/80 hover:text-slate-900'
                 : 'border-[#252A3A] bg-[#151822] text-slate-300 hover:text-white hover:bg-[#96183c] hover:border-[#96183c]'
@@ -873,20 +900,20 @@ function AppContent() {
             </span>
           </button>
 
-          {/* Botão Sair / Logout — Apenas no Desktop */}
+          {/* Botão Sair / Logout para retornar ao Login */}
           <button
             type="button"
             onClick={handleLogout}
             aria-label="Sair da conta"
             title="Sair da conta e voltar ao Login"
-            className={`hidden md:flex items-center gap-1.5 px-3 py-2 rounded-xl border transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border transition-all cursor-pointer ${
               !isDark
                 ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 hover:border-rose-300'
                 : 'border-rose-900/40 bg-rose-950/20 text-rose-300 hover:bg-rose-900/40 hover:text-white'
             }`}
           >
             <LogOut className="w-3.5 h-3.5" />
-            <span className="font-semibold">Sair</span>
+            <span className="hidden sm:inline font-semibold">Sair</span>
           </button>
         </div>
       </header>
@@ -925,8 +952,8 @@ function AppContent() {
         </div>
       ) : (
         /* EMPLOYEE VIEW */
-        <div className={`flex-1 flex flex-col md:flex-row overflow-hidden ${(employeeTab === 'requests' || employeeTab === 'justifications') ? (!isDark ? 'bg-[#f4f5f8]' : 'colaborador-page-container') : (!isDark ? 'bg-[#f4f5f8]' : 'bg-[#050104]')}`}>
-          {/* Full-height Collapsible Sidebar on Desktop / Horizontal Sub-Header Bar on Mobile */}
+        <div className={`flex-1 flex overflow-hidden ${(employeeTab === 'requests' || employeeTab === 'justifications') ? (!isDark ? 'bg-[#f4f5f8]' : 'colaborador-page-container') : (!isDark ? 'bg-[#f4f5f8]' : 'bg-[#050104]')}`}>
+          {/* Full-height Collapsible Sidebar */}
           <EmployeeSidebar
             activeTab={employeeTab}
             onTabChange={(tab) => {
@@ -949,7 +976,7 @@ function AppContent() {
           />
 
           {/* Main Content */}
-          <main className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-5 relative">
+          <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 relative">
             {/* Tab 1: Overview & Digital Punch Clock */}
             {employeeTab === 'overview' && (() => {
               const filteredReminders = (reminders || []).filter(rem => {
@@ -1608,7 +1635,6 @@ function AppContent() {
         currentUser={activeEmployee}
         employees={employees}
         onUpdateAvatar={handleUpdateAvatar}
-        onLogout={handleLogout}
         theme={theme}
       />
 
