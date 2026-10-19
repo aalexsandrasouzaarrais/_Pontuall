@@ -51,6 +51,7 @@ import {
 import { 
   getShiftsSupabase, 
   createShiftSupabase, 
+  updateShiftSupabase,
   registerPunchSupabase,
   deleteShiftSupabase,
   deleteBulkShiftsSupabase
@@ -714,6 +715,12 @@ function AppContent() {
   const handleUpdateShift = async (updated: Shift, notifyEmployee: boolean = true, changeReason?: string) => {
     const prevShift = shifts.find(s => s.id === updated.id);
     setShifts(prev => prev.map(s => s.id === updated.id ? updated : s));
+
+    try {
+      await updateShiftSupabase(updated);
+    } catch (err) {
+      console.warn('Erro ao atualizar escala no Supabase:', err);
+    }
 
     if ((notifyEmployee || (prevShift && prevShift.status === 'published')) && updated.status === 'published') {
       const emp = employees.find(e => e.id === updated.employeeId);

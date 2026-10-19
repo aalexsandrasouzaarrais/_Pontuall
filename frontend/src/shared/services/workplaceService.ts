@@ -18,33 +18,15 @@ export interface WorkplaceLocation {
 
 const STORAGE_KEY = 'pontuall_workplaces_v1';
 
-// Locais padrão iniciais do sistema
+// Locais padrão iniciais do sistema (neutros e personalizáveis pelo gestor)
 export const DEFAULT_WORKPLACES: WorkplaceLocation[] = [
   {
-    id: 'wp-sede-sp',
-    name: 'Sede Central - SP',
-    address: 'Av. Paulista, 1000 - Bela Vista, São Paulo - SP',
-    latitude: -23.5650,
-    longitude: -46.6515,
+    id: 'wp-matriz',
+    name: 'Sede Principal / Matriz',
+    address: 'Endereço Principal da Empresa',
+    latitude: 0,
+    longitude: 0,
     radiusMeters: 200,
-    isRemote: false,
-  },
-  {
-    id: 'wp-galpao-01',
-    name: 'Logística - Galpão 01',
-    address: 'Av. das Nações Unidas, 12901 - Brooklin, São Paulo - SP',
-    latitude: -23.6082,
-    longitude: -46.6968,
-    radiusMeters: 300,
-    isRemote: false,
-  },
-  {
-    id: 'wp-filial-campinas',
-    name: 'Filial Campinas',
-    address: 'Av. Francisco Glicério, 1000 - Centro, Campinas - SP',
-    latitude: -22.9056,
-    longitude: -47.0608,
-    radiusMeters: 250,
     isRemote: false,
   },
   {
@@ -68,6 +50,25 @@ export const DEFAULT_WORKPLACES: WorkplaceLocation[] = [
 ];
 
 /**
+ * Registra um posto caso ele ainda não esteja cadastrado na lista local
+ */
+export function registerWorkplaceIfNew(wp: WorkplaceLocation): void {
+  if (!wp || !wp.name) return;
+  try {
+    const list = getStoredWorkplaces();
+    const exists = list.some(w => 
+      w.id === wp.id || 
+      (w.name.toLowerCase() === wp.name.toLowerCase() && w.address === wp.address)
+    );
+    if (!exists) {
+      saveWorkplaces([...list, wp]);
+    }
+  } catch (err) {
+    console.warn('Erro ao registrar posto novo:', err);
+  }
+}
+
+/**
  * Retorna todos os postos de trabalho cadastrados
  */
 export function getStoredWorkplaces(): WorkplaceLocation[] {
@@ -76,7 +77,9 @@ export function getStoredWorkplaces(): WorkplaceLocation[] {
     if (!raw) return DEFAULT_WORKPLACES;
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed;
+      // Filtra e limpa resquícios antigos de 'wp-sede-sp' se o usuário ainda tiver em cache antigo
+      const filtered = parsed.filter(w => w.id !== 'wp-sede-sp' && w.name !== 'Sede Central - SP');
+      return filtered.length > 0 ? filtered : DEFAULT_WORKPLACES;
     }
   } catch (err) {
     console.warn('Erro ao carregar locais de trabalho do storage:', err);

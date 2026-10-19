@@ -25,6 +25,7 @@ import { ReminderDetailModal } from './ReminderDetailModal';
 import { getCurrentCoordinates, reverseGeocode, validateGeofence, calculateHaversineDistance } from '@/shared/utils/geolocation';
 import { findWorkplaceByName, getStoredWorkplaces } from '@/shared/services/workplaceService';
 import { supabase } from '@/shared/services/supabase';
+import { getPunchesSupabase } from '@/modules/shifts/services/shiftService';
 
 const formatDistance = (meters?: number) => {
   if (meters === undefined || meters === null) return '0 m';
@@ -77,6 +78,24 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
   const [checkInSuccess, setCheckInSuccess] = useState(false);
   const [isResettingPunch, setIsResettingPunch] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [dbPunches, setDbPunches] = useState<any[]>([]);
+  const [isLoadingPunches, setIsLoadingPunches] = useState(false);
+
+  const loadPunches = async () => {
+    setIsLoadingPunches(true);
+    try {
+      const list = await getPunchesSupabase(employee.id);
+      setDbPunches(list);
+    } catch (err) {
+      console.warn('Erro ao buscar batidas de ponto:', err);
+    } finally {
+      setIsLoadingPunches(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPunches();
+  }, [employee.id]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -134,12 +153,21 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
     todayShift?.workplace?.toLowerCase().includes('temporario') ||
     todayShift?.workplace?.toLowerCase().includes('externo');
 
-  const currentShiftWorkplace =
+  const rawWorkplace =
     todayShift?.workplaceLocation ||
     findWorkplaceByName(todayShift?.workplace) ||
     findWorkplaceByName(todayShift?.department) ||
-    findWorkplaceByName(employee.workplace) ||
-    getStoredWorkplaces()[0];
+    findWorkplaceByName(employee.workplace);
+
+  const currentShiftWorkplace = rawWorkplace || (getStoredWorkplaces()[0]?.latitude ? getStoredWorkplaces()[0] : {
+    id: 'wp-padrao',
+    name: todayShift?.workplace || employee.workplace || 'Posto Presencial',
+    address: 'Endereço definido pelo gestor',
+    latitude: 0,
+    longitude: 0,
+    radiusMeters: 200,
+    isRemote: false,
+  });
 
   const hasCheckedIn = Boolean(todayShift?.checkInTime);
   const hasCheckedOut = Boolean(todayShift?.checkOutTime);
@@ -234,8 +262,8 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
   };
 
   const handlePunchClock = async (forceType?: 'entrada' | 'saida') => {
-    if (!todayShift) return;
     const punchType: 'entrada' | 'saida' = forceType || (hasCheckedIn ? 'saida' : 'entrada');
+    const targetShiftId = todayShift ? todayShift.id : `adhoc-${employee.id}-${todayStr}`;
     setGpsError(null);
     setIsCapturingGps(true);
 
@@ -276,7 +304,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
       }
 
       // 4. Executa o check-in com dados reais e tipo (entrada ou saida)
-      onCheckIn(todayShift.id, {
+      onCheckIn(targetShiftId, {
         address: formattedAddress,
         gpsValidated,
         latitude: coords.latitude,
@@ -288,6 +316,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
 
       setCheckInSuccess(true);
       setTimeout(() => setCheckInSuccess(false), 5000);
+      loadPunches();
     } catch (err: any) {
       console.error('Erro na captura de ponto GPS:', err);
       setGpsError(err.message || 'Não foi possível capturar sua localização. Verifique as permissões de GPS.');
@@ -315,17 +344,42 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
           <div className="flex-1 space-y-4">
             {/* Big Clean Digital Clock & Date */}
             <div>
-              {/* Badge de Gestor Direto */}
-              {directManager && employee.roleType !== 'gestor' && !employee.isRh && (
-                <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold mb-2.5 border transition-all ${
-                  isLightTheme 
-                    ? 'bg-amber-50/90 border-amber-200 text-amber-900 shadow-2xs' 
-                    : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
-                }`}>
-                  <ShieldCheck className="w-3.5 h-3.5 text-[#f89847] shrink-0" />
-                  <span>Gestor Direto: <strong className="font-extrabold">{directManager.name}</strong> ({directManager.role})</span>
-                </div>
-              )}
+              {/* Barra superior de Gestor Direto + Botão de Histórico de Batidas */}
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+                {directManager && employee.roleType !== 'gestor' && !employee.isRh ? (
+                  <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all ${
+                    isLightTheme 
+                      ? 'bg-amber-50/90 border-amber-200 text-amber-900 shadow-2xs' 
+                      : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+                  }`}>
+                    <ShieldCheck className="w-3.5 h-3.5 text-[#f89847] shrink-0" />
+                    <span>Gestor Direto: <strong className="font-extrabold">{directManager.name}</strong> ({directManager.role})</span>
+                  </div>
+                ) : <div />}
+
+                {/* Botão em Destaque para Ver Histórico Completo de Batidas */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    loadPunches();
+                    setIsHistoryOpen(true);
+                  }}
+                  className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all shadow-xs cursor-pointer ${
+                    isLightTheme
+                      ? 'bg-white border-slate-300 text-slate-800 hover:border-emerald-500 hover:text-emerald-600'
+                      : 'bg-white/10 border-white/20 text-white hover:border-emerald-400 hover:text-emerald-400'
+                  }`}
+                  title="Abrir folha e histórico completo de registros"
+                >
+                  <History className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <span>Meu Histórico de Batidas</span>
+                  {dbPunches.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-mono font-bold">
+                      {dbPunches.length}
+                    </span>
+                  )}
+                </button>
+              </div>
 
               <div
                 className={`text-4xl sm:text-5xl font-black tracking-tight font-sans ${
@@ -1326,11 +1380,60 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
 
             {/* Content Table */}
             <div className="p-4 overflow-y-auto space-y-2 flex-1">
-              {empShifts.length === 0 ? (
+              {isLoadingPunches ? (
                 <div className="text-center py-10 text-xs text-slate-400 font-medium">
-                  Nenhum registro de turno localizado para o período.
+                  Carregando registros de ponto do banco de dados...
                 </div>
-              ) : (
+              ) : dbPunches && dbPunches.length > 0 ? (
+                dbPunches.map((punch: any, idx: number) => {
+                  const dt = punch.Dta_Hora_Registro ? new Date(punch.Dta_Hora_Registro) : new Date();
+                  const dateFormatted = !isNaN(dt.getTime()) ? dt.toLocaleDateString('pt-BR') : todayStr;
+                  const timeFormatted = !isNaN(dt.getTime()) ? dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--';
+                  const isEntrada = punch.Tpo_Registro?.toLowerCase() === 'entrada';
+                  const isValid = punch.Flg_Gps_Validado !== false;
+
+                  return (
+                    <div
+                      key={punch.Idf_Registro_Ponto || idx}
+                      className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
+                        isLightTheme ? 'bg-slate-50/70 border-slate-200' : 'bg-white/[0.03] border-white/10'
+                      }`}
+                    >
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
+                            isEntrada
+                              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                              : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                          }`}>
+                            {isEntrada ? '🟢 Entrada' : '🛑 Saída'}
+                          </span>
+                          <span className="font-bold text-[12px]">{dateFormatted}</span>
+                          <span className="font-mono text-[12px] font-extrabold text-slate-800 dark:text-white">
+                            {timeFormatted}
+                          </span>
+                        </div>
+                        <p className="text-[10.5px] text-slate-400 line-clamp-1">
+                          📍 {punch.Des_Endereco || 'Localização Registrada'}
+                          {punch.Num_Latitude && punch.Num_Longitude && (
+                            <span className="font-mono text-[9px] opacity-70 ml-1">
+                              ({Number(punch.Num_Latitude).toFixed(4)}, {Number(punch.Num_Longitude).toFixed(4)})
+                            </span>
+                          )}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          isValid ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-500'
+                        }`}>
+                          {isValid ? '✓ GPS Validado' : '⚠ Fora do Raio'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : empShifts.length > 0 ? (
                 empShifts.map((shift) => {
                   const hasIn = Boolean(shift.checkInTime);
                   const hasOut = Boolean(shift.checkOutTime);
@@ -1358,23 +1461,18 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                       </div>
 
                       <div className="flex items-center gap-3 shrink-0">
-                        {/* Entrada */}
                         <div className="text-right">
                           <span className="block text-[9px] uppercase font-bold text-slate-400">Entrada</span>
                           <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
                             {hasIn ? shift.checkInTime : '—'}
                           </span>
                         </div>
-
-                        {/* Saída */}
                         <div className="text-right">
                           <span className="block text-[9px] uppercase font-bold text-slate-400">Saída</span>
                           <span className="font-mono font-bold text-rose-600 dark:text-rose-400">
                             {hasOut ? shift.checkOutTime : '—'}
                           </span>
                         </div>
-
-                        {/* GPS Badge */}
                         <div className="text-right min-w-[70px]">
                           <span className="block text-[9px] uppercase font-bold text-slate-400">GPS</span>
                           <span className={`text-[9.5px] font-bold ${
@@ -1387,6 +1485,10 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                     </div>
                   );
                 })
+              ) : (
+                <div className="text-center py-10 text-xs text-slate-400 font-medium">
+                  Nenhum registro de ponto localizado ainda. Registre sua entrada para visualizar seu histórico.
+                </div>
               )}
             </div>
 

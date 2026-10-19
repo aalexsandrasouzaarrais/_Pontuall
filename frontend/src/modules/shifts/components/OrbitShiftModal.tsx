@@ -243,10 +243,27 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
       setEmployeeId(editingShift.employeeId || initialEmployeeId || employees[0]?.id || 'emp-1');
       
       // Sincroniza o posto de trabalho do turno
-      const matchedWp = list.find(w => 
+      let matchedWp = list.find(w => 
         (editingShift.workplaceLocation?.id && w.id === editingShift.workplaceLocation.id) ||
         (editingShift.workplace && w.name.toLowerCase() === editingShift.workplace.toLowerCase())
       );
+      if (!matchedWp && editingShift.workplaceLocation) {
+        matchedWp = editingShift.workplaceLocation;
+        list.push(matchedWp);
+        setWorkplacesList([...list]);
+      } else if (!matchedWp && editingShift.workplace) {
+        matchedWp = {
+          id: `wp-${Date.now()}`,
+          name: editingShift.workplace,
+          address: editingShift.workplace,
+          latitude: 0,
+          longitude: 0,
+          radiusMeters: 200,
+          isRemote: false,
+        };
+        list.push(matchedWp);
+        setWorkplacesList([...list]);
+      }
       setSelectedWorkplaceId(matchedWp ? matchedWp.id : (list[0]?.id || ''));
 
       let mappedType = editingShift.color ? getTypeForColor(editingShift.color) : null;
@@ -677,10 +694,10 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                 <MapPin className="w-4 h-4 text-[#F89847] shrink-0" />
                 <div className="min-w-0">
                   <p className={`text-xs font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                    Posto: {workplacesList.find(w => w.id === selectedWorkplaceId)?.name || editingShift?.workplace || 'Sede Central - SP'}
+                    Posto: {workplacesList.find(w => w.id === selectedWorkplaceId)?.name || editingShift?.workplaceLocation?.name || editingShift?.workplace || 'Posto Presencial'}
                   </p>
                   <p className={`text-[11px] truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                    {workplacesList.find(w => w.id === selectedWorkplaceId)?.address || 'Endereço físico cadastrado'}
+                    {workplacesList.find(w => w.id === selectedWorkplaceId)?.address || editingShift?.workplaceLocation?.address || editingShift?.workplace || 'Endereço definido pelo gestor'}
                   </p>
                 </div>
               </div>

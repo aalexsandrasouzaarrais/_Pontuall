@@ -1,6 +1,6 @@
 import { supabase } from '@/shared/services/supabase';
 import { Shift } from '@/types';
-import { findWorkplaceByName, WorkplaceLocation } from '@/shared/services/workplaceService';
+import { findWorkplaceByName, WorkplaceLocation, registerWorkplaceIfNew } from '@/shared/services/workplaceService';
 import { calculateHaversineDistance } from '@/shared/utils/geolocation';
 
 function encodeShiftNotesWithWorkplace(notes?: string, workplace?: string, workplaceLocation?: WorkplaceLocation): string {
@@ -26,6 +26,11 @@ export function mapBneToShift(row: any): Shift {
         workplace = parsed.name;
         workplaceLocation = parsed;
         notes = notes.substring(endIdx + 1).trim();
+
+        // Registra o posto automaticamente no cache local para ficar disponível em dropdowns e mapas
+        if (workplaceLocation) {
+          registerWorkplaceIfNew(workplaceLocation);
+        }
       } catch {}
     }
   }
@@ -353,5 +358,30 @@ export async function deleteBulkShiftsSupabase(shiftIds: string[]): Promise<bool
   } catch (err: any) {
     console.error('Erro ao excluir lote de turnos:', err.message);
     return false;
+  }
+}
+
+// Busca histórico completo de registros de ponto de um colaborador na TAB_Registro_Ponto
+export async function getPunchesSupabase(employeeId: string): Promise<any[]> {
+  try {
+    const colabUuid = await resolveValidEmployeeUuid(employeeId);
+    let query = supabase
+      .from('TAB_Registro_Ponto')
+      .select('*')
+      .order('Dta_Hora_Registro', { ascending: false });
+
+    if (colabUuid) {
+      query = query.eq('Idf_Colaborador', colabUuid);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.warn('Aviso ao consultar TAB_Registro_Ponto:', error.message);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.warn('Erro ao buscar histórico de batidas:', err);
+    return [];
   }
 }
