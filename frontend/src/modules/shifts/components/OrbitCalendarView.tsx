@@ -390,6 +390,8 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
             type: dayCfg.type,
             title: dayCfg.title || template.name,
             color: dayCfg.type === 'on_call' ? ORBIT_COLORS[1] : ORBIT_COLORS[0],
+            workplace: dayCfg.workplace || template.workplace,
+            workplaceLocation: dayCfg.workplaceLocation || template.workplaceLocation,
           });
         }
       });

@@ -527,11 +527,20 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
   if (viewMode === 'reset-password') {
     return (
       <PasswordResetPage
-        onBackToLogin={() => setViewMode('login')}
+        onBackToLogin={() => {
+          if (typeof window !== 'undefined' && window.history?.replaceState) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
+          setViewMode('login');
+        }}
         onSuccess={(colaboradorData) => {
+          if (typeof window !== 'undefined' && window.history?.replaceState) {
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }
           if (colaboradorData) {
             const emp = mapBneToEmployee(colaboradorData);
-            onLoginSuccess(emp, 'employee');
+            const isManager = colaboradorData.Tpo_Perfil === 'gestor' || colaboradorData.perfil === 'gestor' || colaboradorData.isRh;
+            onLoginSuccess(emp, isManager ? 'manager' : 'employee');
           } else {
             setViewMode('login');
           }
