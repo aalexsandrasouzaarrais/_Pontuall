@@ -5,6 +5,7 @@ import { Employee } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
 import { PasswordResetPage } from './PasswordResetPage';
 import { safeStorage } from '@/shared/utils/safeStorage';
+import bcrypt from 'bcryptjs';
 
 // Imagens originais idênticas ao login do projeto
 import logoPontualTransparente from '../assets/images/logo_pontual_transparente.png';
@@ -253,16 +254,52 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         setCurrentRole(userPerfil === 'rh' || userPerfil === 'gestor' ? 'gestor' : 'colaborador');
       }
 
-      // 3. Validação flexível e segura da senha:
+      // 3. Validação flexível e segura da senha (com suporte a hash bcrypt e retrocompatibilidade):
       const passNorm = password.trim();
       const matriculaNorm = matchedUser.Cod_Matricula ? matchedUser.Cod_Matricula.toLowerCase() : '';
-      const senhaValida =
-        matchedUser.Des_Senha_Hash === passNorm ||
-        (matriculaNorm && matriculaNorm === passNorm.toLowerCase()) ||
-        passNorm === '123456' ||
-        passNorm === 'admin' ||
-        (matchedUser.Des_Senha_Hash === 'google_oauth_authenticated' && (passNorm === '123456' || passNorm === 'admin' || matriculaNorm === passNorm.toLowerCase())) ||
-        (matchedUser.Eml_Corporativo && ['kamile', 'pontual', 'alexsandra'].some(k => matchedUser.Eml_Corporativo.toLowerCase().includes(k)) && passNorm === '123456');
+      const isBcrypt = matchedUser.Des_Senha_Hash && (
+        matchedUser.Des_Senha_Hash.startsWith('$2a$') ||
+        matchedUser.Des_Senha_Hash.startsWith('$2b$') ||
+        matchedUser.Des_Senha_Hash.startsWith('$2y$')
+      );
+
+      let senhaValida = false;
+      if (isBcrypt) {
+        try {
+          senhaValida = bcrypt.compareSync(passNorm, matchedUser.Des_Senha_Hash);
+        } catch {
+          senhaValida = false;
+        }
+
+        // Se falhar o hash mas for primeiro acesso com a matrícula ou senha padrão de demonstração
+        if (!senhaValida) {
+          senhaValida = (matriculaNorm && matriculaNorm === passNorm.toLowerCase()) ||
+            passNorm === '123456' ||
+            passNorm === 'admin' ||
+            (matchedUser.Eml_Corporativo && ['kamile', 'pontual', 'alexsandra'].some(k => matchedUser.Eml_Corporativo.toLowerCase().includes(k)) && passNorm === '123456');
+        }
+      } else {
+        // Suporte retrocompatível para senhas ainda em texto plano
+        senhaValida =
+          matchedUser.Des_Senha_Hash === passNorm ||
+          (matriculaNorm && matriculaNorm === passNorm.toLowerCase()) ||
+          passNorm === '123456' ||
+          passNorm === 'admin' ||
+          (matchedUser.Des_Senha_Hash === 'google_oauth_authenticated' && (passNorm === '123456' || passNorm === 'admin' || matriculaNorm === passNorm.toLowerCase())) ||
+          (matchedUser.Eml_Corporativo && ['kamile', 'pontual', 'alexsandra'].some(k => matchedUser.Eml_Corporativo.toLowerCase().includes(k)) && passNorm === '123456');
+
+        // Se a senha estiver correta mas não estava hasheada, atualiza automaticamente no banco (migração transparente)
+        if (senhaValida && matchedUser.Idf_Colaborador) {
+          try {
+            const autoHash = bcrypt.hashSync(passNorm, 10);
+            supabase
+              .from('TAB_Colaborador')
+              .update({ Des_Senha_Hash: autoHash })
+              .eq('Idf_Colaborador', matchedUser.Idf_Colaborador)
+              .then(() => {});
+          } catch {}
+        }
+      }
 
       if (!senhaValida) {
         showFeedback('Senha incorreta. No primeiro acesso, use sua matrícula ou a senha padrão 123456.', 'error');
@@ -412,7 +449,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
           Idf_Colaborador: createdEmployee.id,
           Nme_Colaborador: createdEmployee.name,
           Eml_Corporativo: createdEmployee.email,
-          Des_Senha_Hash: regSenha,
+          Des_Senha_Hash: bcrypt.hashSync(regSenha, 10),
           Cod_Matricula: createdEmployee.registrationId || matricula,
           Tpo_Perfil: 'rh',
           Tpo_Cargo: createdEmployee.role,

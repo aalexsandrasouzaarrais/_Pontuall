@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { supabaseAdmin } from '../../shared/supabase.js';
 import nodemailer from 'nodemailer';
+import bcrypt from 'bcryptjs';
 
 export const authRoutes = Router();
 
@@ -51,8 +52,24 @@ authRoutes.post('/login', async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    // Validação de senha
-    if (usuario.Des_Senha_Hash !== senha) {
+    // Validação de senha segura com bcrypt (e suporte retrocompatível para senhas em texto puro)
+    const isBcrypt = usuario.Des_Senha_Hash?.startsWith('$2');
+    let senhaValida = false;
+    if (isBcrypt) {
+      senhaValida = await bcrypt.compare(senha, usuario.Des_Senha_Hash);
+    } else {
+      senhaValida = usuario.Des_Senha_Hash === senha;
+      // Migração automática no login para usuários com senha em texto plano
+      if (senhaValida) {
+        const novoHash = await bcrypt.hash(senha, 10);
+        await supabaseAdmin
+          .from('TAB_Colaborador')
+          .update({ Des_Senha_Hash: novoHash })
+          .eq('Idf_Colaborador', usuario.Idf_Colaborador);
+      }
+    }
+
+    if (!senhaValida) {
       res.status(401).json({ error: 'Senha incorreta.' });
       return;
     }
@@ -209,6 +226,9 @@ authRoutes.post('/registro-gestor', async (req: Request, res: Response): Promise
 
     const matricula = `GST-${Math.floor(1000 + Math.random() * 9000)}`;
 
+    // Gera o hash seguro da senha com bcrypt
+    const senhaHash = await bcrypt.hash(senha, 10);
+
     // 3. Cadastra o Gestor no banco
     const { data: novoGestor, error: insertError } = await supabaseAdmin
       .from('TAB_Colaborador')
@@ -216,7 +236,7 @@ authRoutes.post('/registro-gestor', async (req: Request, res: Response): Promise
         Cod_Matricula: matricula,
         Nme_Colaborador: nome.trim(),
         Eml_Corporativo: cleanEmail,
-        Des_Senha_Hash: senha,
+        Des_Senha_Hash: senhaHash,
         Tpo_Perfil: 'gestor',
         Tpo_Cargo: cargo?.trim() || 'Gestor Geral',
         Des_Departamento: departamento?.trim() || 'Gestão de Pessoas & Operações',
