@@ -109,6 +109,11 @@ export const PasswordResetPage: React.FC<PasswordResetPageProps> = ({
           }
         } catch {}
 
+        // Limpa os parâmetros de redefinição da URL
+        if (typeof window !== 'undefined' && window.history?.replaceState) {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
         setFeedback({
           message: 'Senha definida com sucesso! Redirecionando para o seu portal...',
           type: 'success'
@@ -133,8 +138,27 @@ export const PasswordResetPage: React.FC<PasswordResetPageProps> = ({
     }
   };
 
+  // Cálculo da Força de Senha (idêntico ao cadastro do RH)
+  const checkPasswordStrength = (pass: string) => {
+    if (!pass) return { status: '', label: '' };
+    let score = 0;
+    if (pass.length >= 6) score++;
+    if (pass.length >= 8) score++;
+    if (/[a-z]/.test(pass) && /[A-Z]/.test(pass)) score++;
+    if (/[0-9]/.test(pass)) score++;
+    if (/[^A-Za-z0-9]/.test(pass)) score++;
+
+    if (pass.length < 6 || score <= 2) {
+      return { status: 'weak', label: 'Senha fraca' };
+    } else if (score <= 3) {
+      return { status: 'medium', label: 'Senha média' };
+    } else {
+      return { status: 'strong', label: 'Senha forte' };
+    }
+  };
+
+  const passwordStrength = checkPasswordStrength(novaSenha);
   const isMatching = confirmarSenha && novaSenha === confirmarSenha;
-  const isTooShort = novaSenha && novaSenha.length < 6;
 
   return (
     <div className={`min-h-screen flex flex-col font-sans transition-colors duration-300 relative overflow-hidden ${
@@ -255,17 +279,14 @@ export const PasswordResetPage: React.FC<PasswordResetPageProps> = ({
                   <label className={`text-xs font-semibold mb-1.5 flex items-center justify-between ${
                     isDark ? 'text-slate-300' : 'text-slate-700'
                   }`}>
-                    <span>Nova Senha Definitiva</span>
-                    {isTooShort && (
-                      <span className="text-[11px] text-amber-400 font-normal">Mínimo 6 caracteres</span>
-                    )}
+                    <span>Senha* (mínimo 6 caracteres)</span>
                   </label>
                   <div className="relative">
                     <input
                       type={showPassword ? 'text' : 'password'}
                       value={novaSenha}
                       onChange={(e) => setNovaSenha(e.target.value)}
-                      placeholder="Digite sua nova senha"
+                      placeholder="Digite sua senha"
                       required
                       className={`w-full px-4 py-3 pr-11 rounded-xl text-sm outline-none transition-all border ${
                         isDark
@@ -282,13 +303,43 @@ export const PasswordResetPage: React.FC<PasswordResetPageProps> = ({
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
+
+                  {/* Barra de força da senha (idêntica ao cadastro do RH) */}
+                  {novaSenha && (
+                    <div className="mt-2 space-y-1">
+                      <div className={`w-full h-1 rounded-full overflow-hidden ${isDark ? 'bg-white/10' : 'bg-slate-200'}`}>
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ${
+                            passwordStrength.status === 'weak'
+                              ? 'w-1/3 bg-[#ef4444] shadow-[0_0_8px_rgba(239,68,68,0.45)]'
+                              : passwordStrength.status === 'medium'
+                              ? 'w-2/3 bg-[#f59e0b] shadow-[0_0_8px_rgba(245,158,11,0.45)]'
+                              : 'w-full bg-[#10b981] shadow-[0_0_8px_rgba(16,185,129,0.45)]'
+                          }`}
+                        />
+                      </div>
+                      <div className="flex justify-end min-h-[14px]">
+                        <span
+                          className={`text-[11px] font-medium transition-colors ${
+                            passwordStrength.status === 'weak'
+                              ? 'text-[#ef4444]'
+                              : passwordStrength.status === 'medium'
+                              ? 'text-[#f59e0b]'
+                              : 'text-[#10b981]'
+                          }`}
+                        >
+                          {passwordStrength.label}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div>
                   <label className={`text-xs font-semibold mb-1.5 flex items-center justify-between ${
                     isDark ? 'text-slate-300' : 'text-slate-700'
                   }`}>
-                    <span>Confirmar Nova Senha</span>
+                    <span>Confirmar senha*</span>
                     {confirmarSenha && (
                       <span className={`text-[11px] font-medium ${isMatching ? 'text-emerald-400' : 'text-rose-400'}`}>
                         {isMatching ? '✓ Senhas coincidem' : '✕ Não coincide'}
@@ -300,7 +351,7 @@ export const PasswordResetPage: React.FC<PasswordResetPageProps> = ({
                       type={showConfirm ? 'text' : 'password'}
                       value={confirmarSenha}
                       onChange={(e) => setConfirmarSenha(e.target.value)}
-                      placeholder="Repita a nova senha"
+                      placeholder="Repita sua senha"
                       required
                       className={`w-full px-4 py-3 pr-11 rounded-xl text-sm outline-none transition-all border ${
                         confirmarSenha && !isMatching
@@ -343,7 +394,12 @@ export const PasswordResetPage: React.FC<PasswordResetPageProps> = ({
                 <div className="pt-2 text-center border-t border-white/5">
                   <button
                     type="button"
-                    onClick={onBackToLogin}
+                    onClick={() => {
+                      if (typeof window !== 'undefined' && window.history?.replaceState) {
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                      }
+                      onBackToLogin();
+                    }}
                     className={`inline-flex items-center gap-1.5 text-xs transition-colors cursor-pointer ${
                       isDark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'
                     }`}

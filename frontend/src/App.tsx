@@ -111,11 +111,58 @@ function AppContent() {
   
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
+      if (typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        const isResetOrFirstAccess = 
+          urlParams.get('primeiro_acesso') === 'true' || 
+          urlParams.get('reset') === 'true' || 
+          urlParams.get('type') === 'recovery' || 
+          window.location.pathname.includes('/redefinir-senha');
+
+        if (isResetOrFirstAccess) {
+          // Limpa sessão residual para forçar a abertura da tela de definição/redefinição de senha
+          safeStorage.removeItem('pontual_active_user');
+          safeStorage.removeItem('pontual_role');
+          safeStorage.removeItem('pontual_google_avatar');
+          try {
+            window.sessionStorage.removeItem('pontual_active_user');
+            window.sessionStorage.removeItem('pontual_role');
+            window.localStorage.removeItem('pontual_active_user');
+            window.localStorage.removeItem('pontual_role');
+          } catch {}
+          return false;
+        }
+      }
       return !!safeStorage.getItem('pontual_active_user');
     } catch {
       return false;
     }
   });
+
+  // Garante que, se a página carregar com os parâmetros de redefinição/primeiro acesso, a tela de reset seja exibida
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const isResetOrFirstAccess = 
+        urlParams.get('primeiro_acesso') === 'true' || 
+        urlParams.get('reset') === 'true' || 
+        urlParams.get('type') === 'recovery' || 
+        window.location.pathname.includes('/redefinir-senha');
+
+      if (isResetOrFirstAccess) {
+        safeStorage.removeItem('pontual_active_user');
+        safeStorage.removeItem('pontual_role');
+        safeStorage.removeItem('pontual_google_avatar');
+        try {
+          window.sessionStorage.removeItem('pontual_active_user');
+          window.sessionStorage.removeItem('pontual_role');
+          window.localStorage.removeItem('pontual_active_user');
+          window.localStorage.removeItem('pontual_role');
+        } catch {}
+        setIsAuthenticated(false);
+      }
+    }
+  }, []);
 
   const [authFeedback, setAuthFeedback] = useState<{ message: string; type: 'error' | 'warning' | 'success' } | null>(null);
 
