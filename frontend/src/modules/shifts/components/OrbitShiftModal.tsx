@@ -17,10 +17,24 @@ import {
   ArrowLeft,
   Palette,
   Check,
-  Info
+  Info,
+  MapPin,
+  Plus,
+  Navigation,
+  Search,
+  Loader2,
+  Compass
 } from 'lucide-react';
 import { Employee, Shift, ShiftType, AttendanceStatus, ShiftStatus, ShiftColor } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
+import { getStoredWorkplaces, createWorkplaceFromAddress, WorkplaceLocation } from '@/shared/services/workplaceService';
+import { 
+  searchAddressSuggestions, 
+  AddressSuggestion, 
+  getCurrentCoordinates, 
+  reverseGeocode 
+} from '@/shared/utils/geolocation';
+import { DraggableMapPicker } from '@/shared/components/DraggableMapPicker';
 
 export const ORBIT_COLORS: ShiftColor[] = [
   { 
@@ -194,6 +208,19 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
   const [notifyCollaborator, setNotifyCollaborator] = useState<boolean>(true);
   const [changeReason, setChangeReason] = useState<string>('');
 
+  // Estados de gestão de postos de trabalho / unidades
+  const [workplacesList, setWorkplacesList] = useState<WorkplaceLocation[]>(() => getStoredWorkplaces());
+  const [selectedWorkplaceId, setSelectedWorkplaceId] = useState<string>('');
+  const [isAddingNewWorkplace, setIsAddingNewWorkplace] = useState<boolean>(false);
+  const [newWorkplaceName, setNewWorkplaceName] = useState<string>('');
+  const [newWorkplaceAddress, setNewWorkplaceAddress] = useState<string>('');
+  const [isSearchingAddress, setIsSearchingAddress] = useState<boolean>(false);
+  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
+  const [isSearchingSuggestions, setIsSearchingSuggestions] = useState<boolean>(false);
+  const [selectedCoordinates, setSelectedCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [customRadiusMeters, setCustomRadiusMeters] = useState<number>(200);
+  const [addressErrorMessage, setAddressErrorMessage] = useState<string | null>(null);
+
   const inputStyle: React.CSSProperties = {
     background: isLight ? "#f8fafc" : "rgba(255,255,255,0.05)",
     border: isLight ? "1px solid #cbd5e1" : "1px solid rgba(255,255,255,0.12)",
@@ -209,9 +236,36 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
   };
 
   useEffect(() => {
+    const list = getStoredWorkplaces();
+    setWorkplacesList(list);
+
     if (editingShift) {
       setEmployeeId(editingShift.employeeId || initialEmployeeId || employees[0]?.id || 'emp-1');
       
+      // Sincroniza o posto de trabalho do turno
+      let matchedWp = list.find(w => 
+        (editingShift.workplaceLocation?.id && w.id === editingShift.workplaceLocation.id) ||
+        (editingShift.workplace && w.name.toLowerCase() === editingShift.workplace.toLowerCase())
+      );
+      if (!matchedWp && editingShift.workplaceLocation) {
+        matchedWp = editingShift.workplaceLocation;
+        list.push(matchedWp);
+        setWorkplacesList([...list]);
+      } else if (!matchedWp && editingShift.workplace) {
+        matchedWp = {
+          id: `wp-${Date.now()}`,
+          name: editingShift.workplace,
+          address: editingShift.workplace,
+          latitude: 0,
+          longitude: 0,
+          radiusMeters: 200,
+          isRemote: false,
+        };
+        list.push(matchedWp);
+        setWorkplacesList([...list]);
+      }
+      setSelectedWorkplaceId(matchedWp ? matchedWp.id : (list[0]?.id || ''));
+
       let mappedType = editingShift.color ? getTypeForColor(editingShift.color) : null;
       if (!mappedType) {
         const isHomeOffice = editingShift.workplace?.toLowerCase().includes('remoto') || 
@@ -252,7 +306,14 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
       setNotifyCollaborator(true);
       setChangeReason('');
     } else {
-      setEmployeeId(initialEmployeeId || employees[0]?.id || 'emp-1');
+      const targetEmpId = initialEmployeeId || employees[0]?.id || 'emp-1';
+      setEmployeeId(targetEmpId);
+
+      // Local padrão do colaborador
+      const emp = employees.find(e => e.id === targetEmpId);
+      const matchedWp = list.find(w => emp?.workplace && w.name.toLowerCase() === emp.workplace.toLowerCase());
+      setSelectedWorkplaceId(matchedWp ? matchedWp.id : (list[0]?.id || ''));
+
       setShiftType(SHIFT_TYPES[0]);
       setTitle('');
       setDate(initialDate);
@@ -271,6 +332,28 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
     }
     setConfirmDelete(false);
   }, [editingShift, initialDate, initialEmployeeId, employees]);
+
+  // Busca sugestões em tempo real (Estilo Uber) com debounce de 350ms
+  useEffect(() => {
+    if (!isOpen || !isAddingNewWorkplace || !newWorkplaceAddress.trim() || newWorkplaceAddress.trim().length < 3) {
+      setAddressSuggestions([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingSuggestions(true);
+      try {
+        const results = await searchAddressSuggestions(newWorkplaceAddress);
+        setAddressSuggestions(results);
+      } catch (err) {
+        console.warn('Erro ao buscar sugestões:', err);
+      } finally {
+        setIsSearchingSuggestions(false);
+      }
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [isOpen, newWorkplaceAddress, isAddingNewWorkplace]);
 
   // Atualiza o tipo e sincroniza automaticamente a cor correspondente
   const handleShiftTypeChange = (newType: string) => {
@@ -294,6 +377,65 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
   const hoursWorked = calcHours(startTime, endTime, breakTime);
   const assignedEmployee = employees.find(e => e.id === employeeId);
 
+  const handleSelectSuggestion = (sugg: AddressSuggestion) => {
+    setNewWorkplaceAddress(sugg.displayName);
+    setSelectedCoordinates({ latitude: sugg.latitude, longitude: sugg.longitude });
+    setAddressSuggestions([]);
+    setAddressErrorMessage(null);
+    if (!newWorkplaceName.trim()) {
+      const autoName = sugg.road 
+        ? `${sugg.road}${sugg.city ? ` - ${sugg.city}` : ''}`
+        : (sugg.displayName.split(',')[0] || 'Novo Posto');
+      setNewWorkplaceName(autoName);
+    }
+  };
+
+  const handleUseCurrentLocation = async () => {
+    setIsSearchingAddress(true);
+    setAddressErrorMessage(null);
+    try {
+      const coords = await getCurrentCoordinates();
+      const geocoded = await reverseGeocode(coords.latitude, coords.longitude);
+      setNewWorkplaceAddress(geocoded.formattedAddress);
+      setSelectedCoordinates({ latitude: coords.latitude, longitude: coords.longitude });
+      if (!newWorkplaceName.trim()) {
+        setNewWorkplaceName(geocoded.road ? `${geocoded.road} (${geocoded.city || 'Posto'})` : 'Meu Local Atual');
+      }
+      setAddressSuggestions([]);
+    } catch (err: any) {
+      setAddressErrorMessage(err.message || 'Não foi possível capturar o GPS do seu dispositivo.');
+    } finally {
+      setIsSearchingAddress(false);
+    }
+  };
+
+  const handleAddNewWorkplace = async () => {
+    if (!newWorkplaceName.trim() || !newWorkplaceAddress.trim()) return;
+    setIsSearchingAddress(true);
+    setAddressErrorMessage(null);
+    try {
+      const created = await createWorkplaceFromAddress({
+        name: newWorkplaceName.trim(),
+        address: newWorkplaceAddress.trim(),
+        radiusMeters: customRadiusMeters || 200,
+        manualCoordinates: selectedCoordinates || undefined,
+      });
+      const updatedList = getStoredWorkplaces();
+      setWorkplacesList(updatedList);
+      setSelectedWorkplaceId(created.id);
+      setIsAddingNewWorkplace(false);
+      setNewWorkplaceName('');
+      setNewWorkplaceAddress('');
+      setSelectedCoordinates(null);
+      setAddressSuggestions([]);
+    } catch (err: any) {
+      console.error('Erro ao adicionar posto de trabalho:', err);
+      setAddressErrorMessage(err.message || 'Não foi possível localizar o endereço. Verifique as sugestões da lista.');
+    } finally {
+      setIsSearchingAddress(false);
+    }
+  };
+
   const handleSaveWithStatus = (forcedStatus?: ShiftStatus) => {
     const finalStatus = forcedStatus || status;
     const breakMins = breakTime === "30min" ? 30 : breakTime === "45min" ? 45
@@ -303,6 +445,8 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
     if (shiftType.includes('Reunião')) typeMapped = 'meeting';
     else if (shiftType.includes('Plantão')) typeMapped = 'on_call';
     else if (shiftType.includes('Treinamento')) typeMapped = 'training';
+
+    const currentWp = workplacesList.find(w => w.id === selectedWorkplaceId) || workplacesList[0];
 
     onSave({
       id: editingShift?.id,
@@ -319,6 +463,8 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
       notes: notes.trim() || undefined,
       projectTag: tag.trim() || undefined,
       color: selectedColor,
+      workplace: currentWp?.name,
+      workplaceLocation: currentWp,
     }, isAlreadyPublished ? notifyCollaborator : false, changeReason);
   };
 
@@ -538,6 +684,28 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                   </span>
                 </div>
               </div>
+            </div>
+
+            {/* Posto de Trabalho Alocado */}
+            <div className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 ${
+              isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/[0.03] border-white/10'
+            }`}>
+              <div className="flex items-center gap-2.5 min-w-0">
+                <MapPin className="w-4 h-4 text-[#F89847] shrink-0" />
+                <div className="min-w-0">
+                  <p className={`text-xs font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                    Posto: {workplacesList.find(w => w.id === selectedWorkplaceId)?.name || editingShift?.workplaceLocation?.name || editingShift?.workplace || 'Posto Presencial'}
+                  </p>
+                  <p className={`text-[11px] truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                    {workplacesList.find(w => w.id === selectedWorkplaceId)?.address || editingShift?.workplaceLocation?.address || editingShift?.workplace || 'Endereço definido pelo gestor'}
+                  </p>
+                </div>
+              </div>
+              <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold shrink-0 ${
+                isLight ? 'bg-orange-100 text-orange-800' : 'bg-[#96183c]/30 text-[#f89847]'
+              }`}>
+                {workplacesList.find(w => w.id === selectedWorkplaceId)?.isRemote ? 'Raio Livre' : `Raio: ${workplacesList.find(w => w.id === selectedWorkplaceId)?.radiusMeters || 200}m`}
+              </span>
             </div>
 
             {/* Meeting Link (if available) */}
@@ -1160,6 +1328,193 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                 onFocus={e => e.target.style.borderColor = "rgba(72,187,120,0.5)"}
                 onBlur={e => e.target.style.borderColor = "rgba(72,187,120,0.2)"}
               />
+            </div>
+
+            {/* Posto / Unidade de Trabalho do Turno */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold flex items-center gap-1.5" style={labelStyle}>
+                  <MapPin className="w-3.5 h-3.5 text-[#F89847]" />
+                  <span>POSTO DE TRABALHO / UNIDADE</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsAddingNewWorkplace(prev => !prev)}
+                  className="text-[11px] font-bold text-[#F89847] hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" />
+                  {isAddingNewWorkplace ? 'Cancelar' : 'Novo Posto via Endereço/CEP'}
+                </button>
+              </div>
+
+              {!isAddingNewWorkplace ? (
+                <select
+                  value={selectedWorkplaceId}
+                  onChange={e => setSelectedWorkplaceId(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all cursor-pointer font-medium"
+                  style={inputStyle}
+                >
+                  {workplacesList.map(w => (
+                    <option key={w.id} value={w.id} style={optionStyle}>
+                      {w.name} {w.isRemote ? '(Flexível/Remoto)' : `(${w.address})`}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className={`p-4 rounded-2xl border space-y-3 relative ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'}`}>
+                  <div className="flex items-center justify-between">
+                    <p className={`text-[11px] font-semibold flex items-center gap-1.5 ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
+                      <Search className="w-3.5 h-3.5 text-[#F89847]" />
+                      <span>Digite a rua, bairro, CEP ou nome do local:</span>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleUseCurrentLocation}
+                      disabled={isSearchingAddress}
+                      className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border flex items-center gap-1 transition-all cursor-pointer ${
+                        isLight
+                          ? 'border-slate-300 bg-white text-slate-700 hover:border-[#96183c] hover:text-[#96183c]'
+                          : 'border-white/20 bg-white/10 text-white hover:border-[#F89847] hover:text-[#F89847]'
+                      }`}
+                      title="Preencher com o GPS atual do seu dispositivo"
+                    >
+                      <Navigation className="w-3 h-3 text-[#F89847]" />
+                      <span>Usar Minha Localização</span>
+                    </button>
+                  </div>
+
+                  {/* Nome do Posto */}
+                  <input
+                    type="text"
+                    placeholder="Nome do Posto (Ex: Filial Colombo, Stand Anhembi, Obra 02...)"
+                    value={newWorkplaceName}
+                    onChange={e => setNewWorkplaceName(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl text-xs outline-none font-medium"
+                    style={inputStyle}
+                  />
+
+                  {/* Input de Endereço com Autocomplete estilo Uber */}
+                  <div className="relative">
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="text"
+                          placeholder="Endereço, Rua ou CEP (Ex: Rua Antonio Chemin, Colombo - PR)"
+                          value={newWorkplaceAddress}
+                          onChange={e => {
+                            setNewWorkplaceAddress(e.target.value);
+                            setSelectedCoordinates(null);
+                          }}
+                          className="w-full px-3.5 py-2 pr-8 rounded-xl text-xs outline-none font-medium"
+                          style={inputStyle}
+                        />
+                        {isSearchingSuggestions && (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin absolute right-2.5 top-2.5 text-slate-400" />
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleAddNewWorkplace}
+                        disabled={isSearchingAddress || !newWorkplaceName.trim() || !newWorkplaceAddress.trim()}
+                        className="px-4 py-2 rounded-xl bg-[#96183c] hover:bg-[#b32047] text-white text-xs font-bold cursor-pointer transition-all disabled:opacity-50 shrink-0 shadow-sm"
+                      >
+                        {isSearchingAddress ? 'Salvando...' : 'Salvar Posto'}
+                      </button>
+                    </div>
+
+                    {/* Lista suspensa de sugestões (Dropdown estilo Uber) */}
+                    {addressSuggestions.length > 0 && (
+                      <div 
+                        className={`absolute left-0 right-0 top-full mt-1.5 z-50 rounded-2xl border shadow-2xl overflow-hidden divide-y backdrop-blur-md ${
+                          isLight 
+                            ? 'bg-white/95 border-slate-200 divide-slate-100' 
+                            : 'bg-[#181920]/95 border-white/15 divide-white/10'
+                        }`}
+                      >
+                        <div className="px-3 py-1.5 text-[10px] font-mono uppercase text-slate-400 font-bold bg-white/5">
+                          Sugestões de Endereço (OpenStreetMap / Correios):
+                        </div>
+                        {addressSuggestions.map((sugg, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => handleSelectSuggestion(sugg)}
+                            className={`w-full text-left px-3.5 py-2.5 flex items-start gap-2.5 transition-colors cursor-pointer ${
+                              isLight ? 'hover:bg-slate-100' : 'hover:bg-white/10'
+                            }`}
+                          >
+                            <MapPin className="w-4 h-4 text-[#F89847] shrink-0 mt-0.5" />
+                            <div className="min-w-0 flex-1">
+                              <p className={`text-xs font-bold truncate ${isLight ? 'text-slate-800' : 'text-white'}`}>
+                                {sugg.road ? `${sugg.road}${sugg.houseNumber ? `, ${sugg.houseNumber}` : ''}` : sugg.displayName.split(',')[0]}
+                              </p>
+                              <p className="text-[10px] text-slate-400 truncate">
+                                {[sugg.neighbourhood, sugg.city, sugg.state].filter(Boolean).join(' - ')}
+                              </p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Configurações adicionais: Raio de Validação e Verificação no Maps */}
+                  <div className="pt-2 border-t border-white/10 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-slate-400 text-[10.5px]">Raio de Tolerância:</span>
+                      {[100, 200, 300, 500, 1000].map(r => (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => setCustomRadiusMeters(r)}
+                          className={`px-2 py-0.5 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${
+                            customRadiusMeters === r
+                              ? 'bg-[#F89847] text-black shadow-xs'
+                              : isLight ? 'bg-slate-200 text-slate-700' : 'bg-white/10 text-white/70'
+                          }`}
+                        >
+                          {r >= 1000 ? '1km' : `${r}m`}
+                        </button>
+                      ))}
+                    </div>
+
+                    {selectedCoordinates && (
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${selectedCoordinates.latitude},${selectedCoordinates.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[10.5px] font-bold text-sky-400 hover:text-sky-300 flex items-center gap-1 underline"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        Ver no Google Maps
+                      </a>
+                    )}
+                  </div>
+
+                  {/* Mini-Mapa Interativo com Pino Arrastável e Círculo de Raio */}
+                  {selectedCoordinates && (
+                    <div className="pt-2">
+                      <DraggableMapPicker
+                        latitude={selectedCoordinates.latitude}
+                        longitude={selectedCoordinates.longitude}
+                        radiusMeters={customRadiusMeters}
+                        onLocationChange={(newLat, newLng) => {
+                          setSelectedCoordinates({ latitude: newLat, longitude: newLng });
+                        }}
+                        isLight={isLight}
+                      />
+                    </div>
+                  )}
+
+                  {/* Feedback de Erro */}
+                  {addressErrorMessage && (
+                    <div className="p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400 text-[11px] font-medium">
+                      ⚠️ {addressErrorMessage}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Tag + Notes */}

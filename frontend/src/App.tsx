@@ -51,6 +51,7 @@ import {
 import { 
   getShiftsSupabase, 
   createShiftSupabase, 
+  updateShiftSupabase,
   registerPunchSupabase,
   deleteShiftSupabase,
   deleteBulkShiftsSupabase
@@ -97,7 +98,6 @@ import {
   Sun, 
   Moon, 
   LogOut,
-  Bell,
   X 
 } from 'lucide-react';
 import { ThemeProvider, useTheme } from '@/shared/context/ThemeContext';
@@ -313,6 +313,32 @@ function AppContent() {
     const handleGoogleSession = async (session: any) => {
       if (!session?.user?.email) return;
 
+      const isOAuthRedirect = typeof window !== 'undefined' && 
+        (window.location.hash.includes('access_token') || window.location.search.includes('code='));
+
+      const hasActiveSession = !!safeStorage.getItem('pontual_active_user');
+
+      // Se NÃO for retorno explícito de login OAuth e o usuário NÃO estiver previamente autenticado:
+      // NÃO efetua auto-login no F5 ou ao abrir o link! Permanece na tela de login.
+      if (!isOAuthRedirect && !hasActiveSession) {
+        return;
+      }
+
+      // Se já houver usuário ativo no storage e não for retorno explícito de login OAuth:
+      // não sobrescreve a sessão ativa após F5 com conta de sessão antiga do Supabase
+      if (hasActiveSession && !isOAuthRedirect) {
+        try {
+          const savedUserStr = safeStorage.getItem('pontual_active_user');
+          if (savedUserStr) {
+            const parsed = JSON.parse(savedUserStr);
+            const currentEmail = parsed.email || parsed.Eml_Corporativo;
+            if (currentEmail && currentEmail.toLowerCase() !== session.user.email.toLowerCase()) {
+              return;
+            }
+          }
+        } catch {}
+      }
+
       const googleMeta = session.user.user_metadata || {};
       const googlePicture = googleMeta.avatar_url || googleMeta.picture;
       const googleName = googleMeta.full_name || googleMeta.name || session.user.email.split('@')[0];
@@ -367,7 +393,11 @@ function AppContent() {
         Des_Avatar_Url: emp.avatar,
         Cod_Matricula: emp.registrationId,
         Flg_Gestor_Master: emp.isMasterManager,
-        Flg_Ativo: true
+        Flg_Ativo: true,
+        Idf_Empresa: emp.companyId,
+        companyId: emp.companyId,
+        isRh: emp.isRh,
+        roleType: emp.roleType
       }));
 
       setActiveEmployee(emp);
@@ -382,14 +412,24 @@ function AppContent() {
     };
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
+      const isOAuthRedirect = typeof window !== 'undefined' && 
+        (window.location.hash.includes('access_token') || window.location.search.includes('code='));
+      const hasActiveSession = !!safeStorage.getItem('pontual_active_user');
+
+      if (session && (isOAuthRedirect || hasActiveSession)) {
         handleGoogleSession(session);
       }
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user?.email) {
-        await handleGoogleSession(session);
+        const isOAuthRedirect = typeof window !== 'undefined' && 
+          (window.location.hash.includes('access_token') || window.location.search.includes('code='));
+        const hasActiveSession = !!safeStorage.getItem('pontual_active_user');
+
+        if (isOAuthRedirect || hasActiveSession) {
+          await handleGoogleSession(session);
+        }
       }
     });
 
@@ -440,36 +480,79 @@ function AppContent() {
 
 
 
-  // Check-In handler for employee
-  const handleCheckIn = (shiftId: string, locationData: { address: string; gpsValidated: boolean }) => {
+  // Check-In / Check-Out handler for employee
+  const handleCheckIn = (
+    shiftId: string,
+    locationData: {
+      address: string;
+      gpsValidated: boolean;
+      latitude?: number;
+      longitude?: number;
+      accuracy?: number;
+      distanceMeters?: number;
+      reportedWorkplace?: string;
+    },
+    punchType: 'entrada' | 'saida' = 'entrada'
+  ) => {
     const now = new Date();
     const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     
-    // Salva o registro de ponto na TAB_Registro_Ponto no Supabase
-    registerPunchSupabase(shiftId, activeEmployee.id, locationData);
+    // Salva o registro de ponto na TAB_Registro_Ponto no Supabase com coordenadas reais e tipo
+    registerPunchSupabase(shiftId, activeEmployee.id, locationData, punchType);
 
     setShifts(prev => prev.map(s => {
       if (s.id === shiftId) {
-        return {
-          ...s,
-          attendanceStatus: 'present',
-          checkInTime: timeStr,
-          checkInLocation: {
-            latitude: -23.5505,
-            longitude: -46.6333,
-            address: locationData.address,
-            gpsValidated: locationData.gpsValidated,
-          }
-        };
+        if (punchType === 'saida') {
+          return {
+            ...s,
+            checkOutTime: timeStr,
+            checkOutLocation: {
+              latitude: locationData.latitude ?? -23.5505,
+              longitude: locationData.longitude ?? -46.6333,
+              address: locationData.address,
+              gpsValidated: locationData.gpsValidated,
+              accuracy: locationData.accuracy,
+              distanceMeters: locationData.distanceMeters,
+              reportedWorkplace: locationData.reportedWorkplace,
+              timestamp: now.toISOString(),
+            }
+          };
+        } else {
+          return {
+            ...s,
+            attendanceStatus: 'present',
+            checkInTime: timeStr,
+            checkInLocation: {
+              latitude: locationData.latitude ?? -23.5505,
+              longitude: locationData.longitude ?? -46.6333,
+              address: locationData.address,
+              gpsValidated: locationData.gpsValidated,
+              accuracy: locationData.accuracy,
+              distanceMeters: locationData.distanceMeters,
+              reportedWorkplace: locationData.reportedWorkplace,
+              timestamp: now.toISOString(),
+            }
+          };
+        }
       }
       return s;
     }));
 
-    // Add confirmation notification
+    // Mensagem contextual para o colaborador
+    let statusMsg = 'GPS Validado no Posto';
+    if (locationData.reportedWorkplace) {
+      statusMsg = `Posto declarado: ${locationData.reportedWorkplace}`;
+    } else if (!locationData.gpsValidated && locationData.distanceMeters) {
+      statusMsg = `Aviso: Ponto registrado a ${locationData.distanceMeters}m do posto alocado`;
+    }
+
+    const isExit = punchType === 'saida';
     const newNotif: NotificationItem = {
       id: `notif-${Date.now()}`,
-      title: 'Ponto Registrado com Sucesso!',
-      message: `Sua presença foi confirmada às ${timeStr} na Sede Employer (GPS Validado).`,
+      title: isExit
+        ? (locationData.gpsValidated ? 'Saída Registrada com Sucesso!' : 'Saída Registrada (Aviso de Perímetro)')
+        : (locationData.gpsValidated ? 'Entrada Registrada com Sucesso!' : 'Entrada Registrada (Aviso de Perímetro)'),
+      message: `${isExit ? 'Saída' : 'Presença'} confirmada às ${timeStr} (${statusMsg}). Local: ${locationData.address}`,
       type: 'system',
       timestamp: 'Agora',
       read: false,
@@ -633,6 +716,12 @@ function AppContent() {
     const prevShift = shifts.find(s => s.id === updated.id);
     setShifts(prev => prev.map(s => s.id === updated.id ? updated : s));
 
+    try {
+      await updateShiftSupabase(updated);
+    } catch (err) {
+      console.warn('Erro ao atualizar escala no Supabase:', err);
+    }
+
     if ((notifyEmployee || (prevShift && prevShift.status === 'published')) && updated.status === 'published') {
       const emp = employees.find(e => e.id === updated.employeeId);
       const empName = emp?.name || 'Colaborador';
@@ -748,10 +837,39 @@ function AppContent() {
     showToast('Atestado Recusado', 'A justificativa foi marcada como não homologada no Supabase.', 'info');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn('Erro ao deslogar do Supabase:', err);
+    }
     try {
       safeStorage.removeItem('pontual_active_user');
       safeStorage.removeItem('pontual_role');
+      safeStorage.removeItem('pontual_google_avatar');
+
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.removeItem('pontual_active_user');
+        window.sessionStorage.removeItem('pontual_role');
+        window.sessionStorage.removeItem('pontual_google_avatar');
+        window.localStorage.removeItem('pontual_active_user');
+        window.localStorage.removeItem('pontual_role');
+        window.localStorage.removeItem('pontual_google_avatar');
+
+        // Limpa tokens de autenticação do Supabase residuais no storage
+        try {
+          Object.keys(window.localStorage || {}).forEach(k => {
+            if (k.startsWith('sb-') && k.endsWith('-auth-token')) {
+              window.localStorage.removeItem(k);
+            }
+          });
+          Object.keys(window.sessionStorage || {}).forEach(k => {
+            if (k.startsWith('sb-') && k.endsWith('-auth-token')) {
+              window.sessionStorage.removeItem(k);
+            }
+          });
+        } catch {}
+      }
     } catch {}
     setIsAuthenticated(false);
   };
@@ -940,7 +1058,26 @@ function AppContent() {
             onToggleCollapse={() => setSidebarCollapsed(prev => !prev)}
             activeEmployee={activeEmployee}
             employees={employees}
-            onSelectEmployee={setActiveEmployee}
+            onSelectEmployee={(emp) => {
+              setActiveEmployee(emp);
+              safeStorage.setItem('pontual_active_user', JSON.stringify({
+                ...emp,
+                Idf_Colaborador: emp.id,
+                Nme_Colaborador: emp.name,
+                Eml_Corporativo: emp.email,
+                Tpo_Perfil: emp.roleType || 'colaborador',
+                Tpo_Cargo: emp.role,
+                Des_Departamento: emp.department,
+                Des_Avatar_Url: emp.avatar,
+                Cod_Matricula: emp.registrationId,
+                Flg_Gestor_Master: emp.isMasterManager,
+                Flg_Ativo: true,
+                Idf_Empresa: emp.companyId,
+                companyId: emp.companyId,
+                isRh: emp.isRh,
+                roleType: emp.roleType
+              }));
+            }}
             notifications={notifications}
             onOpenNotifications={() => setIsNotificationsModalOpen(true)}
             unreadChatCount={unreadChatCount}
@@ -949,7 +1086,7 @@ function AppContent() {
           />
 
           {/* Main Content */}
-          <main className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-5 relative">
+          <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 relative">
             {/* Tab 1: Overview & Digital Punch Clock */}
             {employeeTab === 'overview' && (() => {
               const filteredReminders = (reminders || []).filter(rem => {

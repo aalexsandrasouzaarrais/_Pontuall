@@ -7,9 +7,11 @@ import {
   Check, 
   Sparkles, 
   Lightbulb,
-  CheckSquare
+  CheckSquare,
+  MapPin
 } from 'lucide-react';
 import { Employee, Shift, ShiftTemplate, ShiftType } from '@/types';
+import { getStoredWorkplaces, WorkplaceLocation } from '@/shared/services/workplaceService';
 
 export interface ShiftTemplatesModalProps {
   isOpen: boolean;
@@ -128,6 +130,13 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
   const [templates, setTemplates] = useState<ShiftTemplate[]>(INITIAL_SHIFT_TEMPLATES);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('tpl-4');
 
+  // Gestão de Posto de Trabalho do Template
+  const [workplacesList] = useState<WorkplaceLocation[]>(() => getStoredWorkplaces());
+  const [selectedWorkplaceId, setSelectedWorkplaceId] = useState<string>(() => {
+    const list = getStoredWorkplaces();
+    return list[0]?.id || '';
+  });
+
   // Selected collaborators (defaults to all employees selected)
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>(() => 
     employees.map(e => e.id)
@@ -168,8 +177,20 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
       return;
     }
 
-    onApplyTemplate(tpl, selectedEmployeeIds);
-    setFeedbackMessage(`Template "${tpl.name}" aplicado com sucesso para ${selectedEmployeeIds.length} colaboradores!`);
+    const chosenWp = workplacesList.find(w => w.id === selectedWorkplaceId);
+    const tplWithWp: ShiftTemplate = {
+      ...tpl,
+      workplace: chosenWp ? chosenWp.name : tpl.workplace,
+      workplaceLocation: chosenWp || tpl.workplaceLocation,
+      days: tpl.days.map(d => ({
+        ...d,
+        workplace: chosenWp ? chosenWp.name : (d.workplace || tpl.workplace),
+        workplaceLocation: chosenWp || (d.workplaceLocation || tpl.workplaceLocation),
+      }))
+    };
+
+    onApplyTemplate(tplWithWp, selectedEmployeeIds);
+    setFeedbackMessage(`Template "${tpl.name}" com posto "${chosenWp?.name || 'Padrão'}" aplicado para ${selectedEmployeeIds.length} colaboradores!`);
     setTimeout(() => {
       setFeedbackMessage(null);
       onClose();
@@ -484,13 +505,39 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
               </div>
             </div>
 
-            {/* 2. Selecionar Colaboradores */}
+            {/* 2. Posto de Trabalho / Unidade Alocada */}
+            <div className="space-y-2 pt-1">
+              <label className={`text-[11px] font-bold font-mono tracking-wider flex items-center gap-1.5 uppercase ${
+                isDark ? 'text-[#F9DE97]/90' : 'text-[#640C1E]/80'
+              }`}>
+                <MapPin className="w-3.5 h-3.5 text-[#F59242]" />
+                <span>2. LOCAL DE TRABALHO / UNIDADE DA ESCALA</span>
+              </label>
+
+              <select
+                value={selectedWorkplaceId}
+                onChange={e => setSelectedWorkplaceId(e.target.value)}
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-semibold outline-none transition-all cursor-pointer border ${
+                  isDark
+                    ? 'bg-[#181922] border-[#282a33] text-white focus:border-[#F59242]'
+                    : 'bg-white border-[#E8DCCB] text-slate-800 focus:border-[#9F243C]'
+                }`}
+              >
+                {workplacesList.map(w => (
+                  <option key={w.id} value={w.id} className={isDark ? 'bg-[#181922] text-white' : 'bg-white text-slate-900'}>
+                    📍 {w.name} {w.isRemote ? '(Remoto/Flexível)' : `— ${w.address}`} ({w.radiusMeters || 200}m)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 3. Selecionar Colaboradores */}
             <div className="space-y-2.5 pt-1">
               <div className="flex items-center justify-between">
                 <label className={`text-[11px] font-bold font-mono tracking-wider block uppercase ${
                   isDark ? 'text-[#F9DE97]/90' : 'text-[#640C1E]/80'
                 }`}>
-                  2. SELECIONAR COLABORADORES ({selectedEmployeeIds.length}/{employees.length})
+                  3. SELECIONAR COLABORADORES ({selectedEmployeeIds.length}/{employees.length})
                 </label>
 
                 <button

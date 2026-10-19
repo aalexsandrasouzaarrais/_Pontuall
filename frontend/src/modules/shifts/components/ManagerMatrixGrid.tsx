@@ -349,16 +349,58 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           justified: 'Justificado',
           pending: 'Pendente'
         };
+        const distInText = s.checkInLocation?.distanceMeters !== undefined 
+          ? (s.checkInLocation.distanceMeters >= 1000 
+              ? `${(s.checkInLocation.distanceMeters / 1000).toFixed(1)} km` 
+              : `${Math.round(s.checkInLocation.distanceMeters)} m`)
+          : '';
+        const distOutText = s.checkOutLocation?.distanceMeters !== undefined 
+          ? (s.checkOutLocation.distanceMeters >= 1000 
+              ? `${(s.checkOutLocation.distanceMeters / 1000).toFixed(1)} km` 
+              : `${Math.round(s.checkOutLocation.distanceMeters)} m`)
+          : '';
+
+        let calculatedHours = '8h';
+        if (s.checkInTime && s.checkOutTime) {
+          const [inH, inM] = s.checkInTime.split(':').map(Number);
+          const [outH, outM] = s.checkOutTime.split(':').map(Number);
+          let diffMin = (outH * 60 + outM) - (inH * 60 + inM);
+          if (diffMin < 0) diffMin += 24 * 60;
+          const h = Math.floor(diffMin / 60);
+          const m = diffMin % 60;
+          calculatedHours = `${h}h${m > 0 ? ` ${m}m` : ''}`;
+        }
+
+        let obsText = s.notes || '';
+        if (s.checkInLocation?.address) {
+          const inStatus = s.checkInLocation.reportedWorkplace
+            ? `📌 ${s.checkInLocation.reportedWorkplace}`
+            : s.checkInLocation.gpsValidated
+            ? `🟢 Entrada OK ${distInText ? `(${distInText})` : ''}`
+            : `🟡 Entrada Fora (${distInText})`;
+          obsText = obsText ? `${obsText} | ${inStatus}` : inStatus;
+        }
+        if (s.checkOutLocation?.address) {
+          const outStatus = s.checkOutLocation.gpsValidated
+            ? `🟢 Saída OK ${distOutText ? `(${distOutText})` : ''}`
+            : `🟡 Saída Fora (${distOutText})`;
+          obsText = obsText ? `${obsText} | ${outStatus}` : outStatus;
+        }
+
         return {
           date: s.date,
           name: emp?.name || 'Colaborador',
           role: emp?.role || 'Colaborador',
           dept: emp?.department || 'Geral',
-          time: `${s.startTime} – ${s.endTime}`,
-          hours: '8h',
+          time: s.checkInTime 
+            ? `${s.checkInTime}${s.checkOutTime ? ` → ${s.checkOutTime}` : ' (Entrada)'}` 
+            : `${s.startTime} – ${s.endTime}`,
+          hours: calculatedHours,
           status: statusMap[s.attendanceStatus || 'pending'] || 'Pendente',
           type: s.type === 'regular' ? 'Regular' : 'Extra',
-          obs: s.notes || (s.checkInLocation?.address ? `Check-in validado via GPS em ${s.checkInLocation.address}` : '—')
+          checkInLocation: s.checkInLocation,
+          checkOutLocation: s.checkOutLocation,
+          obs: obsText || '—'
         };
       });
     }
@@ -2398,19 +2440,29 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     <td className="p-3.5">
                       <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1.5" style={
                         row.status === 'Presente'
-                          ? { background: 'rgba(73, 212, 123, 0.12)', color: '#49d982', border: '1px solid rgba(73, 212, 123, 0.25)' }
+                          ? (row.checkInLocation && !row.checkInLocation.gpsValidated
+                              ? { background: 'rgba(249, 115, 22, 0.18)', color: '#fb923c', border: '1px solid rgba(249, 115, 22, 0.40)' }
+                              : { background: 'rgba(73, 212, 123, 0.15)', color: '#49d982', border: '1px solid rgba(73, 212, 123, 0.30)' })
                           : row.status === 'Ausente'
-                          ? { background: 'rgba(159, 36, 60, 0.14)', color: '#F9DE97', border: '1px solid rgba(159, 36, 60, 0.35)' }
-                          : { background: 'rgba(249, 222, 151, 0.10)', color: '#F9DE97', border: '1px solid rgba(249, 222, 151, 0.24)' }
+                          ? { background: 'rgba(239, 68, 68, 0.18)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.40)' }
+                          : row.status === 'Justificado'
+                          ? { background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.30)' }
+                          : { background: 'rgba(234, 179, 8, 0.12)', color: '#facc15', border: '1px solid rgba(234, 179, 8, 0.30)' }
                       }>
                         <span 
                           className="w-1.5 h-1.5 rounded-full" 
                           style={{ 
-                            background: row.status === 'Presente' ? '#49d982' : row.status === 'Ausente' ? '#9F243C' : '#F9DE97',
-                            boxShadow: `0 0 6px ${row.status === 'Presente' ? '#49d982' : row.status === 'Ausente' ? '#9F243C' : '#F9DE97'}`
+                            background: row.status === 'Presente' 
+                              ? (row.checkInLocation && !row.checkInLocation.gpsValidated ? '#f97316' : '#49d982')
+                              : row.status === 'Ausente' ? '#ef4444' : row.status === 'Justificado' ? '#38bdf8' : '#eab308',
+                            boxShadow: `0 0 6px ${row.status === 'Presente' ? (row.checkInLocation && !row.checkInLocation.gpsValidated ? '#f97316' : '#49d982') : row.status === 'Ausente' ? '#ef4444' : row.status === 'Justificado' ? '#38bdf8' : '#eab308'}`
                           }} 
                         />
-                        {row.status}
+                        {row.status === 'Presente' && row.checkInLocation && !row.checkInLocation.gpsValidated
+                          ? 'Presente (Fora do Raio)'
+                          : row.status === 'Presente' && row.checkInLocation?.gpsValidated
+                          ? 'Presente (GPS OK)'
+                          : row.status}
                       </span>
                     </td>
                     <td className="p-3.5 text-[11px] text-slate-400">{row.type}</td>
