@@ -1,6 +1,7 @@
 import { supabase } from '@/shared/services/supabase';
 import { Employee } from '@/types';
 import { safeStorage } from '@/shared/utils/safeStorage';
+import bcrypt from 'bcryptjs';
 
 // Converte registro do banco BNE (TAB_Colaborador) para interface Employee do Frontend
 export function mapBneToEmployee(row: any): Employee {
@@ -215,11 +216,12 @@ export async function createColaboradorSupabase(emp: Employee, creatorGestorId?:
   }
 
   const perfil = emp.roleType === 'rh' ? 'rh' : emp.roleType === 'gestor' ? 'gestor' : (emp.isRh ? 'rh' : 'colaborador');
+  const provisionalHash = bcrypt.hashSync(matricula, 10);
   const payload = {
     Cod_Matricula: matricula,
     Nme_Colaborador: emp.name,
     Eml_Corporativo: emp.email,
-    Des_Senha_Hash: matricula, // ID como senha provisória
+    Des_Senha_Hash: provisionalHash, // Hash da matrícula como senha provisória segura
     Tpo_Perfil: perfil,
     Tpo_Cargo: emp.role,
     Des_Departamento: emp.department,
@@ -324,11 +326,12 @@ export async function createGestorSupabase(gestorData: {
 
   const isRhFinal = gestorData.isRh || isMasterManager || (gestorData.role && gestorData.role.toLowerCase().includes('rh'));
   const matricula = `GST-${Math.floor(1000 + Math.random() * 9000)}`;
+  const gestorHash = bcrypt.hashSync(gestorData.password, 10);
   const payload = {
     Cod_Matricula: matricula,
     Nme_Colaborador: gestorData.name.trim(),
     Eml_Corporativo: cleanEmail,
-    Des_Senha_Hash: gestorData.password,
+    Des_Senha_Hash: gestorHash,
     Tpo_Perfil: isRhFinal ? 'rh' : 'gestor',
     Tpo_Cargo: gestorData.role?.trim() || (isRhFinal ? 'Gerente de RH & Administração Geral' : 'Gestor de Setor'),
     Des_Departamento: gestorData.department?.trim() || (isRhFinal ? 'Recursos Humanos & Gestão Geral' : 'Gestão de Pessoas & Operações'),
@@ -593,13 +596,16 @@ export async function updateColaboradorPasswordSupabase(identifier: string, nova
     const cleanId = identifier.trim();
     if (!cleanId) return false;
 
+    // Gera o hash seguro com bcrypt
+    const senhaHash = bcrypt.hashSync(novaSenha, 10);
+
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cleanId);
     let dbSuccess = false;
 
     if (isUuid) {
       const { error } = await supabase
         .from('TAB_Colaborador')
-        .update({ Des_Senha_Hash: novaSenha })
+        .update({ Des_Senha_Hash: senhaHash })
         .eq('Idf_Colaborador', cleanId);
       dbSuccess = !error;
       if (error) console.warn('Erro ao atualizar senha por UUID no Supabase:', error.message);
@@ -607,7 +613,7 @@ export async function updateColaboradorPasswordSupabase(identifier: string, nova
       const cleanNoSpace = cleanId.replace(/\s+/g, '');
       const { error } = await supabase
         .from('TAB_Colaborador')
-        .update({ Des_Senha_Hash: novaSenha })
+        .update({ Des_Senha_Hash: senhaHash })
         .or(`Cod_Matricula.ilike.%${cleanNoSpace}%,Eml_Corporativo.ilike.%${cleanId}%`);
       dbSuccess = !error;
       if (error) console.warn('Erro ao atualizar senha por Matrícula/Email no Supabase:', error.message);
@@ -624,7 +630,7 @@ export async function updateColaboradorPasswordSupabase(identifier: string, nova
           const eml = (u.Eml_Corporativo || u.email || '').toLowerCase();
           if (mat.includes(cleanId.toLowerCase()) || eml.includes(cleanId.toLowerCase())) {
             updatedAny = true;
-            return { ...u, Des_Senha_Hash: novaSenha, password: novaSenha };
+            return { ...u, Des_Senha_Hash: senhaHash, password: senhaHash };
           }
           return u;
         });
