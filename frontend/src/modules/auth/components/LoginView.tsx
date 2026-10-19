@@ -493,7 +493,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         }
       }
 
-      const redirectUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+      const redirectUrl = typeof window !== 'undefined'
+        ? `${window.location.origin}${window.location.pathname}`
+        : 'http://localhost:3000';
+
+      // Marca o início explícito do fluxo OAuth para evitar que retornos sejam bloqueados após F5/redirect
+      safeStorage.setItem('pontual_oauth_in_progress', 'true');
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -507,6 +512,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
       });
 
       if (error) {
+        safeStorage.removeItem('pontual_oauth_in_progress');
         throw error;
       }
 

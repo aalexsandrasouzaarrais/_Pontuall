@@ -357,11 +357,20 @@ function AppContent() {
 
   // Monitora autenticação via Google Workspace (OAuth redirect)
   React.useEffect(() => {
-    const handleGoogleSession = async (session: any) => {
+    const handleGoogleSession = async (session: any, isExplicitOAuthLogin: boolean = false) => {
       if (!session?.user?.email) return;
 
-      const isOAuthRedirect = typeof window !== 'undefined' && 
-        (window.location.hash.includes('access_token') || window.location.search.includes('code='));
+      const isOAuthRedirect = isExplicitOAuthLogin || (
+        typeof window !== 'undefined' && (
+          window.location.hash.includes('access_token') ||
+          window.location.hash.includes('id_token') ||
+          window.location.search.includes('code=') ||
+          safeStorage.getItem('pontual_oauth_in_progress') === 'true'
+        )
+      );
+
+      // Limpa a flag temporária de oauth em progresso
+      safeStorage.removeItem('pontual_oauth_in_progress');
 
       const hasActiveSession = !!safeStorage.getItem('pontual_active_user');
 
@@ -459,24 +468,22 @@ function AppContent() {
     };
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      const isOAuthRedirect = typeof window !== 'undefined' && 
-        (window.location.hash.includes('access_token') || window.location.search.includes('code='));
+      const isOAuthRedirect = typeof window !== 'undefined' && (
+        window.location.hash.includes('access_token') || 
+        window.location.hash.includes('id_token') ||
+        window.location.search.includes('code=') ||
+        safeStorage.getItem('pontual_oauth_in_progress') === 'true'
+      );
       const hasActiveSession = !!safeStorage.getItem('pontual_active_user');
 
       if (session && (isOAuthRedirect || hasActiveSession)) {
-        handleGoogleSession(session);
+        handleGoogleSession(session, isOAuthRedirect);
       }
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user?.email) {
-        const isOAuthRedirect = typeof window !== 'undefined' && 
-          (window.location.hash.includes('access_token') || window.location.search.includes('code='));
-        const hasActiveSession = !!safeStorage.getItem('pontual_active_user');
-
-        if (isOAuthRedirect || hasActiveSession) {
-          await handleGoogleSession(session);
-        }
+        await handleGoogleSession(session, true);
       }
     });
 
