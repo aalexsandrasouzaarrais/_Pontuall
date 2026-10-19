@@ -425,18 +425,42 @@ export async function syncGoogleUserWithSupabase(googleUser: {
 
   try {
     // 1. Verifica se a conta já existe na tabela TAB_Colaborador e está ativa
-    const { data: existing, error } = await supabase
-      .from('TAB_Colaborador')
-      .select('*')
-      .or(`Eml_Corporativo.ilike.${email},Eml_Secundario.ilike.${email}`)
-      .eq('Flg_Ativo', true)
-      .maybeSingle();
+    let existing: any = null;
+    try {
+      const { data, error } = await supabase
+        .from('TAB_Colaborador')
+        .select('*')
+        .or(`Eml_Corporativo.ilike.${email},Eml_Secundario.ilike.${email}`)
+        .eq('Flg_Ativo', true)
+        .maybeSingle();
 
-    if (error) {
-      console.warn('Aviso ao consultar usuário Google no Supabase:', error.message);
+      if (!error && data) {
+        existing = data;
+      }
+    } catch (queryErr) {
+      console.warn('Aviso ao consultar usuário Google via filtro direto:', queryErr);
     }
 
-    // Se a conta já existe previamente no sistema, permite o acesso
+    // Se a query or direta falhou ou não encontrou, busca na lista de ativos para comparar com trim()
+    if (!existing) {
+      try {
+        const { data: allActive } = await supabase
+          .from('TAB_Colaborador')
+          .select('*')
+          .eq('Flg_Ativo', true);
+
+        if (allActive && allActive.length > 0) {
+          existing = allActive.find((u: any) => 
+            (u.Eml_Corporativo && u.Eml_Corporativo.toLowerCase().trim() === email) ||
+            (u.Eml_Secundario && u.Eml_Secundario.toLowerCase().trim() === email)
+          );
+        }
+      } catch (listErr) {
+        console.warn('Aviso ao consultar lista de colaboradores:', listErr);
+      }
+    }
+
+    // Se encontrou no Supabase:
     if (existing) {
       // Atualiza foto de perfil do Google caso não tenha uma foto personalizada
       if (googleUser.picture && (!existing.Des_Avatar_Url || existing.Des_Avatar_Url.includes('unsplash') || existing.Des_Avatar_Url.includes('ui-avatars'))) {
@@ -451,7 +475,22 @@ export async function syncGoogleUserWithSupabase(googleUser: {
       return mapBneToEmployee(existing);
     }
 
-    // Se NÃO estiver previamente cadastrada, rejeita o acesso (não cria novo colaborador)
+    // 2. Se não encontrou no banco, verifica se foi cadastrado localmente no storage
+    try {
+      const registeredStr = safeStorage.getItem('pontual_registered_users');
+      if (registeredStr) {
+        const list = JSON.parse(registeredStr);
+        const localMatch = list.find((u: any) => 
+          (u.email && u.email.toLowerCase().trim() === email) ||
+          (u.Eml_Corporativo && u.Eml_Corporativo.toLowerCase().trim() === email)
+        );
+        if (localMatch) {
+          return mapBneToEmployee(localMatch);
+        }
+      }
+    } catch {}
+
+    // Se NÃO estiver previamente cadastrada, rejeita o acesso (não cria novo colaborador não autorizado)
     console.warn(`[Google Workspace] Acesso negado: o e-mail ${email} não está previamente cadastrado.`);
     return null;
   } catch (err: any) {
