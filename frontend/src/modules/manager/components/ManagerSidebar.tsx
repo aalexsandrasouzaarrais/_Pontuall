@@ -10,11 +10,12 @@ import {
   Sun,
   Moon,
   Users,
+  Briefcase,
 } from 'lucide-react';
 import logoPainel from '@/assets/logo-painel.png';
 import logoColaboradorLight from '@/assets/logo-colaborador-light.png';
 
-export type ManagerTabId = 'escala' | 'orbit' | 'aprovacoes' | 'relatorios' | 'tarefas' | 'chat' | 'colaboradores';
+export type ManagerTabId = 'escala' | 'orbit' | 'aprovacoes' | 'pj_entregas' | 'relatorios' | 'tarefas' | 'chat' | 'colaboradores';
 
 interface SidebarItem {
   id: ManagerTabId;
@@ -32,6 +33,7 @@ interface ManagerSidebarProps {
   onOpenCalendarOrbit: () => void;
   onAddShift: () => void;
   pendingRequestsCount: number;
+  pendingPjCount?: number;
   notificationsCount?: number;
   onOpenNotifications?: () => void;
   unreadChatCount?: number;
@@ -53,6 +55,7 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
   collapsed,
   onToggleCollapse,
   pendingRequestsCount,
+  pendingPjCount = 0,
   notificationsCount,
   onOpenNotifications,
   unreadChatCount,
@@ -82,6 +85,13 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
       shortLabel: 'Aprovações',
       icon: <CheckCircle2 className="w-5 h-5" />,
       badge: pendingRequestsCount > 0 ? pendingRequestsCount : undefined,
+    },
+    {
+      id: 'pj_entregas',
+      label: 'Entregas & Horas PJ',
+      shortLabel: 'Entregas PJ',
+      icon: <Briefcase className="w-5 h-5" />,
+      badge: pendingPjCount > 0 ? pendingPjCount : undefined,
     },
     {
       id: 'relatorios',

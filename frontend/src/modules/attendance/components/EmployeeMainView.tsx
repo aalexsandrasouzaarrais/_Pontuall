@@ -17,7 +17,8 @@ import {
   RotateCcw,
   History,
   FileText,
-  X
+  X,
+  Briefcase
 } from 'lucide-react';
 import { Employee, Shift, ManagerReminder } from '@/types';
 import { getWeekDates, calculateShiftDurationHours, getTodayDateString } from '@/shared/utils/dateUtils';
@@ -26,6 +27,7 @@ import { getCurrentCoordinates, reverseGeocode, validateGeofence, calculateHaver
 import { findWorkplaceByName, getStoredWorkplaces } from '@/shared/services/workplaceService';
 import { supabase } from '@/shared/services/supabase';
 import { getPunchesSupabase } from '@/modules/shifts/services/shiftService';
+import { PjTimesheetTracker } from './PjTimesheetTracker';
 
 const formatDistance = (meters?: number) => {
   if (meters === undefined || meters === null) return '0 m';
@@ -53,6 +55,7 @@ interface EmployeeMainViewProps {
   onNavigateToCalendar: () => void;
   onNavigateToRequests: () => void;
   onNavigateToJustifications: () => void;
+  onNavigateToPjReports?: () => void;
   onShiftClick: (shift: Shift) => void;
   isLightTheme: boolean;
   employees?: Employee[];
@@ -66,6 +69,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
   onNavigateToCalendar,
   onNavigateToRequests,
   onNavigateToJustifications,
+  onNavigateToPjReports,
   onShiftClick,
   isLightTheme,
   employees = [],
@@ -344,43 +348,6 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
           <div className="flex-1 space-y-4">
             {/* Big Clean Digital Clock & Date */}
             <div>
-              {/* Barra superior de Gestor Direto + Botão de Histórico de Batidas */}
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
-                {directManager && employee.roleType !== 'gestor' && !employee.isRh ? (
-                  <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all ${
-                    isLightTheme 
-                      ? 'bg-amber-50/90 border-amber-200 text-amber-900 shadow-2xs' 
-                      : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
-                  }`}>
-                    <ShieldCheck className="w-3.5 h-3.5 text-[#f89847] shrink-0" />
-                    <span>Gestor Direto: <strong className="font-extrabold">{directManager.name}</strong> ({directManager.role})</span>
-                  </div>
-                ) : <div />}
-
-                {/* Botão em Destaque para Ver Histórico Completo de Batidas */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    loadPunches();
-                    setIsHistoryOpen(true);
-                  }}
-                  className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all shadow-xs cursor-pointer ${
-                    isLightTheme
-                      ? 'bg-white border-slate-300 text-slate-800 hover:border-emerald-500 hover:text-emerald-600'
-                      : 'bg-white/10 border-white/20 text-white hover:border-emerald-400 hover:text-emerald-400'
-                  }`}
-                  title="Abrir folha e histórico completo de registros"
-                >
-                  <History className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  <span>Meu Histórico de Batidas</span>
-                  {dbPunches.length > 0 && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-mono font-bold">
-                      {dbPunches.length}
-                    </span>
-                  )}
-                </button>
-              </div>
-
               <div
                 className={`text-4xl sm:text-5xl font-black tracking-tight font-sans ${
                   isLightTheme ? 'text-[#0F172A]' : 'text-white'
@@ -558,6 +525,19 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                   : 'bg-[#151821] border-white/10 shadow-lg'
               }`}
             >
+              {/* Para Prestadores PJ: Timesheet em Tempo Real com Play / Pause */}
+              {employee.contractType === 'PJ' ? (
+                <div className="space-y-3">
+                  <PjTimesheetTracker 
+                    employee={employee}
+                    isDark={!isLightTheme}
+                    compactMode={true}
+                    onNavigateToFullView={onNavigateToPjReports}
+                  />
+                </div>
+              ) : (
+                <>
+
               {/* Feedback de Confirmação Digital */}
               {checkInSuccess && (
                 <div className="mb-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-xs flex items-center gap-2.5 animate-in fade-in duration-200">
@@ -799,6 +779,8 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                     <span>Ver Histórico de Batidas</span>
                   </button>
                 </div>
+              )}
+                </>
               )}
             </div>
           </div>

@@ -37,7 +37,8 @@ import {
   Eye,
   Maximize2,
   Lock,
-  Hash
+  Hash,
+  Briefcase
 } from 'lucide-react';
 import { Employee, Shift, TimeOffRequest, AbsenceJustification } from '@/types';
 import { supabase } from '@/shared/services/supabase';

@@ -37,6 +37,13 @@ import {
 import { 
   ProfileEditModal 
 } from '@/shared/components/ProfileEditModal';
+import { 
+  PjDeliverablesView 
+} from '@/modules/attendance/components/PjDeliverablesView';
+import { 
+  getPjReportsSupabase, 
+  updatePjReportStatusSupabase 
+} from '@/modules/attendance/services/pjReportService';
 import { supabase } from '@/shared/services/supabase';
 
 import { 
@@ -80,7 +87,8 @@ import {
   TimeOffRequest, 
   AbsenceJustification, 
   NotificationItem,
-  ManagerReminder
+  ManagerReminder,
+  PjDeliverableReport
 } from './types';
 import { 
   CheckCircle2, 
@@ -178,6 +186,7 @@ function AppContent() {
   const handleLoginSuccess = (user: Employee, role: 'manager' | 'employee') => {
     setActiveEmployee(user);
     setCurrentRole(role);
+    setEmployeeTab(user.contractType === 'PJ' ? 'pj_reports' : 'overview');
     setIsAuthenticated(true);
   };
 
@@ -205,7 +214,11 @@ function AppContent() {
           isRh: isRhParsed,
           roleType: parsed.roleType || (isRhParsed ? 'rh' : (parsed.Flg_Gestor_Master || parsed.perfil === 'gestor' || parsed.Tpo_Perfil === 'gestor' ? 'gestor' : 'colaborador')),
           companyCnpj: parsed.companyCnpj || undefined,
-          managerIds: parsed.managerIds || []
+          managerIds: parsed.managerIds || [],
+          contractType: parsed.contractType || parsed.Tpo_Regime_Contrato || undefined,
+          contractStartDate: parsed.contractStartDate || parsed.Dta_Inicio_Contrato || undefined,
+          contractEndDate: parsed.contractEndDate || parsed.Dta_Fim_Contrato || undefined,
+          pjMonthlyHoursQuota: parsed.pjMonthlyHoursQuota || undefined
         };
       }
     } catch {}
@@ -226,9 +239,12 @@ function AppContent() {
   const [justifications, setJustifications] = useState<AbsenceJustification[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [reminders, setReminders] = useState<ManagerReminder[]>([]);
+  const [pjReports, setPjReports] = useState<PjDeliverableReport[]>([]);
   
   // Employee Tabs
-  const [employeeTab, setEmployeeTab] = useState<'overview' | 'calendar' | 'requests' | 'justifications' | 'chat'>('overview');
+  const [employeeTab, setEmployeeTab] = useState<'overview' | 'pj_reports' | 'calendar' | 'requests' | 'justifications' | 'chat'>(() =>
+    activeEmployee?.contractType === 'PJ' ? 'pj_reports' : 'overview'
+  );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Sincronização e filtragem por empresa/gestor com o Supabase
@@ -263,11 +279,16 @@ function AppContent() {
         }
 
         const meInDb = finalEmployees.find(e => e.id === currentEmp.id);
-        if (meInDb && meInDb.managerIds && meInDb.managerIds.length > 0) {
-          currentEmp.managerIds = meInDb.managerIds;
-          if (!activeEmployee.managerIds || activeEmployee.managerIds.length === 0) {
-            setActiveEmployee(prev => ({ ...prev, managerIds: meInDb.managerIds }));
-          }
+        if (meInDb) {
+          currentEmp = { ...currentEmp, ...meInDb };
+          setActiveEmployee(prev => ({
+            ...prev,
+            managerIds: meInDb.managerIds?.length ? meInDb.managerIds : prev.managerIds,
+            contractType: meInDb.contractType || prev.contractType,
+            contractStartDate: meInDb.contractStartDate || prev.contractStartDate,
+            contractEndDate: meInDb.contractEndDate || prev.contractEndDate,
+            pjMonthlyHoursQuota: meInDb.pjMonthlyHoursQuota || prev.pjMonthlyHoursQuota
+          }));
         }
 
         setEmployees(finalEmployees);
@@ -317,6 +338,9 @@ function AppContent() {
 
         const dbNotifications = await getNotificationsSupabase(currentEmp.id);
         setNotifications(dbNotifications || []);
+
+        const dbPjReports = await getPjReportsSupabase();
+        setPjReports(dbPjReports || []);
 
       } catch (err) {
         console.warn('Erro ao carregar dados do Supabase:', err);
@@ -891,6 +915,38 @@ function AppContent() {
     showToast('Atestado Recusado', 'A justificativa foi marcada como não homologada no Supabase.', 'info');
   };
 
+  const handleApprovePjReport = async (id: string) => {
+    const feedback = 'Entregas e horas homologadas pelo gestor.';
+    const target = pjReports.find(p => p.id === id);
+    setPjReports(prev => prev.map(p => p.id === id ? { ...p, status: 'approved', managerFeedback: feedback } : p));
+    await updatePjReportStatusSupabase(id, 'approved', feedback);
+    if (target?.employeeId) {
+      await createNotificationSupabase({
+        targetEmployeeId: target.employeeId,
+        title: 'Entregas PJ Aprovadas',
+        message: `Seu relatório de entregas e horas do período "${target.period}" (${target.hoursWorked}h) foi aprovado pelo gestor.`,
+        type: 'approval',
+      });
+    }
+    showToast('Relatório PJ Aprovado', 'Horas e entregas homologadas com sucesso.', 'success');
+  };
+
+  const handleRejectPjReport = async (id: string, reason?: string) => {
+    const feedback = reason || 'Ajustes solicitados pelo gestor.';
+    const target = pjReports.find(p => p.id === id);
+    setPjReports(prev => prev.map(p => p.id === id ? { ...p, status: 'rejected', managerFeedback: feedback } : p));
+    await updatePjReportStatusSupabase(id, 'rejected', feedback);
+    if (target?.employeeId) {
+      await createNotificationSupabase({
+        targetEmployeeId: target.employeeId,
+        title: 'Ajustes Solicitados em Entregas PJ',
+        message: `O gestor solicitou ajustes no relatório do período "${target.period}". Motivo: "${feedback}".`,
+        type: 'approval',
+      });
+    }
+    showToast('Relatório PJ Recusado', 'Status atualizado com solicitação de ajustes.', 'info');
+  };
+
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
@@ -968,7 +1024,10 @@ function AppContent() {
     return employees.filter(e => e.id === activeEmployee?.id || (e.managerIds && e.managerIds.includes(activeEmployee?.id)));
   }, [employees, activeEmployee]);
 
-  const pendingRequestsCount = requests.filter(r => r.status === 'pending').length + justifications.filter(j => j.status === 'pending').length;
+  const pendingRequestsCount = 
+    requests.filter(r => r.status === 'pending').length + 
+    justifications.filter(j => j.status === 'pending').length +
+    pjReports.filter(p => p.status === 'pending').length;
   const myRequests = requests.filter(r => r.employeeId === activeEmployee.id || r.targetEmployeeId === activeEmployee.id);
   const myJustifications = justifications.filter(j => j.employeeId === activeEmployee.id);
 
@@ -1089,18 +1148,25 @@ function AppContent() {
             onOpenProfile={() => setIsProfileModalOpen(true)}
             justifications={justifications}
             requests={requests}
+            pjReports={pjReports}
             onApproveRequest={handleApproveRequest}
             onRejectRequest={handleRejectRequest}
             onApproveJustification={handleApproveJustification}
             onRejectJustification={handleRejectJustification}
+            onApprovePjReport={handleApprovePjReport}
+            onRejectPjReport={handleRejectPjReport}
           />
         </div>
       ) : (
         /* EMPLOYEE VIEW */
-        <div className={`flex-1 flex flex-col md:flex-row overflow-hidden ${(employeeTab === 'requests' || employeeTab === 'justifications') ? (!isDark ? 'bg-[#f4f5f8]' : 'colaborador-page-container') : (!isDark ? 'bg-[#f4f5f8]' : 'bg-[#050104]')}`}>
+        <div className={`flex-1 flex flex-col md:flex-row overflow-hidden ${(employeeTab === 'requests' || employeeTab === 'justifications') && activeEmployee.contractType !== 'PJ' ? (!isDark ? 'bg-[#f4f5f8]' : 'colaborador-page-container') : (!isDark ? 'bg-[#f4f5f8]' : 'bg-[#050104]')}`}>
           {/* Full-height Collapsible Sidebar on Desktop / Horizontal Sub-Header Bar on Mobile */}
           <EmployeeSidebar
-            activeTab={employeeTab}
+            activeTab={
+              activeEmployee.contractType === 'PJ'
+                ? (employeeTab === 'calendar' || employeeTab === 'chat' ? employeeTab : 'pj_reports')
+                : (employeeTab === 'pj_reports' ? 'overview' : employeeTab)
+            }
             onTabChange={(tab) => {
               if (tab === 'chat') {
                 setIsChatModalOpen(true);
@@ -1114,6 +1180,7 @@ function AppContent() {
             employees={employees}
             onSelectEmployee={(emp) => {
               setActiveEmployee(emp);
+              setEmployeeTab(emp.contractType === 'PJ' ? 'pj_reports' : 'overview');
               safeStorage.setItem('pontual_active_user', JSON.stringify({
                 ...emp,
                 Idf_Colaborador: emp.id,
@@ -1129,7 +1196,11 @@ function AppContent() {
                 Idf_Empresa: emp.companyId,
                 companyId: emp.companyId,
                 isRh: emp.isRh,
-                roleType: emp.roleType
+                roleType: emp.roleType,
+                contractType: emp.contractType,
+                contractStartDate: emp.contractStartDate,
+                contractEndDate: emp.contractEndDate,
+                pjMonthlyHoursQuota: emp.pjMonthlyHoursQuota
               }));
             }}
             notifications={notifications}
@@ -1141,8 +1212,8 @@ function AppContent() {
 
           {/* Main Content */}
           <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 relative">
-            {/* Tab 1: Overview & Digital Punch Clock */}
-            {employeeTab === 'overview' && (() => {
+            {/* Tab 1: Overview & Digital Punch Clock (Apenas CLT / Temporário) */}
+            {activeEmployee.contractType !== 'PJ' && (employeeTab === 'overview' || employeeTab === 'pj_reports') && (() => {
               const filteredReminders = (reminders || []).filter(rem => {
                 if (rem.completed) return false;
                 if (!rem.assignedEmployeeIds || rem.assignedEmployeeIds.length === 0) return true;
@@ -1158,12 +1229,24 @@ function AppContent() {
                   onNavigateToCalendar={() => setEmployeeTab('calendar')}
                   onNavigateToRequests={() => setEmployeeTab('requests')}
                   onNavigateToJustifications={() => setEmployeeTab('justifications')}
+                  onNavigateToPjReports={() => setEmployeeTab('pj_reports')}
                   onShiftClick={handleOpenShiftDetails}
                   isLightTheme={!isDark}
                   employees={employees}
                 />
               );
             })()}
+
+            {/* Tab PJ: Entregas, Horas & Comprovações PJ (Tela Principal do PJ) */}
+            {activeEmployee.contractType === 'PJ' && (employeeTab === 'pj_reports' || employeeTab === 'overview' || employeeTab === 'requests' || employeeTab === 'justifications') && (
+              <PjDeliverablesView
+                employee={activeEmployee}
+                isDark={isDark}
+                onReportCreated={(created) => {
+                  setPjReports(prev => [created, ...prev.filter(p => p.id !== created.id)]);
+                }}
+              />
+            )}
 
             {/* Tab 2: Monthly / Weekly Calendar */}
             {employeeTab === 'calendar' && (
@@ -1177,8 +1260,8 @@ function AppContent() {
               />
             )}
 
-            {/* Tab 3: Time Off & Swaps */}
-            {employeeTab === 'requests' && (
+            {/* Tab 3: Time Off & Swaps (Apenas CLT / Temporário) */}
+            {activeEmployee.contractType !== 'PJ' && employeeTab === 'requests' && (
               <div
                 className={`relative z-10 space-y-4 transition-colors duration-300 ${
                   !isDark ? 'text-slate-800' : 'text-white'
@@ -1433,8 +1516,8 @@ function AppContent() {
               </div>
             )}
 
-            {/* Tab 4: Justifications & Medical Notes */}
-            {employeeTab === 'justifications' && (
+            {/* Tab 4: Justifications & Medical Notes (Apenas CLT / Temporário) */}
+            {activeEmployee.contractType !== 'PJ' && employeeTab === 'justifications' && (
               <div
                 className={`relative z-10 space-y-4 transition-colors duration-300 ${
                   !isDark ? 'text-slate-800' : 'text-white'
@@ -1731,10 +1814,13 @@ function AppContent() {
         onClose={() => setIsManagerRequestsModalOpen(false)}
         requests={requests}
         justifications={justifications}
+        pjReports={pjReports}
         onApproveRequest={handleApproveRequest}
         onRejectRequest={handleRejectRequest}
         onApproveJustification={handleApproveJustification}
         onRejectJustification={handleRejectJustification}
+        onApprovePjReport={handleApprovePjReport}
+        onRejectPjReport={handleRejectPjReport}
       />
 
       <ShiftDetailModal

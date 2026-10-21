@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   Bell,
   ShieldCheck,
+  Briefcase,
 } from "lucide-react";
 import { Employee, NotificationItem } from '@/types';
 import logoColaborador from '@/assets/logo-colaborador.png';
@@ -15,6 +16,7 @@ import logoColaboradorLight from '@/assets/logo-colaborador-light.png';
 
 export type EmployeeTabId =
   | "overview"
+  | "pj_reports"
   | "calendar"
   | "requests"
   | "justifications"
@@ -59,39 +61,63 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
 }) => {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const navItems: SidebarItem[] = [
-    {
-      id: "overview",
-      label: "Minha Presença & Ponto",
-      shortLabel: "Presença",
-      icon: <Clock className="w-5 h-5" />,
-    },
-    {
-      id: "calendar",
-      label: "Calendário",
-      shortLabel: "Escala",
-      icon: <CalendarDays className="w-5 h-5" />,
-    },
-    {
-      id: "requests",
-      label: "Folgas & Trocas",
-      shortLabel: "Folgas",
-      icon: <ArrowLeftRight className="w-5 h-5" />,
-    },
-    {
-      id: "justifications",
-      label: "Atestados",
-      shortLabel: "Atestados",
-      icon: <FileText className="w-5 h-5" />,
-    },
-    {
-      id: "chat",
-      label: "Chat",
-      shortLabel: "Chat",
-      icon: <MessageSquare className="w-5 h-5" />,
-      badge: unreadChatCount && unreadChatCount > 0 ? unreadChatCount : undefined,
-    },
-  ];
+  const isPj = activeEmployee.contractType === 'PJ';
+
+  const navItems: SidebarItem[] = isPj
+    ? [
+        {
+          id: "pj_reports",
+          label: "Timesheet & Entregas PJ",
+          shortLabel: "Entregas PJ",
+          icon: <Briefcase className="w-5 h-5" />,
+        },
+        {
+          id: "calendar",
+          label: "Calendário",
+          shortLabel: "Agenda",
+          icon: <CalendarDays className="w-5 h-5" />,
+        },
+        {
+          id: "chat",
+          label: "Chat",
+          shortLabel: "Chat",
+          icon: <MessageSquare className="w-5 h-5" />,
+          badge: unreadChatCount && unreadChatCount > 0 ? unreadChatCount : undefined,
+        },
+      ]
+    : [
+        {
+          id: "overview",
+          label: "Minha Presença & Ponto",
+          shortLabel: "Presença",
+          icon: <Clock className="w-5 h-5" />,
+        },
+        {
+          id: "calendar",
+          label: "Calendário",
+          shortLabel: "Escala",
+          icon: <CalendarDays className="w-5 h-5" />,
+        },
+        {
+          id: "requests",
+          label: "Folgas & Trocas",
+          shortLabel: "Folgas",
+          icon: <ArrowLeftRight className="w-5 h-5" />,
+        },
+        {
+          id: "justifications",
+          label: "Atestados",
+          shortLabel: "Atestados",
+          icon: <FileText className="w-5 h-5" />,
+        },
+        {
+          id: "chat",
+          label: "Chat",
+          shortLabel: "Chat",
+          icon: <MessageSquare className="w-5 h-5" />,
+          badge: unreadChatCount && unreadChatCount > 0 ? unreadChatCount : undefined,
+        },
+      ];
 
   const [isMobile, setIsMobile] = React.useState(() => {
     if (typeof window !== "undefined") {
