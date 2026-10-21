@@ -1405,103 +1405,119 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
       {isHistoryOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
           <div
-            className={`w-full max-w-2xl rounded-2xl border shadow-2xl overflow-hidden flex flex-col max-h-[85vh] ${
-              isLightTheme ? 'bg-white border-slate-200 text-slate-800' : 'bg-[#151821] border-white/10 text-white'
+            className={`w-full max-w-2xl rounded-3xl border shadow-2xl overflow-hidden flex flex-col max-h-[85vh] ${
+              isLightTheme ? 'bg-[#F8FAFC] border-slate-200 text-slate-900' : 'bg-[#12141c] border-white/10 text-white'
             }`}
           >
             {/* Header */}
-            <div className={`px-5 py-4 border-b flex items-center justify-between ${
-              isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'
+            <div className={`px-6 py-4.5 border-b flex items-center justify-between ${
+              isLightTheme ? 'bg-white border-slate-200' : 'bg-white/[0.03] border-white/10'
             }`}>
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center">
-                  <History className="w-4 h-4" />
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#96183c] to-[#f89642] text-white flex items-center justify-center shadow-xs">
+                  <History className="w-5 h-5 stroke-[2.2]" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold">Meu Histórico de Batidas</h3>
-                  <p className="text-[11px] text-slate-400">Extrato de presenças e jornadas registradas via GPS</p>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black tracking-tight">Meu Histórico de Batidas</h3>
+                    {dbPunches && dbPunches.length > 0 && (
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                        isLightTheme ? 'bg-slate-100 text-slate-700' : 'bg-white/10 text-slate-300'
+                      }`}>
+                        {dbPunches.length} {dbPunches.length === 1 ? 'registro' : 'registros'}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Extrato auditável de presenças e jornadas registradas com geolocalização</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsHistoryOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors cursor-pointer"
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:text-white dark:hover:bg-white/10 transition-all cursor-pointer"
+                title="Fechar"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Content Table */}
-            <div className="p-4 overflow-y-auto space-y-2 flex-1">
+            {/* Content List */}
+            <div className="p-5 overflow-y-auto space-y-2.5 flex-1 custom-scrollbar">
               {isLoadingPunches ? (
-                <div className="text-center py-10 text-xs text-slate-400 font-medium">
-                  Carregando registros de ponto do banco de dados...
+                <div className="text-center py-12 text-xs text-slate-400 font-medium space-y-2">
+                  <div className="w-6 h-6 border-2 border-[#96183c] border-t-transparent rounded-full animate-spin mx-auto" />
+                  <p>Carregando registros de ponto do banco de dados...</p>
                 </div>
               ) : dbPunches && dbPunches.length > 0 ? (
                 dbPunches.map((punch: any, idx: number) => {
                   const dt = punch.Dta_Hora_Registro ? new Date(punch.Dta_Hora_Registro) : new Date();
                   const dateFormatted = !isNaN(dt.getTime()) ? dt.toLocaleDateString('pt-BR') : todayStr;
-                  const timeFormatted = !isNaN(dt.getTime()) ? dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--';
+                  const timeFormatted = !isNaN(dt.getTime()) ? dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '--:--';
                   const isEntrada = punch.Tpo_Registro?.toLowerCase() === 'entrada';
                   const isValid = punch.Flg_Gps_Validado !== false;
 
                   return (
                     <div
                       key={punch.Idf_Registro_Ponto || idx}
-                      className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
-                        isLightTheme ? 'bg-slate-50/70 border-slate-200' : 'bg-white/[0.03] border-white/10'
+                      className={`p-3.5 rounded-2xl border transition-all duration-200 ${
+                        isLightTheme
+                          ? 'bg-white border-slate-200 hover:border-slate-300 shadow-xs'
+                          : 'bg-white/[0.04] border-white/10 hover:border-white/15 shadow-sm'
                       }`}
                     >
-                      <div className="space-y-0.5">
+                      {/* Top Row: ● Entrada: 14:24 (or Saída: 16:29), Date and GPS badge */}
+                      <div className="flex items-center justify-between gap-2 font-black text-xs">
                         <div className="flex items-center gap-2">
                           <span
-                            className="text-[10px] font-black px-2.5 py-0.5 rounded-full border shadow-2xs"
-                            style={
-                              isEntrada
-                                ? isLightTheme
-                                  ? { backgroundColor: '#dcfce7', color: '#064e3b', borderColor: '#86efac' }
-                                  : { backgroundColor: 'rgba(16, 185, 129, 0.2)', color: '#6ee7b7', borderColor: 'rgba(16, 185, 129, 0.3)' }
-                                : isLightTheme
-                                  ? { backgroundColor: '#ffe4e6', color: '#881337', borderColor: '#fecdd3' }
-                                  : { backgroundColor: 'rgba(244, 63, 94, 0.2)', color: '#fda4af', borderColor: 'rgba(244, 63, 94, 0.3)' }
-                            }
+                            className="flex items-center gap-1.5 text-xs font-black"
+                            style={{ color: isEntrada ? (isLightTheme ? '#064e3b' : '#6ee7b7') : (isLightTheme ? '#881337' : '#fda4af') }}
                           >
-                            {isEntrada ? '🟢 Entrada' : '🛑 Saída'}
+                            <span
+                              className="w-2.5 h-2.5 rounded-full shrink-0"
+                              style={{ backgroundColor: isEntrada ? '#10b981' : '#f43f5e' }}
+                            />
+                            {isEntrada ? 'Entrada:' : 'Saída:'} {timeFormatted}
                           </span>
-                          <span className={`font-bold text-[12px] ${isLightTheme ? 'text-slate-900' : 'text-slate-100'}`}>{dateFormatted}</span>
-                          <span className={`font-mono text-[12px] font-extrabold ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
-                            {timeFormatted}
+
+                          <span
+                            className="text-[11px] font-semibold px-2 py-0.5 rounded-md font-mono"
+                            style={{
+                              backgroundColor: isLightTheme ? '#f1f5f9' : 'rgba(255,255,255,0.08)',
+                              color: isLightTheme ? '#475569' : '#cbd5e1',
+                            }}
+                          >
+                            {dateFormatted}
                           </span>
                         </div>
-                        <p
-                          className="text-[11px] font-medium line-clamp-1"
-                          style={{ color: isLightTheme ? '#334155' : '#94a3b8' }}
-                        >
-                          📍 {punch.Des_Endereco || 'Localização Registrada'}
-                          {punch.Num_Latitude && punch.Num_Longitude && (
-                            <span className="font-mono text-[9px] opacity-70 ml-1">
-                              ({Number(punch.Num_Latitude).toFixed(4)}, {Number(punch.Num_Longitude).toFixed(4)})
-                            </span>
-                          )}
-                        </p>
-                      </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
                         <span
-                          className="text-[10px] font-black px-2.5 py-0.5 rounded-full border"
+                          className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs shrink-0"
                           style={
                             isValid
                               ? isLightTheme
                                 ? { backgroundColor: '#dcfce7', color: '#064e3b', borderColor: '#86efac' }
-                                : { backgroundColor: 'rgba(16, 185, 129, 0.2)', color: '#a7f3d0', borderColor: 'rgba(16, 185, 129, 0.4)' }
+                                : { backgroundColor: 'rgba(16, 185, 129, 0.25)', color: '#a7f3d0', borderColor: 'rgba(16, 185, 129, 0.4)' }
                               : isLightTheme
                                 ? { backgroundColor: '#fef3c7', color: '#78350f', borderColor: '#fcd34d' }
-                                : { backgroundColor: 'rgba(245, 158, 11, 0.2)', color: '#fde68a', borderColor: 'rgba(245, 158, 11, 0.4)' }
+                                : { backgroundColor: 'rgba(245, 158, 11, 0.25)', color: '#fde68a', borderColor: 'rgba(245, 158, 11, 0.4)' }
                           }
                         >
-                          {isValid ? '✓ GPS Validado' : '⚠ Fora do Raio'}
+                          {isValid ? 'GPS OK' : 'Fora do Raio'}
                         </span>
                       </div>
+
+                      {/* Bottom Row: Address without emoji */}
+                      <p
+                        className="text-xs font-medium truncate mt-1.5 pl-4"
+                        style={{ color: isLightTheme ? '#475569' : '#94a3b8' }}
+                      >
+                        {punch.Des_Endereco || 'Localização Registrada'}
+                        {punch.Num_Latitude && punch.Num_Longitude && (
+                          <span className="font-mono text-[10px] opacity-70 ml-2">
+                            ({Number(punch.Num_Latitude).toFixed(4)}, {Number(punch.Num_Longitude).toFixed(4)})
+                          </span>
+                        )}
+                      </p>
                     </div>
                   );
                 })
@@ -1509,70 +1525,93 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                 empShifts.map((shift) => {
                   const hasIn = Boolean(shift.checkInTime);
                   const hasOut = Boolean(shift.checkOutTime);
+                  const isGpsOk = shift.checkInLocation?.gpsValidated !== false;
                   return (
                     <div
                       key={shift.id}
-                      className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
-                        isLightTheme ? 'bg-slate-50/70 border-slate-200' : 'bg-white/[0.03] border-white/10'
+                      className={`p-3.5 rounded-2xl border transition-all duration-200 ${
+                        isLightTheme
+                          ? 'bg-white border-slate-200 hover:border-slate-300 shadow-xs'
+                          : 'bg-white/[0.04] border-white/10 hover:border-white/15 shadow-sm'
                       }`}
                     >
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-[12px]">{shift.date.split('-').reverse().join('/')}</span>
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                            shift.attendanceStatus === 'present'
-                              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                              : 'bg-slate-200 text-slate-700 dark:bg-white/10 dark:text-white/70'
-                          }`}>
-                            {shift.attendanceStatus === 'present' ? 'Presente' : 'Pendente'}
+                      <div className="flex items-center justify-between gap-2 font-black text-xs">
+                        <div className="flex items-center gap-3">
+                          {hasIn && (
+                            <span
+                              className="flex items-center gap-1.5 text-xs font-black"
+                              style={{ color: isLightTheme ? '#064e3b' : '#6ee7b7' }}
+                            >
+                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: '#10b981' }} />
+                              Entrada: {shift.checkInTime}
+                            </span>
+                          )}
+                          {hasOut && (
+                            <span
+                              className="flex items-center gap-1.5 text-xs font-black"
+                              style={{ color: isLightTheme ? '#881337' : '#fda4af' }}
+                            >
+                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: '#f43f5e' }} />
+                              Saída: {shift.checkOutTime}
+                            </span>
+                          )}
+                          {!hasIn && !hasOut && (
+                            <span className="text-xs font-semibold text-slate-500">
+                              Turno: {shift.startTime} – {shift.endTime}
+                            </span>
+                          )}
+                          <span
+                            className="text-[11px] font-semibold px-2 py-0.5 rounded-md font-mono"
+                            style={{
+                              backgroundColor: isLightTheme ? '#f1f5f9' : 'rgba(255,255,255,0.08)',
+                              color: isLightTheme ? '#475569' : '#cbd5e1',
+                            }}
+                          >
+                            {shift.date.split('-').reverse().join('/')}
                           </span>
                         </div>
-                        <p className="text-[10.5px] text-slate-400">
-                          Turno: {shift.startTime} – {shift.endTime} • {shift.workplace || 'Posto Presencial'}
-                        </p>
+
+                        <span
+                          className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs shrink-0"
+                          style={
+                            isGpsOk
+                              ? isLightTheme
+                                ? { backgroundColor: '#dcfce7', color: '#064e3b', borderColor: '#86efac' }
+                                : { backgroundColor: 'rgba(16, 185, 129, 0.25)', color: '#a7f3d0', borderColor: 'rgba(16, 185, 129, 0.4)' }
+                              : isLightTheme
+                                ? { backgroundColor: '#fef3c7', color: '#78350f', borderColor: '#fcd34d' }
+                                : { backgroundColor: 'rgba(245, 158, 11, 0.25)', color: '#fde68a', borderColor: 'rgba(245, 158, 11, 0.4)' }
+                          }
+                        >
+                          {hasIn ? (isGpsOk ? 'GPS OK' : 'Fora do Raio') : 'Agendado'}
+                        </span>
                       </div>
 
-                      <div className="flex items-center gap-3 shrink-0">
-                        <div className="text-right">
-                          <span className="block text-[9px] uppercase font-bold text-slate-400">Entrada</span>
-                          <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                            {hasIn ? shift.checkInTime : '—'}
-                          </span>
-                        </div>
-                        <div className="text-right">
-                          <span className="block text-[9px] uppercase font-bold text-slate-400">Saída</span>
-                          <span className="font-mono font-bold text-rose-600 dark:text-rose-400">
-                            {hasOut ? shift.checkOutTime : '—'}
-                          </span>
-                        </div>
-                        <div className="text-right min-w-[70px]">
-                          <span className="block text-[9px] uppercase font-bold text-slate-400">GPS</span>
-                          <span className={`text-[9.5px] font-bold ${
-                            shift.checkInLocation?.gpsValidated !== false ? 'text-emerald-500' : 'text-amber-500'
-                          }`}>
-                            {hasIn ? (shift.checkInLocation?.gpsValidated !== false ? '✓ Validado' : '⚠ Fora') : '—'}
-                          </span>
-                        </div>
-                      </div>
+                      <p
+                        className="text-xs font-medium truncate mt-1.5 pl-4"
+                        style={{ color: isLightTheme ? '#475569' : '#94a3b8' }}
+                      >
+                        {shift.checkInLocation?.address || shift.workplace || 'Posto Presencial'}
+                      </p>
                     </div>
                   );
                 })
               ) : (
-                <div className="text-center py-10 text-xs text-slate-400 font-medium">
+                <div className="text-center py-12 text-xs text-slate-400 font-medium">
                   Nenhum registro de ponto localizado ainda. Registre sua entrada para visualizar seu histórico.
                 </div>
               )}
             </div>
 
             {/* Footer */}
-            <div className={`px-5 py-3 border-t flex items-center justify-between text-[11px] text-slate-400 ${
-              isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'
+            <div className={`px-6 py-3.5 border-t flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 ${
+              isLightTheme ? 'bg-white border-slate-200' : 'bg-white/[0.03] border-white/10'
             }`}>
-              <span>Conforme requisitos da Portaria MTP 671/2021</span>
+              <span className="text-[11.5px] font-medium">Conforme Portaria MTP 671/2021 • Registro Digital Seguro</span>
               <button
                 type="button"
                 onClick={() => setIsHistoryOpen(false)}
-                className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white dark:bg-white/15 dark:hover:bg-white/25 font-bold text-xs transition-all cursor-pointer shadow-xs"
               >
                 Fechar
               </button>
