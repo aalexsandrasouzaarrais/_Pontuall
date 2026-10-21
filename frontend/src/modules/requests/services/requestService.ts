@@ -233,21 +233,36 @@ export async function getSolicitacoesSupabase(empIds?: string[]): Promise<TimeOf
     }
 
     if (data && data.length > 0) {
-      return data.map((row: any) => ({
-        id: row.Idf_Solicitacao,
-        employeeId: row.Idf_Colaborador_Solicitante,
-        employeeName: '',
-        employeeAvatar: '',
-        type: ((row.Tpo_Solicitacao || '').toLowerCase() === 'troca' || (row.Tpo_Solicitacao || '').toLowerCase() === 'swap') ? 'swap' : 'time_off',
-        date: row.Dta_Solicitada,
-        shiftId: row.Idf_Turno || '',
-        targetEmployeeId: row.Idf_Colaborador_Destino || '',
-        targetEmployeeName: '',
-        reason: row.Des_Motivo || '',
-        status: (row.Tpo_Status_Solicitacao === 'approved' || row.Tpo_Status_Solicitacao === 'aprovado') ? 'approved' : (row.Tpo_Status_Solicitacao === 'rejected' || row.Tpo_Status_Solicitacao === 'recusado') ? 'rejected' : 'pending',
-        createdAt: row.Dta_Cadastro ? new Date(row.Dta_Cadastro).toLocaleDateString('pt-BR') : 'Hoje',
-        managerNotes: row.Des_Parecer_Gestor || row.Des_Motivo_Recusa || row.Des_Feedback || ''
-      }));
+      return data.map((row: any) => {
+        const isSwap = ((row.Tpo_Solicitacao || '').toLowerCase() === 'troca' || (row.Tpo_Solicitacao || '').toLowerCase() === 'swap');
+        let peerStatus: 'pending' | 'accepted' | 'rejected' | undefined = undefined;
+        if (isSwap) {
+          if (row.Des_Parecer_Gestor?.includes('[PEER:accepted]')) {
+            peerStatus = 'accepted';
+          } else if (row.Des_Parecer_Gestor?.includes('[PEER:rejected]') || row.Tpo_Status_Solicitacao === 'rejected') {
+            peerStatus = 'rejected';
+          } else {
+            peerStatus = 'pending';
+          }
+        }
+
+        return {
+          id: row.Idf_Solicitacao,
+          employeeId: row.Idf_Colaborador_Solicitante,
+          employeeName: '',
+          employeeAvatar: '',
+          type: isSwap ? 'swap' : 'time_off',
+          date: row.Dta_Solicitada,
+          shiftId: row.Idf_Turno || '',
+          targetEmployeeId: row.Idf_Colaborador_Destino || '',
+          targetEmployeeName: '',
+          reason: row.Des_Motivo || '',
+          status: (row.Tpo_Status_Solicitacao === 'approved' || row.Tpo_Status_Solicitacao === 'aprovado') ? 'approved' : (row.Tpo_Status_Solicitacao === 'rejected' || row.Tpo_Status_Solicitacao === 'recusado') ? 'rejected' : 'pending',
+          peerStatus,
+          createdAt: row.Dta_Cadastro ? new Date(row.Dta_Cadastro).toLocaleDateString('pt-BR') : 'Hoje',
+          managerNotes: (row.Des_Parecer_Gestor || '').replace(/\[PEER:[a-z]+\]\s*/g, '').trim()
+        };
+      });
     }
     return [];
   } catch (err: any) {
@@ -271,6 +286,7 @@ export async function createSolicitacaoSupabase(
       return null;
     }
 
+    const peerTag = req.type === 'swap' ? '[PEER:pending]' : '';
     const payload = {
       Idf_Colaborador_Solicitante: colabId,
       Idf_Colaborador_Destino: isValidUuid(req.targetEmployeeId) ? req.targetEmployeeId : null,
@@ -278,6 +294,7 @@ export async function createSolicitacaoSupabase(
       Tpo_Solicitacao: req.type === 'swap' ? 'troca' : 'folga',
       Dta_Solicitada: req.date || getTodayDateString(),
       Des_Motivo: req.reason || 'Solicitação de Folga / Troca de Turno',
+      Des_Parecer_Gestor: peerTag,
       Tpo_Status_Solicitacao: 'pending',
       Dta_Cadastro: new Date().toISOString(),
       Dta_Atualizacao: new Date().toISOString()
@@ -302,12 +319,16 @@ export async function createSolicitacaoSupabase(
       type: data.Tpo_Solicitacao === 'troca' ? 'swap' : 'time_off',
       date: data.Dta_Solicitada,
       shiftId: data.Idf_Turno || '',
+      shiftStartTime: req.shiftStartTime,
+      shiftEndTime: req.shiftEndTime,
+      shiftTitle: req.shiftTitle,
       targetEmployeeId: data.Idf_Colaborador_Destino || '',
       targetEmployeeName: req.targetEmployeeName || '',
       reason: data.Des_Motivo,
       status: 'pending',
+      peerStatus: req.type === 'swap' ? 'pending' : undefined,
       createdAt: new Date().toLocaleDateString('pt-BR'),
-      managerNotes: data.Des_Parecer_Gestor || ''
+      managerNotes: ''
     };
   } catch (err: any) {
     console.error('Erro ao criar solicitação no Supabase:', err.message);
@@ -339,6 +360,42 @@ export async function updateSolicitacaoStatusSupabase(
     return true;
   } catch (err: any) {
     console.error('Erro ao atualizar solicitação no Supabase:', err.message);
+    return false;
+  }
+}
+
+export async function updateSolicitacaoPeerStatusSupabase(
+  id: string,
+  peerStatus: 'accepted' | 'rejected',
+  feedbackNotes?: string
+): Promise<boolean> {
+  try {
+    if (!isValidUuid(id)) return false;
+
+    const peerTag = `[PEER:${peerStatus}]`;
+    const payload: any = {
+      Dta_Atualizacao: new Date().toISOString()
+    };
+
+    if (peerStatus === 'rejected') {
+      payload.Tpo_Status_Solicitacao = 'rejected';
+      payload.Des_Parecer_Gestor = `${peerTag} ${feedbackNotes || 'Recusado pelo colega substituto'}`;
+    } else {
+      payload.Des_Parecer_Gestor = peerTag;
+    }
+
+    const { error } = await supabase
+      .from('TAB_Solicitacao_Colaborador')
+      .update(payload)
+      .eq('Idf_Solicitacao', id);
+
+    if (error) {
+      console.error('Erro ao atualizar peerStatus em TAB_Solicitacao_Colaborador:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.error('Erro ao atualizar peerStatus no Supabase:', err.message);
     return false;
   }
 }

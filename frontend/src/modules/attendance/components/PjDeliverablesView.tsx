@@ -175,7 +175,7 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    Array.from(files).forEach(file => {
+    Array.from(files).forEach((file: File) => {
       if (!file.type.startsWith('image/')) return;
       const reader = new FileReader();
       reader.onload = () => {

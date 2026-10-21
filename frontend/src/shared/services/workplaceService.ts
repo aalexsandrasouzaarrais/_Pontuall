@@ -6,15 +6,8 @@
 import { safeStorage } from '../utils/safeStorage';
 import { searchAddressCoordinates } from '../utils/geolocation';
 
-export interface WorkplaceLocation {
-  id: string;
-  name: string;
-  address: string;
-  latitude: number;
-  longitude: number;
-  radiusMeters: number; // Raio em metros para validação do GPS
-  isRemote?: boolean;   // Se for remoto/externo, validação de raio é flexível
-}
+import { WorkplaceLocation } from '@/types';
+export type { WorkplaceLocation };
 
 const STORAGE_KEY = 'pontuall_workplaces_v1';
 
@@ -158,3 +151,14 @@ export function findWorkplaceByName(name?: string): WorkplaceLocation | undefine
     w.name.toLowerCase().includes(lower)
   );
 }
+
+/**
+ * Remove um posto de trabalho pelo seu ID
+ */
+export function deleteWorkplace(id: string): WorkplaceLocation[] {
+  const list = getStoredWorkplaces();
+  const updated = list.filter(w => w.id !== id);
+  saveWorkplaces(updated);
+  return updated;
+}
+

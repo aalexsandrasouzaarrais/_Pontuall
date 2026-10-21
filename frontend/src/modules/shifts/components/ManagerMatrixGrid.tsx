@@ -54,6 +54,7 @@ import {
   getDisplayChatChannel
 } from '@/shared/utils/chatUtils';
 import { EmployeesManagementView } from '@/modules/manager/components/EmployeesManagementView';
+import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
 import { DeleteShiftsModal } from './DeleteShiftsModal';
 import { addDaysLocal, startOfWeekMonday, toLocalDateString } from '@/shared/utils/dateUtils';
 import {
@@ -166,6 +167,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     reason: string;
     date: string;
     documentName: string;
+    documentUrl?: string;
     status: 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente';
     actionText?: string;
     feedback: string;
@@ -226,10 +228,16 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     const mappedRequests = (requests || []).map(r => {
       const emp = employees.find(e => e.id === r.employeeId);
       const targetEmp = employees.find(e => e.id === r.targetEmployeeId);
-      const typeLabel = r.type === 'swap' ? 'Troca de Turno' : 'Folga Compensatória';
+      const peerBadge = r.peerStatus === 'accepted' ? '✅ Acordo aceito pelo colega' : r.peerStatus === 'rejected' ? '❌ Recusado pelo colega' : '⏳ Aguardando aceite do colega';
       const formattedReason = r.type === 'swap' && (r.targetEmployeeName || targetEmp?.name)
-        ? `${r.reason} (Com: ${r.targetEmployeeName || targetEmp?.name})`
+        ? `${r.reason} (Com: ${r.targetEmployeeName || targetEmp?.name} • ${peerBadge})`
         : r.reason;
+
+      const typeLabel = r.type === 'swap' 
+        ? 'Troca de Turno' 
+        : r.type === 'time_off' 
+        ? 'Folga / Dispensa' 
+        : 'Alteração de Escala';
 
       return {
         id: r.id,
@@ -825,7 +833,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       }
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        return emp.name.toLowerCase().includes(q) || emp.role.toLowerCase().includes(q);
+        return (emp.name || '').toLowerCase().includes(q) || (emp.role || '').toLowerCase().includes(q);
       }
       return true;
     });
@@ -846,7 +854,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     setIsDraftPublished(true);
     setDraftCount(0);
     try {
-      const employeeIds = Array.from(new Set(shifts.map(s => s.employeeId).filter(Boolean)));
+      const employeeIds = Array.from(new Set(shifts.map(s => s.employeeId).filter(Boolean))) as string[];
       for (const empId of employeeIds) {
         await createNotificationSupabase({
           targetEmployeeId: empId,
@@ -1050,7 +1058,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             <button
               onClick={() => onNavigateToOrbit ? onNavigateToOrbit() : setActiveTab('escala')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
-                activeTab === 'escala'
+                (activeTab as string) === 'escala'
                   ? 'bg-white text-purple-900 shadow-xs border border-slate-200'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
@@ -1062,7 +1070,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             <button
               onClick={() => setActiveTab('aprovacoes')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 relative ${
-                activeTab === 'aprovacoes'
+                (activeTab as string) === 'aprovacoes'
                   ? 'bg-white text-purple-900 shadow-xs border border-slate-200'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
@@ -1077,7 +1085,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             <button
               onClick={() => setActiveTab('relatorios')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                activeTab === 'relatorios'
+                (activeTab as string) === 'relatorios'
                   ? 'bg-white text-purple-900 shadow-xs border border-slate-200 font-black'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
@@ -1090,7 +1098,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             <button
               onClick={() => setActiveTab('tarefas')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                activeTab === 'tarefas'
+                (activeTab as string) === 'tarefas'
                   ? 'bg-white text-purple-900 shadow-xs border border-slate-200 font-black'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
@@ -1103,7 +1111,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             <button
               onClick={() => setActiveTab('chat')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                activeTab === 'chat'
+                (activeTab as string) === 'chat'
                   ? 'bg-white text-purple-900 shadow-xs border border-slate-200 font-black'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
@@ -1356,7 +1364,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                     {/* Status pills */}
                                     <div className="flex items-center gap-1 flex-wrap">
                                       <span className="text-[9px] font-mono font-bold bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-md">
-                                        {shift.hoursWorked || '8'}h
+                                        {(shift as any).hoursWorked || '8'}h
                                       </span>
 
                                       {isPresent && (
@@ -2490,9 +2498,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             const matchesAssigned = rem.assignedEmployeeIds?.some(empId => {
               const emp = allAssignablePeople.find(e => e.id === empId);
               return emp && (
-                emp.name.toLowerCase().includes(q) ||
-                emp.role.toLowerCase().includes(q) ||
-                emp.department.toLowerCase().includes(q)
+                (emp.name || '').toLowerCase().includes(q) ||
+                (emp.role || '').toLowerCase().includes(q) ||
+                (emp.department || '').toLowerCase().includes(q)
               );
             });
             return (
@@ -3177,9 +3185,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             if (!collaboratorSearchInModal.trim()) return true;
                             const query = collaboratorSearchInModal.toLowerCase();
                             return (
-                              p.name.toLowerCase().includes(query) ||
-                              p.role.toLowerCase().includes(query) ||
-                              p.department.toLowerCase().includes(query)
+                              (p.name || '').toLowerCase().includes(query) ||
+                              (p.role || '').toLowerCase().includes(query) ||
+                              (p.department || '').toLowerCase().includes(query)
                             );
                           })
                           .map((person) => {
@@ -4027,13 +4035,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
       {/* 🛑 TAB 6: GESTÃO DA EQUIPE & COLABORADORES */}
       {activeTab === 'colaboradores' && (
-        <EmployeesManagementView
-          employees={employees}
-          activeEmployee={activeEmployee}
-          onAddEmployee={onAddEmployee}
-          onUpdateEmployee={onUpdateEmployee || (() => {})}
-          onDeactivateEmployee={onDeactivateEmployee || (() => {})}
-        />
+        <ErrorBoundary fallbackTitle="Erro ao carregar Gestão de Colaboradores">
+          <EmployeesManagementView
+            employees={employees}
+            activeEmployee={activeEmployee}
+            onAddEmployee={onAddEmployee}
+            onUpdateEmployee={onUpdateEmployee || (() => {})}
+            onDeactivateEmployee={onDeactivateEmployee || (() => {})}
+          />
+        </ErrorBoundary>
       )}
 
       {/* Modal de Exclusão de Escalas em Lote / Filtro */}

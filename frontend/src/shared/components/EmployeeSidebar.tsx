@@ -41,6 +41,7 @@ interface EmployeeSidebarProps {
   notifications: NotificationItem[];
   onOpenNotifications: () => void;
   unreadChatCount?: number;
+  incomingSwapCount?: number;
   isLightTheme: boolean;
   onOpenProfile?: () => void;
 }
@@ -56,6 +57,7 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
   notifications,
   onOpenNotifications,
   unreadChatCount,
+  incomingSwapCount,
   isLightTheme,
   onOpenProfile,
 }) => {
@@ -103,6 +105,7 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
           label: "Folgas & Trocas",
           shortLabel: "Folgas",
           icon: <ArrowLeftRight className="w-5 h-5" />,
+          badge: incomingSwapCount && incomingSwapCount > 0 ? incomingSwapCount : undefined,
         },
         {
           id: "justifications",

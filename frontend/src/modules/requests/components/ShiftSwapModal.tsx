@@ -34,6 +34,7 @@ export const ShiftSwapModal: React.FC<ShiftSwapModalProps> = ({
     if (!reason.trim()) return;
 
     const targetEmp = employees.find(e => e.id === targetEmployeeId);
+    const chosenShift = myShifts.find(s => s.id === selectedShiftId);
 
     onSubmitRequest({
       employeeId: currentEmployee.id,
@@ -41,11 +42,15 @@ export const ShiftSwapModal: React.FC<ShiftSwapModalProps> = ({
       employeeAvatar: currentEmployee.avatar,
       type: requestType,
       shiftId: requestType === 'swap' ? selectedShiftId : undefined,
+      shiftStartTime: requestType === 'swap' ? chosenShift?.startTime : undefined,
+      shiftEndTime: requestType === 'swap' ? chosenShift?.endTime : undefined,
+      shiftTitle: requestType === 'swap' ? chosenShift?.title : undefined,
       targetEmployeeId: requestType === 'swap' ? targetEmployeeId : undefined,
       targetEmployeeName: requestType === 'swap' ? targetEmp?.name : undefined,
-      date: requestType === 'time_off' ? targetDate : (myShifts.find(s => s.id === selectedShiftId)?.date || targetDate),
+      date: requestType === 'time_off' ? targetDate : (chosenShift?.date || targetDate),
       reason,
       status: 'pending',
+      peerStatus: requestType === 'swap' ? 'pending' : undefined,
     });
 
     onClose();
@@ -248,6 +253,12 @@ export const ShiftSwapModal: React.FC<ShiftSwapModalProps> = ({
                     </option>
                   ))}
                 </select>
+                <p className={`text-[11px] mt-1.5 leading-relaxed flex items-start gap-1.5 ${
+                  isLightTheme ? 'text-slate-500' : 'text-slate-400'
+                }`}>
+                  <span>ℹ️</span>
+                  <span>O colega receberá a proposta para confirmar. Assim que ele aceitar, a solicitação irá para homologação do gestor.</span>
+                </p>
               </div>
             </>
           ) : (

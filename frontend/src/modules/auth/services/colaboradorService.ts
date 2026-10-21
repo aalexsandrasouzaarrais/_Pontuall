@@ -6,21 +6,22 @@ import bcrypt from 'bcryptjs';
 // Converte registro do banco BNE (TAB_Colaborador) para interface Employee do Frontend
 export function mapBneToEmployee(row: any): Employee {
   const isRh = row.Tpo_Perfil === 'rh' || row.Flg_Gestor_Master === true;
+  const safeName = row.Nme_Colaborador || 'Colaborador';
   return {
-    id: row.Idf_Colaborador,
-    name: row.Nme_Colaborador,
+    id: row.Idf_Colaborador || '',
+    name: safeName,
     role: row.Tpo_Cargo || 'Colaborador',
     department: row.Des_Departamento || 'Geral',
-    avatar: row.Des_Avatar_Url || (row.Nme_Colaborador ? `https://ui-avatars.com/api/?name=${encodeURIComponent(row.Nme_Colaborador)}&background=96183c&color=fff&size=150` : ''),
-    email: row.Eml_Corporativo,
+    avatar: row.Des_Avatar_Url || (safeName ? `https://ui-avatars.com/api/?name=${encodeURIComponent(safeName)}&background=96183c&color=fff&size=150` : ''),
+    email: row.Eml_Corporativo || '',
     phone: row.Num_Telefone || '',
-    standardHoursPerWeek: row.Num_Horas_Semanais || 40,
+    standardHoursPerWeek: Number(row.Num_Horas_Semanais) || 40,
     registrationId: row.Cod_Matricula || '',
-    companyId: row.Idf_Empresa,
+    companyId: row.Idf_Empresa || '',
     isMasterManager: row.Flg_Gestor_Master || false,
     isRh: isRh,
     roleType: row.Tpo_Perfil === 'rh' ? 'rh' : row.Tpo_Perfil === 'gestor' ? 'gestor' : 'colaborador',
-    managerIds: row.managerIds || [],
+    managerIds: Array.isArray(row.managerIds) ? row.managerIds : [],
     contractType: (row.Tpo_Contrato as ContractType) || (row.contractType as ContractType) || 'CLT',
     contractStartDate: row.Dta_Inicio_Contrato ? row.Dta_Inicio_Contrato.split('T')[0] : (row.contractStartDate || undefined),
     contractEndDate: row.Dta_Fim_Contrato ? row.Dta_Fim_Contrato.split('T')[0] : (row.contractEndDate || undefined),

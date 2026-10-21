@@ -1,6 +1,6 @@
 import { supabase } from '@/shared/services/supabase';
-import { Shift } from '@/types';
-import { findWorkplaceByName, WorkplaceLocation, registerWorkplaceIfNew } from '@/shared/services/workplaceService';
+import { Shift, WorkplaceLocation } from '@/types';
+import { findWorkplaceByName, registerWorkplaceIfNew } from '@/shared/services/workplaceService';
 import { calculateHaversineDistance } from '@/shared/utils/geolocation';
 
 function encodeShiftNotesWithWorkplace(notes?: string, workplace?: string, workplaceLocation?: WorkplaceLocation): string {
@@ -29,7 +29,7 @@ export function mapBneToShift(row: any): Shift {
 
         // Registra o posto automaticamente no cache local para ficar disponível em dropdowns e mapas
         if (workplaceLocation) {
-          registerWorkplaceIfNew(workplaceLocation);
+          registerWorkplaceIfNew(workplaceLocation as any);
         }
       } catch {}
     }

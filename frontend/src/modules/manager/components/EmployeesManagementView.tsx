@@ -66,33 +66,44 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
 
   // Lista de gestores únicos e disponíveis para vinculação
   const gestoresList = useMemo(() => {
-    return employees.filter(e => 
-      e.roleType === 'gestor' || 
-      e.isMasterManager || 
-      e.role.toLowerCase().includes('gestor') || 
-      e.role.toLowerCase().includes('gerente') ||
-      e.id.startsWith('mgr-')
-    );
+    return (employees || []).filter(e => {
+      if (!e) return false;
+      const role = (e.role || '').toLowerCase();
+      const id = String(e.id || '');
+      return (
+        e.roleType === 'gestor' || 
+        e.isMasterManager || 
+        role.includes('gestor') || 
+        role.includes('gerente') ||
+        id.startsWith('mgr-')
+      );
+    });
   }, [employees]);
 
   // Lista de departamentos únicos
   const departments = useMemo(() => {
     const set = new Set<string>();
-    employees.forEach(e => {
-      if (e.department) set.add(e.department);
+    (employees || []).forEach(e => {
+      if (e?.department) set.add(e.department);
     });
     return Array.from(set);
   }, [employees]);
 
   // Filtragem da lista
   const filteredEmployees = useMemo(() => {
-    return employees.filter(emp => {
-      const q = searchQuery.toLowerCase().trim();
+    const q = (searchQuery || '').toLowerCase().trim();
+    return (employees || []).filter(emp => {
+      if (!emp) return false;
+      const name = (emp.name || '').toLowerCase();
+      const email = (emp.email || '').toLowerCase();
+      const regId = (emp.registrationId || '').toLowerCase();
+      const role = (emp.role || '').toLowerCase();
+
       const matchSearch = !q || 
-        emp.name.toLowerCase().includes(q) || 
-        (emp.email && emp.email.toLowerCase().includes(q)) ||
-        (emp.registrationId && emp.registrationId.toLowerCase().includes(q)) ||
-        emp.role.toLowerCase().includes(q);
+        name.includes(q) || 
+        email.includes(q) ||
+        regId.includes(q) ||
+        role.includes(q);
 
       const matchDept = selectedDept === 'all' || emp.department === selectedDept;
 
@@ -104,13 +115,14 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
   const handleOpenEdit = (emp: Employee) => {
     setEditingEmployee(emp);
     const primaryManagerId = (emp.managerIds && emp.managerIds.length > 0) ? emp.managerIds[0] : '';
+    const roleLower = (emp.role || '').toLowerCase();
     setEditForm({
-      name: emp.name,
-      role: emp.role,
-      department: emp.department,
+      name: emp.name || '',
+      role: emp.role || '',
+      department: emp.department || '',
       phone: emp.phone || '',
       standardHoursPerWeek: emp.standardHoursPerWeek || 40,
-      roleType: emp.roleType || (emp.isRh ? 'rh' : emp.role.toLowerCase().includes('gestor') ? 'gestor' : 'colaborador'),
+      roleType: emp.roleType || (emp.isRh ? 'rh' : roleLower.includes('gestor') ? 'gestor' : 'colaborador'),
       managerId: primaryManagerId,
       contractType: (emp.contractType || 'CLT') as 'CLT' | 'PJ' | 'TEMPORARIO',
       contractStartDate: emp.contractStartDate || '',
@@ -127,10 +139,10 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
 
     const updated: Employee = {
       ...editingEmployee,
-      name: editForm.name.trim(),
-      role: editForm.role.trim(),
-      department: editForm.department.trim(),
-      phone: editForm.phone.trim(),
+      name: (editForm.name || '').trim(),
+      role: (editForm.role || '').trim(),
+      department: (editForm.department || '').trim(),
+      phone: (editForm.phone || '').trim(),
       standardHoursPerWeek: Number(editForm.standardHoursPerWeek) || 40,
       roleType: editForm.roleType,
       isRh: isRhRole,
@@ -231,7 +243,7 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
           <div>
             <span className={`text-xs font-bold block uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Gestores Ativos</span>
             <span className="text-2xl font-black">
-              {employees.filter(e => e.isMasterManager || e.role.toLowerCase().includes('gestor') || e.role.toLowerCase().includes('gerente')).length || 1}
+              {employees.filter(e => e && (e.isMasterManager || (e.role || '').toLowerCase().includes('gestor') || (e.role || '').toLowerCase().includes('gerente'))).length || 1}
             </span>
           </div>
         </div>
@@ -403,7 +415,7 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                           }`}>
                             RH Admin
                           </span>
-                        ) : emp.roleType === 'gestor' || emp.role.toLowerCase().includes('gestor') || emp.role.toLowerCase().includes('gerente') ? (
+                        ) : emp.roleType === 'gestor' || (emp.role || '').toLowerCase().includes('gestor') || (emp.role || '').toLowerCase().includes('gerente') ? (
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                             isDark ? 'bg-[#f89847]/20 text-[#f89847] border-[#f89847]/30' : 'bg-orange-100 text-orange-800 border-orange-300'
                           }`}>
@@ -544,7 +556,7 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                         }`}>
                           RH Admin
                         </span>
-                      ) : emp.roleType === 'gestor' || emp.role.toLowerCase().includes('gestor') || emp.role.toLowerCase().includes('gerente') ? (
+                      ) : emp.roleType === 'gestor' || (emp.role || '').toLowerCase().includes('gestor') || (emp.role || '').toLowerCase().includes('gerente') ? (
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                           isDark ? 'bg-[#f89847]/20 text-[#f89847] border-[#f89847]/30' : 'bg-orange-100 text-orange-800 border-orange-300'
                         }`}>

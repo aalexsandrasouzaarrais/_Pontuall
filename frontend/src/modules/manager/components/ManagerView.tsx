@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { ManagerSidebar, ManagerTabId } from './ManagerSidebar';
 import { ManagerMatrixGrid } from '@/modules/shifts/components/ManagerMatrixGrid';
 import { OrbitCalendarView } from '@/modules/shifts/components/OrbitCalendarView';
+import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
 import { ManagerPjDeliverablesView } from './ManagerPjDeliverablesView';
 import { AddUserModal } from '@/modules/auth/components/AddUserModal';
 import { Employee, Shift, AbsenceJustification, TimeOffRequest, PjDeliverableReport } from '@/types';
@@ -127,36 +128,38 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
             isDark={isDark}
           />
         ) : (
-          <ManagerMatrixGrid
-            employees={employees}
-            shifts={shifts}
-            pendingRequestsCount={pendingRequestsCount}
-            activeTab={activeTab}
-            onOpenCreateShift={createShift}
-            onOpenEditShift={onUpdateShift}
-            onOpenRequests={onOpenRequests}
-            onOpenPjModal={() => setActiveTab('pj_entregas')}
-            onExportCsv={exportCsv}
-            onAddEmployee={() => setIsAddUserModalOpen(true)}
-            onSwitchToEmployee={onSwitchToEmployee}
-            onOpenChat={onOpenChat}
-            onOpenNotifications={onOpenNotifications}
-            unreadChatCount={unreadChatCount}
-            onNavigateToOrbit={() => setActiveTab('orbit')}
-            theme={theme}
-            activeEmployee={activeEmployee}
-            isRh={activeEmployee?.isRh || activeEmployee?.roleType === 'rh' || activeEmployee?.isMasterManager}
-            onUpdateEmployee={onUpdateEmployee}
-            onDeactivateEmployee={onDeactivateEmployee}
-            onDeleteShift={onDeleteShift}
-            onDeleteShiftsBulk={onDeleteShiftsBulk}
-            justifications={justifications}
-            requests={requests}
-            onApproveRequest={onApproveRequest}
-            onRejectRequest={onRejectRequest}
-            onApproveJustification={onApproveJustification}
-            onRejectJustification={onRejectJustification}
-          />
+          <ErrorBoundary fallbackTitle="Painel de Gestão" fallbackMessage="Ocorreu uma instabilidade na exibição do painel. Clique abaixo para recarregar com segurança.">
+            <ManagerMatrixGrid
+              employees={employees}
+              shifts={shifts}
+              pendingRequestsCount={pendingRequestsCount}
+              activeTab={activeTab}
+              onOpenCreateShift={createShift}
+              onOpenEditShift={onUpdateShift}
+              onOpenRequests={onOpenRequests}
+              onOpenPjModal={() => setActiveTab('pj_entregas')}
+              onExportCsv={exportCsv}
+              onAddEmployee={() => setIsAddUserModalOpen(true)}
+              onSwitchToEmployee={onSwitchToEmployee}
+              onOpenChat={onOpenChat}
+              onOpenNotifications={onOpenNotifications}
+              unreadChatCount={unreadChatCount}
+              onNavigateToOrbit={() => setActiveTab('orbit')}
+              theme={theme}
+              activeEmployee={activeEmployee}
+              isRh={activeEmployee?.isRh || activeEmployee?.roleType === 'rh' || activeEmployee?.isMasterManager}
+              onUpdateEmployee={onUpdateEmployee}
+              onDeactivateEmployee={onDeactivateEmployee}
+              onDeleteShift={onDeleteShift}
+              onDeleteShiftsBulk={onDeleteShiftsBulk}
+              justifications={justifications}
+              requests={requests}
+              onApproveRequest={onApproveRequest}
+              onRejectRequest={onRejectRequest}
+              onApproveJustification={onApproveJustification}
+              onRejectJustification={onRejectJustification}
+            />
+          </ErrorBoundary>
         )}
       </main>
     </div>
