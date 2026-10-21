@@ -353,17 +353,22 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
       <div
         className={`rounded-3xl p-6 sm:p-7 relative overflow-hidden transition-all duration-300 border ${
           isLightTheme
-            ? 'bg-white border-slate-200/90 shadow-sm'
-            : 'bg-[#13161f] border-white/10 shadow-xl'
+            ? 'bg-gradient-to-br from-white via-[#fafbfe] to-amber-50/20 border-slate-200/80 shadow-md shadow-slate-200/40'
+            : 'bg-gradient-to-br from-[#11131a] via-[#141722] to-[#1c1822] border-white/10 shadow-2xl'
         }`}
       >
+        {/* Soft decorative ambient glow orbs matching reference image */}
+        <div className="absolute -top-20 -left-20 w-64 h-64 rounded-full bg-amber-400/10 dark:bg-amber-500/10 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-20 -right-20 w-64 h-64 rounded-full bg-purple-500/10 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-10 left-1/3 w-60 h-60 rounded-full bg-[#96183c]/10 dark:bg-[#96183c]/15 blur-3xl pointer-events-none" />
+
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-start justify-between gap-6">
-          {/* Left Column: Big Digital Clock, Date & Shift Box */}
+          {/* Left Column: Big Digital Clock with orange bar indicator, Date & Shift Box */}
           <div className="flex-1 space-y-4">
             {/* Big Clean Digital Clock & Date */}
-            <div>
+            <div className="border-l-[3.5px] border-[#e85d45] pl-3.5 space-y-0.5">
               <div
-                className={`text-4xl sm:text-5xl font-black tracking-tight font-sans ${
+                className={`text-4xl sm:text-5xl font-extrabold tracking-tight font-sans ${
                   isLightTheme ? 'text-[#0F172A]' : 'text-white'
                 }`}
               >
@@ -375,141 +380,166 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
               </div>
 
               <div
-                className={`text-xs sm:text-sm font-bold capitalize mt-1.5 ${
-                  isLightTheme ? 'text-slate-600' : 'text-white/70'
+                className={`text-xs sm:text-sm font-semibold mt-1 ${
+                  isLightTheme ? 'text-slate-600' : 'text-slate-300'
                 }`}
               >
-                {currentTime.toLocaleDateString('pt-BR', {
-                  weekday: 'long',
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric',
-                })}
+                {(() => {
+                  const weekday = currentTime.toLocaleDateString('pt-BR', { weekday: 'long' });
+                  const day = currentTime.getDate();
+                  const month = currentTime.toLocaleDateString('pt-BR', { month: 'long' });
+                  const year = currentTime.getFullYear();
+                  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+                  const formattedWeekday = weekday.split('-').map(cap).join('-');
+                  return `${formattedWeekday}, ${day} De ${cap(month)} De ${year}`;
+                })()}
               </div>
             </div>
 
-            {/* Today's Shift Card */}
+            {/* Today's Shift Card (Matching reference design) */}
             <div
-              className={`rounded-xl p-3 sm:p-3.5 border transition-all duration-300 max-w-md ${
+              className={`rounded-2xl p-4 sm:p-5 border transition-all duration-300 max-w-lg ${
                 isLightTheme
-                  ? 'bg-slate-50 border-slate-200 shadow-2xs'
-                  : 'bg-white/5 border-white/10'
+                  ? 'bg-white/95 border-slate-200/90 shadow-xs'
+                  : 'bg-[#151822]/90 border-white/10 shadow-lg'
               }`}
             >
               {todayShift ? (
-                <div className="space-y-1.5">
+                <div className="space-y-3">
                   <div className="flex items-center justify-between gap-2">
-                    <span
-                      className={`text-[9.5px] font-black tracking-wider uppercase font-mono ${
-                        isLightTheme ? 'text-slate-500' : 'text-slate-400'
-                      }`}
-                    >
-                      TURNO DE HOJE
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <CalendarDays
+                        className={`w-4 h-4 ${
+                          isLightTheme ? 'text-slate-500' : 'text-slate-400'
+                        }`}
+                      />
+                      <span
+                        className={`text-[11px] font-bold tracking-wider uppercase font-mono ${
+                          isLightTheme ? 'text-slate-500' : 'text-slate-400'
+                        }`}
+                      >
+                        TURNO DE HOJE
+                      </span>
+                    </div>
 
-                    {/* Attendance Badge */}
+                    {/* Attendance Badge - Wine pill with checkmark */}
                     <span
-                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                        todayShift.attendanceStatus === 'present'
-                          ? 'bg-gradient-to-r from-[#96183c] to-[#b32047] text-white shadow-2xs'
+                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                        todayShift.attendanceStatus === 'present' || hasCheckedIn
+                          ? 'bg-[#96183c] hover:bg-[#801332] text-white shadow-xs'
                           : isLightTheme
-                          ? 'bg-slate-200 text-slate-800 border border-slate-300'
-                          : 'bg-[#96183C]/30 text-[#FCEABB] border border-[#F89847]/30'
+                          ? 'bg-slate-100 text-slate-700 border border-slate-200'
+                          : 'bg-white/10 text-slate-300 border border-white/10'
                       }`}
                     >
-                      {todayShift.attendanceStatus === 'present' ? (
+                      {todayShift.attendanceStatus === 'present' || hasCheckedIn ? (
                         <>
-                          <Check className="w-3 h-3 stroke-[2.5]" />
-                          Presença Registrada ({todayShift.checkInTime || '07:58'})
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          <span>Presença Registrada ({todayShift.checkInTime || '15:26'})</span>
                         </>
                       ) : (
                         <>
-                          <Clock className="w-3 h-3" />
-                          Aguardando Ponto
+                          <Clock className="w-3.5 h-3.5 text-amber-500" />
+                          <span>Aguardando Ponto</span>
                         </>
                       )}
                     </span>
                   </div>
 
-                  <div className="flex items-baseline gap-1.5">
-                    <Clock
-                      className={`w-3.5 h-3.5 ${
-                        isLightTheme ? 'text-[#96183c]' : 'text-[#F89847]'
-                      }`}
-                    />
-                    <span
-                      className={`text-sm font-black font-mono ${
-                        isLightTheme ? 'text-[#0F172A]' : 'text-white'
-                      }`}
-                    >
-                      {todayShift.startTime} - {todayShift.endTime}
-                    </span>
-                    <span
-                      className={`text-[11px] font-mono font-bold ${
-                        isLightTheme ? 'text-slate-500' : 'text-slate-400'
-                      }`}
-                    >
-                      ({calculateShiftDurationHours(
-                        todayShift.startTime,
-                        todayShift.endTime,
-                        todayShift.breakMinutes
-                      )}h)
-                    </span>
-                  </div>
-
-                  <div
-                    className={`text-[11px] font-bold ${
-                      isLightTheme ? 'text-slate-700' : 'text-white/80'
-                    }`}
-                  >
-                    {todayShift.title || 'Atendimento Geral - Turno Manhã'}
-                  </div>
-
-                  {/* Informações do Posto de Trabalho e Endereço */}
-                  <div
-                    className={`pt-2 border-t space-y-1 text-xs ${
-                      isLightTheme
-                        ? 'border-slate-200 text-slate-600'
-                        : 'border-white/10 text-white/70'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <MapPin
-                        className={`w-3.5 h-3.5 shrink-0 ${
+                  {/* Hours & Title */}
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <Clock
+                        className={`w-4 h-4 ${
                           isLightTheme ? 'text-[#96183c]' : 'text-[#F89847]'
                         }`}
                       />
-                      <span className="font-bold text-xs truncate">
-                        {currentShiftWorkplace?.name || todayShift.workplace || 'Posto Presencial'}
+                      <span
+                        className={`text-base font-bold font-mono ${
+                          isLightTheme ? 'text-[#0F172A]' : 'text-white'
+                        }`}
+                      >
+                        {todayShift.startTime} - {todayShift.endTime}
                       </span>
-                      {currentShiftWorkplace?.isRemote ? (
-                        <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-500 font-bold border border-blue-500/20 shrink-0">
-                          Remoto
-                        </span>
-                      ) : (
-                        <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-bold border border-emerald-500/20 shrink-0">
-                          Presencial ({currentShiftWorkplace?.radiusMeters || 200}m)
-                        </span>
-                      )}
+                      <span
+                        className={`text-xs font-semibold ${
+                          isLightTheme ? 'text-slate-500' : 'text-slate-400'
+                        }`}
+                      >
+                        ({calculateShiftDurationHours(
+                          todayShift.startTime,
+                          todayShift.endTime,
+                          todayShift.breakMinutes
+                        )}h)
+                      </span>
                     </div>
-                    {currentShiftWorkplace?.address && !currentShiftWorkplace.isRemote && (
-                      <div className="pl-5 pt-0.5 space-y-1">
-                        <p className="text-[10.5px] text-slate-400 line-clamp-1">
-                          {currentShiftWorkplace.address}
-                        </p>
-                        {workplaceMapsUrl && (
-                          <a
-                            href={workplaceMapsUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/30 transition-all shadow-2xs cursor-pointer"
-                            title="Abrir rota no Google Maps"
+
+                    <p
+                      className={`text-xs font-medium pl-6 ${
+                        isLightTheme ? 'text-slate-600' : 'text-slate-300'
+                      }`}
+                    >
+                      {todayShift.title || 'Comercial (5x2)'}
+                    </p>
+                  </div>
+
+                  {/* Workplace Location & Address & How to get there */}
+                  <div
+                    className={`pt-2.5 border-t space-y-2.5 ${
+                      isLightTheme ? 'border-slate-100' : 'border-white/5'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2">
+                        <MapPin
+                          className="w-4 h-4 text-[#e85d45] shrink-0 mt-0.5"
+                        />
+                        <div>
+                          <p
+                            className={`text-xs font-bold leading-tight ${
+                              isLightTheme ? 'text-slate-800' : 'text-slate-100'
+                            }`}
                           >
-                            <ExternalLink className="w-2.5 h-2.5" />
-                            <span>🗺️ Como Chegar (Google Maps)</span>
-                          </a>
-                        )}
+                            {currentShiftWorkplace?.name || todayShift.workplace || 'Posto Presencial'}
+                          </p>
+                          <p
+                            className={`text-[11px] mt-0.5 leading-snug ${
+                              isLightTheme ? 'text-slate-400' : 'text-slate-400'
+                            }`}
+                          >
+                            {currentShiftWorkplace?.address || 'Endereço definido pelo gestor'}
+                          </p>
+                        </div>
                       </div>
+
+                      <span
+                        className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full shrink-0 ${
+                          currentShiftWorkplace?.isRemote
+                            ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30'
+                            : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30'
+                        }`}
+                      >
+                        {currentShiftWorkplace?.isRemote
+                          ? 'Remoto'
+                          : `Presencial (${currentShiftWorkplace?.radiusMeters || 200}m)`}
+                      </span>
+                    </div>
+
+                    {workplaceMapsUrl && (
+                      <a
+                        href={workplaceMapsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer ${
+                          isLightTheme
+                            ? 'bg-sky-50 hover:bg-sky-100 text-sky-600 border border-sky-200'
+                            : 'bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                        }`}
+                        title="Abrir rota no Google Maps"
+                      >
+                        <MapPin className="w-3.5 h-3.5" />
+                        <span>Como Chegar (Google Maps)</span>
+                      </a>
                     )}
                   </div>
                 </div>
@@ -530,18 +560,18 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
             </div>
           </div>
 
-          {/* Right Column: Floating Proof / Check-In Widget (Entrada e Saída) */}
-          <div className="shrink-0 lg:w-80">
+          {/* Right Column: Floating Proof / Check-In Widget (Warm Gradient Header) */}
+          <div className="shrink-0 lg:w-84">
             <div
-              className={`rounded-3xl p-5 border transition-all duration-300 ${
+              className={`rounded-3xl border overflow-hidden transition-all duration-300 shadow-xl ${
                 isLightTheme
-                  ? 'bg-white border-slate-200 shadow-sm'
-                  : 'bg-[#151821] border-white/10 shadow-lg'
+                  ? 'bg-white border-slate-200/90 shadow-slate-200/60'
+                  : 'bg-[#151821] border-white/10 shadow-black/50'
               }`}
             >
-              {/* Para Prestadores PJ: Timesheet em Tempo Real com Play / Pause */}
+              {/* Para Prestadores PJ: Timesheet em Tempo Real */}
               {employee.contractType === 'PJ' ? (
-                <div className="space-y-3">
+                <div className="p-5 space-y-3">
                   <PjTimesheetTracker 
                     employee={employee}
                     isDark={!isLightTheme}
@@ -551,249 +581,268 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                 </div>
               ) : (
                 <>
-
-              {/* Feedback de Confirmação Digital */}
-              {checkInSuccess && (
-                <div className="mb-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-xs flex items-center gap-2.5 animate-in fade-in duration-200">
-                  <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="font-bold text-[11px]">Ponto Registrado com Sucesso</p>
-                    <p className="text-[10px] font-mono opacity-80">Protocolo #{Date.now().toString().slice(-6)} • Horário Oficial de Brasília</p>
-                  </div>
-                </div>
-              )}
-
-              {hasCheckedIn && hasCheckedOut ? (
-                /* ESTADO 1: JORNADA COMPLETA (ENTRADA + SAÍDA BATIDAS) */
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-xs shrink-0">
-                      <Check className="w-5 h-5 stroke-[2.5]" />
+                  {/* Warm Gradient Header - Matches image reference */}
+                  <div className="bg-gradient-to-r from-[#F89847] via-[#ea580c] to-[#96183c] p-4 sm:p-5 text-white flex items-center gap-3.5 shadow-sm">
+                    <div className="w-11 h-11 rounded-full bg-amber-100/95 text-[#b43403] flex items-center justify-center shrink-0 shadow-md">
+                      <Clock className="w-5 h-5 stroke-[2.5]" />
                     </div>
-                    <div>
-                      <h4
-                        className={`text-sm font-bold leading-tight ${
-                          isLightTheme ? 'text-slate-900' : 'text-white'
-                        }`}
-                      >
-                        Jornada Concluída
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-sm font-bold text-white leading-tight">
+                        {hasCheckedIn && hasCheckedOut
+                          ? 'Jornada Concluída'
+                          : hasCheckedIn
+                          ? 'Expediente em Andamento'
+                          : 'Aguardando Início'}
                       </h4>
-                      <p
-                        className={`text-[11px] font-medium mt-0.5 ${
-                          isLightTheme ? 'text-slate-500' : 'text-slate-400'
-                        }`}
-                      >
-                        Total trabalhado hoje: <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{calculateTodayWorkedHours() || '8h'}</strong>
+                      <p className="text-xs text-white/95 font-medium mt-0.5 truncate">
+                        {hasCheckedIn && hasCheckedOut
+                          ? `Total trabalhado: ${calculateTodayWorkedHours() || '8h'}`
+                          : hasCheckedIn
+                          ? `Entrada às ${todayShift.checkInTime || '15:26'}`
+                          : 'Registre sua entrada ao chegar'}
                       </p>
                     </div>
                   </div>
 
-                  {/* Detalhes de Entrada e Saída */}
-                  <div
-                    className={`pt-2 border-t space-y-2 ${
-                      isLightTheme ? 'border-slate-100' : 'border-white/10'
-                    }`}
-                  >
-                    {/* Entrada */}
-                    <div
-                      className={`rounded-xl p-2.5 text-[10px] space-y-1 ${
-                        isLightTheme ? 'bg-slate-50 border border-slate-200 text-slate-700' : 'bg-white/5 border border-white/10 text-white/90'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between font-bold">
-                        <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1">🟢 Entrada: {todayShift.checkInTime}</span>
-                        {isGpsValidDynamic ? (
-                          <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-mono font-semibold">GPS OK ({formatDistance(dynamicDistance)})</span>
-                        ) : (
-                          <span className="text-[9px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-500 font-mono font-semibold">Fora ({formatDistance(dynamicDistance)})</span>
-                        )}
+                  {/* Body Content */}
+                  <div className="p-4 sm:p-5 space-y-3">
+                    {/* Feedback de Confirmação Digital */}
+                    {checkInSuccess && (
+                      <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-xs flex items-center gap-2.5 animate-in fade-in duration-200">
+                        <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="font-bold text-[11px]">Ponto Registrado com Sucesso</p>
+                          <p className="text-[10px] font-mono opacity-80">Protocolo #{Date.now().toString().slice(-6)} • Horário Oficial de Brasília</p>
+                        </div>
                       </div>
-                      <p className="text-[9.5px] text-slate-400 truncate">{todayShift.checkInLocation?.address || 'Localização Registrada'}</p>
-                    </div>
+                    )}
 
-                    {/* Saída */}
-                    <div
-                      className={`rounded-xl p-2.5 text-[10px] space-y-1 ${
-                        isLightTheme ? 'bg-slate-50 border border-slate-200 text-slate-700' : 'bg-white/5 border border-white/10 text-white/90'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between font-bold">
-                        <span className="text-rose-600 dark:text-rose-400 flex items-center gap-1">🛑 Saída: {todayShift.checkOutTime}</span>
-                        {isGpsOutValidDynamic ? (
-                          <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-mono font-semibold">GPS OK ({formatDistance(dynamicOutDistance)})</span>
-                        ) : (
-                          <span className="text-[9px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-500 font-mono font-semibold">Fora ({formatDistance(dynamicOutDistance)})</span>
-                        )}
+                    {hasCheckedIn && hasCheckedOut ? (
+                      /* ESTADO 1: JORNADA COMPLETA */
+                      <div className="space-y-3">
+                        {/* Entrada */}
+                        <div
+                          className={`rounded-2xl p-3 border space-y-1 ${
+                            isLightTheme
+                              ? 'bg-slate-50/90 border-slate-200 text-slate-700'
+                              : 'bg-white/5 border-white/10 text-white/90'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between font-bold text-xs">
+                            <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                              Entrada: {todayShift.checkInTime}
+                            </span>
+                            {isGpsValidDynamic ? (
+                              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-500/30">
+                                GPS OK ({formatDistance(dynamicDistance)})
+                              </span>
+                            ) : (
+                              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold border border-amber-200 dark:border-amber-500/30">
+                                Fora ({formatDistance(dynamicDistance)})
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-400 truncate">
+                            {todayShift.checkInLocation?.address || 'Localização Registrada'}
+                          </p>
+                        </div>
+
+                        {/* Saída */}
+                        <div
+                          className={`rounded-2xl p-3 border space-y-1 ${
+                            isLightTheme
+                              ? 'bg-slate-50/90 border-slate-200 text-slate-700'
+                              : 'bg-white/5 border-white/10 text-white/90'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between font-bold text-xs">
+                            <span className="text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-rose-500" />
+                              Saída: {todayShift.checkOutTime}
+                            </span>
+                            {isGpsOutValidDynamic ? (
+                              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-500/30">
+                                GPS OK ({formatDistance(dynamicOutDistance)})
+                              </span>
+                            ) : (
+                              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold border border-amber-200 dark:border-amber-500/30">
+                                Fora ({formatDistance(dynamicOutDistance)})
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-400 truncate">
+                            {todayShift.checkOutLocation?.address || 'Localização Registrada'}
+                          </p>
+                        </div>
+
+                        {/* Botão Meu Histórico de Batidas */}
+                        <button
+                          type="button"
+                          onClick={() => setIsHistoryOpen(true)}
+                          className={`w-full py-2.5 px-4 rounded-2xl border font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                            isLightTheme
+                              ? 'bg-slate-100/80 hover:bg-slate-200/80 border-slate-200 text-slate-700'
+                              : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-200'
+                          }`}
+                        >
+                          <History className="w-4 h-4" />
+                          <span>Meu Histórico de Batidas</span>
+                        </button>
+
+                        {/* Botão para limpar ponto e testar novamente */}
+                        <button
+                          type="button"
+                          onClick={handleResetTodayPunch}
+                          disabled={isResettingPunch}
+                          className="w-full py-1.5 px-3 rounded-xl border border-dashed border-slate-300 dark:border-white/20 text-[10px] font-semibold text-slate-500 dark:text-white/60 hover:text-amber-500 hover:border-amber-400 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <RotateCcw className={`w-3 h-3 ${isResettingPunch ? 'animate-spin' : ''}`} />
+                          {isResettingPunch ? 'Limpando...' : 'Limpar Ponto de Teste'}
+                        </button>
                       </div>
-                      <p className="text-[9.5px] text-slate-400 truncate">{todayShift.checkOutLocation?.address || 'Localização Registrada'}</p>
-                    </div>
+                    ) : hasCheckedIn ? (
+                      /* ESTADO 2: ENTRADA JÁ REGISTRADA, SAÍDA PENDENTE (EXATO DA IMAGEM) */
+                      <div className="space-y-3">
+                        {/* Card Entrada Registrada */}
+                        <div
+                          className={`rounded-2xl p-3 border space-y-1 ${
+                            isLightTheme
+                              ? 'bg-slate-50/90 border-slate-200 text-slate-700'
+                              : 'bg-white/5 border-white/10 text-white/90'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between font-bold text-xs">
+                            <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                              Entrada: {todayShift.checkInTime || '15:26'}
+                            </span>
+                            {isGpsValidDynamic ? (
+                              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-500/30">
+                                GPS OK ({formatDistance(dynamicDistance)})
+                              </span>
+                            ) : (
+                              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold border border-amber-200 dark:border-amber-500/30">
+                                Fora ({formatDistance(dynamicDistance)})
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-400 dark:text-slate-400 truncate">
+                            {todayShift.checkInLocation?.address || 'Localização Registrada'}
+                          </p>
+                        </div>
 
-                    {/* Botão de Histórico */}
-                    <button
-                      type="button"
-                      onClick={() => setIsHistoryOpen(true)}
-                      className="w-full mt-2 py-2 px-3 rounded-xl border border-slate-200 dark:border-white/10 text-[10.5px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <History className="w-3.5 h-3.5" />
-                      <span>Meu Histórico de Batidas</span>
-                    </button>
+                        {/* Botão Registrar Saída (Vinho / Magenta da imagem) */}
+                        <button
+                          type="button"
+                          onClick={() => handlePunchClock('saida')}
+                          disabled={isCapturingGps}
+                          className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#96183c] to-[#b32047] hover:brightness-110 active:scale-[0.99] text-white font-bold text-xs shadow-md shadow-[#96183c]/30 flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          <Clock className="w-4 h-4 stroke-[2.5]" />
+                          <span>{isCapturingGps ? 'Obtendo GPS e Endereço...' : 'Registrar Saída'}</span>
+                        </button>
 
-                    {/* Botão para limpar ponto e testar novamente */}
-                    <button
-                      type="button"
-                      onClick={handleResetTodayPunch}
-                      disabled={isResettingPunch}
-                      className="w-full py-1.5 px-3 rounded-xl border border-dashed border-slate-300 dark:border-white/20 text-[10px] font-semibold text-slate-500 dark:text-white/60 hover:text-amber-500 hover:border-amber-400 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <RotateCcw className={`w-3 h-3 ${isResettingPunch ? 'animate-spin' : ''}`} />
-                      {isResettingPunch ? 'Limpando...' : 'Limpar Ponto de Teste'}
-                    </button>
+                        {/* Mensagem de Erro de GPS amigável se a permissão for negada */}
+                        {gpsError && (
+                          <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 text-[11px] font-semibold text-left">
+                            ⚠️ {gpsError}
+                          </div>
+                        )}
+
+                        {/* Botão Meu Histórico de Batidas */}
+                        <button
+                          type="button"
+                          onClick={() => setIsHistoryOpen(true)}
+                          className={`w-full py-2.5 px-4 rounded-2xl border font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                            isLightTheme
+                              ? 'bg-slate-100/80 hover:bg-slate-200/80 border-slate-200 text-slate-700'
+                              : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-200'
+                          }`}
+                        >
+                          <History className="w-4 h-4" />
+                          <span>Meu Histórico de Batidas</span>
+                        </button>
+
+                        {/* Botão para limpar ponto e testar novamente */}
+                        <button
+                          type="button"
+                          onClick={handleResetTodayPunch}
+                          disabled={isResettingPunch}
+                          className="w-full py-1.5 px-3 rounded-xl border border-dashed border-slate-300 dark:border-white/20 text-[10px] font-semibold text-slate-500 dark:text-white/60 hover:text-amber-500 hover:border-amber-400 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <RotateCcw className={`w-3 h-3 ${isResettingPunch ? 'animate-spin' : ''}`} />
+                          {isResettingPunch ? 'Limpando...' : 'Limpar Ponto de Teste'}
+                        </button>
+                      </div>
+                    ) : (
+                      /* ESTADO 3: ENTRADA PENDENTE (NENHUM PONTO BATIDO AINDA) */
+                      <div className="space-y-3">
+                        {isTemporaryWorker && (
+                          <div className="text-left space-y-1 mb-2">
+                            <label
+                              className={`text-[10px] font-bold uppercase tracking-wider block ${
+                                isLightTheme ? 'text-slate-600' : 'text-slate-300'
+                              }`}
+                            >
+                              Posto / Cliente Atendido:
+                            </label>
+                            <input
+                              type="text"
+                              value={temporaryWorkplaceName}
+                              onChange={(e) => setTemporaryWorkplaceName(e.target.value)}
+                              placeholder="Ex: Stand Feira Anhembi, Obra Torre B..."
+                              className={`w-full px-3 py-2 text-xs rounded-xl border font-medium outline-hidden transition-all ${
+                                isLightTheme
+                                  ? 'bg-slate-50 border-slate-300 text-slate-800 focus:border-slate-600'
+                                  : 'bg-white/10 border-white/20 text-white focus:border-white/40'
+                              }`}
+                            />
+                          </div>
+                        )}
+
+                        {/* Botão Registrar Entrada */}
+                        <button
+                          type="button"
+                          onClick={() => handlePunchClock('entrada')}
+                          disabled={isCapturingGps}
+                          className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#96183c] to-[#b32047] hover:brightness-110 active:scale-[0.99] text-white font-bold text-xs shadow-md shadow-[#96183c]/30 flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          <Clock className="w-4 h-4 stroke-[2.5]" />
+                          <span>{isCapturingGps ? 'Obtendo GPS e Endereço...' : 'Registrar Entrada'}</span>
+                        </button>
+
+                        {/* Mensagem de Erro de GPS amigável se a permissão for negada */}
+                        {gpsError && (
+                          <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 text-[11px] font-semibold text-left">
+                            ⚠️ {gpsError}
+                          </div>
+                        )}
+
+                        <p
+                          className={`text-[11px] font-medium text-center ${
+                            isLightTheme ? 'text-slate-500' : 'text-slate-400'
+                          }`}
+                        >
+                          Início da jornada com geolocalização auditável
+                        </p>
+
+                        {/* Botão Meu Histórico de Batidas */}
+                        <button
+                          type="button"
+                          onClick={() => setIsHistoryOpen(true)}
+                          className={`w-full py-2.5 px-4 rounded-2xl border font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                            isLightTheme
+                              ? 'bg-slate-100/80 hover:bg-slate-200/80 border-slate-200 text-slate-700'
+                              : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-200'
+                          }`}
+                        >
+                          <History className="w-4 h-4" />
+                          <span>Meu Histórico de Batidas</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ) : hasCheckedIn ? (
-                /* ESTADO 2: ENTRADA JÁ REGISTRADA, SAÍDA PENDENTE */
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-slate-800 dark:bg-white/10 text-white flex items-center justify-center font-bold shadow-xs shrink-0">
-                      <Clock className="w-5 h-5 text-emerald-400" />
-                    </div>
-                    <div>
-                      <h4
-                        className={`text-sm font-bold leading-tight ${
-                          isLightTheme ? 'text-slate-900' : 'text-white'
-                        }`}
-                      >
-                        Expediente em Andamento
-                      </h4>
-                      <p
-                        className={`text-[11px] font-medium mt-0.5 ${
-                          isLightTheme ? 'text-slate-500' : 'text-slate-400'
-                        }`}
-                      >
-                        Entrada às <strong className="text-emerald-600 dark:text-emerald-400 font-bold">{todayShift.checkInTime}</strong>
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Resumo da Entrada */}
-                  <div
-                    className={`rounded-xl p-2.5 text-[10px] space-y-1 ${
-                      isLightTheme ? 'bg-slate-50 border border-slate-200 text-slate-700' : 'bg-white/5 border border-white/10 text-white/90'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between font-bold">
-                      <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1">🟢 Entrada: {todayShift.checkInTime}</span>
-                      {isGpsValidDynamic ? (
-                        <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-mono font-semibold">GPS OK ({formatDistance(dynamicDistance)})</span>
-                      ) : (
-                        <span className="text-[9px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-500 font-mono font-semibold">Fora ({formatDistance(dynamicDistance)})</span>
-                      )}
-                    </div>
-                    <p className="text-[9.5px] text-slate-400 truncate">{todayShift.checkInLocation?.address || 'Localização Registrada'}</p>
-                  </div>
-
-                  {/* Botão de Bater Saída */}
-                  <button
-                    type="button"
-                    onClick={() => handlePunchClock('saida')}
-                    disabled={isCapturingGps}
-                    className="w-full py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    <Clock className="w-4 h-4" />
-                    <span>{isCapturingGps ? 'Obtendo GPS e Endereço...' : 'Registrar Saída'}</span>
-                  </button>
-
-                  {/* Mensagem de Erro de GPS amigável se a permissão for negada */}
-                  {gpsError && (
-                    <div className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 text-[11px] font-semibold text-left">
-                      ⚠️ {gpsError}
-                    </div>
-                  )}
-
-                  {/* Botão de Histórico */}
-                  <button
-                    type="button"
-                    onClick={() => setIsHistoryOpen(true)}
-                    className="w-full mt-2 py-1.5 px-3 rounded-xl border border-slate-200 dark:border-white/10 text-[10.5px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <History className="w-3.5 h-3.5" />
-                    <span>Meu Histórico de Batidas</span>
-                  </button>
-
-                  {/* Botão para limpar ponto e testar novamente */}
-                  <button
-                    type="button"
-                    onClick={handleResetTodayPunch}
-                    disabled={isResettingPunch}
-                    className="w-full py-1.5 px-3 rounded-xl border border-dashed border-slate-300 dark:border-white/20 text-[10px] font-semibold text-slate-500 dark:text-white/60 hover:text-amber-500 hover:border-amber-400 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <RotateCcw className={`w-3 h-3 ${isResettingPunch ? 'animate-spin' : ''}`} />
-                    {isResettingPunch ? 'Limpando...' : 'Limpar Ponto de Teste'}
-                  </button>
-                </div>
-              ) : (
-                /* ESTADO 3: ENTRADA PENDENTE (NENHUM PONTO BATIDO AINDA) */
-                <div className="space-y-3">
-                  {/* Se for colaborador temporário, exibe campo para declarar o posto/cliente */}
-                  {isTemporaryWorker && (
-                    <div className="text-left space-y-1 mb-2">
-                      <label
-                        className={`text-[10px] font-bold uppercase tracking-wider block ${
-                          isLightTheme ? 'text-slate-600' : 'text-slate-300'
-                        }`}
-                      >
-                        Posto / Cliente Atendido:
-                      </label>
-                      <input
-                        type="text"
-                        value={temporaryWorkplaceName}
-                        onChange={(e) => setTemporaryWorkplaceName(e.target.value)}
-                        placeholder="Ex: Stand Feira Anhembi, Obra Torre B..."
-                        className={`w-full px-3 py-2 text-xs rounded-xl border font-medium outline-hidden transition-all ${
-                          isLightTheme
-                            ? 'bg-slate-50 border-slate-300 text-slate-800 focus:border-slate-600'
-                            : 'bg-white/10 border-white/20 text-white focus:border-white/40'
-                        }`}
-                      />
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => handlePunchClock('entrada')}
-                    disabled={isCapturingGps}
-                    className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    <Clock className="w-4 h-4" />
-                    <span>{isCapturingGps ? 'Obtendo GPS e Endereço...' : 'Registrar Entrada'}</span>
-                  </button>
-
-                  {/* Mensagem de Erro de GPS amigável se a permissão for negada */}
-                  {gpsError && (
-                    <div className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 text-[11px] font-semibold text-left">
-                      ⚠️ {gpsError}
-                    </div>
-                  )}
-
-                  <p
-                    className={`text-[10.5px] font-medium text-center ${
-                      isLightTheme ? 'text-slate-500' : 'text-slate-400'
-                    }`}
-                  >
-                    Início da jornada com geolocalização auditável
-                  </p>
-
-                  {/* Botão de Histórico */}
-                  <button
-                    type="button"
-                    onClick={() => setIsHistoryOpen(true)}
-                    className="w-full pt-1 text-[10.5px] font-semibold text-slate-500 dark:text-slate-400 hover:underline flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <History className="w-3.5 h-3.5" />
-                    <span>Ver Histórico de Batidas</span>
-                  </button>
-                </div>
-              )}
                 </>
               )}
             </div>
