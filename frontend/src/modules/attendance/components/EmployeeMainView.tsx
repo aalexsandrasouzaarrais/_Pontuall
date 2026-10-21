@@ -349,20 +349,29 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
         isLightTheme ? 'text-[#0F172A]' : 'text-white'
       }`}
     >
-      {/* 1. TOP SECTION: HERO WITH DIGITAL CLOCK & FLOATING PROOF WIDGET (Estilo Mesh Gradient da Referência) */}
+      {/* 1. TOP SECTION: HERO WITH DIGITAL CLOCK & FLOATING PROOF WIDGET (Modo Claro e Escuro) */}
       <div
-        className="rounded-3xl p-6 sm:p-7 relative overflow-hidden transition-all duration-300 border border-white/10 shadow-2xl"
+        className={`rounded-3xl p-6 sm:p-7 relative overflow-hidden transition-all duration-300 border ${
+          isLightTheme
+            ? 'border-amber-200/70 shadow-xl'
+            : 'border-white/10 shadow-2xl'
+        }`}
         style={{
-          background:
-            'radial-gradient(ellipse 75% 75% at 18% 45%, rgba(245, 215, 140, 0.32) 0%, rgba(200, 150, 60, 0.15) 38%, rgba(10, 8, 13, 0) 70%), radial-gradient(ellipse 85% 85% at 78% 55%, rgba(230, 90, 45, 0.45) 0%, rgba(150, 24, 60, 0.35) 40%, rgba(10, 8, 13, 0) 75%), #0B080D',
+          background: isLightTheme
+            ? 'radial-gradient(ellipse 75% 75% at 18% 45%, rgba(249, 222, 151, 0.45) 0%, rgba(245, 146, 66, 0.18) 40%, rgba(255, 255, 255, 0) 70%), radial-gradient(ellipse 85% 85% at 78% 55%, rgba(254, 205, 211, 0.55) 0%, rgba(254, 226, 226, 0.3) 45%, rgba(255, 255, 255, 0) 75%), #FFFDF9'
+            : 'radial-gradient(ellipse 75% 75% at 18% 45%, rgba(245, 215, 140, 0.32) 0%, rgba(200, 150, 60, 0.15) 38%, rgba(10, 8, 13, 0) 70%), radial-gradient(ellipse 85% 85% at 78% 55%, rgba(230, 90, 45, 0.45) 0%, rgba(150, 24, 60, 0.35) 40%, rgba(10, 8, 13, 0) 75%), #0B080D',
         }}
       >
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-start justify-between gap-6">
           {/* Left Column: Big Digital Clock with orange bar indicator, Date & Shift Box */}
           <div className="flex-1 space-y-4">
             {/* Big Clean Digital Clock & Date */}
-            <div className="border-l-[3.5px] border-[#f89642] pl-3.5 space-y-0.5">
-              <div className="text-4xl sm:text-5xl font-black tracking-tight font-sans text-white">
+            <div className={`border-l-[3.5px] ${isLightTheme ? 'border-[#e85d45]' : 'border-[#f89642]'} pl-3.5 space-y-0.5`}>
+              <div
+                className={`text-4xl sm:text-5xl font-black tracking-tight font-sans ${
+                  isLightTheme ? 'text-slate-900' : 'text-white'
+                }`}
+              >
                 {currentTime.toLocaleTimeString('pt-BR', {
                   hour: '2-digit',
                   minute: '2-digit',
@@ -370,7 +379,11 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                 })}
               </div>
 
-              <div className="text-xs sm:text-sm font-semibold mt-1 text-slate-200">
+              <div
+                className={`text-xs sm:text-sm font-bold mt-1 ${
+                  isLightTheme ? 'text-slate-700' : 'text-slate-200'
+                }`}
+              >
                 {(() => {
                   const weekday = currentTime.toLocaleDateString('pt-BR', { weekday: 'long' });
                   const day = currentTime.getDate();
@@ -490,9 +503,8 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                             {currentShiftWorkplace?.name || todayShift.workplace || 'Posto Presencial'}
                           </p>
                           <p
-                            className={`text-[11.5px] mt-0.5 font-medium leading-snug ${
-                              isLightTheme ? 'text-slate-600' : 'text-slate-400'
-                            }`}
+                            className="text-[11.5px] mt-0.5 font-semibold leading-snug"
+                            style={{ color: isLightTheme ? '#334155' : '#cbd5e1' }}
                           >
                             {currentShiftWorkplace?.address || 'Endereço definido pelo gestor'}
                           </p>
@@ -500,11 +512,16 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                       </div>
 
                       <span
-                        className={`text-[11px] font-black px-3 py-1 rounded-full shrink-0 shadow-2xs ${
+                        className="text-[11px] font-black px-3 py-1 rounded-full shrink-0 border shadow-xs"
+                        style={
                           currentShiftWorkplace?.isRemote
-                            ? 'bg-blue-100 text-blue-950 dark:bg-blue-500/25 dark:text-blue-200 border border-blue-400 dark:border-blue-500/40'
-                            : 'bg-emerald-100 text-emerald-950 dark:bg-emerald-500/25 dark:text-emerald-200 border border-emerald-400 dark:border-emerald-500/40'
-                        }`}
+                            ? isLightTheme
+                              ? { backgroundColor: '#e0f2fe', color: '#0369a1', borderColor: '#7dd3fc' }
+                              : { backgroundColor: 'rgba(59, 130, 246, 0.25)', color: '#bfdbfe', borderColor: 'rgba(59, 130, 246, 0.4)' }
+                            : isLightTheme
+                              ? { backgroundColor: '#dcfce7', color: '#064e3b', borderColor: '#86efac' }
+                              : { backgroundColor: 'rgba(16, 185, 129, 0.25)', color: '#a7f3d0', borderColor: 'rgba(16, 185, 129, 0.4)' }
+                        }
                       >
                         {currentShiftWorkplace?.isRemote
                           ? 'Remoto'
@@ -517,11 +534,12 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                         href={workplaceMapsUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all shadow-2xs cursor-pointer ${
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all border shadow-xs cursor-pointer"
+                        style={
                           isLightTheme
-                            ? 'bg-sky-100 hover:bg-sky-200 text-sky-950 border border-sky-300'
-                            : 'bg-sky-500/15 hover:bg-sky-500/25 text-sky-200 border border-sky-500/40'
-                        }`}
+                            ? { backgroundColor: '#f0f9ff', color: '#0369a1', borderColor: '#bae6fd' }
+                            : { backgroundColor: 'rgba(14, 165, 233, 0.15)', color: '#bae6fd', borderColor: 'rgba(14, 165, 233, 0.4)' }
+                        }
                         title="Abrir rota no Google Maps"
                       >
                         <MapPin className="w-3.5 h-3.5" />
@@ -616,21 +634,44 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                           }`}
                         >
                           <div className="flex items-center justify-between font-black text-xs">
-                            <span className="text-emerald-950 dark:text-emerald-300 flex items-center gap-1.5">
-                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 dark:bg-emerald-400 shrink-0" />
+                            <span
+                              className="flex items-center gap-1.5 text-xs font-black"
+                              style={{ color: isLightTheme ? '#064e3b' : '#6ee7b7' }}
+                            >
+                              <span
+                                className="w-2.5 h-2.5 rounded-full shrink-0"
+                                style={{ backgroundColor: '#10b981' }}
+                              />
                               Entrada: {todayShift.checkInTime}
                             </span>
                             {isGpsValidDynamic ? (
-                              <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-950 dark:bg-emerald-500/25 dark:text-emerald-200 font-black border border-emerald-400 dark:border-emerald-500/40 shadow-2xs">
+                              <span
+                                className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs"
+                                style={
+                                  isLightTheme
+                                    ? { backgroundColor: '#dcfce7', color: '#064e3b', borderColor: '#86efac' }
+                                    : { backgroundColor: 'rgba(16, 185, 129, 0.25)', color: '#a7f3d0', borderColor: 'rgba(16, 185, 129, 0.4)' }
+                                }
+                              >
                                 GPS OK ({formatDistance(dynamicDistance)})
                               </span>
                             ) : (
-                              <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-950 dark:bg-amber-500/25 dark:text-amber-200 font-black border border-amber-400 dark:border-amber-500/40 shadow-2xs">
+                              <span
+                                className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs"
+                                style={
+                                  isLightTheme
+                                    ? { backgroundColor: '#fef3c7', color: '#78350f', borderColor: '#fcd34d' }
+                                    : { backgroundColor: 'rgba(245, 158, 11, 0.25)', color: '#fde68a', borderColor: 'rgba(245, 158, 11, 0.4)' }
+                                }
+                              >
                                 Fora ({formatDistance(dynamicDistance)})
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-slate-700 dark:text-slate-300 font-medium truncate">
+                          <p
+                            className="text-xs font-semibold truncate"
+                            style={{ color: isLightTheme ? '#334155' : '#cbd5e1' }}
+                          >
                             {todayShift.checkInLocation?.address || 'Localização Registrada'}
                           </p>
                         </div>
@@ -644,21 +685,44 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                           }`}
                         >
                           <div className="flex items-center justify-between font-black text-xs">
-                            <span className="text-rose-950 dark:text-rose-300 flex items-center gap-1.5">
-                              <span className="w-2.5 h-2.5 rounded-full bg-rose-600 dark:bg-rose-400 shrink-0" />
+                            <span
+                              className="flex items-center gap-1.5 text-xs font-black"
+                              style={{ color: isLightTheme ? '#881337' : '#fda4af' }}
+                            >
+                              <span
+                                className="w-2.5 h-2.5 rounded-full shrink-0"
+                                style={{ backgroundColor: '#f43f5e' }}
+                              />
                               Saída: {todayShift.checkOutTime}
                             </span>
                             {isGpsOutValidDynamic ? (
-                              <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-950 dark:bg-emerald-500/25 dark:text-emerald-200 font-black border border-emerald-400 dark:border-emerald-500/40 shadow-2xs">
+                              <span
+                                className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs"
+                                style={
+                                  isLightTheme
+                                    ? { backgroundColor: '#dcfce7', color: '#064e3b', borderColor: '#86efac' }
+                                    : { backgroundColor: 'rgba(16, 185, 129, 0.25)', color: '#a7f3d0', borderColor: 'rgba(16, 185, 129, 0.4)' }
+                                }
+                              >
                                 GPS OK ({formatDistance(dynamicOutDistance)})
                               </span>
                             ) : (
-                              <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-950 dark:bg-amber-500/25 dark:text-amber-200 font-black border border-amber-400 dark:border-amber-500/40 shadow-2xs">
+                              <span
+                                className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs"
+                                style={
+                                  isLightTheme
+                                    ? { backgroundColor: '#fef3c7', color: '#78350f', borderColor: '#fcd34d' }
+                                    : { backgroundColor: 'rgba(245, 158, 11, 0.25)', color: '#fde68a', borderColor: 'rgba(245, 158, 11, 0.4)' }
+                                }
+                              >
                                 Fora ({formatDistance(dynamicOutDistance)})
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-slate-700 dark:text-slate-300 font-medium truncate">
+                          <p
+                            className="text-xs font-semibold truncate"
+                            style={{ color: isLightTheme ? '#334155' : '#cbd5e1' }}
+                          >
                             {todayShift.checkOutLocation?.address || 'Localização Registrada'}
                           </p>
                         </div>
@@ -667,7 +731,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                         <button
                           type="button"
                           onClick={() => setIsHistoryOpen(true)}
-                          className={`w-full py-2.5 px-4 rounded-2xl border font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                          className={`w-full py-2.5 px-4 rounded-2xl border font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs ${
                             isLightTheme
                               ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
                               : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-200'
@@ -689,21 +753,44 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                           }`}
                         >
                           <div className="flex items-center justify-between font-black text-xs">
-                            <span className="text-emerald-950 dark:text-emerald-300 flex items-center gap-1.5">
-                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 dark:bg-emerald-400 shrink-0" />
+                            <span
+                              className="flex items-center gap-1.5 text-xs font-black"
+                              style={{ color: isLightTheme ? '#064e3b' : '#6ee7b7' }}
+                            >
+                              <span
+                                className="w-2.5 h-2.5 rounded-full shrink-0"
+                                style={{ backgroundColor: '#10b981' }}
+                              />
                               Entrada: {todayShift.checkInTime || '15:26'}
                             </span>
                             {isGpsValidDynamic ? (
-                              <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-950 dark:bg-emerald-500/25 dark:text-emerald-200 font-black border border-emerald-400 dark:border-emerald-500/40 shadow-2xs">
+                              <span
+                                className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs"
+                                style={
+                                  isLightTheme
+                                    ? { backgroundColor: '#dcfce7', color: '#064e3b', borderColor: '#86efac' }
+                                    : { backgroundColor: 'rgba(16, 185, 129, 0.25)', color: '#a7f3d0', borderColor: 'rgba(16, 185, 129, 0.4)' }
+                                }
+                              >
                                 GPS OK ({formatDistance(dynamicDistance)})
                               </span>
                             ) : (
-                              <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-950 dark:bg-amber-500/25 dark:text-amber-200 font-black border border-amber-400 dark:border-amber-500/40 shadow-2xs">
+                              <span
+                                className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs"
+                                style={
+                                  isLightTheme
+                                    ? { backgroundColor: '#fef3c7', color: '#78350f', borderColor: '#fcd34d' }
+                                    : { backgroundColor: 'rgba(245, 158, 11, 0.25)', color: '#fde68a', borderColor: 'rgba(245, 158, 11, 0.4)' }
+                                }
+                              >
                                 Fora ({formatDistance(dynamicDistance)})
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-slate-700 dark:text-slate-300 font-medium truncate">
+                          <p
+                            className="text-xs font-semibold truncate"
+                            style={{ color: isLightTheme ? '#334155' : '#cbd5e1' }}
+                          >
                             {todayShift.checkInLocation?.address || 'Localização Registrada'}
                           </p>
                         </div>
@@ -1411,19 +1498,29 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                     >
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-2">
-                          <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
-                            isEntrada
-                              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                              : 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20'
-                          }`}>
+                          <span
+                            className="text-[10px] font-black px-2.5 py-0.5 rounded-full border shadow-2xs"
+                            style={
+                              isEntrada
+                                ? isLightTheme
+                                  ? { backgroundColor: '#dcfce7', color: '#064e3b', borderColor: '#86efac' }
+                                  : { backgroundColor: 'rgba(16, 185, 129, 0.2)', color: '#6ee7b7', borderColor: 'rgba(16, 185, 129, 0.3)' }
+                                : isLightTheme
+                                  ? { backgroundColor: '#ffe4e6', color: '#881337', borderColor: '#fecdd3' }
+                                  : { backgroundColor: 'rgba(244, 63, 94, 0.2)', color: '#fda4af', borderColor: 'rgba(244, 63, 94, 0.3)' }
+                            }
+                          >
                             {isEntrada ? '🟢 Entrada' : '🛑 Saída'}
                           </span>
-                          <span className="font-bold text-[12px]">{dateFormatted}</span>
-                          <span className="font-mono text-[12px] font-extrabold text-slate-800 dark:text-white">
+                          <span className={`font-bold text-[12px] ${isLightTheme ? 'text-slate-900' : 'text-slate-100'}`}>{dateFormatted}</span>
+                          <span className={`font-mono text-[12px] font-extrabold ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
                             {timeFormatted}
                           </span>
                         </div>
-                        <p className="text-[10.5px] text-slate-400 line-clamp-1">
+                        <p
+                          className="text-[11px] font-medium line-clamp-1"
+                          style={{ color: isLightTheme ? '#334155' : '#94a3b8' }}
+                        >
                           📍 {punch.Des_Endereco || 'Localização Registrada'}
                           {punch.Num_Latitude && punch.Num_Longitude && (
                             <span className="font-mono text-[9px] opacity-70 ml-1">
@@ -1434,9 +1531,18 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          isValid ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-amber-500/10 text-amber-500'
-                        }`}>
+                        <span
+                          className="text-[10px] font-black px-2.5 py-0.5 rounded-full border"
+                          style={
+                            isValid
+                              ? isLightTheme
+                                ? { backgroundColor: '#dcfce7', color: '#064e3b', borderColor: '#86efac' }
+                                : { backgroundColor: 'rgba(16, 185, 129, 0.2)', color: '#a7f3d0', borderColor: 'rgba(16, 185, 129, 0.4)' }
+                              : isLightTheme
+                                ? { backgroundColor: '#fef3c7', color: '#78350f', borderColor: '#fcd34d' }
+                                : { backgroundColor: 'rgba(245, 158, 11, 0.2)', color: '#fde68a', borderColor: 'rgba(245, 158, 11, 0.4)' }
+                          }
+                        >
                           {isValid ? '✓ GPS Validado' : '⚠ Fora do Raio'}
                         </span>
                       </div>
