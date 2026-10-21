@@ -85,15 +85,26 @@ export const ManagerRequestsModal: React.FC<ManagerRequestsModalProps> = ({
                     <div className="flex items-start gap-2.5">
                       <img src={req.employeeAvatar} alt={req.employeeName} className="w-8 h-8 rounded-full object-cover" />
                       <div>
-                        <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <div className="text-xs font-bold text-white flex items-center gap-1.5 flex-wrap">
                           <span>{req.employeeName}</span>
                           <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 font-mono">
-                            {req.type === 'swap' ? '🔄 Troca' : '🏖️ Folga'}
+                            {req.type === 'swap' ? '🔄 Troca de Turno' : '🏖️ Folga'}
                           </span>
+                          {req.type === 'swap' && (
+                            <span className="text-[10px] px-2 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                              {req.peerStatus === 'rejected' ? '❌ Recusado pelo colega' : req.peerStatus === 'accepted' ? '✅ Acordo aceito pelo colega' : '⏳ Aguardando aceite do colega'}
+                            </span>
+                          )}
                         </div>
-                        <p className="text-xs text-slate-300 mt-0.5">
-                          Data: <strong className="font-mono text-white">{req.date}</strong>
-                          {req.targetEmployeeName && <> • Com: <strong>{req.targetEmployeeName}</strong></>}
+                        <p className="text-xs text-slate-300 mt-1 flex items-center gap-1.5 flex-wrap">
+                          <span>Data: <strong className="font-mono text-white">{req.date}</strong></span>
+                          {req.shiftStartTime && req.shiftEndTime && (
+                            <span className="text-amber-300 font-mono font-semibold">({req.shiftStartTime} às {req.shiftEndTime})</span>
+                          )}
+                          {req.targetEmployeeName && (
+                            <span>➔ Substituto: <strong className="text-white">{req.targetEmployeeName}</strong></span>
+                          )}
                         </p>
                         <p className="text-[11px] text-slate-400 italic mt-0.5">
                           "{req.reason}"

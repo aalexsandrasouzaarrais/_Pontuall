@@ -18,14 +18,17 @@ import {
   Layers,
   Trash2
 } from 'lucide-react';
-import { Employee, Shift, ShiftTemplate } from '@/types';
+import { Employee, Shift, ShiftTemplate, TimeOffRequest, AbsenceJustification } from '@/types';
 import { OrbitShiftModal, ORBIT_COLORS } from './OrbitShiftModal';
 import { ShiftTemplatesModal } from './ShiftTemplatesModal';
 import { DeleteShiftsModal } from './DeleteShiftsModal';
+import { findShiftOverlapConflict, checkTimeOffConflict } from '@/shared/utils/shiftValidation';
 
 interface OrbitCalendarViewProps {
   employees: Employee[];
   shifts: Shift[];
+  requests?: TimeOffRequest[];
+  justifications?: AbsenceJustification[];
   onAddShift: (shift: Partial<Shift>) => void;
   onUpdateShift: (shift: Shift, notifyEmployee?: boolean, changeReason?: string) => void;
   onDeleteShift: (id: string) => void;
@@ -158,6 +161,8 @@ export function getMutedShiftColor(ev: Shift, isDark: boolean) {
 export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
   employees,
   shifts,
+  requests = [],
+  justifications = [],
   onAddShift,
   onUpdateShift,
   onDeleteShift,
@@ -375,11 +380,15 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
       dayOfWeekToDate.set(d.getDay(), formatDate(d));
     }
 
+    let addedCount = 0;
+    let skippedCount = 0;
+    const currentShiftPool = [...shifts];
+
     selectedEmployeeIds.forEach(empId => {
       template.days.forEach(dayCfg => {
         const targetDate = dayOfWeekToDate.get(dayCfg.dayOfWeek);
         if (targetDate) {
-          onAddShift({
+          const candidateShift: Partial<Shift> = {
             employeeId: empId,
             date: targetDate,
             startTime: dayCfg.startTime,
@@ -392,10 +401,32 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
             color: dayCfg.type === 'on_call' ? ORBIT_COLORS[1] : ORBIT_COLORS[0],
             workplace: dayCfg.workplace || template.workplace,
             workplaceLocation: dayCfg.workplaceLocation || template.workplaceLocation,
-          });
+          };
+
+          // Valida conflito de sobreposição de horário ou licença aprovada
+          const overlap = findShiftOverlapConflict(candidateShift, currentShiftPool, employees);
+          const timeOff = checkTimeOffConflict(candidateShift, requests || []);
+
+          if (overlap || (timeOff && timeOff.type === 'time_off')) {
+            skippedCount++;
+            return;
+          }
+
+          const newShift = {
+            ...candidateShift,
+            id: `shift-tpl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          } as Shift;
+
+          currentShiftPool.push(newShift);
+          onAddShift(candidateShift);
+          addedCount++;
         }
       });
     });
+
+    if (skippedCount > 0) {
+      alert(`Modelo aplicado com sucesso: ${addedCount} turno(s) adicionados.\n${skippedCount} turno(s) foram ignorados por gerarem conflito de horário ou coincidirem com ausência/férias aprovadas.`);
+    }
   };
 
   // Week days array
@@ -1826,6 +1857,9 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
         initialEmployeeId={selectedCollaboratorId || undefined}
         editingShift={editingShift}
         employees={employees}
+        shifts={shifts}
+        requests={requests}
+        justifications={justifications}
         isRh={isRh}
         onSave={handleSaveShift}
         onDelete={(id) => {

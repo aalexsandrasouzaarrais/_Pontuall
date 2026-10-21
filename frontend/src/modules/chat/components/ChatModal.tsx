@@ -139,8 +139,16 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   // Contagem de mensagens não lidas por contato em conversa direta
   const [unreadDirectByContact, setUnreadDirectByContact] = useState<Record<string, number>>({});
   const totalDirectUnread = useMemo(() => {
-    return Object.values(unreadDirectByContact).reduce((acc, c) => acc + c, 0);
+    return Object.values(unreadDirectByContact).reduce((acc: number, c: number) => acc + c, 0);
   }, [unreadDirectByContact]);
+
+  const getChatLastReadTimestamp = (companyId?: string, employeeId?: string): string | null => {
+    try {
+      return localStorage.getItem(`chat_last_read_${companyId || 'default'}_${employeeId || 'anon'}`);
+    } catch {
+      return null;
+    }
+  };
 
   // Seleção de colaborador/gestor para conversa direta
   const [selectedDirectEmployeeId, setSelectedDirectEmployeeId] = useState<string>('');

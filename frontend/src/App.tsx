@@ -70,8 +70,10 @@ import {
   updateJustificativaStatusSupabase,
   getSolicitacoesSupabase,
   createSolicitacaoSupabase,
-  updateSolicitacaoStatusSupabase
+  updateSolicitacaoStatusSupabase,
+  updateSolicitacaoPeerStatusSupabase
 } from '@/modules/requests/services/requestService';
+import { findShiftOverlapConflict } from '@/shared/utils/shiftValidation';
 import {
   getNotificationsSupabase,
   createNotificationSupabase,
@@ -685,22 +687,35 @@ function AppContent() {
       const saved = await createSolicitacaoSupabase(req, activeEmployee);
       if (saved) {
         setRequests(prev => prev.map(r => r.id === tempId ? { ...saved, employeeName: activeEmployee.name, employeeAvatar: activeEmployee.avatar } : r));
-        // Notifica gestores
+      }
+
+      if (req.type === 'swap' && req.targetEmployeeId) {
+        // Notifica o colega substituto para que ele aceite ou recuse a proposta
+        await createNotificationSupabase({
+          targetEmployeeId: req.targetEmployeeId,
+          title: 'Proposta de Troca de Turno Recebida',
+          message: `${activeEmployee.name} enviou uma proposta para você assumir a escala do dia ${req.date || ''}. Abra a aba 'Solicitações' para aceitar ou recusar.`,
+          type: 'swap',
+          actionRequired: true,
+        });
+        showToast('Proposta Enviada', `Proposta enviada para ${req.targetEmployeeName || 'o colega'}. Assim que ele aceitar, o pedido seguirá para homologação do gestor.`, 'info');
+      } else {
+        // Notifica gestores para folga compensatória
         const managers = employees.filter(e => e.roleType === 'gestor' || e.isMasterManager || e.isRh);
         managers.forEach(mgr => {
           createNotificationSupabase({
             targetEmployeeId: mgr.id,
-            title: req.type === 'swap' ? 'Nova Troca de Turno' : 'Nova Folga Compensatória',
-            message: `${activeEmployee.name} solicitou ${req.type === 'swap' ? 'troca de turno' : 'folga compensatória'} para ${req.date || 'data selecionada'}.`,
+            title: 'Nova Folga Compensatória',
+            message: `${activeEmployee.name} solicitou folga compensatória para ${req.date || 'data selecionada'}.`,
             type: 'swap',
             actionRequired: true,
           });
         });
+        showToast('Solicitação Enviada', 'Sua solicitação de folga foi enviada para o Gestor e RH.', 'success');
       }
     } catch (err) {
       console.warn('Erro ao salvar solicitação no Supabase:', err);
     }
-    showToast('Solicitação Enviada', 'Sua solicitação foi gravada no banco de dados e enviada para o Gestor e RH.', 'success');
   };
 
   // Submit absence justification
@@ -770,6 +785,14 @@ function AppContent() {
       workplace: newShiftData.workplace,
       ...newShiftData,
     };
+
+    // Bloqueia sobreposição de horários do colaborador
+    const overlapConflict = findShiftOverlapConflict(created, shifts, employees);
+    if (overlapConflict) {
+      showToast('Conflito de Escala', overlapConflict.message, 'error');
+      return;
+    }
+
     try {
       const saved = await createShiftSupabase(created);
       const finalShift = saved || created;
@@ -791,6 +814,13 @@ function AppContent() {
   };
 
   const handleUpdateShift = async (updated: Shift, notifyEmployee: boolean = true, changeReason?: string) => {
+    // Bloqueia sobreposição de horários do colaborador (ignorando o próprio turno em edição)
+    const overlapConflict = findShiftOverlapConflict(updated, shifts, employees);
+    if (overlapConflict) {
+      showToast('Conflito de Escala', overlapConflict.message, 'error');
+      return;
+    }
+
     const prevShift = shifts.find(s => s.id === updated.id);
     setShifts(prev => prev.map(s => s.id === updated.id ? updated : s));
 
@@ -851,16 +881,132 @@ function AppContent() {
     );
   };
 
+  const handleAcceptPeerSwap = async (requestId: string) => {
+    const target = requests.find(r => r.id === requestId);
+    if (!target) return;
+
+    setRequests(prev => prev.map(r => r.id === requestId ? { ...r, peerStatus: 'accepted' } : r));
+    try {
+      await updateSolicitacaoPeerStatusSupabase(requestId, 'accepted');
+    } catch (err) {
+      console.warn('Erro ao atualizar status do aceite:', err);
+    }
+
+    // 1. Notifica o solicitante (Colaborador A)
+    if (target.employeeId) {
+      await createNotificationSupabase({
+        targetEmployeeId: target.employeeId,
+        title: 'Troca Aceita pelo Colega!',
+        message: `${activeEmployee.name} aceitou sua proposta de troca para ${target.date}! O pedido foi encaminhado para homologação final do gestor.`,
+        type: 'swap',
+        actionRequired: false,
+      });
+    }
+
+    // 2. Notifica os gestores
+    const managers = employees.filter(e => e.roleType === 'gestor' || e.isMasterManager || e.isRh);
+    managers.forEach(mgr => {
+      createNotificationSupabase({
+        targetEmployeeId: mgr.id,
+        title: 'Troca de Turno Pronta para Homologação',
+        message: `${target.employeeName} e ${activeEmployee.name} concordaram com a troca de escala do dia ${target.date}. Homologação necessária na Central de Aprovações.`,
+        type: 'swap',
+        actionRequired: true,
+      });
+    });
+
+    showToast('Proposta Aceita', `Você aceitou assumir a escala de ${target.employeeName}. O pedido foi encaminhado ao gestor para homologação.`, 'success');
+  };
+
+  const handleRejectPeerSwap = async (requestId: string) => {
+    const target = requests.find(r => r.id === requestId);
+    if (!target) return;
+
+    setRequests(prev => prev.map(r => r.id === requestId ? { ...r, peerStatus: 'rejected', status: 'rejected' } : r));
+    try {
+      await updateSolicitacaoPeerStatusSupabase(requestId, 'rejected', 'Recusado pelo colega substituto');
+    } catch (err) {
+      console.warn('Erro ao atualizar status do aceite:', err);
+    }
+
+    // Notifica o solicitante (Colaborador A)
+    if (target.employeeId) {
+      await createNotificationSupabase({
+        targetEmployeeId: target.employeeId,
+        title: 'Troca Recusada pelo Colega',
+        message: `${activeEmployee.name} não pôde aceitar sua proposta de troca de turno para ${target.date}. A solicitação foi cancelada.`,
+        type: 'swap',
+        actionRequired: false,
+      });
+    }
+
+    showToast('Proposta Recusada', `Você recusou a proposta de troca de ${target.employeeName}.`, 'info');
+  };
+
   const handleApproveRequest = async (id: string, customFeedback?: string) => {
     const feedback = customFeedback || 'Aprovado pelo gestor';
     const target = requests.find(r => r.id === id);
+    if (!target) return;
+
     setRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'approved', managerNotes: feedback } : r));
     await updateSolicitacaoStatusSupabase(id, 'approved', feedback);
+
+    // Se for troca de turno com colega substituto definido
+    if (target.type === 'swap' && target.targetEmployeeId) {
+      // Localiza a escala correspondente a ser transferida
+      const targetShift = shifts.find(s => s.id === target.shiftId) ||
+                          shifts.find(s => s.employeeId === target.employeeId && s.date === target.date);
+
+      if (targetShift) {
+        const auditNote = `[Troca Homologada] Assumido de ${target.employeeName || 'colega'} em ${new Date().toLocaleDateString('pt-BR')} pelo gestor`;
+        const updatedShift: Shift = {
+          ...targetShift,
+          employeeId: target.targetEmployeeId,
+          notes: targetShift.notes ? `${targetShift.notes}\n${auditNote}` : auditNote,
+        };
+
+        // Atualiza escala na grade e calendário imediatamente
+        setShifts(prev => prev.map(s => s.id === targetShift.id ? updatedShift : s));
+
+        // Atualiza escala no Supabase
+        try {
+          await updateShiftSupabase(updatedShift);
+        } catch (err) {
+          console.warn('Erro ao transferir escala no Supabase:', err);
+        }
+      }
+
+      // 1. Notifica o Solicitante (Colaborador A)
+      if (target.employeeId) {
+        await createNotificationSupabase({
+          targetEmployeeId: target.employeeId,
+          title: 'Troca de Turno Homologada',
+          message: `Sua troca de turno para o dia ${target.date} com ${target.targetEmployeeName || 'seu colega'} foi homologada pelo gestor. A escala foi transferida com sucesso.`,
+          type: 'approval',
+          actionRequired: false,
+        });
+      }
+
+      // 2. Notifica o Substituto (Colega B)
+      if (target.targetEmployeeId) {
+        await createNotificationSupabase({
+          targetEmployeeId: target.targetEmployeeId,
+          title: 'Nova Escala Assumida (Troca Homologada)',
+          message: `A troca de turno foi homologada pelo gestor! Você assumiu oficialmente a escala do dia ${target.date}${targetShift ? ` (${targetShift.startTime} às ${targetShift.endTime})` : ''} de ${target.employeeName}.`,
+          type: 'shift_change',
+          actionRequired: true,
+        });
+      }
+
+      showToast('Troca Homologada', `A escala do dia ${target.date} foi transferida para ${target.targetEmployeeName || 'o colega'} e ambos foram notificados.`, 'success');
+      return;
+    }
+
     if (target?.employeeId) {
       await createNotificationSupabase({
         targetEmployeeId: target.employeeId,
         title: 'Solicitação Aprovada',
-        message: `Sua solicitação de ${target.type === 'swap' ? 'troca de turno' : 'folga compensatória'} para ${target.date} foi aprovada. Parecer: "${feedback}".`,
+        message: `Sua solicitação de folga compensatória para ${target.date} foi aprovada. Parecer: "${feedback}".`,
         type: 'approval',
       });
     }
@@ -1028,7 +1174,8 @@ function AppContent() {
     requests.filter(r => r.status === 'pending').length + 
     justifications.filter(j => j.status === 'pending').length +
     pjReports.filter(p => p.status === 'pending').length;
-  const myRequests = requests.filter(r => r.employeeId === activeEmployee.id || r.targetEmployeeId === activeEmployee.id);
+  const myRequests = requests.filter(r => r.employeeId === activeEmployee.id);
+  const incomingSwapRequests = requests.filter(r => r.type === 'swap' && r.targetEmployeeId === activeEmployee.id && r.peerStatus === 'pending');
   const myJustifications = justifications.filter(j => j.employeeId === activeEmployee.id);
 
   const isManagerLight = currentRole === 'manager' && !isDark;
@@ -1206,6 +1353,7 @@ function AppContent() {
             notifications={notifications}
             onOpenNotifications={() => setIsNotificationsModalOpen(true)}
             unreadChatCount={unreadChatCount}
+            incomingSwapCount={incomingSwapRequests.length}
             isLightTheme={!isDark}
             onOpenProfile={() => setIsProfileModalOpen(true)}
           />
@@ -1340,8 +1488,104 @@ function AppContent() {
                   </button>
                 </div>
 
-                {/* Lista */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* 1. Propostas de Troca Recebidas (Aguardando Meu Aceite) */}
+                {incomingSwapRequests.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+                      <h3 className={`text-xs font-bold tracking-wider uppercase font-mono flex items-center gap-2 ${
+                        !isDark ? 'text-amber-800' : 'text-amber-300'
+                      }`}>
+                        <ArrowLeftRight className="w-4 h-4 text-amber-500" />
+                        <span>Propostas de Troca Recebidas ({incomingSwapRequests.length})</span>
+                      </h3>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {incomingSwapRequests.map(req => {
+                        const shiftOnDate = shifts.find(s => s.employeeId === activeEmployee.id && s.date === req.date);
+
+                        return (
+                          <div
+                            key={req.id}
+                            className={`rounded-2xl border p-4 shadow-xl flex flex-col justify-between transition-all ${
+                              !isDark
+                                ? 'bg-gradient-to-br from-amber-50/90 to-orange-50/40 border-amber-300 text-slate-800 shadow-amber-900/5'
+                                : 'bg-gradient-to-br from-amber-950/25 to-black/60 border-amber-500/40 text-white shadow-black/50'
+                            }`}
+                          >
+                            <div className="space-y-2">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-center gap-2.5">
+                                  <img
+                                    src={req.employeeAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100'}
+                                    alt={req.employeeName}
+                                    className="w-9 h-9 rounded-full object-cover border border-amber-500/40 shrink-0"
+                                  />
+                                  <div>
+                                    <p className="text-xs font-bold leading-tight flex items-center gap-1.5 flex-wrap">
+                                      <span>{req.employeeName}</span>
+                                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 font-semibold border border-amber-500/30">
+                                        Deseja trocar com você
+                                      </span>
+                                    </p>
+                                    <p className="text-[11px] opacity-80 mt-0.5">
+                                      Turno do dia <strong className="font-mono text-amber-600 dark:text-amber-300">{req.date}</strong>
+                                      {req.shiftStartTime && req.shiftEndTime && (
+                                        <span> ({req.shiftStartTime} às {req.shiftEndTime})</span>
+                                      )}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className={`p-2.5 rounded-xl text-xs italic ${
+                                !isDark ? 'bg-white/80 border border-amber-200 text-slate-700' : 'bg-black/30 border border-white/5 text-slate-300'
+                              }`}>
+                                "{req.reason}"
+                              </div>
+
+                              {shiftOnDate && (
+                                <div className="p-2 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-600 dark:text-rose-300 text-[11px] font-medium flex items-center gap-1.5">
+                                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                  <span>Aviso: Você já possui a escala "{shiftOnDate.title || 'Turno'}" ({shiftOnDate.startTime} - {shiftOnDate.endTime}) nesta mesma data!</span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="mt-3.5 pt-2.5 border-t border-amber-500/20 flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleRejectPeerSwap(req.id)}
+                                className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/10 transition-all cursor-pointer"
+                              >
+                                Recusar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleAcceptPeerSwap(req.id)}
+                                className="px-4 py-1.5 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-600 to-teal-500 hover:brightness-110 text-white shadow-md shadow-emerald-900/20 transition-all cursor-pointer flex items-center gap-1.5"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Aceitar Troca</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Minhas Solicitações Enviadas */}
+                <div className="space-y-3">
+                  <h3 className={`text-xs font-bold tracking-wider uppercase font-mono ${
+                    !isDark ? 'text-slate-600' : 'text-slate-400'
+                  }`}>
+                    Minhas Solicitações Enviadas ({myRequests.length})
+                  </h3>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {myRequests.length === 0 ? (
                     <div
                       className={`md:col-span-2 p-8 rounded-xl border text-center text-xs transition-all duration-300 ${
@@ -1350,10 +1594,15 @@ function AppContent() {
                           : 'bg-[#0d0d10] border-white/10 text-slate-400'
                       }`}
                     >
-                      Você ainda não possui solicitações de folga ou troca cadastradas.
+                      Você ainda não possui solicitações de folga ou troca enviadas.
                     </div>
                   ) : (
-                    myRequests.map(req => (
+                    myRequests.map(req => {
+                      const isPendingPeer = req.type === 'swap' && req.peerStatus === 'pending';
+                      const isAcceptedPeer = req.type === 'swap' && req.peerStatus === 'accepted';
+                      const isRejectedPeer = req.type === 'swap' && req.peerStatus === 'rejected';
+
+                      return (
                       <div
                         key={req.id}
                         className={`relative rounded-xl border overflow-hidden shadow-lg flex flex-col transition-all duration-300 ${
@@ -1392,10 +1641,14 @@ function AppContent() {
                                   ? !isDark
                                     ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
                                     : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                  : req.status === 'rejected'
+                                  : req.status === 'rejected' || isRejectedPeer
                                   ? !isDark
                                     ? 'bg-rose-50 text-rose-600 border border-rose-200'
                                     : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                  : isAcceptedPeer
+                                  ? !isDark
+                                    ? 'bg-indigo-50 text-indigo-600 border border-indigo-200'
+                                    : 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20'
                                   : !isDark
                                   ? 'bg-amber-50 text-amber-600 border border-amber-200'
                                   : 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
@@ -1405,16 +1658,24 @@ function AppContent() {
                                 className={`w-1.5 h-1.5 rounded-full ${
                                   req.status === 'approved'
                                     ? 'bg-emerald-400'
-                                    : req.status === 'rejected'
+                                    : req.status === 'rejected' || isRejectedPeer
                                     ? 'bg-rose-400'
+                                    : isAcceptedPeer
+                                    ? 'bg-indigo-400'
                                     : 'bg-amber-300'
                                 }`}
                               />
                               {req.status === 'approved'
-                                ? 'Aprovado'
+                                ? 'Homologado pelo Gestor'
+                                : isRejectedPeer
+                                ? 'Recusado pelo Colega'
                                 : req.status === 'rejected'
-                                ? 'Rejeitado'
-                                : 'Em Análise'}
+                                ? 'Recusado pelo Gestor'
+                                : isAcceptedPeer
+                                ? 'Colega Aceitou • Aguardando Gestor'
+                                : isPendingPeer
+                                ? 'Aguardando Aceite do Colega'
+                                : 'Em Análise pelo Gestor'}
                             </span>
                           </div>
 
@@ -1510,11 +1771,13 @@ function AppContent() {
                           </span>
                         </div>
                       </div>
-                    ))
+                    );
+                  })
                   )}
                 </div>
               </div>
-            )}
+            </div>
+          )}
 
             {/* Tab 4: Justifications & Medical Notes (Apenas CLT / Temporário) */}
             {activeEmployee.contractType !== 'PJ' && employeeTab === 'justifications' && (

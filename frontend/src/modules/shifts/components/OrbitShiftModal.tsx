@@ -1,5 +1,5 @@
 import { getTodayDateString } from '@/shared/utils/dateUtils';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Calendar, 
   Clock, 
@@ -7,11 +7,13 @@ import {
   Pencil, 
   Bell, 
   AlertTriangle, 
+  AlertCircle,
   CheckCircle2, 
   ExternalLink, 
   Tag, 
   Layers, 
   ShieldCheck, 
+  ShieldAlert,
   Building2, 
   Sparkles,
   ArrowLeft,
@@ -23,11 +25,20 @@ import {
   Navigation,
   Search,
   Loader2,
-  Compass
+  Compass,
+  Trash2
 } from 'lucide-react';
-import { Employee, Shift, ShiftType, AttendanceStatus, ShiftStatus, ShiftColor } from '@/types';
+import { Employee, Shift, ShiftType, AttendanceStatus, ShiftStatus, ShiftColor, TimeOffRequest, AbsenceJustification } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
-import { getStoredWorkplaces, createWorkplaceFromAddress, WorkplaceLocation } from '@/shared/services/workplaceService';
+import {
+  findShiftOverlapConflict,
+  checkTimeOffConflict,
+  checkInterjornadaRest,
+  ShiftConflictResult,
+  AbsenceConflictResult,
+  InterjornadaResult
+} from '@/shared/utils/shiftValidation';
+import { getStoredWorkplaces, createWorkplaceFromAddress, deleteWorkplace, WorkplaceLocation } from '@/shared/services/workplaceService';
 import { 
   searchAddressSuggestions, 
   AddressSuggestion, 
@@ -167,6 +178,9 @@ interface OrbitShiftModalProps {
   initialEmployeeId?: string;
   editingShift: Shift | null;
   employees: Employee[];
+  shifts?: Shift[];
+  requests?: TimeOffRequest[];
+  justifications?: AbsenceJustification[];
   isRh?: boolean;
   onSave: (shiftData: Partial<Shift> & { id?: string }, notifyEmployee?: boolean, changeReason?: string) => void;
   onDelete?: (id: string) => void;
@@ -179,6 +193,9 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
   initialEmployeeId,
   editingShift,
   employees,
+  shifts = [],
+  requests = [],
+  justifications = [],
   isRh,
   onSave,
   onDelete,
@@ -202,6 +219,43 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
   const [selectedColor, setSelectedColor] = useState<ShiftColor>(ORBIT_COLORS[0]);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // Validação em tempo real: Choque de Horários (Sobreposição)
+  const overlapConflict = useMemo<ShiftConflictResult | null>(() => {
+    if (!shifts || shifts.length === 0) return null;
+    return findShiftOverlapConflict(
+      {
+        employeeId,
+        date,
+        startTime,
+        endTime,
+        id: editingShift?.id,
+      },
+      shifts
+    );
+  }, [employeeId, date, startTime, endTime, editingShift, shifts]);
+
+  // Validação em tempo real: Ausência Aprovada (Folga/Férias/Atestado)
+  const absenceConflict = useMemo<AbsenceConflictResult | null>(() => {
+    return checkTimeOffConflict(employeeId, date, requests, justifications);
+  }, [employeeId, date, requests, justifications]);
+
+  // Validação em tempo real: Descanso Interjornada CLT Art. 66 (Mínimo de 11h)
+  const interjornadaWarning = useMemo<InterjornadaResult | null>(() => {
+    if (!shifts || shifts.length === 0) return null;
+    return checkInterjornadaRest(
+      {
+        employeeId,
+        date,
+        startTime,
+        endTime,
+        id: editingShift?.id,
+      },
+      shifts
+    );
+  }, [employeeId, date, startTime, endTime, editingShift, shifts]);
+
+  const hasBlockingConflict = Boolean(overlapConflict || (absenceConflict && absenceConflict.type === 'time_off'));
+
   // States for published shift view vs edit
   const isAlreadyPublished = Boolean(editingShift && editingShift.status === 'published');
   const [isEditingPublished, setIsEditingPublished] = useState<boolean>(false);
@@ -220,6 +274,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
   const [selectedCoordinates, setSelectedCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
   const [customRadiusMeters, setCustomRadiusMeters] = useState<number>(200);
   const [addressErrorMessage, setAddressErrorMessage] = useState<string | null>(null);
+  const [isManagingWorkplaces, setIsManagingWorkplaces] = useState<boolean>(false);
 
   const inputStyle: React.CSSProperties = {
     background: isLight ? "#f8fafc" : "rgba(255,255,255,0.05)",
@@ -436,7 +491,24 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
     }
   };
 
+  const handleDeleteWorkplace = (id: string) => {
+    const wp = workplacesList.find(w => w.id === id);
+    if (!wp) return;
+    if (window.confirm(`Deseja realmente excluir o posto "${wp.name}"? Ele deixará de aparecer na lista de postos.`)) {
+      const updated = deleteWorkplace(id);
+      setWorkplacesList(updated);
+      if (selectedWorkplaceId === id) {
+        setSelectedWorkplaceId(updated[0]?.id || '');
+      }
+    }
+  };
+
   const handleSaveWithStatus = (forcedStatus?: ShiftStatus) => {
+    if (hasBlockingConflict) {
+      alert(overlapConflict?.message || absenceConflict?.message || 'Não é possível salvar: existe um conflito de horário para este colaborador.');
+      return;
+    }
+
     const finalStatus = forcedStatus || status;
     const breakMins = breakTime === "30min" ? 30 : breakTime === "45min" ? 45
       : breakTime === "1h" ? 60 : breakTime === "1h30" ? 90 : breakTime === "2h" ? 120 : 0;
@@ -470,6 +542,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (hasBlockingConflict) return;
     handleSaveWithStatus();
   };
 
@@ -1026,7 +1099,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
             <div>
               <label
                 className="flex items-center gap-1.5 text-xs font-semibold mb-1.5"
-                style={{ color: "rgba(255,255,255,0.55)" }}
+                style={labelStyle}
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -1038,14 +1111,11 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                 value={employeeId}
                 onChange={e => setEmployeeId(e.target.value)}
                 required
-                className="w-full px-3.5 py-2.5 rounded-xl text-sm text-white outline-none transition-all cursor-pointer"
-                style={{
-                  background: "rgba(255,255,255,0.05)",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                }}
+                className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all cursor-pointer"
+                style={inputStyle}
               >
                 {employees.map(emp => (
-                  <option key={emp.id} value={emp.id} style={{ background: "#1a0010", color: "#fff" }}>
+                  <option key={emp.id} value={emp.id} style={optionStyle}>
                     {emp.name} — {emp.role} ({emp.department})
                   </option>
                 ))}
@@ -1056,7 +1126,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-semibold" style={{ color: isLight ? "#475569" : "rgba(255,255,255,0.55)" }}>
+                  <label className="text-xs font-semibold" style={labelStyle}>
                     TIPO DE TURNO
                   </label>
                   <span className={`text-[11px] font-semibold flex items-center gap-1.5 px-2 py-0.5 rounded-full ${
@@ -1080,7 +1150,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                 </select>
               </div>
               <div>
-                <label className="text-xs font-semibold mb-1.5 block" style={{ color: "rgba(255,255,255,0.55)" }}>
+                <label className="text-xs font-semibold mb-1.5 block" style={labelStyle}>
                   TÍTULO / IDENTIFICADOR
                 </label>
                 <input
@@ -1089,13 +1159,12 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                   onChange={e => setTitle(e.target.value)}
                   placeholder="Ex: Sprint Planning"
                   required
-                  className="w-full px-3.5 py-2.5 rounded-xl text-sm text-white placeholder:text-white/25 outline-none transition-all"
-                  style={{
-                    background: "rgba(255,255,255,0.05)",
-                    border: "1px solid rgba(255,255,255,0.12)",
-                  }}
-                  onFocus={e => e.target.style.borderColor = "rgba(248,152,71,0.5)"}
-                  onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.12)"}
+                  className={`w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all ${
+                    isLight ? 'placeholder:text-slate-400' : 'placeholder:text-white/25'
+                  }`}
+                  style={inputStyle}
+                  onFocus={e => e.target.style.borderColor = "rgba(248,152,71,0.8)"}
+                  onBlur={e => e.target.style.borderColor = isLight ? "#cbd5e1" : "rgba(255,255,255,0.12)"}
                 />
               </div>
             </div>
@@ -1103,52 +1172,40 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
             {/* Date + Times */}
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3.5">
               <div className="sm:col-span-6">
-                <label className="text-xs font-semibold mb-1.5 block" style={{ color: "rgba(255,255,255,0.55)" }}>Data</label>
+                <label className="text-xs font-semibold mb-1.5 block" style={labelStyle}>Data</label>
                 <input
                   type="date"
                   value={date}
                   onChange={e => setDate(e.target.value)}
                   required
-                  className="w-full px-3.5 py-2.5 rounded-xl text-sm text-white outline-none transition-all cursor-pointer"
-                  style={{
-                    background: "rgba(255,255,255,0.05)",
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    colorScheme: "dark"
-                  }}
-                  onFocus={e => e.target.style.borderColor = "rgba(248,152,71,0.5)"}
-                  onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.12)"}
+                  className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all cursor-pointer"
+                  style={inputStyle}
+                  onFocus={e => e.target.style.borderColor = "rgba(248,152,71,0.8)"}
+                  onBlur={e => e.target.style.borderColor = isLight ? "#cbd5e1" : "rgba(255,255,255,0.12)"}
                 />
               </div>
               <div className="sm:col-span-3">
-                <label className="text-xs font-semibold mb-1.5 block" style={{ color: "rgba(255,255,255,0.55)" }}>Início</label>
+                <label className="text-xs font-semibold mb-1.5 block" style={labelStyle}>Início</label>
                 <input
                   type="time"
                   value={startTime}
                   onChange={e => setStartTime(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl text-sm text-white outline-none transition-all cursor-pointer"
-                  style={{
-                    background: "rgba(255,255,255,0.05)",
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    colorScheme: "dark"
-                  }}
-                  onFocus={e => e.target.style.borderColor = "rgba(248,152,71,0.5)"}
-                  onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.12)"}
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none transition-all cursor-pointer"
+                  style={inputStyle}
+                  onFocus={e => e.target.style.borderColor = "rgba(248,152,71,0.8)"}
+                  onBlur={e => e.target.style.borderColor = isLight ? "#cbd5e1" : "rgba(255,255,255,0.12)"}
                 />
               </div>
               <div className="sm:col-span-3">
-                <label className="text-xs font-semibold mb-1.5 block" style={{ color: "rgba(255,255,255,0.55)" }}>Fim</label>
+                <label className="text-xs font-semibold mb-1.5 block" style={labelStyle}>Fim</label>
                 <input
                   type="time"
                   value={endTime}
                   onChange={e => setEndTime(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl text-sm text-white outline-none transition-all cursor-pointer"
-                  style={{
-                    background: "rgba(255,255,255,0.05)",
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    colorScheme: "dark"
-                  }}
-                  onFocus={e => e.target.style.borderColor = "rgba(248,152,71,0.5)"}
-                  onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.12)"}
+                  className="w-full px-3 py-2.5 rounded-xl text-sm outline-none transition-all cursor-pointer"
+                  style={inputStyle}
+                  onFocus={e => e.target.style.borderColor = "rgba(248,152,71,0.8)"}
+                  onBlur={e => e.target.style.borderColor = isLight ? "#cbd5e1" : "rgba(255,255,255,0.12)"}
                 />
               </div>
             </div>
@@ -1156,18 +1213,15 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
             {/* Break + Hours badge */}
             <div className="flex items-end gap-3.5">
               <div className="flex-1 min-w-0">
-                <label className="text-xs font-semibold mb-1.5 block" style={{ color: "rgba(255,255,255,0.55)" }}>Intervalo / Carga</label>
+                <label className="text-xs font-semibold mb-1.5 block" style={labelStyle}>Intervalo / Carga</label>
                 <select
                   value={breakTime}
                   onChange={e => setBreakTime(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl text-sm text-white outline-none transition-all cursor-pointer"
-                  style={{
-                    background: "rgba(255,255,255,0.05)",
-                    border: "1px solid rgba(255,255,255,0.12)",
-                  }}
+                  className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all cursor-pointer"
+                  style={inputStyle}
                 >
                   {BREAK_OPTIONS.map(b => (
-                    <option key={b} value={b} style={{ background: "#1a0010", color: "#fff" }}>
+                    <option key={b} value={b} style={optionStyle}>
                       {b}
                     </option>
                   ))}
@@ -1186,6 +1240,80 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Alerta de Conflito de Horário (Bloqueante) */}
+            {overlapConflict && (
+              <div 
+                className={`p-3.5 rounded-xl border flex items-start gap-3 animate-in fade-in duration-200 ${
+                  isLight 
+                    ? 'bg-rose-50 border-rose-300 text-rose-900 shadow-sm' 
+                    : 'bg-rose-950/40 border-rose-500/50 text-rose-200 shadow-sm shadow-rose-950/50'
+                }`}
+              >
+                <div className="w-8 h-8 rounded-lg bg-rose-500/20 border border-rose-500/40 flex items-center justify-center shrink-0 mt-0.5">
+                  <AlertCircle className="w-4 h-4 text-rose-500 dark:text-rose-400" />
+                </div>
+                <div className="flex-1 text-xs">
+                  <p className="font-bold text-rose-700 dark:text-rose-300 text-sm mb-0.5 flex items-center gap-1.5">
+                    <span>🚫 Conflito de Horário Detectado</span>
+                  </p>
+                  <p className="leading-relaxed font-medium">
+                    {overlapConflict.message}
+                  </p>
+                  <p className="text-[11px] opacity-80 mt-1 font-mono">
+                    Não é permitido alocar o mesmo colaborador em turnos sobrepostos. Ajuste o horário ou a data para desbloquear o salvamento.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Alerta de Ausência / Férias / Folga Aprovada */}
+            {absenceConflict && (
+              <div 
+                className={`p-3.5 rounded-xl border flex items-start gap-3 animate-in fade-in duration-200 ${
+                  absenceConflict.type === 'time_off'
+                    ? isLight ? 'bg-amber-50 border-amber-300 text-amber-900 shadow-sm' : 'bg-amber-950/40 border-amber-500/50 text-amber-200 shadow-sm shadow-amber-950/50'
+                    : isLight ? 'bg-sky-50 border-sky-300 text-sky-900 shadow-sm' : 'bg-sky-950/40 border-sky-500/50 text-sky-200 shadow-sm shadow-sky-950/50'
+                }`}
+              >
+                <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 mt-0.5 ${
+                  absenceConflict.type === 'time_off'
+                    ? 'bg-amber-500/20 border-amber-500/40'
+                    : 'bg-sky-500/20 border-sky-500/40'
+                }`}>
+                  <ShieldAlert className={`w-4 h-4 ${absenceConflict.type === 'time_off' ? 'text-amber-500' : 'text-sky-400'}`} />
+                </div>
+                <div className="flex-1 text-xs">
+                  <p className="font-bold text-sm mb-0.5">
+                    {absenceConflict.type === 'time_off' ? '🏖️ Colaborador em Folga / Férias' : '📋 Justificativa de Ausência Registrada'}
+                  </p>
+                  <p className="leading-relaxed font-medium">
+                    {absenceConflict.message}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Aviso de Intervalo Interjornada CLT Art. 66 (< 11h de descanso) */}
+            {interjornadaWarning && !overlapConflict && (
+              <div 
+                className={`p-3 rounded-xl border flex items-start gap-2.5 animate-in fade-in duration-200 ${
+                  isLight 
+                    ? 'bg-amber-50/80 border-amber-200 text-amber-900' 
+                    : 'bg-amber-950/30 border-amber-500/30 text-amber-200'
+                }`}
+              >
+                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <div className="flex-1 text-xs">
+                  <p className="font-bold text-amber-700 dark:text-amber-300">
+                    Aviso CLT Art. 66 (Interjornada):
+                  </p>
+                  <p className="text-[11px] leading-relaxed opacity-90 mt-0.5">
+                    {interjornadaWarning.message}
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Color picker com Legenda Informativa */}
             <div className={`p-3.5 rounded-2xl border transition-all ${
@@ -1296,7 +1424,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
             <div>
               <label
                 className="flex items-center justify-between text-xs font-semibold mb-1.5"
-                style={{ color: "rgba(255,255,255,0.55)" }}
+                style={labelStyle}
               >
                 <span>🔗 LINK DA REUNIÃO (MEET / ZOOM)</span>
                 {meetingLink && (
@@ -1319,47 +1447,127 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                 value={meetingLink}
                 onChange={e => setMeetingLink(e.target.value)}
                 placeholder="https://meet.google.com/..."
-                className="w-full px-3.5 py-2.5 rounded-xl text-sm placeholder:text-white/25 outline-none transition-all"
+                className={`w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all ${
+                  isLight ? 'placeholder:text-emerald-700/40 text-emerald-800' : 'placeholder:text-white/25 text-[#48bb78]'
+                }`}
                 style={{
-                  background: "rgba(72,187,120,0.07)",
-                  border: "1px solid rgba(72,187,120,0.2)",
-                  color: "#48bb78"
+                  background: isLight ? "rgba(72,187,120,0.08)" : "rgba(72,187,120,0.07)",
+                  border: isLight ? "1px solid rgba(72,187,120,0.3)" : "1px solid rgba(72,187,120,0.2)",
                 }}
-                onFocus={e => e.target.style.borderColor = "rgba(72,187,120,0.5)"}
-                onBlur={e => e.target.style.borderColor = "rgba(72,187,120,0.2)"}
+                onFocus={e => e.target.style.borderColor = "rgba(72,187,120,0.7)"}
+                onBlur={e => e.target.style.borderColor = isLight ? "rgba(72,187,120,0.3)" : "rgba(72,187,120,0.2)"}
               />
             </div>
 
             {/* Posto / Unidade de Trabalho do Turno */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <label className="text-xs font-semibold flex items-center gap-1.5" style={labelStyle}>
                   <MapPin className="w-3.5 h-3.5 text-[#F89847]" />
                   <span>POSTO DE TRABALHO / UNIDADE</span>
                 </label>
-                <button
-                  type="button"
-                  onClick={() => setIsAddingNewWorkplace(prev => !prev)}
-                  className="text-[11px] font-bold text-[#F89847] hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  <Plus className="w-3 h-3" />
-                  {isAddingNewWorkplace ? 'Cancelar' : 'Novo Posto via Endereço/CEP'}
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsManagingWorkplaces(prev => !prev);
+                      setIsAddingNewWorkplace(false);
+                    }}
+                    className="text-[11px] font-bold text-rose-500 hover:text-rose-600 dark:hover:text-rose-400 flex items-center gap-1 cursor-pointer underline"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{isManagingWorkplaces ? 'Fechar Gerenciador' : `Gerenciar / Excluir Postos (${workplacesList.length})`}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddingNewWorkplace(prev => !prev);
+                      setIsManagingWorkplaces(false);
+                    }}
+                    className="text-[11px] font-bold text-[#F89847] hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    {isAddingNewWorkplace ? 'Cancelar' : 'Novo Posto via Endereço/CEP'}
+                  </button>
+                </div>
               </div>
 
               {!isAddingNewWorkplace ? (
-                <select
-                  value={selectedWorkplaceId}
-                  onChange={e => setSelectedWorkplaceId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all cursor-pointer font-medium"
-                  style={inputStyle}
-                >
-                  {workplacesList.map(w => (
-                    <option key={w.id} value={w.id} style={optionStyle}>
-                      {w.name} {w.isRemote ? '(Flexível/Remoto)' : `(${w.address})`}
-                    </option>
-                  ))}
-                </select>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={selectedWorkplaceId}
+                      onChange={e => setSelectedWorkplaceId(e.target.value)}
+                      className="flex-1 px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all cursor-pointer font-medium"
+                      style={inputStyle}
+                    >
+                      {workplacesList.map(w => (
+                        <option key={w.id} value={w.id} style={optionStyle}>
+                          {w.name} {w.isRemote ? '(Flexível/Remoto)' : `(${w.address})`}
+                        </option>
+                      ))}
+                    </select>
+
+                    {selectedWorkplaceId && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteWorkplace(selectedWorkplaceId)}
+                        className="px-3.5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold shrink-0 shadow-sm"
+                        title="Excluir o posto selecionado da lista"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span>Excluir Posto</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Painel aberto de Gerenciar e Excluir Postos Cadastrados */}
+                  {isManagingWorkplaces && (
+                    <div className={`p-3.5 rounded-2xl border space-y-2 animate-in fade-in duration-200 ${
+                      isLight ? 'bg-slate-50 border-slate-200 shadow-inner' : 'bg-black/40 border-white/10'
+                    }`}>
+                      <div className="flex items-center justify-between pb-1.5 border-b border-slate-200 dark:border-white/10">
+                        <span className={`text-xs font-bold ${isLight ? 'text-slate-800' : 'text-white'}`}>
+                          Lista de Postos Cadastrados ({workplacesList.length})
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          Clique no botão vermelho para remover postos desnecessários
+                        </span>
+                      </div>
+
+                      <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1">
+                        {workplacesList.map(wp => (
+                          <div
+                            key={wp.id}
+                            className={`p-2.5 rounded-xl border flex items-center justify-between gap-3 text-xs transition-all ${
+                              isLight ? 'bg-white border-slate-200 hover:border-slate-300' : 'bg-white/5 border-white/10 hover:border-white/20'
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className={`font-bold truncate ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                                {wp.name}
+                              </p>
+                              <p className={`text-[11px] truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                                {wp.isRemote ? 'Remoto / Flexível' : wp.address} {wp.radiusMeters ? `(${wp.radiusMeters}m)` : ''}
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteWorkplace(wp.id)}
+                              className="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1 shrink-0 cursor-pointer shadow-xs transition-all"
+                              title={`Excluir ${wp.name}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Excluir</span>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <div className={`p-4 rounded-2xl border space-y-3 relative ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'}`}>
                   <div className="flex items-center justify-between">
@@ -1520,7 +1728,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
             {/* Tag + Notes */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-semibold" style={{ color: "rgba(255,255,255,0.55)" }}>
+                <label className="text-xs font-semibold" style={labelStyle}>
                   ✨ LEMBRETES & ATIVIDADES
                 </label>
                 <input
@@ -1528,11 +1736,10 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                   value={tag}
                   onChange={e => setTag(e.target.value)}
                   placeholder="Tag do Projeto"
-                  className="w-32 px-2.5 py-1 rounded-lg text-xs text-white placeholder:text-white/25 outline-none"
-                  style={{
-                    background: "rgba(255,255,255,0.05)",
-                    border: "1px solid rgba(255,255,255,0.1)"
-                  }}
+                  className={`w-32 px-2.5 py-1 rounded-lg text-xs outline-none ${
+                    isLight ? 'placeholder:text-slate-400' : 'placeholder:text-white/25'
+                  }`}
+                  style={inputStyle}
                 />
               </div>
               <textarea
@@ -1540,13 +1747,12 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                 onChange={e => setNotes(e.target.value)}
                 placeholder="Descreva atividades, lembretes ou observações do turno..."
                 rows={3}
-                className="w-full px-3.5 py-2.5 rounded-xl text-sm text-white placeholder:text-white/25 outline-none transition-all resize-none"
-                style={{
-                  background: "rgba(255,255,255,0.05)",
-                  border: "1px solid rgba(255,255,255,0.1)"
-                }}
-                onFocus={e => e.target.style.borderColor = "rgba(248,152,71,0.4)"}
-                onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.1)"}
+                className={`w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all resize-none ${
+                  isLight ? 'placeholder:text-slate-400' : 'placeholder:text-white/25'
+                }`}
+                style={inputStyle}
+                onFocus={e => e.target.style.borderColor = "rgba(248,152,71,0.8)"}
+                onBlur={e => e.target.style.borderColor = isLight ? "#cbd5e1" : "rgba(255,255,255,0.12)"}
               />
             </div>
 
@@ -1554,15 +1760,20 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
 
           {/* Footer */}
           <div
-            className="px-7 py-4.5 flex items-center justify-between gap-3"
-            style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}
+            className={`px-7 py-4.5 flex items-center justify-between gap-3 border-t ${
+              isLight ? 'border-slate-100 bg-slate-50/50' : 'border-white/10'
+            }`}
           >
             <div className="flex items-center gap-2">
               {isAlreadyPublished && (
                 <button
                   type="button"
                   onClick={() => setIsEditingPublished(false)}
-                  className="text-xs px-3 py-1.5 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer border border-white/10 hover:border-white/20"
+                  className={`text-xs px-3 py-1.5 rounded-lg transition-colors cursor-pointer border ${
+                    isLight
+                      ? 'text-slate-600 hover:text-slate-900 border-slate-200 hover:bg-slate-100'
+                      : 'text-slate-400 hover:text-white border-white/10 hover:border-white/20'
+                  }`}
                 >
                   ← Visualizar
                 </button>
@@ -1594,22 +1805,35 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
               <button
                 type="button"
                 onClick={() => handleSaveWithStatus('draft')}
-                className="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all hover:bg-amber-500/15 border border-amber-500/40 text-amber-300 hover:border-amber-400 cursor-pointer"
-                title="Salvar este turno como rascunho"
+                disabled={hasBlockingConflict}
+                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all border ${
+                  hasBlockingConflict
+                    ? 'opacity-40 cursor-not-allowed border-slate-500/20 text-slate-500 bg-black/10'
+                    : 'hover:bg-amber-500/15 border-amber-500/40 text-amber-300 hover:border-amber-400 cursor-pointer'
+                }`}
+                title={hasBlockingConflict ? "Corrija os conflitos de horário antes de salvar" : "Salvar este turno como rascunho"}
               >
                 Salvar Rascunho
               </button>
               <button
                 type="button"
                 onClick={() => handleSaveWithStatus('published')}
-                className="px-4 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all hover:opacity-90 active:scale-95 shadow-lg cursor-pointer flex items-center gap-1.5"
+                disabled={hasBlockingConflict}
+                className={`px-4 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-lg flex items-center gap-1.5 ${
+                  hasBlockingConflict
+                    ? 'opacity-40 cursor-not-allowed grayscale'
+                    : 'hover:opacity-90 active:scale-95 cursor-pointer'
+                }`}
                 style={{
-                  background: "linear-gradient(135deg, #96183c 0%, #f89847 100%)",
+                  background: hasBlockingConflict
+                    ? '#475569'
+                    : "linear-gradient(135deg, #96183c 0%, #f89847 100%)",
                   color: "#faf0ac",
-                  boxShadow: "0 4px 12px rgba(150,24,60,0.4)"
+                  boxShadow: hasBlockingConflict ? 'none' : "0 4px 12px rgba(150,24,60,0.4)"
                 }}
+                title={hasBlockingConflict ? "Corrija os conflitos de horário antes de salvar" : undefined}
               >
-                {isAlreadyPublished && notifyCollaborator && <Bell className="w-3.5 h-3.5 animate-bounce" />}
+                {isAlreadyPublished && notifyCollaborator && !hasBlockingConflict && <Bell className="w-3.5 h-3.5 animate-bounce" />}
                 <span>
                   {isAlreadyPublished
                     ? (notifyCollaborator ? "Salvar & Avisar Colaborador" : "Salvar Alterações")

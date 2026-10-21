@@ -12,6 +12,7 @@ import {
   useState,
   type ComponentProps,
   type ReactNode,
+  type HTMLAttributes,
 } from "react"
 import {
   motion,
@@ -300,7 +301,7 @@ function toastFillBackgroundFor(
   return "linear-gradient(to bottom, #11141c 0%, #151821 100%)"
 }
 
-interface ToastHaloCardProps extends ComponentProps<"div"> {
+interface ToastHaloCardProps extends HTMLAttributes<HTMLDivElement> {
   children: ReactNode
   translucent?: boolean
   interactive?: boolean

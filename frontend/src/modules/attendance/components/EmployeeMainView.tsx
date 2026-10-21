@@ -28,6 +28,7 @@ import { findWorkplaceByName, getStoredWorkplaces } from '@/shared/services/work
 import { supabase } from '@/shared/services/supabase';
 import { getPunchesSupabase } from '@/modules/shifts/services/shiftService';
 import { PjTimesheetTracker } from './PjTimesheetTracker';
+import { showPolishedToast } from '@/components/ui/halo-toast';
 
 const formatDistance = (meters?: number) => {
   if (meters === undefined || meters === null) return '0 m';
@@ -160,7 +161,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
   const rawWorkplace =
     todayShift?.workplaceLocation ||
     findWorkplaceByName(todayShift?.workplace) ||
-    findWorkplaceByName(todayShift?.department) ||
+    findWorkplaceByName(employee.department) ||
     findWorkplaceByName(employee.workplace);
 
   const currentShiftWorkplace = rawWorkplace || (getStoredWorkplaces()[0]?.latitude ? getStoredWorkplaces()[0] : {
@@ -266,8 +267,21 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
   };
 
   const handlePunchClock = async (forceType?: 'entrada' | 'saida') => {
+    if (!todayShift) {
+      const msg = 'Você não possui turno escalado para hoje. Não é possível bater ponto.';
+      setGpsError(msg);
+      showPolishedToast({
+        id: 'no-shift-alert',
+        title: 'Sem Turno Cadastrado',
+        description: msg,
+        rimVariant: 'destructive',
+        duration: 5000,
+        closeButton: true,
+      });
+      return;
+    }
     const punchType: 'entrada' | 'saida' = forceType || (hasCheckedIn ? 'saida' : 'entrada');
-    const targetShiftId = todayShift ? todayShift.id : `adhoc-${employee.id}-${todayStr}`;
+    const targetShiftId = todayShift.id;
     setGpsError(null);
     setIsCapturingGps(true);
 

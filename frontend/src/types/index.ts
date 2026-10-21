@@ -15,6 +15,7 @@ export interface Employee {
   contractStartDate?: string; // Data de início do contrato (YYYY-MM-DD)
   contractEndDate?: string; // Data de término do contrato temporário (YYYY-MM-DD)
   monthlyHoursQuota?: number; // Ex: 160h para PJ
+  pjMonthlyHoursQuota?: number; // Alias para compatibilidade
   hourlyRate?: number; // Ex: R$ 45,00/h
   workplace?: string; // Ex: 'Logística - Galpão 01'
   registrationId?: string; // Matrícula / ID BNE (Cod_Matricula ex: PNT-7842)
@@ -102,6 +103,16 @@ export interface ShiftPunchLocation {
   timestamp?: string;
 }
 
+export interface WorkplaceLocation {
+  id?: string;
+  name: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+  radiusMeters?: number;
+  isRemote?: boolean;
+}
+
 export interface Shift {
   id: string;
   employeeId: string;
@@ -118,15 +129,7 @@ export interface Shift {
   projectTag?: string;
   color?: ShiftColor;
   workplace?: string;
-  workplaceLocation?: {
-    id?: string;
-    name: string;
-    address?: string;
-    latitude?: number;
-    longitude?: number;
-    radiusMeters?: number;
-    isRemote?: boolean;
-  };
+  workplaceLocation?: WorkplaceLocation;
   checkInTime?: string;
   checkInLocation?: ShiftPunchLocation;
   checkOutTime?: string;
@@ -139,15 +142,7 @@ export interface ShiftTemplate {
   description: string;
   category: string;
   workplace?: string;
-  workplaceLocation?: {
-    id?: string;
-    name: string;
-    address?: string;
-    latitude?: number;
-    longitude?: number;
-    radiusMeters?: number;
-    isRemote?: boolean;
-  };
+  workplaceLocation?: WorkplaceLocation;
   days: {
     dayOfWeek: number;
     startTime: string;
@@ -156,15 +151,7 @@ export interface ShiftTemplate {
     breakMinutes?: number;
     title?: string;
     workplace?: string;
-    workplaceLocation?: {
-      id?: string;
-      name: string;
-      address?: string;
-      latitude?: number;
-      longitude?: number;
-      radiusMeters?: number;
-      isRemote?: boolean;
-    };
+    workplaceLocation?: WorkplaceLocation;
   }[];
 }
 
@@ -176,10 +163,14 @@ export interface TimeOffRequest {
   type: 'time_off' | 'swap';
   date: string;
   shiftId?: string;
+  shiftStartTime?: string;
+  shiftEndTime?: string;
+  shiftTitle?: string;
   targetEmployeeId?: string;
   targetEmployeeName?: string;
   reason: string;
   status: 'pending' | 'approved' | 'rejected';
+  peerStatus?: 'pending' | 'accepted' | 'rejected';
   createdAt: string;
   managerNotes?: string;
 }
