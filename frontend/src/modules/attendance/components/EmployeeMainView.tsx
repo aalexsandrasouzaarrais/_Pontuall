@@ -406,43 +406,18 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
             >
               {todayShift ? (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <CalendarDays
-                        className={`w-4 h-4 ${
-                          isLightTheme ? 'text-slate-700' : 'text-slate-300'
-                        }`}
-                      />
-                      <span
-                        className={`text-[11px] font-black tracking-wider uppercase font-mono ${
-                          isLightTheme ? 'text-slate-700' : 'text-slate-300'
-                        }`}
-                      >
-                        TURNO DE HOJE
-                      </span>
-                    </div>
-
-                    {/* Attendance Badge - Vinho com texto branco nítido */}
+                  <div className="flex items-center gap-2">
+                    <CalendarDays
+                      className={`w-4 h-4 ${
+                        isLightTheme ? 'text-slate-700' : 'text-slate-300'
+                      }`}
+                    />
                     <span
-                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black transition-all ${
-                        todayShift.attendanceStatus === 'present' || hasCheckedIn
-                          ? 'bg-[#96183c] hover:bg-[#801332] text-white shadow-xs'
-                          : isLightTheme
-                          ? 'bg-slate-100 text-slate-800 border border-slate-300 font-bold'
-                          : 'bg-white/10 text-slate-200 border border-white/10 font-bold'
+                      className={`text-[11px] font-black tracking-wider uppercase font-mono ${
+                        isLightTheme ? 'text-slate-700' : 'text-slate-300'
                       }`}
                     >
-                      {todayShift.attendanceStatus === 'present' || hasCheckedIn ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 stroke-[3]" />
-                          <span>Presença Registrada ({todayShift.checkInTime || '15:26'})</span>
-                        </>
-                      ) : (
-                        <>
-                          <Clock className="w-3.5 h-3.5 text-amber-500" />
-                          <span>Aguardando Ponto</span>
-                        </>
-                      )}
+                      TURNO DE HOJE
                     </span>
                   </div>
 
@@ -489,44 +464,25 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                       isLightTheme ? 'border-slate-200' : 'border-white/10'
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-start gap-2">
-                        <MapPin
-                          className="w-4 h-4 text-[#e85d45] shrink-0 mt-0.5"
-                        />
-                        <div>
-                          <p
-                            className={`text-xs font-black leading-tight ${
-                              isLightTheme ? 'text-slate-900' : 'text-slate-100'
-                            }`}
-                          >
-                            {currentShiftWorkplace?.name || todayShift.workplace || 'Posto Presencial'}
-                          </p>
-                          <p
-                            className="text-[11.5px] mt-0.5 font-semibold leading-snug"
-                            style={{ color: isLightTheme ? '#334155' : '#cbd5e1' }}
-                          >
-                            {currentShiftWorkplace?.address || 'Endereço definido pelo gestor'}
-                          </p>
-                        </div>
+                    <div className="flex items-start gap-2">
+                      <MapPin
+                        className="w-4 h-4 text-[#e85d45] shrink-0 mt-0.5"
+                      />
+                      <div>
+                        <p
+                          className={`text-xs font-black leading-tight ${
+                            isLightTheme ? 'text-slate-900' : 'text-slate-100'
+                          }`}
+                        >
+                          {currentShiftWorkplace?.name || todayShift.workplace || 'Posto Presencial'}
+                        </p>
+                        <p
+                          className="text-[11.5px] mt-0.5 font-semibold leading-snug"
+                          style={{ color: isLightTheme ? '#334155' : '#cbd5e1' }}
+                        >
+                          {currentShiftWorkplace?.address || 'Endereço definido pelo gestor'}
+                        </p>
                       </div>
-
-                      <span
-                        className="text-[11px] font-black px-3 py-1 rounded-full shrink-0 border shadow-xs"
-                        style={
-                          currentShiftWorkplace?.isRemote
-                            ? isLightTheme
-                              ? { backgroundColor: '#e0f2fe', color: '#0369a1', borderColor: '#7dd3fc' }
-                              : { backgroundColor: 'rgba(59, 130, 246, 0.25)', color: '#bfdbfe', borderColor: 'rgba(59, 130, 246, 0.4)' }
-                            : isLightTheme
-                              ? { backgroundColor: '#dcfce7', color: '#064e3b', borderColor: '#86efac' }
-                              : { backgroundColor: 'rgba(16, 185, 129, 0.25)', color: '#a7f3d0', borderColor: 'rgba(16, 185, 129, 0.4)' }
-                        }
-                      >
-                        {currentShiftWorkplace?.isRemote
-                          ? 'Remoto'
-                          : `Presencial (${currentShiftWorkplace?.radiusMeters || 200}m)`}
-                      </span>
                     </div>
 
                     {workplaceMapsUrl && (
