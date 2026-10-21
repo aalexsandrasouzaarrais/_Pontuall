@@ -349,29 +349,20 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
         isLightTheme ? 'text-[#0F172A]' : 'text-white'
       }`}
     >
-      {/* 1. TOP SECTION: HERO WITH DIGITAL CLOCK & FLOATING PROOF WIDGET */}
+      {/* 1. TOP SECTION: HERO WITH DIGITAL CLOCK & FLOATING PROOF WIDGET (Estilo Mesh Gradient da Referência) */}
       <div
-        className={`rounded-3xl p-6 sm:p-7 relative overflow-hidden transition-all duration-300 border ${
-          isLightTheme
-            ? 'bg-gradient-to-br from-white via-[#fafbfe] to-amber-50/20 border-slate-200/80 shadow-md shadow-slate-200/40'
-            : 'bg-gradient-to-br from-[#11131a] via-[#141722] to-[#1c1822] border-white/10 shadow-2xl'
-        }`}
+        className="rounded-3xl p-6 sm:p-7 relative overflow-hidden transition-all duration-300 border border-white/10 shadow-2xl"
+        style={{
+          background:
+            'radial-gradient(ellipse 75% 75% at 18% 45%, rgba(245, 215, 140, 0.32) 0%, rgba(200, 150, 60, 0.15) 38%, rgba(10, 8, 13, 0) 70%), radial-gradient(ellipse 85% 85% at 78% 55%, rgba(230, 90, 45, 0.45) 0%, rgba(150, 24, 60, 0.35) 40%, rgba(10, 8, 13, 0) 75%), #0B080D',
+        }}
       >
-        {/* Soft decorative ambient glow orbs matching reference image */}
-        <div className="absolute -top-20 -left-20 w-64 h-64 rounded-full bg-amber-400/10 dark:bg-amber-500/10 blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-20 -right-20 w-64 h-64 rounded-full bg-purple-500/10 blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-10 left-1/3 w-60 h-60 rounded-full bg-[#96183c]/10 dark:bg-[#96183c]/15 blur-3xl pointer-events-none" />
-
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-start justify-between gap-6">
           {/* Left Column: Big Digital Clock with orange bar indicator, Date & Shift Box */}
           <div className="flex-1 space-y-4">
             {/* Big Clean Digital Clock & Date */}
-            <div className="border-l-[3.5px] border-[#e85d45] pl-3.5 space-y-0.5">
-              <div
-                className={`text-4xl sm:text-5xl font-extrabold tracking-tight font-sans ${
-                  isLightTheme ? 'text-[#0F172A]' : 'text-white'
-                }`}
-              >
+            <div className="border-l-[3.5px] border-[#f89642] pl-3.5 space-y-0.5">
+              <div className="text-4xl sm:text-5xl font-black tracking-tight font-sans text-white">
                 {currentTime.toLocaleTimeString('pt-BR', {
                   hour: '2-digit',
                   minute: '2-digit',
@@ -379,11 +370,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                 })}
               </div>
 
-              <div
-                className={`text-xs sm:text-sm font-semibold mt-1 ${
-                  isLightTheme ? 'text-slate-600' : 'text-slate-300'
-                }`}
-              >
+              <div className="text-xs sm:text-sm font-semibold mt-1 text-slate-200">
                 {(() => {
                   const weekday = currentTime.toLocaleDateString('pt-BR', { weekday: 'long' });
                   const day = currentTime.getDate();
@@ -396,12 +383,12 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
               </div>
             </div>
 
-            {/* Today's Shift Card (Matching reference design) */}
+            {/* Today's Shift Card (Contraste nítido e legível) */}
             <div
               className={`rounded-2xl p-4 sm:p-5 border transition-all duration-300 max-w-lg ${
                 isLightTheme
-                  ? 'bg-white/95 border-slate-200/90 shadow-xs'
-                  : 'bg-[#151822]/90 border-white/10 shadow-lg'
+                  ? 'bg-white border-slate-200 shadow-md'
+                  : 'bg-[#151822]/95 border-white/10 shadow-lg'
               }`}
             >
               {todayShift ? (
@@ -410,26 +397,26 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                     <div className="flex items-center gap-2">
                       <CalendarDays
                         className={`w-4 h-4 ${
-                          isLightTheme ? 'text-slate-500' : 'text-slate-400'
+                          isLightTheme ? 'text-slate-700' : 'text-slate-300'
                         }`}
                       />
                       <span
-                        className={`text-[11px] font-bold tracking-wider uppercase font-mono ${
-                          isLightTheme ? 'text-slate-500' : 'text-slate-400'
+                        className={`text-[11px] font-black tracking-wider uppercase font-mono ${
+                          isLightTheme ? 'text-slate-700' : 'text-slate-300'
                         }`}
                       >
                         TURNO DE HOJE
                       </span>
                     </div>
 
-                    {/* Attendance Badge - Wine pill with checkmark */}
+                    {/* Attendance Badge - Vinho com texto branco nítido */}
                     <span
-                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black transition-all ${
                         todayShift.attendanceStatus === 'present' || hasCheckedIn
                           ? 'bg-[#96183c] hover:bg-[#801332] text-white shadow-xs'
                           : isLightTheme
-                          ? 'bg-slate-100 text-slate-700 border border-slate-200'
-                          : 'bg-white/10 text-slate-300 border border-white/10'
+                          ? 'bg-slate-100 text-slate-800 border border-slate-300 font-bold'
+                          : 'bg-white/10 text-slate-200 border border-white/10 font-bold'
                       }`}
                     >
                       {todayShift.attendanceStatus === 'present' || hasCheckedIn ? (
@@ -455,15 +442,15 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                         }`}
                       />
                       <span
-                        className={`text-base font-bold font-mono ${
-                          isLightTheme ? 'text-[#0F172A]' : 'text-white'
+                        className={`text-base font-black font-mono ${
+                          isLightTheme ? 'text-slate-900' : 'text-white'
                         }`}
                       >
                         {todayShift.startTime} - {todayShift.endTime}
                       </span>
                       <span
-                        className={`text-xs font-semibold ${
-                          isLightTheme ? 'text-slate-500' : 'text-slate-400'
+                        className={`text-xs font-bold ${
+                          isLightTheme ? 'text-slate-600' : 'text-slate-400'
                         }`}
                       >
                         ({calculateShiftDurationHours(
@@ -475,8 +462,8 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                     </div>
 
                     <p
-                      className={`text-xs font-medium pl-6 ${
-                        isLightTheme ? 'text-slate-600' : 'text-slate-300'
+                      className={`text-xs font-bold pl-6 ${
+                        isLightTheme ? 'text-slate-700' : 'text-slate-300'
                       }`}
                     >
                       {todayShift.title || 'Comercial (5x2)'}
@@ -486,7 +473,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                   {/* Workplace Location & Address & How to get there */}
                   <div
                     className={`pt-2.5 border-t space-y-2.5 ${
-                      isLightTheme ? 'border-slate-100' : 'border-white/5'
+                      isLightTheme ? 'border-slate-200' : 'border-white/10'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -496,15 +483,15 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                         />
                         <div>
                           <p
-                            className={`text-xs font-bold leading-tight ${
-                              isLightTheme ? 'text-slate-800' : 'text-slate-100'
+                            className={`text-xs font-black leading-tight ${
+                              isLightTheme ? 'text-slate-900' : 'text-slate-100'
                             }`}
                           >
                             {currentShiftWorkplace?.name || todayShift.workplace || 'Posto Presencial'}
                           </p>
                           <p
-                            className={`text-[11px] mt-0.5 leading-snug ${
-                              isLightTheme ? 'text-slate-400' : 'text-slate-400'
+                            className={`text-[11.5px] mt-0.5 font-medium leading-snug ${
+                              isLightTheme ? 'text-slate-600' : 'text-slate-400'
                             }`}
                           >
                             {currentShiftWorkplace?.address || 'Endereço definido pelo gestor'}
@@ -513,10 +500,10 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                       </div>
 
                       <span
-                        className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full shrink-0 ${
+                        className={`text-[11px] font-black px-3 py-1 rounded-full shrink-0 shadow-2xs ${
                           currentShiftWorkplace?.isRemote
-                            ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300 border border-blue-200 dark:border-blue-500/30'
-                            : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30'
+                            ? 'bg-blue-100 text-blue-950 dark:bg-blue-500/25 dark:text-blue-200 border border-blue-400 dark:border-blue-500/40'
+                            : 'bg-emerald-100 text-emerald-950 dark:bg-emerald-500/25 dark:text-emerald-200 border border-emerald-400 dark:border-emerald-500/40'
                         }`}
                       >
                         {currentShiftWorkplace?.isRemote
@@ -530,10 +517,10 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                         href={workplaceMapsUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer ${
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all shadow-2xs cursor-pointer ${
                           isLightTheme
-                            ? 'bg-sky-50 hover:bg-sky-100 text-sky-600 border border-sky-200'
-                            : 'bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                            ? 'bg-sky-100 hover:bg-sky-200 text-sky-950 border border-sky-300'
+                            : 'bg-sky-500/15 hover:bg-sky-500/25 text-sky-200 border border-sky-500/40'
                         }`}
                         title="Abrir rota no Google Maps"
                       >
@@ -546,7 +533,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
               ) : (
                 <div
                   className={`text-xs py-1 flex items-center gap-2 font-bold ${
-                    isLightTheme ? 'text-slate-600' : 'text-slate-300'
+                    isLightTheme ? 'text-slate-700' : 'text-slate-300'
                   }`}
                 >
                   <CalendarDays
@@ -560,12 +547,12 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
             </div>
           </div>
 
-          {/* Right Column: Floating Proof / Check-In Widget (Warm Gradient Header) */}
+          {/* Right Column: Floating Proof / Check-In Widget */}
           <div className="shrink-0 lg:w-84">
             <div
               className={`rounded-3xl border overflow-hidden transition-all duration-300 shadow-xl ${
                 isLightTheme
-                  ? 'bg-white border-slate-200/90 shadow-slate-200/60'
+                  ? 'bg-white border-slate-200 shadow-slate-900/10'
                   : 'bg-[#151821] border-white/10 shadow-black/50'
               }`}
             >
@@ -583,18 +570,18 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                 <>
                   {/* Warm Gradient Header - Matches image reference */}
                   <div className="bg-gradient-to-r from-[#F89847] via-[#ea580c] to-[#96183c] p-4 sm:p-5 text-white flex items-center gap-3.5 shadow-sm">
-                    <div className="w-11 h-11 rounded-full bg-amber-100/95 text-[#b43403] flex items-center justify-center shrink-0 shadow-md">
+                    <div className="w-11 h-11 rounded-full bg-amber-100 text-[#b43403] flex items-center justify-center shrink-0 shadow-md">
                       <Clock className="w-5 h-5 stroke-[2.5]" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h4 className="text-sm font-bold text-white leading-tight">
+                      <h4 className="text-sm font-black text-white leading-tight">
                         {hasCheckedIn && hasCheckedOut
                           ? 'Jornada Concluída'
                           : hasCheckedIn
                           ? 'Expediente em Andamento'
                           : 'Aguardando Início'}
                       </h4>
-                      <p className="text-xs text-white/95 font-medium mt-0.5 truncate">
+                      <p className="text-xs text-white font-semibold mt-0.5 truncate">
                         {hasCheckedIn && hasCheckedOut
                           ? `Total trabalhado: ${calculateTodayWorkedHours() || '8h'}`
                           : hasCheckedIn
@@ -608,7 +595,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                   <div className="p-4 sm:p-5 space-y-3">
                     {/* Feedback de Confirmação Digital */}
                     {checkInSuccess && (
-                      <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-xs flex items-center gap-2.5 animate-in fade-in duration-200">
+                      <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-900 dark:text-emerald-300 text-xs flex items-center gap-2.5 animate-in fade-in duration-200">
                         <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
                         <div className="min-w-0">
                           <p className="font-bold text-[11px]">Ponto Registrado com Sucesso</p>
@@ -624,26 +611,26 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                         <div
                           className={`rounded-2xl p-3 border space-y-1 ${
                             isLightTheme
-                              ? 'bg-slate-50/90 border-slate-200 text-slate-700'
+                              ? 'bg-slate-50 border-slate-200 text-slate-800'
                               : 'bg-white/5 border-white/10 text-white/90'
                           }`}
                         >
-                          <div className="flex items-center justify-between font-bold text-xs">
-                            <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                          <div className="flex items-center justify-between font-black text-xs">
+                            <span className="text-emerald-950 dark:text-emerald-300 flex items-center gap-1.5">
+                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 dark:bg-emerald-400 shrink-0" />
                               Entrada: {todayShift.checkInTime}
                             </span>
                             {isGpsValidDynamic ? (
-                              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-500/30">
+                              <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-950 dark:bg-emerald-500/25 dark:text-emerald-200 font-black border border-emerald-400 dark:border-emerald-500/40 shadow-2xs">
                                 GPS OK ({formatDistance(dynamicDistance)})
                               </span>
                             ) : (
-                              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold border border-amber-200 dark:border-amber-500/30">
+                              <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-950 dark:bg-amber-500/25 dark:text-amber-200 font-black border border-amber-400 dark:border-amber-500/40 shadow-2xs">
                                 Fora ({formatDistance(dynamicDistance)})
                               </span>
                             )}
                           </div>
-                          <p className="text-[11px] text-slate-400 truncate">
+                          <p className="text-xs text-slate-700 dark:text-slate-300 font-medium truncate">
                             {todayShift.checkInLocation?.address || 'Localização Registrada'}
                           </p>
                         </div>
@@ -652,26 +639,26 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                         <div
                           className={`rounded-2xl p-3 border space-y-1 ${
                             isLightTheme
-                              ? 'bg-slate-50/90 border-slate-200 text-slate-700'
+                              ? 'bg-slate-50 border-slate-200 text-slate-800'
                               : 'bg-white/5 border-white/10 text-white/90'
                           }`}
                         >
-                          <div className="flex items-center justify-between font-bold text-xs">
-                            <span className="text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full bg-rose-500" />
+                          <div className="flex items-center justify-between font-black text-xs">
+                            <span className="text-rose-950 dark:text-rose-300 flex items-center gap-1.5">
+                              <span className="w-2.5 h-2.5 rounded-full bg-rose-600 dark:bg-rose-400 shrink-0" />
                               Saída: {todayShift.checkOutTime}
                             </span>
                             {isGpsOutValidDynamic ? (
-                              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-500/30">
+                              <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-950 dark:bg-emerald-500/25 dark:text-emerald-200 font-black border border-emerald-400 dark:border-emerald-500/40 shadow-2xs">
                                 GPS OK ({formatDistance(dynamicOutDistance)})
                               </span>
                             ) : (
-                              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold border border-amber-200 dark:border-amber-500/30">
+                              <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-950 dark:bg-amber-500/25 dark:text-amber-200 font-black border border-amber-400 dark:border-amber-500/40 shadow-2xs">
                                 Fora ({formatDistance(dynamicOutDistance)})
                               </span>
                             )}
                           </div>
-                          <p className="text-[11px] text-slate-400 truncate">
+                          <p className="text-xs text-slate-700 dark:text-slate-300 font-medium truncate">
                             {todayShift.checkOutLocation?.address || 'Localização Registrada'}
                           </p>
                         </div>
@@ -680,64 +667,53 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                         <button
                           type="button"
                           onClick={() => setIsHistoryOpen(true)}
-                          className={`w-full py-2.5 px-4 rounded-2xl border font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                          className={`w-full py-2.5 px-4 rounded-2xl border font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
                             isLightTheme
-                              ? 'bg-slate-100/80 hover:bg-slate-200/80 border-slate-200 text-slate-700'
+                              ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
                               : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-200'
                           }`}
                         >
                           <History className="w-4 h-4" />
                           <span>Meu Histórico de Batidas</span>
                         </button>
-
-                        {/* Botão para limpar ponto e testar novamente */}
-                        <button
-                          type="button"
-                          onClick={handleResetTodayPunch}
-                          disabled={isResettingPunch}
-                          className="w-full py-1.5 px-3 rounded-xl border border-dashed border-slate-300 dark:border-white/20 text-[10px] font-semibold text-slate-500 dark:text-white/60 hover:text-amber-500 hover:border-amber-400 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <RotateCcw className={`w-3 h-3 ${isResettingPunch ? 'animate-spin' : ''}`} />
-                          {isResettingPunch ? 'Limpando...' : 'Limpar Ponto de Teste'}
-                        </button>
                       </div>
                     ) : hasCheckedIn ? (
-                      /* ESTADO 2: ENTRADA JÁ REGISTRADA, SAÍDA PENDENTE (EXATO DA IMAGEM) */
+                      /* ESTADO 2: ENTRADA JÁ REGISTRADA, SAÍDA PENDENTE */
                       <div className="space-y-3">
-                        {/* Card Entrada Registrada */}
+                        {/* Card Entrada Registrada com verde nítido e alto contraste */}
                         <div
                           className={`rounded-2xl p-3 border space-y-1 ${
                             isLightTheme
-                              ? 'bg-slate-50/90 border-slate-200 text-slate-700'
+                              ? 'bg-slate-50 border-slate-200 text-slate-800'
                               : 'bg-white/5 border-white/10 text-white/90'
                           }`}
                         >
-                          <div className="flex items-center justify-between font-bold text-xs">
-                            <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                          <div className="flex items-center justify-between font-black text-xs">
+                            <span className="text-emerald-950 dark:text-emerald-300 flex items-center gap-1.5">
+                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 dark:bg-emerald-400 shrink-0" />
                               Entrada: {todayShift.checkInTime || '15:26'}
                             </span>
                             {isGpsValidDynamic ? (
-                              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-200 dark:border-emerald-500/30">
+                              <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-950 dark:bg-emerald-500/25 dark:text-emerald-200 font-black border border-emerald-400 dark:border-emerald-500/40 shadow-2xs">
                                 GPS OK ({formatDistance(dynamicDistance)})
                               </span>
                             ) : (
-                              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold border border-amber-200 dark:border-amber-500/30">
+                              <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-950 dark:bg-amber-500/25 dark:text-amber-200 font-black border border-amber-400 dark:border-amber-500/40 shadow-2xs">
                                 Fora ({formatDistance(dynamicDistance)})
                               </span>
                             )}
                           </div>
-                          <p className="text-[11px] text-slate-400 dark:text-slate-400 truncate">
+                          <p className="text-xs text-slate-700 dark:text-slate-300 font-medium truncate">
                             {todayShift.checkInLocation?.address || 'Localização Registrada'}
                           </p>
                         </div>
 
-                        {/* Botão Registrar Saída (Vinho / Magenta da imagem) */}
+                        {/* Botão Registrar Saída */}
                         <button
                           type="button"
                           onClick={() => handlePunchClock('saida')}
                           disabled={isCapturingGps}
-                          className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#96183c] to-[#b32047] hover:brightness-110 active:scale-[0.99] text-white font-bold text-xs shadow-md shadow-[#96183c]/30 flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                          className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#96183c] to-[#b32047] hover:brightness-110 active:scale-[0.99] text-white font-black text-xs shadow-md shadow-[#96183c]/30 flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                           <Clock className="w-4 h-4 stroke-[2.5]" />
                           <span>{isCapturingGps ? 'Obtendo GPS e Endereço...' : 'Registrar Saída'}</span>
@@ -745,7 +721,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
 
                         {/* Mensagem de Erro de GPS amigável se a permissão for negada */}
                         {gpsError && (
-                          <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 text-[11px] font-semibold text-left">
+                          <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-[11px] font-bold text-left">
                             ⚠️ {gpsError}
                           </div>
                         )}
@@ -754,25 +730,14 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                         <button
                           type="button"
                           onClick={() => setIsHistoryOpen(true)}
-                          className={`w-full py-2.5 px-4 rounded-2xl border font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                          className={`w-full py-2.5 px-4 rounded-2xl border font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
                             isLightTheme
-                              ? 'bg-slate-100/80 hover:bg-slate-200/80 border-slate-200 text-slate-700'
+                              ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
                               : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-200'
                           }`}
                         >
                           <History className="w-4 h-4" />
                           <span>Meu Histórico de Batidas</span>
-                        </button>
-
-                        {/* Botão para limpar ponto e testar novamente */}
-                        <button
-                          type="button"
-                          onClick={handleResetTodayPunch}
-                          disabled={isResettingPunch}
-                          className="w-full py-1.5 px-3 rounded-xl border border-dashed border-slate-300 dark:border-white/20 text-[10px] font-semibold text-slate-500 dark:text-white/60 hover:text-amber-500 hover:border-amber-400 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <RotateCcw className={`w-3 h-3 ${isResettingPunch ? 'animate-spin' : ''}`} />
-                          {isResettingPunch ? 'Limpando...' : 'Limpar Ponto de Teste'}
                         </button>
                       </div>
                     ) : (
@@ -782,7 +747,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                           <div className="text-left space-y-1 mb-2">
                             <label
                               className={`text-[10px] font-bold uppercase tracking-wider block ${
-                                isLightTheme ? 'text-slate-600' : 'text-slate-300'
+                                isLightTheme ? 'text-slate-700' : 'text-slate-300'
                               }`}
                             >
                               Posto / Cliente Atendido:
@@ -794,7 +759,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                               placeholder="Ex: Stand Feira Anhembi, Obra Torre B..."
                               className={`w-full px-3 py-2 text-xs rounded-xl border font-medium outline-hidden transition-all ${
                                 isLightTheme
-                                  ? 'bg-slate-50 border-slate-300 text-slate-800 focus:border-slate-600'
+                                  ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-slate-600'
                                   : 'bg-white/10 border-white/20 text-white focus:border-white/40'
                               }`}
                             />
@@ -806,7 +771,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                           type="button"
                           onClick={() => handlePunchClock('entrada')}
                           disabled={isCapturingGps}
-                          className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#96183c] to-[#b32047] hover:brightness-110 active:scale-[0.99] text-white font-bold text-xs shadow-md shadow-[#96183c]/30 flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                          className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#96183c] to-[#b32047] hover:brightness-110 active:scale-[0.99] text-white font-black text-xs shadow-md shadow-[#96183c]/30 flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                           <Clock className="w-4 h-4 stroke-[2.5]" />
                           <span>{isCapturingGps ? 'Obtendo GPS e Endereço...' : 'Registrar Entrada'}</span>
@@ -814,14 +779,14 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
 
                         {/* Mensagem de Erro de GPS amigável se a permissão for negada */}
                         {gpsError && (
-                          <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-500 text-[11px] font-semibold text-left">
+                          <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-[11px] font-bold text-left">
                             ⚠️ {gpsError}
                           </div>
                         )}
 
                         <p
-                          className={`text-[11px] font-medium text-center ${
-                            isLightTheme ? 'text-slate-500' : 'text-slate-400'
+                          className={`text-[11px] font-semibold text-center ${
+                            isLightTheme ? 'text-slate-600' : 'text-slate-400'
                           }`}
                         >
                           Início da jornada com geolocalização auditável
@@ -831,9 +796,9 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                         <button
                           type="button"
                           onClick={() => setIsHistoryOpen(true)}
-                          className={`w-full py-2.5 px-4 rounded-2xl border font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                          className={`w-full py-2.5 px-4 rounded-2xl border font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
                             isLightTheme
-                              ? 'bg-slate-100/80 hover:bg-slate-200/80 border-slate-200 text-slate-700'
+                              ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
                               : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-200'
                           }`}
                         >
