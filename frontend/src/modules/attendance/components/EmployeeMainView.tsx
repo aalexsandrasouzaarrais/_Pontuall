@@ -683,7 +683,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                           </p>
                         </div>
 
-                        {/* Botão Meu Histórico de Batidas */}
+                        {/* Botão Meus Registros de Presenças */}
                         <button
                           type="button"
                           onClick={() => setIsHistoryOpen(true)}
@@ -694,7 +694,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                           }`}
                         >
                           <History className="w-4 h-4" />
-                          <span>Meu Histórico de Batidas</span>
+                          <span>Meus Registros de Presenças</span>
                         </button>
                       </div>
                     ) : hasCheckedIn ? (
@@ -769,7 +769,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                           </div>
                         )}
 
-                        {/* Botão Meu Histórico de Batidas */}
+                        {/* Botão Meus Registros de Presenças */}
                         <button
                           type="button"
                           onClick={() => setIsHistoryOpen(true)}
@@ -780,7 +780,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                           }`}
                         >
                           <History className="w-4 h-4" />
-                          <span>Meu Histórico de Batidas</span>
+                          <span>Meus Registros de Presenças</span>
                         </button>
                       </div>
                     ) : (
@@ -835,7 +835,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                           Início da jornada com geolocalização auditável
                         </p>
 
-                        {/* Botão Meu Histórico de Batidas */}
+                        {/* Botão Meus Registros de Presenças */}
                         <button
                           type="button"
                           onClick={() => setIsHistoryOpen(true)}
@@ -846,7 +846,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                           }`}
                         >
                           <History className="w-4 h-4" />
-                          <span>Meu Histórico de Batidas</span>
+                          <span>Meus Registros de Presenças</span>
                         </button>
                       </div>
                     )}
@@ -1419,7 +1419,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-base font-black tracking-tight">Meu Histórico de Batidas</h3>
+                    <h3 className="text-base font-black tracking-tight">Meus Registros de Presenças</h3>
                     {dbPunches && dbPunches.length > 0 && (
                       <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
                         isLightTheme ? 'bg-slate-100 text-slate-700' : 'bg-white/10 text-slate-300'
