@@ -1,5 +1,5 @@
 import { supabase } from '@/shared/services/supabase';
-import { Employee } from '@/types';
+import { Employee, ContractType } from '@/types';
 import { safeStorage } from '@/shared/utils/safeStorage';
 import bcrypt from 'bcryptjs';
 
@@ -13,13 +13,18 @@ export function mapBneToEmployee(row: any): Employee {
     department: row.Des_Departamento || 'Geral',
     avatar: row.Des_Avatar_Url || (row.Nme_Colaborador ? `https://ui-avatars.com/api/?name=${encodeURIComponent(row.Nme_Colaborador)}&background=96183c&color=fff&size=150` : ''),
     email: row.Eml_Corporativo,
+    phone: row.Num_Telefone || '',
     standardHoursPerWeek: row.Num_Horas_Semanais || 40,
     registrationId: row.Cod_Matricula || '',
     companyId: row.Idf_Empresa,
     isMasterManager: row.Flg_Gestor_Master || false,
     isRh: isRh,
     roleType: row.Tpo_Perfil === 'rh' ? 'rh' : row.Tpo_Perfil === 'gestor' ? 'gestor' : 'colaborador',
-    managerIds: row.managerIds || []
+    managerIds: row.managerIds || [],
+    contractType: (row.Tpo_Contrato as ContractType) || (row.contractType as ContractType) || 'CLT',
+    contractStartDate: row.Dta_Inicio_Contrato ? row.Dta_Inicio_Contrato.split('T')[0] : (row.contractStartDate || undefined),
+    contractEndDate: row.Dta_Fim_Contrato ? row.Dta_Fim_Contrato.split('T')[0] : (row.contractEndDate || undefined),
+    monthlyHoursQuota: row.Num_Cota_Horas_Mensal || row.monthlyHoursQuota || undefined
   };
 }
 
@@ -228,6 +233,10 @@ export async function createColaboradorSupabase(emp: Employee, creatorGestorId?:
     Des_Avatar_Url: emp.avatar,
     Num_Telefone: emp.phone,
     Num_Horas_Semanais: emp.standardHoursPerWeek || 40,
+    Tpo_Contrato: emp.contractType || 'CLT',
+    Dta_Inicio_Contrato: emp.contractStartDate || null,
+    Dta_Fim_Contrato: emp.contractEndDate || null,
+    Num_Cota_Horas_Mensal: emp.monthlyHoursQuota || (emp.contractType === 'PJ' ? 160 : null),
     Idf_Empresa: companyId,
     Flg_Gestor_Master: perfil === 'rh',
     Flg_Ativo: true
@@ -554,6 +563,10 @@ export async function updateColaboradorSupabase(emp: Partial<Employee> & { id: s
     if (emp.department) payload.Des_Departamento = emp.department;
     if (emp.phone) payload.Num_Telefone = emp.phone;
     if (emp.standardHoursPerWeek) payload.Num_Horas_Semanais = emp.standardHoursPerWeek;
+    if (emp.contractType !== undefined) payload.Tpo_Contrato = emp.contractType;
+    if (emp.contractStartDate !== undefined) payload.Dta_Inicio_Contrato = emp.contractStartDate || null;
+    if (emp.contractEndDate !== undefined) payload.Dta_Fim_Contrato = emp.contractEndDate || null;
+    if (emp.monthlyHoursQuota !== undefined) payload.Num_Cota_Horas_Mensal = emp.monthlyHoursQuota || null;
     if (emp.roleType) {
       payload.Tpo_Perfil = emp.roleType;
       payload.Flg_Gestor_Master = emp.roleType === 'rh';

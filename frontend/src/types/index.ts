@@ -12,6 +12,8 @@ export interface Employee {
   phone: string;
   standardHoursPerWeek: number;
   contractType?: ContractType;
+  contractStartDate?: string; // Data de início do contrato (YYYY-MM-DD)
+  contractEndDate?: string; // Data de término do contrato temporário (YYYY-MM-DD)
   monthlyHoursQuota?: number; // Ex: 160h para PJ
   hourlyRate?: number; // Ex: R$ 45,00/h
   workplace?: string; // Ex: 'Logística - Galpão 01'
@@ -22,6 +24,58 @@ export interface Employee {
   isRh?: boolean; // Se é do perfil RH (Administrador Geral da Empresa)
   roleType?: 'rh' | 'gestor' | 'colaborador'; // Perfil estruturado em 3 níveis
   managerIds?: string[]; // IDs dos Gestores vinculados a este colaborador (M:N)
+}
+
+export interface PjReportLink {
+  title: string;
+  url: string;
+}
+
+export interface PjTimesheetEntry {
+  id: string;
+  taskCode?: string; // ID da Tarefa (ex: TK-101, JIRA-402)
+  costCenter?: string; // Centro de Custo (ex: CC-TI-01, Operações)
+  date: string; // YYYY-MM-DD
+  project: string; // Nome do projeto ou cliente atendido
+  taskDescription: string; // Descrição da tarefa realizada
+  startTime: string; // HH:mm
+  endTime: string; // HH:mm
+  breakMinutes: number; // Pausas ou interrupções no processo (em minutos)
+  durationHours: number; // Horas líquidas trabalhadas (ex: 3.5)
+  links?: PjReportLink[]; // Links de comprovação (PR, Figma, etc.)
+  images?: string[]; // Prints de tela / comprovantes
+  isLiveTracked?: boolean; // Se foi registrado com o cronômetro Play/Pause
+}
+
+export interface PjActiveTimerState {
+  isRunning: boolean;
+  isPaused: boolean;
+  taskCode?: string;
+  costCenter?: string;
+  project: string;
+  taskDescription: string;
+  startTimestamp: number;
+  accumulatedSeconds: number;
+  pausedTimestamp?: number;
+  accumulatedBreakSeconds: number;
+  links?: PjReportLink[];
+  images?: string[];
+}
+
+export interface PjDeliverableReport {
+  id: string;
+  employeeId: string;
+  employeeName?: string;
+  period: string;
+  hoursWorked: number;
+  activitiesDescription: string;
+  timesheetEntries?: PjTimesheetEntry[]; // Entradas detalhadas do timesheet
+  links: PjReportLink[];
+  images: string[];
+  status: 'pending' | 'approved' | 'rejected';
+  managerFeedback?: string;
+  submittedAt: string;
+  evaluatedAt?: string;
 }
 
 export type ShiftStatus = 'draft' | 'published';

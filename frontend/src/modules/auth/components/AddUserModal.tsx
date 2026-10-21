@@ -1,6 +1,6 @@
 import { getTodayDateString } from '@/shared/utils/dateUtils';
 import React, { useState, useEffect } from 'react';
-import { User, X, Check, Sparkles, RefreshCw, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { User, X, Check, Sparkles, RefreshCw, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
 import { Employee } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
 import { safeStorage } from '@/shared/utils/safeStorage';
@@ -35,6 +35,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
   const [employeeId, setEmployeeId] = useState('');
   const [sendWelcomeEmail, setSendWelcomeEmail] = useState(true);
   const [startDate, setStartDate] = useState(getTodayDateString());
+  const [contractEndDate, setContractEndDate] = useState('');
+  const [contractEndDateError, setContractEndDateError] = useState(false);
 
   // Função para gerar uma matrícula aleatória única
   const generateRandomId = () => {
@@ -94,6 +96,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       setUserRole('Colaborador');
       setEmploymentType('CLT');
       setStartDate(getTodayDateString());
+      setContractEndDate('');
+      setContractEndDateError(false);
       setSendWelcomeEmail(true);
       setFirstNameError(false);
       setLastNameError(false);
@@ -151,6 +155,15 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       return false;
     }
 
+    if (employmentType === 'TEMPORARIO') {
+      if (contractEndDate && contractEndDate < startDate) {
+        setContractEndDateError(true);
+        setErrorMessage('A data de término do contrato temporário deve ser igual ou posterior à data de início.');
+        return false;
+      }
+    }
+
+    setContractEndDateError(false);
     setErrorMessage(null);
     return true;
   };
@@ -222,6 +235,9 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       phone: phone.trim() || '(11) 98765-4321',
       standardHoursPerWeek: employmentType === 'PJ' ? 40 : 44,
       contractType: employmentType as 'CLT' | 'PJ' | 'TEMPORARIO',
+      contractStartDate: startDate || undefined,
+      contractEndDate: employmentType === 'TEMPORARIO' ? (contractEndDate || undefined) : undefined,
+      monthlyHoursQuota: employmentType === 'PJ' ? 160 : undefined,
       workplace: 'Sede Pontual - Matriz',
       companyId: activeCompanyId,
       roleType: roleTypeVal,
@@ -682,6 +698,65 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                     </select>
                   </div>
                 </div>
+
+                {/* Bloco Condicional para Colaborador Temporário */}
+                {employmentType === 'TEMPORARIO' && (
+                  <div className={`p-4 rounded-2xl border space-y-3 animate-in fade-in duration-200 ${
+                    isDark ? 'bg-amber-500/10 border-amber-500/20' : 'bg-amber-50 border-amber-200'
+                  }`}>
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-[#f89847]" />
+                      <span className={`text-xs font-bold ${isDark ? 'text-amber-300' : 'text-amber-900'}`}>
+                        Vigência do Contrato Temporário
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className={`text-xs font-semibold mb-1 block ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          Data de Início do Contrato
+                        </label>
+                        <input
+                          type="date"
+                          value={startDate}
+                          onChange={(e) => setStartDate(e.target.value)}
+                          className={`w-full px-3.5 py-2 rounded-xl text-sm outline-none border ${
+                            isDark
+                              ? 'bg-[#181A24] border-white/10 text-white'
+                              : 'bg-white border-slate-200 text-slate-800'
+                          }`}
+                          style={{ colorScheme: isDark ? 'dark' : 'light' }}
+                        />
+                      </div>
+                      <div>
+                        <label className={`text-xs font-semibold mb-1 block ${
+                          contractEndDateError ? 'text-rose-500 font-bold' : isDark ? 'text-slate-300' : 'text-slate-700'
+                        }`}>
+                          Data de Término do Contrato
+                        </label>
+                        <input
+                          type="date"
+                          value={contractEndDate}
+                          min={startDate}
+                          onChange={(e) => {
+                            setContractEndDate(e.target.value);
+                            setContractEndDateError(false);
+                          }}
+                          className={`w-full px-3.5 py-2 rounded-xl text-sm outline-none border ${
+                            contractEndDateError
+                              ? 'border-rose-500 ring-2 ring-rose-500/20'
+                              : isDark
+                                ? 'bg-[#181A24] border-white/10 text-white'
+                                : 'bg-white border-slate-200 text-slate-800'
+                          }`}
+                          style={{ colorScheme: isDark ? 'dark' : 'light' }}
+                        />
+                        <span className={`text-[10.5px] mt-1 block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                          Facilita a visualização do encerramento e contagem regressiva de vigência no perfil do colaborador.
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

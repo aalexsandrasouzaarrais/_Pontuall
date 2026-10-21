@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS "TAB_Colaborador" (
     "Des_Avatar_Url" TEXT,
     "Num_Telefone" VARCHAR(30),
     "Num_Horas_Semanais" INTEGER DEFAULT 40,
+    "Tpo_Contrato" VARCHAR(30) DEFAULT 'CLT', -- 'CLT', 'PJ', 'TEMPORARIO'
+    "Dta_Inicio_Contrato" DATE,
+    "Dta_Fim_Contrato" DATE,
+    "Num_Cota_Horas_Mensal" INTEGER DEFAULT 160,
     "Flg_Ativo" BOOLEAN DEFAULT TRUE,
     "Dta_Cadastro" TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
     "Dta_Atualizacao" TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
@@ -132,19 +136,20 @@ CREATE TABLE IF NOT EXISTS "TAB_Justificativa_Ausencia" (
 );
 
 -- ----------------------------------------------------------------------------
--- 6. TABELA DE CONTRATOS PJ (PRESTADORES DE SERVIÇO)
+-- 6. TABELA DE RELATÓRIOS E ENTREGAS PJ (HORAS, LINKS E COMPROVAÇÕES)
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS "TAB_Contrato_Pj" (
-    "Idf_Contrato_Pj" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+CREATE TABLE IF NOT EXISTS "TAB_Relatorio_Pj" (
+    "Idf_Relatorio_Pj" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     "Idf_Colaborador" UUID NOT NULL REFERENCES "TAB_Colaborador"("Idf_Colaborador") ON DELETE CASCADE,
-    "Nme_Razao_Social" VARCHAR(150),
-    "Num_Cnpj" VARCHAR(20),
-    "Vlr_Hora" NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
-    "Num_Horas_Orcadas_Mes" INTEGER NOT NULL DEFAULT 160,
-    "Num_Horas_Executadas" INTEGER NOT NULL DEFAULT 0,
-    "Vlr_Total_Mes" NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
-    "Flg_Ativo" BOOLEAN DEFAULT TRUE,
-    "Dta_Cadastro" TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+    "Des_Periodo_Referencia" VARCHAR(50) NOT NULL, -- Ex: 'Outubro/2026' ou '01/10/2026 a 31/10/2026'
+    "Num_Horas_Trabalhadas" NUMERIC(6, 2) NOT NULL DEFAULT 0.00,
+    "Des_Atividades" TEXT NOT NULL,
+    "Des_Links_Json" JSONB DEFAULT '[]'::jsonb,
+    "Des_Imagens_Json" JSONB DEFAULT '[]'::jsonb,
+    "Tpo_Status" VARCHAR(30) NOT NULL DEFAULT 'pending', -- 'pending', 'approved', 'rejected'
+    "Des_Parecer_Gestor" TEXT,
+    "Dta_Envio" TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+    "Dta_Avaliacao" TIMESTAMP WITH TIME ZONE
 );
 
 -- ----------------------------------------------------------------------------

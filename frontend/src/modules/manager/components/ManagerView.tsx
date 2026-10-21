@@ -3,8 +3,9 @@ import React, { useState } from 'react';
 import { ManagerSidebar, ManagerTabId } from './ManagerSidebar';
 import { ManagerMatrixGrid } from '@/modules/shifts/components/ManagerMatrixGrid';
 import { OrbitCalendarView } from '@/modules/shifts/components/OrbitCalendarView';
+import { ManagerPjDeliverablesView } from './ManagerPjDeliverablesView';
 import { AddUserModal } from '@/modules/auth/components/AddUserModal';
-import { Employee, Shift, AbsenceJustification, TimeOffRequest } from '@/types';
+import { Employee, Shift, AbsenceJustification, TimeOffRequest, PjDeliverableReport } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
 
 interface ManagerViewProps {
@@ -30,17 +31,21 @@ interface ManagerViewProps {
   onOpenProfile?: () => void;
   justifications?: AbsenceJustification[];
   requests?: TimeOffRequest[];
+  pjReports?: PjDeliverableReport[];
   onApproveRequest?: (id: string, customFeedback?: string) => void;
   onRejectRequest?: (id: string, customFeedback?: string) => void;
   onApproveJustification?: (id: string, customFeedback?: string) => void;
   onRejectJustification?: (id: string, customFeedback?: string) => void;
+  onApprovePjReport?: (id: string) => void;
+  onRejectPjReport?: (id: string, reason?: string) => void;
 }
 
 export const ManagerView: React.FC<ManagerViewProps> = ({
   employees, shifts, activeEmployee, notificationsCount, onAddShift, onUpdateShift, onDeleteShift, onDeleteShiftsBulk, onAddEmployee,
   onUpdateEmployee, onDeactivateEmployee, onOpenRequests, onOpenChat,
   onOpenNotifications, onSwitchToEmployee, pendingRequestsCount, unreadChatCount, onResetUnreadChat, onChatViewActive, onOpenProfile,
-  justifications, requests, onApproveRequest, onRejectRequest, onApproveJustification, onRejectJustification,
+  justifications, requests, pjReports = [], onApproveRequest, onRejectRequest, onApproveJustification, onRejectJustification,
+  onApprovePjReport, onRejectPjReport,
 }) => {
   const { theme, isDark, toggleTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(true);
@@ -84,6 +89,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
         onOpenCalendarOrbit={() => setActiveTab('orbit')}
         onAddShift={() => createShift()}
         pendingRequestsCount={pendingRequestsCount}
+        pendingPjCount={pjReports.filter(p => p.status === 'pending').length}
         notificationsCount={notificationsCount}
         onOpenNotifications={onOpenNotifications}
         unreadChatCount={unreadChatCount}
@@ -95,7 +101,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
       <main className={`min-w-0 flex-1 overflow-auto transition-colors duration-300 ${
         activeTab === 'orbit' 
           ? (isDark ? 'bg-[#0F1117] p-0 flex flex-col' : 'bg-[#f8fafc] p-0 flex flex-col') 
-          : (activeTab === 'tarefas' || activeTab === 'aprovacoes' || activeTab === 'relatorios' || activeTab === 'chat' || activeTab === 'colaboradores')
+          : (activeTab === 'tarefas' || activeTab === 'aprovacoes' || activeTab === 'pj_entregas' || activeTab === 'relatorios' || activeTab === 'chat' || activeTab === 'colaboradores')
           ? (isDark ? 'bg-[#0F1117] p-3 sm:p-6' : 'bg-[#f8fafc] p-3 sm:p-6')
           : (isDark ? 'bg-[#15161b] p-3 sm:p-5' : 'bg-slate-100 p-3 sm:p-5')
       }`}>
@@ -112,6 +118,14 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
             activeEmployee={activeEmployee}
             isRh={activeEmployee?.isRh || activeEmployee?.roleType === 'rh' || activeEmployee?.isMasterManager}
           />
+        ) : activeTab === 'pj_entregas' ? (
+          <ManagerPjDeliverablesView
+            employees={employees}
+            pjReports={pjReports}
+            onApproveReport={onApprovePjReport}
+            onRejectReport={onRejectPjReport}
+            isDark={isDark}
+          />
         ) : (
           <ManagerMatrixGrid
             employees={employees}
@@ -121,7 +135,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
             onOpenCreateShift={createShift}
             onOpenEditShift={onUpdateShift}
             onOpenRequests={onOpenRequests}
-            onOpenPjModal={() => {}}
+            onOpenPjModal={() => setActiveTab('pj_entregas')}
             onExportCsv={exportCsv}
             onAddEmployee={() => setIsAddUserModalOpen(true)}
             onSwitchToEmployee={onSwitchToEmployee}

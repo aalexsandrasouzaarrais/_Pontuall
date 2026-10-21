@@ -18,7 +18,8 @@ import {
   LayoutGrid, 
   List,
   Sparkles,
-  UserX
+  UserX,
+  Clock
 } from 'lucide-react';
 import { Employee } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
@@ -58,6 +59,9 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
     standardHoursPerWeek: 40,
     roleType: 'colaborador' as 'rh' | 'gestor' | 'colaborador',
     managerId: '',
+    contractType: 'CLT' as 'CLT' | 'PJ' | 'TEMPORARIO',
+    contractStartDate: '',
+    contractEndDate: '',
   });
 
   // Lista de gestores únicos e disponíveis para vinculação
@@ -108,6 +112,9 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
       standardHoursPerWeek: emp.standardHoursPerWeek || 40,
       roleType: emp.roleType || (emp.isRh ? 'rh' : emp.role.toLowerCase().includes('gestor') ? 'gestor' : 'colaborador'),
       managerId: primaryManagerId,
+      contractType: (emp.contractType || 'CLT') as 'CLT' | 'PJ' | 'TEMPORARIO',
+      contractStartDate: emp.contractStartDate || '',
+      contractEndDate: emp.contractEndDate || '',
     });
   };
 
@@ -129,6 +136,9 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
       isRh: isRhRole,
       isMasterManager: isRhRole ? (editingEmployee.isMasterManager ?? true) : false,
       managerIds: editForm.managerId ? [editForm.managerId] : [],
+      contractType: editForm.contractType,
+      contractStartDate: editForm.contractStartDate || undefined,
+      contractEndDate: editForm.contractType === 'TEMPORARIO' ? (editForm.contractEndDate || undefined) : undefined,
     };
 
     onUpdateEmployee(updated);
@@ -363,26 +373,70 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                     isDark ? 'bg-[#0b0c10] border-white/5' : 'bg-slate-50 border-slate-100'
                   }`}>
                     <div className="flex items-center justify-between gap-2 pb-1 border-b border-white/5">
-                      <span className="text-[10px] text-slate-400 font-bold uppercase">Papel:</span>
-                      {emp.isRh || emp.roleType === 'rh' ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                          RH Admin
-                        </span>
-                      ) : emp.roleType === 'gestor' || emp.role.toLowerCase().includes('gestor') || emp.role.toLowerCase().includes('gerente') ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#f89847]/20 text-[#f89847] border border-[#f89847]/30">
-                          Gestor
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-500/15 text-slate-300 border border-slate-500/20">
-                          Colaborador
-                        </span>
-                      )}
+                      <span className="text-[10px] text-slate-400 font-bold uppercase">Papel & Regime:</span>
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        {emp.contractType === 'PJ' ? (
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            isDark
+                              ? 'bg-[#9F243C]/20 text-[#F9DE97] border-[#F59242]/30'
+                              : 'bg-[#96183c]/10 text-[#96183c] border-[#96183c]/25'
+                          }`}>
+                            PJ
+                          </span>
+                        ) : emp.contractType === 'TEMPORARIO' ? (
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            isDark ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-amber-100 text-amber-800 border-amber-300'
+                          }`} title="Contrato Temporário">
+                            Temporário
+                          </span>
+                        ) : (
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            isDark ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-blue-50 text-blue-700 border-blue-200'
+                          }`}>
+                            CLT
+                          </span>
+                        )}
+
+                        {emp.isRh || emp.roleType === 'rh' ? (
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            isDark ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : 'bg-amber-100 text-amber-800 border-amber-300'
+                          }`}>
+                            RH Admin
+                          </span>
+                        ) : emp.roleType === 'gestor' || emp.role.toLowerCase().includes('gestor') || emp.role.toLowerCase().includes('gerente') ? (
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            isDark ? 'bg-[#f89847]/20 text-[#f89847] border-[#f89847]/30' : 'bg-orange-100 text-orange-800 border-orange-300'
+                          }`}>
+                            Gestor
+                          </span>
+                        ) : (
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            isDark ? 'bg-slate-500/15 text-slate-300 border-slate-500/20' : 'bg-slate-200 text-slate-700 border-slate-300'
+                          }`}>
+                            Colaborador
+                          </span>
+                        )}
+                      </div>
                     </div>
+
+                    {emp.contractType === 'TEMPORARIO' && (emp.contractStartDate || emp.contractEndDate) && (
+                      <div className={`text-[11px] p-2 rounded-lg border flex items-center justify-between ${
+                        isDark ? 'bg-amber-500/10 border-amber-500/20 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-800'
+                      }`}>
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-[#f89847]" />
+                          <span>Vigência:</span>
+                        </span>
+                        <span className="font-mono font-bold">
+                          {emp.contractStartDate ? new Date(emp.contractStartDate + 'T00:00:00').toLocaleDateString('pt-BR') : '—'} até {emp.contractEndDate ? new Date(emp.contractEndDate + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}
+                        </span>
+                      </div>
+                    )}
 
                     <div className="flex items-center gap-2 pt-0.5">
                       <ShieldCheck className="w-3.5 h-3.5 text-[#f89642] shrink-0" />
-                      <span className="truncate text-slate-300">
-                        Gestor: <strong className="text-white">
+                      <span className={`truncate ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                        Gestor: <strong className={isDark ? 'text-white' : 'text-slate-900'}>
                           {(() => {
                             const manager = employees.find(m => emp.managerIds?.includes(m.id));
                             if (manager) return manager.name;
@@ -413,7 +467,7 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                 </div>
 
                 {/* Barra de Ações do Card */}
-                <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/5">
+                <div className={`flex items-center justify-between gap-2 pt-2 border-t ${isDark ? 'border-white/5' : 'border-slate-100'}`}>
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => handleOpenEdit(emp)}
@@ -466,7 +520,7 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                 <th className="p-3.5 text-right">AÇÕES</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
+            <tbody className={`divide-y ${isDark ? 'divide-white/5' : 'divide-slate-200'}`}>
               {filteredEmployees.map(emp => {
                 const isSelf = activeEmployee?.id === emp.id;
                 return (
@@ -485,15 +539,21 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                     </td>
                     <td className="p-3.5 font-semibold">
                       {emp.isRh || emp.roleType === 'rh' ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                          isDark ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : 'bg-amber-100 text-amber-800 border-amber-300'
+                        }`}>
                           RH Admin
                         </span>
                       ) : emp.roleType === 'gestor' || emp.role.toLowerCase().includes('gestor') || emp.role.toLowerCase().includes('gerente') ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#f89847]/20 text-[#f89847] border border-[#f89847]/30">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                          isDark ? 'bg-[#f89847]/20 text-[#f89847] border-[#f89847]/30' : 'bg-orange-100 text-orange-800 border-orange-300'
+                        }`}>
                           Gestor
                         </span>
                       ) : (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-500/15 text-slate-300 border border-slate-500/20">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                          isDark ? 'bg-slate-500/15 text-slate-300 border-slate-500/20' : 'bg-slate-200 text-slate-700 border-slate-300'
+                        }`}>
                           Colaborador
                         </span>
                       )}
@@ -516,7 +576,26 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                       })()}
                     </td>
                     <td className="p-3.5 font-mono text-slate-400">{emp.registrationId || 'PNT-1000'}</td>
-                    <td className="p-3.5 font-semibold">{emp.role}</td>
+                    <td className="p-3.5 font-semibold">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span>{emp.role}</span>
+                        {emp.contractType === 'PJ' ? (
+                          <span className={`px-1.5 py-0.2 rounded text-[9.5px] font-bold border ${
+                            isDark
+                              ? 'bg-[#9F243C]/20 text-[#F9DE97] border-[#F59242]/30'
+                              : 'bg-[#96183c]/10 text-[#96183c] border-[#96183c]/25'
+                          }`}>
+                            PJ
+                          </span>
+                        ) : emp.contractType === 'TEMPORARIO' ? (
+                          <span className={`px-1.5 py-0.2 rounded text-[9.5px] font-bold border ${
+                            isDark ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-amber-100 text-amber-800 border-amber-300'
+                          }`} title={emp.contractEndDate ? `Até ${new Date(emp.contractEndDate + 'T00:00:00').toLocaleDateString('pt-BR')}` : undefined}>
+                            Temporário
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
                     <td className="p-3.5 text-slate-400">{emp.department}</td>
                     <td className="p-3.5 text-slate-400">{emp.email || emp.phone || '—'}</td>
                     <td className="p-3.5 text-right">
@@ -672,6 +751,58 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                   </select>
                 </div>
               </div>
+
+              {/* Regime Contratual e Vigência */}
+              <div className="space-y-1.5">
+                <label className="text-slate-400">Regime Contratual</label>
+                <select
+                  value={editForm.contractType}
+                  onChange={e => setEditForm({ ...editForm, contractType: e.target.value as 'CLT' | 'PJ' | 'TEMPORARIO' })}
+                  className={`w-full px-4 py-2.5 rounded-xl border outline-none cursor-pointer ${
+                    isDark ? 'bg-[#0b0c10] border-[#252A3A] text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                  }`}
+                >
+                  <option value="CLT">CLT Integral (44h)</option>
+                  <option value="PJ">PJ / Prestador de Serviços (160h)</option>
+                  <option value="TEMPORARIO">Temporário</option>
+                </select>
+              </div>
+
+              {editForm.contractType === 'TEMPORARIO' && (
+                <div className={`p-3.5 rounded-2xl border space-y-3 ${
+                  isDark ? 'bg-amber-500/10 border-amber-500/20' : 'bg-amber-50 border-amber-200'
+                }`}>
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400">
+                    <Clock className="w-4 h-4 text-[#f89847]" />
+                    <span>Vigência do Contrato Temporário</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-slate-400 block">Início do Contrato</label>
+                      <input
+                        type="date"
+                        value={editForm.contractStartDate}
+                        onChange={e => setEditForm({ ...editForm, contractStartDate: e.target.value })}
+                        className={`w-full px-3 py-2 rounded-xl border outline-none ${
+                          isDark ? 'bg-[#0b0c10] border-[#252A3A] text-white' : 'bg-white border-slate-200 text-slate-900'
+                        }`}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[11px] text-slate-400 block">Término do Contrato</label>
+                      <input
+                        type="date"
+                        value={editForm.contractEndDate}
+                        min={editForm.contractStartDate}
+                        onChange={e => setEditForm({ ...editForm, contractEndDate: e.target.value })}
+                        className={`w-full px-3 py-2 rounded-xl border outline-none ${
+                          isDark ? 'bg-[#0b0c10] border-[#252A3A] text-white' : 'bg-white border-slate-200 text-slate-900'
+                        }`}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/10">
                 <button

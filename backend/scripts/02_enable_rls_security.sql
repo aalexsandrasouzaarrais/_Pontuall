@@ -8,7 +8,7 @@ DECLARE
     t text;
     tables text[] := ARRAY[
         'TAB_Colaborador',
-        'TAB_Contrato_Pj',
+        'TAB_Relatorio_Pj',
         'TAB_Escala_Turno',
         'TAB_Justificativa_Ausencia',
         'TAB_Justificativa_Falta',

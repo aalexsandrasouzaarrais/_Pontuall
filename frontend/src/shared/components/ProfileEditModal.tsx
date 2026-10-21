@@ -591,7 +591,7 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
                   Jornada Semanal
                 </span>
                 <span className={`text-xs font-bold mt-0.5 block ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  {currentUser.standardHoursPerWeek || 40} horas / semana
+                  {currentUser.contractType === 'PJ' ? `${currentUser.monthlyHoursQuota || 160} horas / mês` : `${currentUser.standardHoursPerWeek || 40} horas / semana`}
                 </span>
               </div>
 
@@ -600,10 +600,83 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
                 <span className={`text-[10px] font-mono uppercase block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                   Regime de Trabalho
                 </span>
-                <span className={`text-xs font-bold mt-0.5 block ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  {currentUser.contractType || 'CLT'}
+                <span className={`text-xs font-bold mt-0.5 inline-flex items-center gap-1.5 ${
+                  currentUser.contractType === 'PJ'
+                    ? 'text-purple-400'
+                    : currentUser.contractType === 'TEMPORARIO'
+                    ? 'text-amber-400'
+                    : isDark ? 'text-white' : 'text-slate-900'
+                }`}>
+                  {currentUser.contractType === 'PJ' ? 'PJ / Prestador' : currentUser.contractType === 'TEMPORARIO' ? 'Contrato Temporário' : 'CLT Integral'}
                 </span>
               </div>
+
+              {/* Bloco de Vigência de Contrato Temporário */}
+              {currentUser.contractType === 'TEMPORARIO' && (
+                <div className={`p-3.5 rounded-xl border sm:col-span-2 md:col-span-3 space-y-2 ${
+                  isDark ? 'bg-amber-500/10 border-amber-500/20' : 'bg-amber-50 border-amber-200'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-amber-300' : 'text-amber-900'}`}>
+                      <Clock className="w-3.5 h-3.5 text-[#f89847]" />
+                      Vigência do Contrato Temporário
+                    </span>
+                    {currentUser.contractEndDate && (() => {
+                      const end = new Date(currentUser.contractEndDate + 'T23:59:59');
+                      const now = new Date();
+                      const diffDays = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                      if (diffDays > 0) {
+                        return (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            ⏳ Faltam {diffDays} {diffDays === 1 ? 'dia' : 'dias'}
+                          </span>
+                        );
+                      } else if (diffDays === 0) {
+                        return (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                            ⚠️ Encerra hoje
+                          </span>
+                        );
+                      } else {
+                        return (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                            ❌ Expirado há {Math.abs(diffDays)} dias
+                          </span>
+                        );
+                      }
+                    })()}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className={`text-[10px] font-mono block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Início do Contrato</span>
+                      <strong className={isDark ? 'text-white' : 'text-slate-800'}>
+                        {currentUser.contractStartDate ? new Date(currentUser.contractStartDate + 'T00:00:00').toLocaleDateString('pt-BR') : 'Não informado'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className={`text-[10px] font-mono block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Término do Contrato</span>
+                      <strong className={isDark ? 'text-white' : 'text-slate-800'}>
+                        {currentUser.contractEndDate ? new Date(currentUser.contractEndDate + 'T00:00:00').toLocaleDateString('pt-BR') : 'Sem data final definida'}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Bloco de Informações do PJ */}
+              {currentUser.contractType === 'PJ' && (
+                <div className={`p-3.5 rounded-xl border sm:col-span-2 md:col-span-3 space-y-1.5 ${
+                  isDark ? 'bg-purple-500/10 border-purple-500/20' : 'bg-purple-50 border-purple-200'
+                }`}>
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-purple-400">
+                    <Briefcase className="w-3.5 h-3.5" />
+                    Regime de Prestação de Serviços (PJ)
+                  </div>
+                  <p className={`text-[11px] leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                    Colaborador PJ possui regime flexível sem obrigatoriedade de registro diário de ponto. A comprovação de horas e atividades é realizada no final do período com envio de relatórios, links e imagens comprobatórias na aba de Entregas PJ.
+                  </p>
+                </div>
+              )}
 
               {/* Local de Trabalho */}
               <div className={`p-3 rounded-xl border sm:col-span-2 md:col-span-3 ${isDark ? 'bg-white/5 border-white/10' : 'bg-slate-50 border-slate-200'}`}>
