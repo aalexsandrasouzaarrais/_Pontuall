@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS "TAB_Colaborador" (
     "Dta_Inicio_Contrato" DATE,
     "Dta_Fim_Contrato" DATE,
     "Num_Cota_Horas_Mensal" INTEGER DEFAULT 160,
+    "Vlr_Hora_Pj" NUMERIC(10, 2) DEFAULT 0.00,
     "Flg_Ativo" BOOLEAN DEFAULT TRUE,
     "Dta_Cadastro" TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
     "Dta_Atualizacao" TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
@@ -176,6 +177,32 @@ CREATE TABLE IF NOT EXISTS "TAB_Mensagem_Chat" (
     "Idf_Colaborador_Destinatario" UUID REFERENCES "TAB_Colaborador"("Idf_Colaborador") ON DELETE SET NULL, -- NULL indica canal publico/equipe
     "Des_Conteudo" TEXT NOT NULL,
     "Dta_Envio" TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+);
+
+-- ----------------------------------------------------------------------------
+-- 9. TABELA DE BLOCO DE NOTAS PESSOAL DO COLABORADOR PJ
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS "TAB_Nota_Pessoal_Pj" (
+    "Idf_Nota" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    "Idf_Colaborador" UUID NOT NULL REFERENCES "TAB_Colaborador"("Idf_Colaborador") ON DELETE CASCADE,
+    "Titulo_Nota" VARCHAR(120) DEFAULT '',
+    "Des_Conteudo_Html" TEXT DEFAULT '',
+    "Num_Ordem" INTEGER DEFAULT 0,
+    "Dta_Atualizacao" TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
+);
+
+-- ----------------------------------------------------------------------------
+-- 10. TABELA DE ESCALA / AGENDA PESSOAL PRIVADA DO COLABORADOR PJ
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS "TAB_Escala_Pessoal_Pj" (
+    "Idf_Escala_Pj" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    "Idf_Colaborador" UUID NOT NULL REFERENCES "TAB_Colaborador"("Idf_Colaborador") ON DELETE CASCADE,
+    "Dta_Bloco" DATE NOT NULL,
+    "Dta_Hora_Inicio" VARCHAR(10) NOT NULL,
+    "Dta_Hora_Fim" VARCHAR(10) NOT NULL,
+    "Titulo_Bloco" VARCHAR(150) NOT NULL,
+    "Des_Observacao" TEXT,
+    "Dta_Cadastro" TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );
 
 -- ============================================================================

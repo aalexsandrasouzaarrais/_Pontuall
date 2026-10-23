@@ -68,16 +68,16 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
   const navItems: SidebarItem[] = isPj
     ? [
         {
-          id: "pj_reports",
-          label: "Timesheet & Entregas PJ",
-          shortLabel: "Entregas PJ",
-          icon: <Briefcase className="w-5 h-5" />,
+          id: "overview",
+          label: "Painel & Notas PJ",
+          shortLabel: "Painel PJ",
+          icon: <FileText className="w-5 h-5" />,
         },
         {
-          id: "calendar",
-          label: "Calendário",
-          shortLabel: "Agenda",
-          icon: <CalendarDays className="w-5 h-5" />,
+          id: "pj_reports",
+          label: "Timesheet & Entregas",
+          shortLabel: "Timesheet",
+          icon: <Briefcase className="w-5 h-5" />,
         },
         {
           id: "chat",
