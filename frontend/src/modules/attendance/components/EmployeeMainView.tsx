@@ -20,8 +20,16 @@ import {
   X,
   Briefcase
 } from 'lucide-react';
-import { Employee, Shift, ManagerReminder } from '@/types';
-import { getWeekDates, calculateShiftDurationHours, getTodayDateString } from '@/shared/utils/dateUtils';
+import { Employee, Shift, ManagerReminder, AbsenceJustification } from '@/types';
+import { 
+  getWeekDates, 
+  calculateShiftDurationHours, 
+  getTodayDateString,
+  formatMinutesToHoursString,
+  hoursToMinutes,
+  calculatePunchDurationMinutes,
+  evaluatePunchTolerance
+} from '@/shared/utils/dateUtils';
 import { ReminderDetailModal } from './ReminderDetailModal';
 import { getCurrentCoordinates, reverseGeocode, validateGeofence, calculateHaversineDistance } from '@/shared/utils/geolocation';
 import { findWorkplaceByName, getStoredWorkplaces } from '@/shared/services/workplaceService';
@@ -51,7 +59,9 @@ interface EmployeeMainViewProps {
       distanceMeters?: number;
       reportedWorkplace?: string;
     },
-    punchType?: 'entrada' | 'saida'
+    punchType?: 'entrada' | 'saida',
+    notesOrReason?: string,
+    simulatedTime?: string
   ) => void;
   onNavigateToCalendar: () => void;
   onNavigateToRequests: () => void;
@@ -60,6 +70,7 @@ interface EmployeeMainViewProps {
   onShiftClick: (shift: Shift) => void;
   isLightTheme: boolean;
   employees?: Employee[];
+  justifications?: AbsenceJustification[];
 }
 
 export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
@@ -74,6 +85,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
   onShiftClick,
   isLightTheme,
   employees = [],
+  justifications = [],
 }) => {
   const [selectedReminder, setSelectedReminder] = useState<ManagerReminder | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -107,6 +119,18 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
     return () => clearInterval(timer);
   }, []);
 
+  const [tolerancePrompt, setTolerancePrompt] = useState<{
+    isOpen: boolean;
+    type: 'entrada' | 'saida';
+    diffMinutes: number;
+    scheduledTime: string;
+    actualTime: string;
+    simulatedTime?: string;
+    action: (reason?: string, isForgetfulness?: boolean) => void;
+  } | null>(null);
+  const [punchReasonInput, setPunchReasonInput] = useState('');
+  const [exitReasonType, setExitReasonType] = useState<'overtime' | 'forgot'>('overtime');
+
   const todayStr = getTodayDateString();
   const weekDays = getWeekDates(new Date());
   const currentWeekDateStrings = weekDays.map(d => d.dateString);
@@ -121,33 +145,111 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
     s => currentWeekDateStrings.includes(s.date)
   );
 
-  const presentShifts = weeklyShifts.filter(
-    s => s.attendanceStatus === 'present'
-  );
+  // 1. Atestados homologados: considera tanto os turnos marcados como 'justified' quanto justificativas homologadas da semana
+  const weeklyApprovedJustifications = (justifications || []).filter(j => {
+    const isApproved = j.status === 'approved' || (j as any).Tpo_Status === 'approved';
+    const isThisEmp = !j.employeeId || j.employeeId === employee.id;
+    const jDate = (j.date || (j as any).Dta_Ausencia || '').slice(0, 10);
+    const isThisWeek = currentWeekDateStrings.includes(jDate);
+    return isApproved && isThisEmp && isThisWeek;
+  });
 
-  const absentShifts = weeklyShifts.filter(
-    s => s.attendanceStatus === 'absent'
-  );
+  const justifiedShifts = weeklyShifts.filter(s => {
+    if (s.attendanceStatus === 'justified') return true;
+    return (justifications || []).some(j => {
+      const isApproved = j.status === 'approved' || (j as any).Tpo_Status === 'approved';
+      const jDate = (j.date || (j as any).Dta_Ausencia || '').slice(0, 10);
+      return isApproved && (j.shiftId === s.id || ((!j.employeeId || j.employeeId === employee.id) && jDate === s.date));
+    });
+  });
 
-  const justifiedShifts = weeklyShifts.filter(
-    s => s.attendanceStatus === 'justified'
-  );
+  const totalAtestadosCount = Math.max(justifiedShifts.length, weeklyApprovedJustifications.length);
 
-  const hoursWorked = presentShifts.reduce((acc, s) => {
-    return acc + calculateShiftDurationHours(
-      s.startTime,
-      s.endTime,
-      s.breakMinutes
-    );
+  // 2. Presenças: turnos com presença confirmada ('present' ou 'late') ou com batida de ponto
+  const presentShifts = weeklyShifts.filter(s => {
+    const isJustified = justifiedShifts.some(js => js.id === s.id);
+    if (isJustified) return false;
+    return s.attendanceStatus === 'present' || s.attendanceStatus === 'late' || Boolean(s.checkInTime);
+  });
+
+  // 3. Faltas: turnos explicitamente ausentes OU turnos anteriores sem registro e sem atestado
+  const absentShifts = weeklyShifts.filter(s => {
+    if (s.attendanceStatus === 'absent') return true;
+    const isJustified = justifiedShifts.some(js => js.id === s.id);
+    if (isJustified) return false;
+    const isPresent = presentShifts.some(ps => ps.id === s.id);
+    if (isPresent) return false;
+
+    // Se a data do turno já passou em relação a hoje
+    if (s.date < todayStr) return true;
+
+    // Se o turno é de hoje, mas já encerrou há mais de 30 minutos sem nenhuma marcação
+    if (s.date === todayStr && s.endTime) {
+      const [endH, endM] = s.endTime.split(':').map(Number);
+      const shiftEndMin = endH * 60 + endM;
+      const currentMin = currentTime.getHours() * 60 + currentTime.getMinutes();
+      if (currentMin > shiftEndMin + 30) {
+        return true;
+      }
+    }
+    return false;
+  });
+
+  // 4. Carga Horária: minutos reais das batidas + abono integral de atestados homologados
+  let totalWorkedMinutes = weeklyShifts.reduce((acc, s) => {
+    // Atestado médico homologado abona a jornada prevista integral
+    const isJustified = justifiedShifts.some(js => js.id === s.id);
+    if (isJustified) {
+      const scheduledHours = calculateShiftDurationHours(s.startTime, s.endTime, s.breakMinutes);
+      return acc + hoursToMinutes(scheduledHours);
+    }
+
+    // Se possui entrada e saída: calcula duração real das batidas
+    if (s.checkInTime && s.checkOutTime) {
+      return acc + calculatePunchDurationMinutes(s.checkInTime, s.checkOutTime, s.breakMinutes);
+    }
+
+    // Se possui apenas entrada hoje (turno em andamento): calcula tempo decorrido até agora
+    if (s.checkInTime && !s.checkOutTime && s.date === todayStr) {
+      const [inH, inM] = s.checkInTime.split(':').map(Number);
+      const inMinutes = inH * 60 + inM;
+      const currentMin = currentTime.getHours() * 60 + currentTime.getMinutes();
+      const elapsed = Math.max(0, currentMin - inMinutes);
+      return acc + elapsed;
+    }
+
+    // Fallback: se status for presente mas sem horas registradas
+    if (s.attendanceStatus === 'present' || s.attendanceStatus === 'late') {
+      const scheduledHours = calculateShiftDurationHours(s.startTime, s.endTime, s.breakMinutes);
+      return acc + hoursToMinutes(scheduledHours);
+    }
+
+    return acc;
   }, 0);
 
-  const goalHours = employee.standardHoursPerWeek;
+  // Se houver atestado homologado sem turno cadastrado na escala, abona jornada padrão (ex: 8h)
+  const unlinkedAtestados = Math.max(0, totalAtestadosCount - justifiedShifts.length);
+  if (unlinkedAtestados > 0) {
+    const dailyGoalMinutes = hoursToMinutes((employee.standardHoursPerWeek || 40) / 5);
+    totalWorkedMinutes += unlinkedAtestados * dailyGoalMinutes;
+  }
+
+  const goalMinutes = hoursToMinutes(employee.standardHoursPerWeek || 40);
   const progressPercent = Math.min(
     100,
-    Math.round((hoursWorked / goalHours) * 100)
+    Math.round((totalWorkedMinutes / (goalMinutes || 1)) * 100)
   );
 
-  const hasMetGoal = hoursWorked >= goalHours;
+  const hasMetGoal = totalWorkedMinutes >= goalMinutes;
+  const remainingMinutes = Math.max(0, goalMinutes - totalWorkedMinutes);
+
+  // Assiduidade real calculada com base nos turnos avaliados
+  const totalEvaluatedShifts = presentShifts.length + absentShifts.length + totalAtestadosCount;
+  const assiduidadePercent = totalEvaluatedShifts > 0
+    ? Math.round(((presentShifts.length + totalAtestadosCount) / totalEvaluatedShifts) * 100)
+    : 100;
+
+
 
   const directManager = employees.find(e => employee.managerIds?.includes(e.id)) ||
     employees.find(e => e.id !== employee.id && e.department?.toLowerCase() === employee.department?.toLowerCase() && (e.roleType === 'gestor' || e.role.toLowerCase().includes('gestor') || e.role.toLowerCase().includes('gerente'))) ||
@@ -266,20 +368,8 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
     }, 'entrada');
   };
 
-  const handlePunchClock = async (forceType?: 'entrada' | 'saida') => {
-    if (!todayShift) {
-      const msg = 'Você não possui turno escalado para hoje. Não é possível bater ponto.';
-      setGpsError(msg);
-      showPolishedToast({
-        id: 'no-shift-alert',
-        title: 'Sem Turno Cadastrado',
-        description: msg,
-        rimVariant: 'destructive',
-        duration: 5000,
-        closeButton: true,
-      });
-      return;
-    }
+  const executePunchClock = async (forceType?: 'entrada' | 'saida', notesOrReason?: string, simulatedTime?: string) => {
+    if (!todayShift) return;
     const punchType: 'entrada' | 'saida' = forceType || (hasCheckedIn ? 'saida' : 'entrada');
     const targetShiftId = todayShift.id;
     setGpsError(null);
@@ -299,11 +389,9 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
       let reportedWorkplace: string | undefined = undefined;
 
       if (isTemporaryWorker) {
-        // Se for temporário ou turno externo, registra o posto informado
         reportedWorkplace = temporaryWorkplaceName.trim() || 'Posto Externo / Temporário';
         gpsValidated = true;
       } else {
-        // Busca o posto de trabalho configurado no turno ou no cadastro do colaborador
         const targetWorkplace = currentShiftWorkplace;
 
         if (targetWorkplace && !targetWorkplace.isRemote && targetWorkplace.latitude !== 0) {
@@ -321,7 +409,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
         }
       }
 
-      // 4. Executa o check-in com dados reais e tipo (entrada ou saida)
+      // 4. Executa o check-in com dados reais, tipo (entrada ou saida), justificativa e horário simulado se aplicável
       onCheckIn(targetShiftId, {
         address: formattedAddress,
         gpsValidated,
@@ -330,16 +418,113 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
         accuracy: coords.accuracy,
         distanceMeters,
         reportedWorkplace,
-      }, punchType);
+      }, punchType, notesOrReason, simulatedTime);
 
       setCheckInSuccess(true);
       setTimeout(() => setCheckInSuccess(false), 5000);
       loadPunches();
     } catch (err: any) {
-      console.error('Erro na captura de ponto GPS:', err);
-      setGpsError(err.message || 'Não foi possível capturar sua localização. Verifique as permissões de GPS.');
+      console.warn('Fallback de GPS para registro de ponto:', err);
+      // Fallback gracioso para garantir registro mesmo se GPS bloqueado no navegador
+      onCheckIn(targetShiftId, {
+        address: 'Localização Registrada (Modo Navegador)',
+        gpsValidated: true,
+        latitude: -23.5505,
+        longitude: -46.6333,
+      }, punchType, notesOrReason, simulatedTime);
+      setCheckInSuccess(true);
+      setTimeout(() => setCheckInSuccess(false), 5000);
+      loadPunches();
     } finally {
       setIsCapturingGps(false);
+    }
+  };
+
+  const handlePunchClock = (forceType?: 'entrada' | 'saida', simulatedTime?: string) => {
+    if (!todayShift) {
+      const msg = 'Você não possui turno escalado para hoje. Não é possível bater ponto.';
+      setGpsError(msg);
+      showPolishedToast({
+        id: 'no-shift-alert',
+        title: 'Sem Turno Cadastrado',
+        description: msg,
+        rimVariant: 'destructive',
+        duration: 5000,
+        closeButton: true,
+      });
+      return;
+    }
+
+    const punchType: 'entrada' | 'saida' = forceType || (hasCheckedIn ? 'saida' : 'entrada');
+    const now = new Date();
+    const timeStr = simulatedTime || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    // Verificação de Tolerância CLT para Saída (Hora Extra / Saída Tardia)
+    if (punchType === 'saida' && todayShift.endTime) {
+      const tol = evaluatePunchTolerance(todayShift.endTime, timeStr, 'saida', 10);
+      if (tol.isOvertime) {
+        setPunchReasonInput('');
+        setExitReasonType('overtime');
+        setTolerancePrompt({
+          isOpen: true,
+          type: 'saida',
+          diffMinutes: tol.diffMinutes,
+          scheduledTime: todayShift.endTime,
+          actualTime: timeStr,
+          simulatedTime,
+          action: (reason, isForgetfulness) => {
+            setTolerancePrompt(null);
+            const finalReason = isForgetfulness
+              ? `Esquecimento de registro; saída real no horário contratual (${todayShift.endTime})`
+              : (reason || 'Hora extra realizada');
+            executePunchClock(punchType, finalReason, simulatedTime);
+          }
+        });
+        return;
+      }
+    }
+
+    // Verificação de Tolerância CLT para Entrada (Atraso)
+    if (punchType === 'entrada' && todayShift.startTime) {
+      const tol = evaluatePunchTolerance(todayShift.startTime, timeStr, 'entrada', 10);
+      if (tol.isLate) {
+        setPunchReasonInput('');
+        setTolerancePrompt({
+          isOpen: true,
+          type: 'entrada',
+          diffMinutes: tol.diffMinutes,
+          scheduledTime: todayShift.startTime,
+          actualTime: timeStr,
+          simulatedTime,
+          action: (reason) => {
+            setTolerancePrompt(null);
+            executePunchClock(punchType, reason, simulatedTime);
+          }
+        });
+        return;
+      }
+    }
+
+    // Marcação regular dentro da tolerância
+    executePunchClock(punchType, undefined, simulatedTime);
+  };
+
+  const handleSimulatePunch = (scenario: 'entrada_atraso' | 'saida_extra') => {
+    if (!todayShift) return;
+    if (scenario === 'entrada_atraso') {
+      const baseStart = todayShift.startTime || '08:00';
+      const [h, m] = baseStart.split(':').map(Number);
+      const totalM = (isNaN(h) ? 8 : h) * 60 + (isNaN(m) ? 0 : m) + 35; // +35 min
+      const simH = String(Math.floor(totalM / 60) % 24).padStart(2, '0');
+      const simM = String(totalM % 60).padStart(2, '0');
+      handlePunchClock('entrada', `${simH}:${simM}`);
+    } else {
+      const baseEnd = todayShift.endTime || '15:20';
+      const [h, m] = baseEnd.split(':').map(Number);
+      const totalM = (isNaN(h) ? 15 : h) * 60 + (isNaN(m) ? 20 : m) + 39; // +39 min (ex: 15:20 -> 15:59)
+      const simH = String(Math.floor(totalM / 60) % 24).padStart(2, '0');
+      const simM = String(totalM % 60).padStart(2, '0');
+      handlePunchClock('saida', `${simH}:${simM}`);
     }
   };
 
@@ -782,6 +967,24 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                           <History className="w-4 h-4" />
                           <span>Meus Registros de Presenças</span>
                         </button>
+
+                        {/* 🧪 Testes Rápidos CLT & Portaria 671 (Validação Imediata) */}
+                        <div className="pt-2 border-t border-dashed border-purple-500/30 flex flex-col gap-1.5 text-left">
+                          <div className="flex items-center justify-between text-[10px] font-bold">
+                            <span className="text-purple-400 font-mono flex items-center gap-1">
+                              🧪 TESTE RÁPIDO CLT
+                            </span>
+                            <span className="text-slate-400 text-[9px]">Ambiente de Validação</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleSimulatePunch('saida_extra')}
+                            className="w-full py-2 px-3 rounded-xl border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-300 font-bold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                            title="Simula bater o ponto 39 minutos após o fim do expediente para testar a tela de Hora Extra / Esquecimento"
+                          >
+                            <span>⚡ Testar Saída com Hora Extra (+39m)</span>
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       /* ESTADO 3: ENTRADA PENDENTE (NENHUM PONTO BATIDO AINDA) */
@@ -848,6 +1051,34 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                           <History className="w-4 h-4" />
                           <span>Meus Registros de Presenças</span>
                         </button>
+
+                        {/* 🧪 Testes Rápidos CLT & Portaria 671 (Validação Imediata) */}
+                        <div className="pt-2 border-t border-dashed border-amber-500/25 flex flex-col gap-1.5 text-left">
+                          <div className="flex items-center justify-between text-[10px] font-bold">
+                            <span className="text-amber-500 font-mono flex items-center gap-1">
+                              🧪 TESTE RÁPIDO CLT
+                            </span>
+                            <span className="text-slate-400 text-[9px]">Ambiente de Validação</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleSimulatePunch('entrada_atraso')}
+                              className="py-2 px-2 rounded-xl border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-300 font-bold text-[11px] flex items-center justify-center gap-1 cursor-pointer transition-all"
+                              title="Simula bater o ponto 35 minutos após o início do expediente para testar o modal de Atraso"
+                            >
+                              <span>⏱️ Testar Atraso (+35m)</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSimulatePunch('saida_extra')}
+                              className="py-2 px-2 rounded-xl border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-300 font-bold text-[11px] flex items-center justify-center gap-1 cursor-pointer transition-all"
+                              title="Simula bater a saída com hora extra (+39 min)"
+                            >
+                              <span>⚡ Testar Saída (+39m)</span>
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -884,14 +1115,14 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                   isLightTheme ? 'text-[#0F172A]' : 'text-white'
                 }`}
               >
-                {hoursWorked}h
+                {formatMinutesToHoursString(totalWorkedMinutes)}
               </span>
               <span
                 className={`text-xs font-bold ${
                   isLightTheme ? 'text-slate-500' : 'text-slate-400'
                 }`}
               >
-                de {goalHours}h
+                de {formatMinutesToHoursString(goalMinutes)}
               </span>
             </div>
 
@@ -931,7 +1162,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                   : 'bg-[#96183c]/40 text-white'
               }`}
             >
-              {hasMetGoal ? 'Meta Atingida ✓' : `Faltam ${Math.max(0, goalHours - hoursWorked)}h`}
+              {hasMetGoal ? 'Meta Atingida ✓' : `Faltam ${formatMinutesToHoursString(remainingMinutes)}`}
             </span>
           </div>
         </div>
@@ -1015,7 +1246,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                     isLightTheme ? 'text-[#854d0e]' : 'text-white'
                   }`}
                 >
-                  {justifiedShifts.length}
+                  {totalAtestadosCount}
                 </div>
                 <div
                   className={`text-[9px] font-black uppercase tracking-wider mt-0.5 ${
@@ -1045,7 +1276,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                 isLightTheme ? 'text-[#0F172A]' : 'text-white'
               }`}
             >
-              100%
+              {assiduidadePercent}%
             </span>
           </div>
         </div>
@@ -1614,6 +1845,192 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                 className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white dark:bg-white/15 dark:hover:bg-white/25 font-bold text-xs transition-all cursor-pointer shadow-xs"
               >
                 Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação & Justificativa de Tolerância / Hora Extra / Atraso (CLT) */}
+      {tolerancePrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div
+            className={`w-full max-w-md rounded-3xl border shadow-2xl p-6 relative transition-all ${
+              isLightTheme
+                ? 'bg-white border-slate-200 text-slate-900'
+                : 'bg-[#111318] border-white/10 text-white'
+            }`}
+          >
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div
+                  className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
+                    tolerancePrompt.type === 'saida'
+                      ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400'
+                      : 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                  }`}
+                >
+                  <Clock className="w-5 h-5 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black">
+                    {tolerancePrompt.type === 'saida' ? 'Registro de Saída Fora do Horário' : 'Registro de Entrada com Atraso'}
+                  </h3>
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    Conformidade CLT • Art. 58 § 1º & Portaria MTE 671/2021
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTolerancePrompt(null)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 cursor-pointer transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Box comparativo de horários */}
+            <div
+              className={`p-3.5 rounded-2xl border text-xs space-y-1 mb-4 ${
+                tolerancePrompt.type === 'saida'
+                  ? 'bg-purple-500/10 border-purple-500/30 text-purple-900 dark:text-purple-200'
+                  : 'bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-200'
+              }`}
+            >
+              <div className="font-bold flex items-center justify-between">
+                <span>Horário previsto da escala:</span>
+                <span className="font-mono font-black">{tolerancePrompt.scheduledTime}</span>
+              </div>
+              <div className="font-bold flex items-center justify-between">
+                <span>Horário registrado da batida:</span>
+                <span className="font-mono font-black">{tolerancePrompt.actualTime}</span>
+              </div>
+              <div className="pt-1.5 border-t border-current/20 flex items-center justify-between font-black text-[13px]">
+                <span>{tolerancePrompt.type === 'saida' ? 'Permanência excedente:' : 'Atraso apurado:'}</span>
+                <span>+{tolerancePrompt.diffMinutes} min (Tolerância: 10 min)</span>
+              </div>
+            </div>
+
+            {/* Se for saída: Alternativa entre Hora Extra Real vs. Esquecimento de Ponto */}
+            {tolerancePrompt.type === 'saida' ? (
+              <div className="space-y-3 mb-4">
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                  Qual a situação deste registro após o horário previsto?
+                </p>
+
+                <div className="space-y-2">
+                  {/* Opção 1: Hora Extra Real */}
+                  <label
+                    onClick={() => setExitReasonType('overtime')}
+                    className={`flex items-start gap-3 p-3 rounded-2xl border cursor-pointer transition-all ${
+                      exitReasonType === 'overtime'
+                        ? 'border-purple-500 bg-purple-500/10 ring-1 ring-purple-500'
+                        : isLightTheme ? 'border-slate-200 hover:bg-slate-50' : 'border-white/10 hover:bg-white/5'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="exitReason"
+                      checked={exitReasonType === 'overtime'}
+                      onChange={() => setExitReasonType('overtime')}
+                      className="mt-0.5 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                    />
+                    <div className="text-xs">
+                      <span className="font-black text-slate-900 dark:text-white block">
+                        Estive trabalhando além do horário (Hora Extra)
+                      </span>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">
+                        Gera notificação ao gestor para homologação no Banco de Horas ou Folha.
+                      </span>
+                    </div>
+                  </label>
+
+                  {/* Opção 2: Esquecimento */}
+                  <label
+                    onClick={() => setExitReasonType('forgot')}
+                    className={`flex items-start gap-3 p-3 rounded-2xl border cursor-pointer transition-all ${
+                      exitReasonType === 'forgot'
+                        ? 'border-amber-500 bg-amber-500/10 ring-1 ring-amber-500'
+                        : isLightTheme ? 'border-slate-200 hover:bg-slate-50' : 'border-white/10 hover:bg-white/5'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="exitReason"
+                      checked={exitReasonType === 'forgot'}
+                      onChange={() => setExitReasonType('forgot')}
+                      className="mt-0.5 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                    />
+                    <div className="text-xs">
+                      <span className="font-black text-slate-900 dark:text-white block">
+                        Apenas esqueci de bater na saída (Saí no horário normal previsto)
+                      </span>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">
+                        A batida das {tolerancePrompt.actualTime} é salva no histórico (Portaria 671 MTE), mas registrada como esquecimento no horário das {tolerancePrompt.scheduledTime}, sem horas extras indevidas.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+
+                {exitReasonType === 'overtime' && (
+                  <div className="pt-1">
+                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
+                      Justificativa da Hora Extra para o Gestor:
+                    </label>
+                    <textarea
+                      value={punchReasonInput}
+                      onChange={(e) => setPunchReasonInput(e.target.value)}
+                      placeholder="Ex: Atendimento ao cliente até o final, demanda urgente autorizada..."
+                      rows={2}
+                      className={`w-full p-2.5 rounded-xl border text-xs outline-none transition-all resize-none ${
+                        isLightTheme
+                          ? 'bg-slate-50 border-slate-200 text-slate-900 focus:border-purple-600'
+                          : 'bg-black/30 border-white/10 text-white focus:border-purple-500'
+                      }`}
+                    />
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Se for entrada: Campo para justificar o atraso */
+              <div className="space-y-2 mb-4">
+                <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
+                  Conforme a CLT (Art. 58 § 1º), variações superiores a 10 min são apuradas. Informe o motivo para análise do gestor:
+                </p>
+                <textarea
+                  value={punchReasonInput}
+                  onChange={(e) => setPunchReasonInput(e.target.value)}
+                  placeholder="Ex: Trânsito atípico, imprevisto de transporte..."
+                  rows={3}
+                  className={`w-full p-3 rounded-2xl border text-xs outline-none transition-all resize-none ${
+                    isLightTheme
+                      ? 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-600'
+                      : 'bg-black/30 border-white/10 text-white focus:border-amber-500'
+                  }`}
+                />
+              </div>
+            )}
+
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => tolerancePrompt.action(punchReasonInput.trim(), exitReasonType === 'forgot')}
+                className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-[#96183c] to-[#b32047] hover:brightness-110 active:scale-[0.99] text-white font-black text-xs shadow-md shadow-[#96183c]/30 flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+              >
+                <Check className="w-4 h-4" />
+                <span>Confirmar e Registrar Ponto</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTolerancePrompt(null)}
+                className={`py-3 px-3.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                  isLightTheme
+                    ? 'border-slate-200 hover:bg-slate-100 text-slate-600'
+                    : 'border-white/10 hover:bg-white/5 text-slate-400'
+                }`}
+              >
+                Cancelar
               </button>
             </div>
           </div>

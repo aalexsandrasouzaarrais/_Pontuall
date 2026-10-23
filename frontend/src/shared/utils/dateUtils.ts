@@ -53,6 +53,137 @@ export function calculateShiftDurationHours(startTime: string, endTime: string, 
   return Math.max(0, Math.round((totalMinutes / 60) * 10) / 10);
 }
 
+/** Formata minutos para formato relógio elegante (ex: 29h 54m ou 8h) */
+export function formatMinutesToHoursString(totalMinutes: number): string {
+  const safeMinutes = Math.max(0, Math.round(totalMinutes));
+  const h = Math.floor(safeMinutes / 60);
+  const m = safeMinutes % 60;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${String(m).padStart(2, '0')}m`;
+}
+
+/** Converte horas decimais para minutos inteiros seguros */
+export function hoursToMinutes(hours: number): number {
+  return Math.round(hours * 60);
+}
+
+/** Calcula os minutos reais trabalhados entre entrada e saída */
+export function calculatePunchDurationMinutes(checkInTime?: string, checkOutTime?: string, breakMinutes: number = 0): number {
+  if (!checkInTime || !checkOutTime) return 0;
+  const [inH, inM] = checkInTime.split(':').map(Number);
+  const [outH, outM] = checkOutTime.split(':').map(Number);
+  if (isNaN(inH) || isNaN(inM) || isNaN(outH) || isNaN(outM)) return 0;
+  
+  let inMinutes = inH * 60 + inM;
+  let outMinutes = outH * 60 + outM;
+  if (outMinutes < inMinutes) {
+    outMinutes += 24 * 60;
+  }
+  return Math.max(0, outMinutes - inMinutes - breakMinutes);
+}
+
+export interface PunchToleranceResult {
+  isOntime: boolean;
+  isLate: boolean;
+  isEarly: boolean;
+  isOvertime: boolean;
+  isEarlyLeave: boolean;
+  diffMinutes: number;
+  message: string;
+}
+
+/** Avalia tolerância de ponto conforme CLT (Art. 58 § 1º: padrão 10 minutos) */
+export function evaluatePunchTolerance(
+  scheduledTime: string,
+  actualTime: string,
+  type: 'entrada' | 'saida',
+  toleranceMinutes: number = 10
+): PunchToleranceResult {
+  if (!scheduledTime || !actualTime) {
+    return {
+      isOntime: true,
+      isLate: false,
+      isEarly: false,
+      isOvertime: false,
+      isEarlyLeave: false,
+      diffMinutes: 0,
+      message: 'No horário',
+    };
+  }
+
+  const [sH, sM] = scheduledTime.split(':').map(Number);
+  const [aH, aM] = actualTime.split(':').map(Number);
+  const scheduledMin = sH * 60 + sM;
+  const actualMin = aH * 60 + aM;
+  const diff = actualMin - scheduledMin;
+
+  if (type === 'entrada') {
+    if (diff > toleranceMinutes) {
+      return {
+        isOntime: false,
+        isLate: true,
+        isEarly: false,
+        isOvertime: false,
+        isEarlyLeave: false,
+        diffMinutes: diff,
+        message: `Atraso de ${diff} min`,
+      };
+    } else if (diff < -toleranceMinutes) {
+      return {
+        isOntime: false,
+        isLate: false,
+        isEarly: true,
+        isOvertime: false,
+        isEarlyLeave: false,
+        diffMinutes: Math.abs(diff),
+        message: `Entrada antecipada em ${Math.abs(diff)} min`,
+      };
+    }
+    return {
+      isOntime: true,
+      isLate: false,
+      isEarly: false,
+      isOvertime: false,
+      isEarlyLeave: false,
+      diffMinutes: Math.abs(diff),
+      message: 'Entrada dentro da tolerância',
+    };
+  } else {
+    // saída
+    if (diff > toleranceMinutes) {
+      return {
+        isOntime: false,
+        isLate: false,
+        isEarly: false,
+        isOvertime: true,
+        isEarlyLeave: false,
+        diffMinutes: diff,
+        message: `Hora extra: +${diff} min após o expediente`,
+      };
+    } else if (diff < -toleranceMinutes) {
+      return {
+        isOntime: false,
+        isLate: false,
+        isEarly: false,
+        isOvertime: false,
+        isEarlyLeave: true,
+        diffMinutes: Math.abs(diff),
+        message: `Saída antecipada em ${Math.abs(diff)} min`,
+      };
+    }
+    return {
+      isOntime: true,
+      isLate: false,
+      isEarly: false,
+      isOvertime: false,
+      isEarlyLeave: false,
+      diffMinutes: Math.abs(diff),
+      message: 'Saída dentro da tolerância',
+    };
+  }
+}
+
+
 export function getWeekDates(startDate: Date): { date: Date; dateString: string; dayName: string; dayShort: string; isToday: boolean }[] {
   const current = new Date(startDate);
   const day = current.getDay();

@@ -151,7 +151,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   const [isDraftPublished, setIsDraftPublished] = useState<boolean>(false);
 
   // Tab 2 (Aprovações & Faltas) - Identidade Visual LP & Tabela de Ocorrências
-  const [approvalsFilterTab, setApprovalsFilterTab] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [approvalsFilterTab, setApprovalsFilterTab] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'banco_horas'>('all');
   const [approvalsSearch, setApprovalsSearch] = useState('');
   const [approvalsDept, setApprovalsDept] = useState('all');
   const [isNewOccurrenceModalOpen, setIsNewOccurrenceModalOpen] = useState(false);
@@ -189,6 +189,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
   const [approvalsData, setApprovalsData] = useState<Array<{
     id: string;
+    shiftId?: string;
     employeeId?: string;
     employeeName: string;
     employeeRole: string;
@@ -202,6 +203,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     status: 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente';
     actionText?: string;
     feedback: string;
+    isShiftOccurrence?: boolean;
   }>>([]);
 
   useEffect(() => {
@@ -257,12 +259,71 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       };
     });
 
-    setApprovalsData([...mappedJustifications, ...mappedRequests]);
-  }, [employees, justifications, requests]);
+    // Mapeamento de Ocorrências de Ponto / Horas Extras / Banco de Horas
+    const mappedShiftOccurrences = (shifts || []).filter(s => {
+      const hasHe = s.notes && s.notes.includes('[HE');
+      const hasLate = (s.notes && s.notes.includes('[Atraso')) || s.attendanceStatus === 'late';
+      const hasAdjustment = s.notes && (s.notes.includes('Esquecimento') || s.notes.includes('AJUSTE') || s.notes.includes('HOMOLOGADO'));
+      return hasHe || hasLate || hasAdjustment;
+    }).map(s => {
+      const emp = employees.find(e => e.id === s.employeeId);
+      const isHe = s.notes?.includes('[HE');
+      const isForget = s.notes?.includes('Esquecimento');
+      const isLate = (s.notes?.includes('[Atraso') || s.attendanceStatus === 'late') && !isHe;
+
+      let typeLabel = 'Registro de Ponto';
+      if (isHe) typeLabel = '⏰ Hora Extra / Banco de Horas';
+      else if (isForget) typeLabel = 'ℹ️ Ajuste de Esquecimento';
+      else if (isLate) typeLabel = '⚠️ Atraso de Entrada';
+
+      const isHomologated = s.notes?.includes('HOMOLOGADO') || s.notes?.includes('AJUSTE GESTOR');
+
+      return {
+        id: `shift-occ-${s.id}`,
+        shiftId: s.id,
+        employeeId: s.employeeId,
+        employeeName: emp?.name || 'Colaborador',
+        employeeRole: emp?.role || 'Colaborador',
+        employeeDept: emp?.department || 'Geral',
+        employeeAvatar: emp?.avatar || '',
+        type: typeLabel,
+        reason: s.notes || (isLate ? 'Entrada com atraso superior à tolerância CLT' : 'Ocorrência de jornada'),
+        date: `${s.date} (Previsto: ${s.startTime} às ${s.endTime} | Ponto: ${s.checkInTime || '--:--'} às ${s.checkOutTime || '--:--'})`,
+        documentName: 'Espelho Eletrônico (Portaria 671)',
+        documentUrl: undefined,
+        status: (isHomologated ? 'Aprovado' : 'Pendente') as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
+        actionText: isHomologated ? 'Homologado / Ajustado' : undefined,
+        feedback: s.notes?.includes('AJUSTE GESTOR')
+          ? 'Ponto mantido com ajuste para jornada contratual (sem HE indevida)'
+          : s.notes?.includes('HOMOLOGADO')
+          ? 'Aprovado para Banco de Horas / Folha'
+          : '',
+        isShiftOccurrence: true,
+      };
+    });
+
+    setApprovalsData([...mappedJustifications, ...mappedRequests, ...mappedShiftOccurrences]);
+  }, [employees, justifications, requests, shifts]);
 
   const handleApproveOccurrence = async (id: string) => {
     const targetItem = approvalsData.find(i => i.id === id);
     const customFeedback = targetItem?.feedback?.trim() || undefined;
+
+    if (id.startsWith('shift-occ-')) {
+      const shiftId = (targetItem as any)?.shiftId;
+      if (shiftId) {
+        const targetShift = shifts.find(s => s.id === shiftId);
+        if (targetShift) {
+          onOpenEditShift?.({
+            ...targetShift,
+            notes: `${targetShift.notes || ''} [HOMOLOGADO GESTOR: Aprovado para Banco de Horas]`
+          });
+        }
+      }
+      setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, status: 'Aprovado', actionText: 'Homologado Banco de Horas' } : item));
+      return;
+    }
+
     setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, status: 'Aprovado', actionText: 'Homologado agora' } : item));
     const isRequest = requests.some(r => r.id === id);
 
@@ -282,6 +343,22 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   const handleRejectOccurrence = async (id: string) => {
     const targetItem = approvalsData.find(i => i.id === id);
     const customFeedback = targetItem?.feedback?.trim() || undefined;
+
+    if (id.startsWith('shift-occ-')) {
+      const shiftId = (targetItem as any)?.shiftId;
+      if (shiftId) {
+        const targetShift = shifts.find(s => s.id === shiftId);
+        if (targetShift) {
+          onOpenEditShift?.({
+            ...targetShift,
+            notes: `${targetShift.notes || ''} [AJUSTE GESTOR: Saída considerada no horário contratual (${targetShift.endTime}) - Sem HE]`
+          });
+        }
+      }
+      setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, status: 'Recusado / Falta', actionText: 'Ajustado p/ Horário Regular' } : item));
+      return;
+    }
+
     setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, status: 'Recusado / Falta', actionText: 'Recusado agora' } : item));
     const isRequest = requests.some(r => r.id === id);
 
@@ -356,6 +433,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           present: 'Presente',
           absent: 'Ausente',
           justified: 'Justificado',
+          late: 'Atrasado',
           pending: 'Pendente'
         };
         const distInText = s.checkInLocation?.distanceMeters !== undefined 
@@ -1416,6 +1494,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         const pendingCount = approvalsData.filter(i => i.status === 'Pendente').length;
         const faltasCount = approvalsData.filter(i => i.status === 'Falta Lançada' || i.status === 'Recusado / Falta').length;
         const atestadosCount = approvalsData.filter(i => i.documentName && i.documentName.toLowerCase().includes('.pdf')).length;
+        const bancoHorasCount = approvalsData.filter(i => (i as any).isShiftOccurrence && i.status === 'Pendente').length;
 
         // Filter items
         const filteredApprovals = approvalsData.filter(row => {
@@ -1435,7 +1514,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             return false;
           }
 
-          // Tab filter (Todos, Pendentes, Aprovados, Faltas / Recusados)
+          // Tab filter (Todos, Pendentes, Aprovados, Faltas / Recusados, Banco de Horas)
+          if (approvalsFilterTab === 'banco_horas') {
+            return (row as any).isShiftOccurrence === true;
+          }
+          if (approvalsFilterTab !== 'all' && (row as any).isShiftOccurrence) {
+            return false;
+          }
           if (approvalsFilterTab === 'pending') {
             return row.status === 'Pendente';
           }
@@ -1660,6 +1745,23 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 >
                   Faltas / Recusados
                 </button>
+                <button
+                  onClick={() => setApprovalsFilterTab('banco_horas')}
+                  data-active={approvalsFilterTab === 'banco_horas' ? 'true' : 'false'}
+                  className={`approvals-light-status-button px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    approvalsFilterTab === 'banco_horas'
+                      ? 'bg-gradient-to-r from-purple-700 to-indigo-700 text-white font-black border border-purple-400 shadow-md'
+                      : 'text-purple-300 hover:text-white'
+                  }`}
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Banco de Horas & Extras</span>
+                  {bancoHorasCount > 0 && (
+                    <span className="w-4 h-4 rounded-full text-[9px] font-mono bg-purple-400 text-purple-950 flex items-center justify-center font-bold">
+                      {bancoHorasCount}
+                    </span>
+                  )}
+                </button>
               </div>
 
               <button
@@ -1830,20 +1932,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             <div className="flex items-center justify-end gap-2">
                               <button
                                 onClick={() => handleApproveOccurrence(row.id)}
-                                title="Aprovar Pedido"
+                                title={(row as any).isShiftOccurrence ? "Homologar para Banco de Horas" : "Aprovar Pedido"}
                                 className="approvals-light-approve px-3 py-1.5 rounded-xl font-bold text-xs text-white transition-all shadow-md flex items-center gap-1 cursor-pointer hover:scale-105"
                                 style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
                               >
                                 <CheckCircle2 className="w-3.5 h-3.5" />
-                                <span>Aprovar</span>
+                                <span>{(row as any).isShiftOccurrence ? 'Homologar Banco' : 'Aprovar'}</span>
                               </button>
                               <button
                                 onClick={() => handleRejectOccurrence(row.id)}
-                                title="Recusar Pedido"
+                                title={(row as any).isShiftOccurrence ? "Ajustar para Horário Regular da Escala (Desconsiderar HE indevida conforme Art. 4º CLT)" : "Recusar Pedido"}
                                 className="approvals-light-reject px-2.5 py-1.5 border border-rose-500/30 text-rose-300 hover:bg-rose-500/10 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer"
                               >
                                 <XCircle className="w-3.5 h-3.5" />
-                                <span>Recusar</span>
+                                <span>{(row as any).isShiftOccurrence ? 'Ajustar Horário Normal' : 'Recusar'}</span>
                               </button>
                             </div>
                           ) : (
@@ -2378,6 +2480,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               >
                 <option value="all">Todos os Status</option>
                 <option value="present">Presente</option>
+                <option value="late">Atrasado</option>
                 <option value="absent">Ausente</option>
                 <option value="justified">Justificado</option>
               </select>
@@ -2417,6 +2520,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   const matchDept = relatorioDept === 'all' || row.dept === relatorioDept;
                   const matchStatus = relatorioStatus === 'all' || 
                     (relatorioStatus === 'present' && row.status === 'Presente') ||
+                    (relatorioStatus === 'late' && row.status === 'Atrasado') ||
                     (relatorioStatus === 'absent' && row.status === 'Ausente') ||
                     (relatorioStatus === 'justified' && row.status === 'Justificado');
                   return matchSearch && matchDept && matchStatus;
@@ -2452,19 +2556,21 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           ? (row.checkInLocation && !row.checkInLocation.gpsValidated
                               ? { background: 'rgba(249, 115, 22, 0.18)', color: '#fb923c', border: '1px solid rgba(249, 115, 22, 0.40)' }
                               : { background: 'rgba(73, 212, 123, 0.15)', color: '#49d982', border: '1px solid rgba(73, 212, 123, 0.30)' })
+                          : row.status === 'Atrasado'
+                          ? { background: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.40)' }
                           : row.status === 'Ausente'
                           ? { background: 'rgba(239, 68, 68, 0.18)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.40)' }
                           : row.status === 'Justificado'
                           ? { background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.30)' }
-                          : { background: 'rgba(234, 179, 8, 0.12)', color: '#facc15', border: '1px solid rgba(234, 179, 8, 0.30)' }
+                          : { background: 'rgba(148, 163, 184, 0.12)', color: '#94a3b8', border: '1px solid rgba(148, 163, 184, 0.30)' }
                       }>
                         <span 
                           className="w-1.5 h-1.5 rounded-full" 
                           style={{ 
                             background: row.status === 'Presente' 
                               ? (row.checkInLocation && !row.checkInLocation.gpsValidated ? '#f97316' : '#49d982')
-                              : row.status === 'Ausente' ? '#ef4444' : row.status === 'Justificado' ? '#38bdf8' : '#eab308',
-                            boxShadow: `0 0 6px ${row.status === 'Presente' ? (row.checkInLocation && !row.checkInLocation.gpsValidated ? '#f97316' : '#49d982') : row.status === 'Ausente' ? '#ef4444' : row.status === 'Justificado' ? '#38bdf8' : '#eab308'}`
+                              : row.status === 'Atrasado' ? '#fbbf24' : row.status === 'Ausente' ? '#ef4444' : row.status === 'Justificado' ? '#38bdf8' : '#94a3b8',
+                            boxShadow: `0 0 6px ${row.status === 'Presente' ? (row.checkInLocation && !row.checkInLocation.gpsValidated ? '#f97316' : '#49d982') : row.status === 'Atrasado' ? '#fbbf24' : row.status === 'Ausente' ? '#ef4444' : row.status === 'Justificado' ? '#38bdf8' : '#94a3b8'}`
                           }} 
                         />
                         {row.status === 'Presente' && row.checkInLocation && !row.checkInLocation.gpsValidated

@@ -1,4 +1,10 @@
-import { getTodayDateString } from '@/shared/utils/dateUtils';
+import { 
+  getTodayDateString,
+  calculateShiftDurationHours,
+  formatMinutesToHoursString,
+  hoursToMinutes,
+  calculatePunchDurationMinutes
+} from '@/shared/utils/dateUtils';
 import React, { useState } from 'react';
 import { ManagerSidebar, ManagerTabId } from './ManagerSidebar';
 import { ManagerMatrixGrid } from '@/modules/shifts/components/ManagerMatrixGrid';
@@ -69,13 +75,111 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
   });
 
   const exportCsv = () => {
-    const rows = ['Colaborador,Data,Início,Fim,Status', ...shifts.map(s => {
-      const name = employees.find(e => e.id === s.employeeId)?.name || 'Não informado';
-      return `${name},${s.date},${s.startTime},${s.endTime},${s.status}`;
-    })];
-    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
-    const link = document.createElement('a'); link.href = URL.createObjectURL(blob);
-    link.download = 'escalas-pontual.csv'; link.click(); URL.revokeObjectURL(link.href);
+    // Relatório de Auditoria de Ponto & Banco de Horas (Conformidade Portaria MTE 671/2021)
+    const headers = [
+      'Colaborador',
+      'Departamento',
+      'Data',
+      'Início Previsto',
+      'Fim Previsto',
+      'Entrada Registrada',
+      'Saída Registrada',
+      'Carga Prevista',
+      'Carga Real Trabalhada',
+      'Saldo / Variação',
+      'Horas Extras (min)',
+      'Atraso (min)',
+      'Situação Presença',
+      'Ocorrência / Justificativa',
+      'Parecer / Auditoria Legal (Portaria 671)'
+    ];
+
+    const rows = shifts.map(s => {
+      const emp = employees.find(e => e.id === s.employeeId);
+      const name = `"${(emp?.name || 'Não informado').replace(/"/g, '""')}"`;
+      const dept = `"${(emp?.department || 'Geral').replace(/"/g, '""')}"`;
+      const date = s.date;
+      const scheduledStart = s.startTime || '--:--';
+      const scheduledEnd = s.endTime || '--:--';
+      const realIn = s.checkInTime || '--:--';
+      const realOut = s.checkOutTime || '--:--';
+
+      const scheduledHours = calculateShiftDurationHours(s.startTime, s.endTime, s.breakMinutes);
+      const scheduledMinutes = hoursToMinutes(scheduledHours);
+
+      let realMinutes = 0;
+      if (s.checkInTime && s.checkOutTime) {
+        realMinutes = calculatePunchDurationMinutes(s.checkInTime, s.checkOutTime, s.breakMinutes);
+      } else if (s.attendanceStatus === 'present' || s.attendanceStatus === 'late' || s.attendanceStatus === 'justified') {
+        realMinutes = scheduledMinutes;
+      }
+
+      const realHoursFormatted = formatMinutesToHoursString(realMinutes);
+      const saldoMinutes = realMinutes - scheduledMinutes;
+      const saldoFormatted = saldoMinutes > 0
+        ? `+${formatMinutesToHoursString(saldoMinutes)}`
+        : saldoMinutes < 0
+        ? `-${formatMinutesToHoursString(Math.abs(saldoMinutes))}`
+        : '0h 00m';
+
+      let heMin = 0;
+      let lateMin = 0;
+      if (s.notes) {
+        const heMatch = s.notes.match(/\[HE \+(\d+)m/);
+        if (heMatch) heMin = Number(heMatch[1]);
+        const lateMatch = s.notes.match(/\[Atraso (\d+)m/);
+        if (lateMatch) lateMin = Number(lateMatch[1]);
+      }
+
+      let statusPresenca = 'Pendente';
+      if (s.attendanceStatus === 'justified') statusPresenca = 'Atestado / Justificado';
+      else if (s.attendanceStatus === 'late') statusPresenca = 'Entrada com Atraso';
+      else if (s.attendanceStatus === 'absent') statusPresenca = 'Falta';
+      else if (s.attendanceStatus === 'present') statusPresenca = 'Presente';
+
+      const notesClean = `"${(s.notes || '').replace(/"/g, '""')}"`;
+
+      let auditStatus = 'Conforme escala';
+      if (s.notes?.includes('Esquecimento')) {
+        auditStatus = 'Ajuste de Tratamento: Saída efetiva considerada no horário contratual (sem HE indevida)';
+      } else if (s.notes?.includes('HOMOLOGADO')) {
+        auditStatus = 'Horas extras homologadas pelo gestor para Banco de Horas';
+      } else if (s.notes?.includes('AJUSTE GESTOR')) {
+        auditStatus = 'Ajuste do Gestor: Regularizado na jornada contratual (Art. 4º CLT)';
+      } else if (heMin > 0) {
+        auditStatus = `Hora extra registrada: +${heMin}m aguardando homologação`;
+      } else if (lateMin > 0) {
+        auditStatus = `Atraso apurado: ${lateMin}m`;
+      } else if (s.attendanceStatus === 'justified') {
+        auditStatus = 'Atestado médico homologado com abono legal';
+      }
+
+      return [
+        name,
+        dept,
+        date,
+        scheduledStart,
+        scheduledEnd,
+        realIn,
+        realOut,
+        `"${scheduledHours}h"`,
+        `"${realHoursFormatted}"`,
+        `"${saldoFormatted}"`,
+        heMin,
+        lateMin,
+        `"${statusPresenca}"`,
+        notesClean,
+        `"${auditStatus}"`
+      ].join(';');
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(';'), ...rows].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `relatorio-espelho-ponto-auditoria-${getTodayDateString()}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
   };
 
   return <>
