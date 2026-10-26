@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import {
   PjNoteItem,
   getPjNotesLocal,
@@ -358,18 +358,10 @@ export const PjNotepadSection: React.FC<PjNotepadSectionProps> = ({
     >
       {/* Topo do Bloco de Notas (Estilo Imagem de Referência 1 com espaçamento adequado) */}
       <div className="pj-bloco-notas-wrapper flex flex-col sm:flex-row sm:items-center justify-between gap-6 pb-2 mb-6">
-        <div className="flex items-center gap-3">
-          <div
-            className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center text-white shadow-sm shrink-0"
-            style={{ background: 'linear-gradient(135deg, #f89847, #96183c)' }}
-          >
-            <FileText className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className={`text-lg sm:text-xl font-black tracking-tight ${isDark ? 'text-white' : 'text-[#2c1d18]'}`}>
-              Meu Bloco de Notas
-            </h3>
-          </div>
+        <div>
+          <h3 className={`text-lg sm:text-xl font-black tracking-tight ${isDark ? 'text-white' : 'text-[#2c1d18]'}`}>
+            Meu Bloco de Notas
+          </h3>
         </div>
 
         <button
@@ -377,7 +369,7 @@ export const PjNotepadSection: React.FC<PjNotepadSectionProps> = ({
           onClick={handleNovaNota}
           className="px-5 py-2.5 rounded-full text-xs sm:text-sm font-black text-white shadow-md hover:opacity-95 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
           style={{
-            background: 'linear-gradient(135deg, #96183c, #b32047)',
+            background: '#670D20',
           }}
         >
           <Plus className="w-4 h-4" />

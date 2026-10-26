@@ -16,7 +16,6 @@ import {
   Send,
   ChevronDown,
   ChevronUp,
-  FolderGit2,
   Timer,
   Check,
   FileSpreadsheet,
@@ -179,17 +178,20 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
   const contractedMonthlyQuota = Number(employee.monthlyHoursQuota) > 0 ? Number(employee.monthlyHoursQuota) : 160;
 
   // Estados da Calculadora de Recebimento do Colaborador PJ
+  const [hasUserEditedSimHours, setHasUserEditedSimHours] = useState(false);
   const [simulatedHours, setSimulatedHours] = useState<string>(() =>
     totalWorkedHoursCombined > 0 ? String(totalWorkedHoursCombined) : String(contractedMonthlyQuota)
   );
 
   useEffect(() => {
-    if (totalWorkedHoursCombined > 0) {
-      setSimulatedHours(String(totalWorkedHoursCombined));
-    } else {
-      setSimulatedHours(String(contractedMonthlyQuota));
+    if (!hasUserEditedSimHours) {
+      if (totalWorkedHoursCombined > 0) {
+        setSimulatedHours(String(totalWorkedHoursCombined));
+      } else {
+        setSimulatedHours(String(contractedMonthlyQuota));
+      }
     }
-  }, [totalWorkedHoursCombined, contractedMonthlyQuota]);
+  }, [totalWorkedHoursCombined, contractedMonthlyQuota, hasUserEditedSimHours]);
 
   const parsedSimHours = Math.max(0, Number(String(simulatedHours).replace(',', '.')) || 0);
   const simulatedEarnings = parsedSimHours * contractedHourlyRate;
@@ -526,7 +528,10 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
   };
 
   return (
-    <div className={`space-y-6 animate-in fade-in duration-200 ${isDark ? 'text-white' : 'text-slate-900'}`}>
+    <div
+      className={`space-y-6 animate-in fade-in duration-200 ${isDark ? 'text-white' : 'text-slate-900'}`}
+      style={{ zoom: 0.82 }}
+    >
       
       {activeSubView === 'overview' && (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
@@ -534,55 +539,57 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
               COLUNA ESQUERDA: BANNER + FATURAMENTO + LEMBRETES + BLOCO DE NOTAS
               ===================================================================== */}
           <div className="xl:col-span-8 space-y-6">
-            {/* 1. Top Banner Informativo PJ */}
+            {/* 1. Hero Banner do Colaborador PJ (Estilo Painel Gestor) */}
             <div
-              className={`p-5 sm:p-6 rounded-3xl border relative overflow-hidden transition-all ${
-                isDark
-                  ? 'bg-[#111216] border-white/10 shadow-2xl'
-                  : 'bg-white border-slate-200/80 shadow-xs'
+              className={`rounded-3xl p-6 sm:p-8 border shadow-2xl relative overflow-hidden transition-all ${
+                isDark ? 'border-white/10' : 'border-slate-200'
               }`}
+              style={{
+                backgroundColor: isDark ? '#111216' : '#ffffff',
+                boxShadow: isDark ? '0 20px 50px rgba(0,0,0,0.6)' : '0 10px 30px rgba(0,0,0,0.06)',
+              }}
             >
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
-                <div className="flex items-center gap-3.5">
-                  <div
-                    className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${
-                      isDark
-                        ? 'bg-rose-950/40 border border-rose-500/30 text-[#f89847]'
-                        : 'bg-rose-50 border border-rose-100 text-[#96183c]'
-                    }`}
-                  >
-                    <Calendar className="w-6 h-6" />
-                  </div>
-                  <div className="space-y-1">
-                    <div className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
-                      isDark
-                        ? 'text-rose-300 border-rose-500/20 bg-rose-950/30'
-                        : 'text-[#96183c] border-[#96183c]/20 bg-[#96183c]/5'
-                    }`}>
-                      <CalendarDays className={`w-3 h-3 ${isDark ? 'text-rose-300' : 'text-[#96183c]'}`} />
-                      <span>Regime de Prestação de Serviços PJ</span>
-                    </div>
-                    <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      Painel Completo do Colaborador
-                    </h1>
-                    <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>
-                      Acompanhe seu faturamento, organize sua rotina e fique por dentro das suas tarefas.
-                    </p>
-                  </div>
-                </div>
+              <div
+                className="absolute -top-1/2 -right-10 w-[55%] h-[200%] pointer-events-none"
+                style={{
+                  background: 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.24) 0%, rgba(100, 12, 30, 0.22) 45%, transparent 75%)',
+                  filter: 'blur(70px)',
+                }}
+              />
 
-                {onNavigateToTimesheet && (
-                  <button
-                    onClick={onNavigateToTimesheet}
-                    className="w-full sm:w-auto px-4 py-2.5 rounded-full font-black text-xs text-white shadow-md hover:opacity-95 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
+              <div className="relative z-10 max-w-2xl space-y-2">
+                <div
+                  className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                    isDark ? 'text-slate-300 border-white/10 bg-white/5' : 'text-slate-600 border-slate-200 bg-slate-100'
+                  }`}
+                >
+                  <span
+                    className="w-3.5 h-0.5 rounded-full"
+                    style={{ background: 'linear-gradient(90deg, #640C1E, #9F243C, #F59242)' }}
+                  />
+                  <span>Regime de Prestação de Serviços PJ</span>
+                </div>
+                <h1 className="text-2xl sm:text-3xl font-black tracking-tight leading-tight">
+                  Painel Completo do{' '}
+                  <span
+                    className={`inline-block bg-clip-text text-transparent ${
+                      isDark
+                        ? 'bg-gradient-to-r from-[#F9DE97] via-[#F59242] to-[#9F243C]'
+                        : 'bg-gradient-to-r from-[#640C1E] via-[#9F243C] to-[#F59242]'
+                    }`}
                     style={{
-                      background: 'linear-gradient(90deg, #96183c 0%, #b32047 40%, #f89847 100%)',
+                      WebkitBackgroundClip: 'text',
+                      backgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      color: 'transparent',
                     }}
                   >
-                    <span>Abrir Aba Timesheet & Entregas</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-                )}
+                    Colaborador PJ
+                  </span>
+                </h1>
+                <p className={`text-xs sm:text-sm leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                  Acompanhe seu faturamento, organize sua rotina e fique por dentro das suas tarefas.
+                </p>
               </div>
             </div>
 
@@ -593,33 +600,40 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
               }`}
             >
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center text-white shadow-sm shrink-0"
-                    style={{ background: 'linear-gradient(135deg, #f89847, #96183c)' }}
-                  >
-                    <FileSpreadsheet className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h2 className={`text-base sm:text-lg font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      Meu Faturamento & Calculadora de Horas PJ
-                    </h2>
-                  </div>
+                <div>
+                  <h2 className={`text-base sm:text-lg font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                    Meu Faturamento & Calculadora de Horas PJ
+                  </h2>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsCalculatorModalOpen(true)}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 cursor-pointer ${
+                  <div
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${
                       isDark
-                        ? 'bg-white/5 border-white/10 text-slate-200 hover:bg-white/10'
-                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        ? 'bg-white/5 border-white/10 text-slate-200'
+                        : 'bg-slate-50 border-slate-200 text-slate-700'
                     }`}
                   >
-                    <Calculator className="w-3.5 h-3.5 text-[#f89847]" />
-                    <span>Calculadora de Horas</span>
-                  </button>
+                    <span className="text-[11px] opacity-75">Simulação:</span>
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      value={simulatedHours}
+                      onChange={(e) => {
+                        setHasUserEditedSimHours(true);
+                        setSimulatedHours(e.target.value);
+                      }}
+                      className={`w-16 px-1.5 py-0.5 rounded text-center font-mono font-black text-xs border outline-none ${
+                        isDark
+                          ? 'bg-black/50 text-amber-400 border-white/15 focus:border-amber-400'
+                          : 'bg-white text-amber-700 border-slate-300 focus:border-[#96183c]'
+                      }`}
+                      title="Altere as horas para ver o cálculo do painel mudar em tempo real"
+                    />
+                    <span className="text-[11px] opacity-75">h</span>
+                  </div>
+
                   <button
                     type="button"
                     onClick={() => setIsCalculatorModalOpen(true)}
@@ -628,9 +642,9 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                         ? 'bg-white/5 border-white/10 text-slate-400 hover:text-slate-200'
                         : 'bg-slate-50 border-slate-200 text-slate-400 hover:text-slate-600'
                     }`}
-                    title="Opções de cálculo"
+                    title="Abrir Calculadora Completa"
                   >
-                    <GripHorizontal className="w-4 h-4" />
+                    <Calculator className="w-4 h-4 text-[#f89847]" />
                   </button>
                 </div>
               </div>
@@ -674,10 +688,10 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                   isDark ? 'bg-[#0e1017] border-white/10' : 'bg-slate-50/80 border-slate-200/90 shadow-2xs'
                 }`}>
                   <span className={`text-[11px] font-bold block mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                    Total (estimado)
+                    Total calculado ({parsedSimHours}h)
                   </span>
                   <div className={`text-xl font-black font-mono tracking-tight ${isDark ? 'text-emerald-400' : 'text-emerald-700 font-extrabold'}`}>
-                    {formatBRL(openTimesheetEarnings + approvedEarnings)}
+                    {formatBRL(simulatedEarnings)}
                   </div>
                 </div>
 
@@ -697,7 +711,7 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
               <div className="space-y-2 pt-1">
                 <div className="flex items-center justify-between text-xs font-bold">
                   <span className={isDark ? 'text-slate-300' : 'text-slate-800'}>
-                    Progresso do faturamento ({totalWorkedHoursCombined}h de {contractedMonthlyQuota}h)
+                    Progresso do faturamento ({parsedSimHours}h de {contractedMonthlyQuota}h)
                   </span>
                   <span className={`font-mono ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                     <strong className={isDark ? 'text-white' : 'text-slate-900 font-black'}>{quotaProgressPercent}%</strong> concluído
@@ -729,213 +743,103 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
               </div>
             </div>
 
-            {/* 3. PAINÉIS LADO A LADO: LEMBRETES E MINHA ESCALA PESSOAL (IDÊNTICO À IMAGEM 1) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Painel 1: Lembretes & Reuniões de Gestão */}
-              <div
-                className={`rounded-3xl p-5 sm:p-6 border transition-all flex flex-col justify-between ${
-                  isDark ? 'bg-[#151822] border-[#252A3A]' : 'bg-white border-slate-200/80 shadow-xs'
-                }`}
-              >
-                <div>
-                  <div className={`flex items-center justify-between pb-3.5 border-b mb-4 ${
-                    isDark ? 'border-white/10' : 'border-slate-100'
-                  }`}>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
-                        isDark ? 'bg-rose-950/40 text-[#f89847]' : 'bg-rose-50 text-[#96183c]'
-                      }`}>
-                        <Bell className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h3 className={`font-black text-sm sm:text-base ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                          Lembretes & Reuniões de Gestão
-                        </h3>
-                        <p className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>
-                          Fique por dentro das suas lembretes e reuniões importantes.
-                        </p>
-                      </div>
+            {/* 3. PAINEL DE LEMBRETES & REUNIÕES DE GESTÃO */}
+            <div
+              className={`rounded-3xl p-5 sm:p-6 border transition-all flex flex-col justify-between ${
+                isDark ? 'bg-[#151822] border-[#252A3A]' : 'bg-white border-slate-200/80 shadow-xs'
+              }`}
+            >
+              <div>
+                <div className={`flex items-center justify-between pb-3.5 border-b mb-4 ${
+                  isDark ? 'border-white/10' : 'border-slate-100'
+                }`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
+                      isDark ? 'bg-rose-950/40 text-[#f89847]' : 'bg-rose-50 text-[#96183c]'
+                    }`}>
+                      <Bell className="w-5 h-5" />
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setIsAllRemindersOpen(true)}
-                      className={`text-xs font-bold flex items-center gap-1 px-3 py-1.5 rounded-full border cursor-pointer transition-all shrink-0 ${
-                        isDark
-                          ? 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      <span>Ver todos</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  {reminders.length === 0 ? (
-                    <div className="py-6 text-center space-y-1.5">
-                      <Bell className={`w-7 h-7 mx-auto opacity-30 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
-                      <p className={`text-xs font-bold ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                        Nenhum lembrete ou reunião pendente no momento.
+                    <div>
+                      <h3 className={`font-black text-sm sm:text-base ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                        Lembretes & Reuniões de Gestão
+                      </h3>
+                      <p className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>
+                        Fique por dentro das suas lembretes e reuniões importantes.
                       </p>
                     </div>
-                  ) : (
-                    <div className="space-y-2.5 max-h-[220px] overflow-y-auto pr-1">
-                      {reminders.slice(0, 3).map((rem) => {
-                        const isTodayRem = rem.date === getTodayDateString();
-                        const timeDisplay = isTodayRem ? `Hoje • ${rem.time}` : `${rem.date.split('-').reverse().slice(0, 2).join('/')} • ${rem.time}`;
-                        return (
-                          <div
-                            key={rem.id}
-                            onClick={() => setSelectedReminder(rem)}
-                            className={`group p-3 rounded-2xl border flex items-center justify-between gap-3 cursor-pointer transition-all duration-200 ${
-                              isDark
-                                ? 'bg-[#0e1017] border-white/10 hover:bg-white/5 hover:border-[#f89847]/30'
-                                : 'bg-slate-50/80 border-slate-200/70 hover:bg-slate-100 hover:border-[#96183c]/30'
-                            }`}
-                            title="Clique para abrir detalhes do lembrete"
-                          >
-                            <div className="flex items-center gap-3 min-w-0 flex-1">
-                              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
-                              <span className={`text-xs font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                                {rem.title}
-                              </span>
-                              <span className={`text-[10.5px] font-mono font-bold px-2.5 py-0.5 rounded-full shrink-0 ${
-                                isDark
-                                  ? 'bg-amber-950/40 text-amber-300 border border-amber-500/30'
-                                  : 'bg-amber-100 text-amber-900 border border-amber-300'
-                              }`}>
-                                {timeDisplay}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center gap-2 shrink-0">
-                              {rem.link && (
-                                <a
-                                  href={rem.link}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="px-3 py-1 bg-gradient-to-r from-[#96183c] to-[#b32047] hover:opacity-95 text-white rounded-full text-xs font-black shrink-0 flex items-center gap-1.5 shadow-xs transition-all"
-                                >
-                                  <Video className="w-3.5 h-3.5" />
-                                  <span>Entrar</span>
-                                </a>
-                              )}
-                              <ArrowUpRight className="w-3.5 h-3.5 opacity-40 group-hover:opacity-100 transition-opacity" />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Painel 2: Minha Escala Pessoal (Idêntico à Imagem 1) */}
-              <div
-                className={`rounded-3xl p-5 sm:p-6 border transition-all flex flex-col justify-between ${
-                  isDark ? 'bg-[#151822] border-[#252A3A]' : 'bg-white border-slate-200/80 shadow-xs'
-                }`}
-              >
-                <div>
-                  <div className={`flex items-center justify-between pb-3.5 border-b mb-4 ${
-                    isDark ? 'border-white/10' : 'border-slate-100'
-                  }`}>
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${
-                        isDark ? 'bg-rose-950/40 text-[#f89847]' : 'bg-rose-50 text-[#96183c]'
-                      }`}>
-                        <Calendar className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h3 className={`font-black text-sm sm:text-base ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                          Minha Escala Pessoal
-                        </h3>
-                        <p className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>
-                          Confira sua escala e próximos turnos.
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const today = getTodayDateString();
-                        setSelectedCalendarDate(today);
-                        setSchedDate(today);
-                      }}
-                      className={`text-xs font-bold flex items-center gap-1 px-3 py-1.5 rounded-full border cursor-pointer transition-all shrink-0 ${
-                        isDark
-                          ? 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      <span>Ver calendário</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
                   </div>
 
-                  {privateSchedule.length === 0 ? (
-                    <div className="py-6 text-center space-y-2">
-                      <div className="flex items-center justify-center gap-2 text-xs font-medium opacity-70">
-                        <Calendar className={`w-4 h-4 ${isDark ? 'text-rose-400' : 'text-[#96183c]'}`} />
-                        <span className={isDark ? 'text-slate-400' : 'text-slate-700 font-medium'}>
-                          Você ainda não possui escalas cadastradas.
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-2.5 max-h-[220px] overflow-y-auto pr-1">
-                      {privateSchedule.slice(0, 3).map((sched) => {
-                        const isToday = sched.date === getTodayDateString();
-                        const timeDisplay = isToday
-                          ? `Hoje • ${sched.startTime} - ${sched.endTime}`
-                          : `${sched.date.split('-').reverse().slice(0, 2).join('/')} • ${sched.startTime} - ${sched.endTime}`;
-                        return (
-                          <div
-                            key={sched.id}
-                            onClick={() => {
-                              setSelectedCalendarDate(sched.date);
-                              setSchedDate(sched.date);
-                            }}
-                            className={`group p-3 rounded-2xl border flex items-center justify-between gap-3 cursor-pointer transition-all duration-200 ${
-                              isDark
-                                ? 'bg-[#0e1017] border-white/10 hover:bg-white/5 hover:border-[#f89847]/30'
-                                : 'bg-slate-50/80 border-slate-200/70 hover:bg-slate-100 hover:border-[#96183c]/30'
-                            }`}
-                            title="Clique para ver no calendário"
-                          >
-                            <div className="flex items-center gap-3 min-w-0 flex-1">
-                              <span className="w-2.5 h-2.5 rounded-full bg-[#f89847] shrink-0" />
-                              <span className={`text-xs font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                                {sched.title}
-                              </span>
-                              <span className={`text-[10.5px] font-mono font-bold px-2.5 py-0.5 rounded-full shrink-0 ${
-                                isDark
-                                  ? 'bg-amber-950/40 text-amber-300 border border-amber-500/30'
-                                  : 'bg-amber-100 text-amber-900 border border-amber-300'
-                              }`}>
-                                {timeDisplay}
-                              </span>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRemovePrivateSchedule(sched.id);
-                              }}
-                              className="text-slate-400 hover:text-rose-500 p-1 rounded-lg cursor-pointer transition-colors"
-                              title="Excluir horário"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setIsAllRemindersOpen(true)}
+                    className={`text-xs font-bold flex items-center gap-1 px-3 py-1.5 rounded-full border cursor-pointer transition-all shrink-0 ${
+                      isDark
+                        ? 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>Ver todos</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
+
+                {reminders.length === 0 ? (
+                  <div className="py-6 text-center space-y-1.5">
+                    <Bell className={`w-7 h-7 mx-auto opacity-30 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+                    <p className={`text-xs font-bold ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                      Nenhum lembrete ou reunião pendente no momento.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5 max-h-[220px] overflow-y-auto pr-1">
+                    {reminders.slice(0, 3).map((rem) => {
+                      const isTodayRem = rem.date === getTodayDateString();
+                      const timeDisplay = isTodayRem ? `Hoje • ${rem.time}` : `${rem.date.split('-').reverse().slice(0, 2).join('/')} • ${rem.time}`;
+                      return (
+                        <div
+                          key={rem.id}
+                          onClick={() => setSelectedReminder(rem)}
+                          className={`group p-3 rounded-2xl border flex items-center justify-between gap-3 cursor-pointer transition-all duration-200 ${
+                            isDark
+                              ? 'bg-[#0e1017] border-white/10 hover:bg-white/5 hover:border-[#f89847]/30'
+                              : 'bg-slate-50/80 border-slate-200/70 hover:bg-slate-100 hover:border-[#96183c]/30'
+                          }`}
+                          title="Clique para abrir detalhes do lembrete"
+                        >
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
+                            <span className={`text-xs font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                              {rem.title}
+                            </span>
+                            <span className={`text-[10.5px] font-mono font-bold px-2.5 py-0.5 rounded-full shrink-0 ${
+                              isDark
+                                ? 'bg-amber-950/40 text-amber-300 border border-amber-500/30'
+                                : 'bg-amber-100 text-amber-900 border border-amber-300'
+                            }`}>
+                              {timeDisplay}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            {rem.link && (
+                              <a
+                                href={rem.link}
+                                target="_blank"
+                                rel="noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="px-3 py-1 bg-gradient-to-r from-[#96183c] to-[#b32047] hover:opacity-95 text-white rounded-full text-xs font-black shrink-0 flex items-center gap-1.5 shadow-xs transition-all"
+                              >
+                                <Video className="w-3.5 h-3.5" />
+                                <span>Entrar</span>
+                              </a>
+                            )}
+                            <ArrowUpRight className="w-3.5 h-3.5 opacity-40 group-hover:opacity-100 transition-opacity" />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -944,11 +848,11 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
           </div>
 
           {/* =====================================================================
-              COLUNA LATERAL DIREITA: CALENDÁRIO ATÉ O TOPO DO SITE (ESTILO IMAGEM DE REFERÊNCIA)
+              COLUNA LATERAL DIREITA: CALENDÁRIO ALINHADO AO TOPO
               ===================================================================== */}
-          <div className="xl:col-span-4 2xl:col-span-3.5 sticky top-4">
+          <div className="xl:col-span-4">
             <div
-              className={`rounded-[30px] p-5 sm:p-6 transition-all ${
+              className={`rounded-3xl p-5 sm:p-6 transition-all ${
                 isDark
                   ? 'bg-[#181920] border border-white/10 text-white shadow-2xl'
                   : 'bg-white border border-slate-200/80 text-slate-800 shadow-md'
@@ -1208,18 +1112,18 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                       {dayTimelineEntries.map((entry, idx) => {
                         const isAlt = idx % 2 === 1;
 
-                        // Paleta neutra e quente alinhada à marca Pontual com alto contraste no modo claro
+                        // Paleta com cores fortes e visíveis no modo claro e escuro
                         const cardTheme = entry.type === 'reminder'
                           ? (isDark
                               ? 'bg-[#1b1928] border-purple-500/30 text-purple-100'
-                              : 'bg-purple-50/90 border-purple-300 text-purple-950 shadow-xs')
+                              : 'bg-purple-100/90 border-purple-400 text-purple-950 shadow-xs')
                           : isAlt
                           ? (isDark
                               ? 'bg-[#221c17] border-[#f89847]/30 text-amber-100'
-                              : 'bg-[#fff8f0] border-amber-300 text-amber-950 shadow-xs')
+                              : 'bg-amber-100/90 border-amber-400 text-amber-950 shadow-xs')
                           : (isDark
                               ? 'bg-[#22151c] border-rose-500/30 text-rose-100'
-                              : 'bg-[#fff2f4] border-rose-300 text-rose-950 shadow-xs');
+                              : 'bg-rose-100/90 border-rose-400 text-rose-950 shadow-xs');
 
                         return (
                           <div key={entry.id} className="relative flex items-center min-h-[50px] group">
@@ -1294,44 +1198,61 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
 
       {activeSubView === 'timesheet' && (
         <>
-          {/* Top Banner PJ para Timesheet */}
+          {/* Top Banner PJ para Timesheet (Estilo Painel Gestor) */}
           <div
-            className={`p-5 sm:p-6 rounded-3xl border relative overflow-hidden transition-all ${
-              isDark
-                ? 'bg-[#111216] border-white/10 shadow-2xl'
-                : 'bg-white border-slate-200/80 shadow-xs'
+            className={`rounded-3xl p-6 sm:p-8 border shadow-2xl relative overflow-hidden transition-all ${
+              isDark ? 'border-white/10' : 'border-slate-200'
             }`}
+            style={{
+              backgroundColor: isDark ? '#111216' : '#ffffff',
+              boxShadow: isDark ? '0 20px 50px rgba(0,0,0,0.6)' : '0 10px 30px rgba(0,0,0,0.06)',
+            }}
           >
-            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5 relative z-10">
-              <div className="flex items-center gap-4">
+            <div
+              className="absolute -top-1/2 -right-10 w-[55%] h-[200%] pointer-events-none"
+              style={{
+                background: 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.24) 0%, rgba(100, 12, 30, 0.22) 45%, transparent 75%)',
+                filter: 'blur(70px)',
+              }}
+            />
+
+            <div className="relative z-10 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-6">
+              <div className="max-w-xl space-y-2">
                 <div
-                  className={`w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${
-                    isDark
-                      ? 'bg-rose-950/40 border border-rose-500/30 text-[#f89847]'
-                      : 'bg-rose-50 border border-rose-100 text-[#96183c]'
+                  className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                    isDark ? 'text-slate-300 border-white/10 bg-white/5' : 'text-slate-600 border-slate-200 bg-slate-100'
                   }`}
                 >
-                  <Briefcase className="w-6 h-6 sm:w-7 sm:h-7" />
+                  <span
+                    className="w-3.5 h-0.5 rounded-full"
+                    style={{ background: 'linear-gradient(90deg, #640C1E, #9F243C, #F59242)' }}
+                  />
+                  <span>Regime de Prestação de Serviços PJ</span>
                 </div>
-                <div className="space-y-1">
-                  <div className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
-                    isDark
-                      ? 'text-rose-300 border-rose-500/20 bg-rose-950/30'
-                      : 'text-[#96183c] border-[#96183c]/20 bg-[#96183c]/5'
-                  }`}>
-                    <CalendarDays className="w-3 h-3 text-[#96183c] dark:text-rose-300" />
-                    <span>Regime de Prestação de Serviços PJ</span>
-                  </div>
-                  <h1 className={`text-xl sm:text-2xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                    Timesheet & Entregas PJ
-                  </h1>
-                  <p className={`text-xs sm:text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    Registre suas atividades via Cronômetro Play/Pause ou Entrada Manual e envie o fechamento ao gestor.
-                  </p>
-                </div>
+                <h1 className="text-2xl sm:text-3xl font-black tracking-tight leading-tight">
+                  Timesheet &{' '}
+                  <span
+                    className={`inline-block bg-clip-text text-transparent ${
+                      isDark
+                        ? 'bg-gradient-to-r from-[#F9DE97] via-[#F59242] to-[#9F243C]'
+                        : 'bg-gradient-to-r from-[#640C1E] via-[#9F243C] to-[#F59242]'
+                    }`}
+                    style={{
+                      WebkitBackgroundClip: 'text',
+                      backgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      color: 'transparent',
+                    }}
+                  >
+                    Entregas PJ
+                  </span>
+                </h1>
+                <p className={`text-xs sm:text-sm leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                  Registre suas atividades via Cronômetro Play/Pause ou Entrada Manual e envie o fechamento ao gestor.
+                </p>
               </div>
 
-              <div className="flex items-center gap-2.5 shrink-0 w-full lg:w-auto justify-end">
+              <div className="flex items-center gap-2.5 shrink-0 w-full xl:w-auto justify-end">
                 <button
                   onClick={() => handleExportOwnTimesheet('xls')}
                   className={`px-4 py-3 rounded-2xl font-bold text-xs border transition-all flex items-center gap-2 cursor-pointer ${
@@ -1342,23 +1263,23 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                   title="Exportar planilha Excel (.xls) com todas as suas tarefas"
                 >
                   <FileSpreadsheet className={`w-4 h-4 ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`} />
-                  <span>Exportar Planilha (.XLS)</span>
+                  <span>Exportar (.XLS)</span>
                 </button>
 
-                <button
-                  onClick={handleOpenClosePeriodModal}
-                  className="px-5 py-3 rounded-2xl font-black text-xs sm:text-sm text-white shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
-                  style={{
-                    background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)',
-                    boxShadow: '0 4px 18px rgba(100, 12, 30, 0.30)',
-                  }}
-                >
-                  <Send className="w-4 h-4" />
-                  <span>Fechar Período e Enviar ao Gestor</span>
-                </button>
+                  <button
+                    onClick={handleOpenClosePeriodModal}
+                    className="px-5 py-3 rounded-2xl font-black text-xs sm:text-sm text-white shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2 cursor-pointer shrink-0"
+                    style={{
+                      background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)',
+                      boxShadow: '0 4px 18px rgba(100, 12, 30, 0.30)',
+                    }}
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>Fechar Período e Enviar ao Gestor</span>
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
 
           {/* Cronômetro Interativo Play / Pause & Entrada Manual */}
           <PjTimesheetTracker 
@@ -1374,27 +1295,20 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
             <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b ${
               isDark ? 'border-white/5' : 'border-slate-100'
             }`}>
-              <div className="flex items-center gap-2.5">
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
-                  isDark ? 'bg-[#9F243C]/20 text-[#f89847]' : 'bg-[#96183c]/10 text-[#96183c]'
-                }`}>
-                  <FolderGit2 className="w-4 h-4" />
-                </div>
-                <div>
-                  <h2 className="text-base font-extrabold flex items-center gap-2 flex-wrap">
-                    <span>Atividades no Timesheet em Aberto</span>
-                    <span className={`text-xs font-mono px-2.5 py-0.5 rounded-full border font-bold ${
-                      isDark
-                        ? 'bg-[#9F243C]/20 text-[#F9DE97] border-[#F59242]/30'
-                        : 'bg-[#96183c]/10 text-[#96183c] border-[#96183c]/25'
-                    }`}>
-                      {draftEntries.length} tarefas ({totalDraftHours}h)
-                    </span>
-                  </h2>
-                  <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    Tarefas registradas via Play/Pause ou manual aguardando o envio de fechamento ao gestor.
-                  </p>
-                </div>
+              <div>
+                <h2 className="text-base font-extrabold flex items-center gap-2 flex-wrap">
+                  <span>Atividades no Timesheet em Aberto</span>
+                  <span className={`text-xs font-mono px-2.5 py-0.5 rounded-full border font-bold ${
+                    isDark
+                      ? 'bg-[#9F243C]/20 text-[#F9DE97] border-[#F59242]/30'
+                      : 'bg-[#96183c]/10 text-[#96183c] border-[#96183c]/25'
+                  }`}>
+                    {draftEntries.length} tarefas ({totalDraftHours}h)
+                  </span>
+                </h2>
+                <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  Tarefas registradas via Play/Pause ou manual aguardando o envio de fechamento ao gestor.
+                </p>
               </div>
 
               <div className="flex items-center gap-2">
@@ -1717,7 +1631,10 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                     step="0.5"
                     min="0"
                     value={simulatedHours}
-                    onChange={(e) => setSimulatedHours(e.target.value)}
+                    onChange={(e) => {
+                      setHasUserEditedSimHours(true);
+                      setSimulatedHours(e.target.value);
+                    }}
                     placeholder="Ex: 160"
                     className={`w-full px-4 py-3 rounded-2xl font-mono text-lg font-black border outline-none ${
                       isDark
@@ -1733,7 +1650,10 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                 <div className="flex items-center gap-2 flex-wrap pt-2">
                   <button
                     type="button"
-                    onClick={() => setSimulatedHours(String(totalDraftHours))}
+                    onClick={() => {
+                      setHasUserEditedSimHours(true);
+                      setSimulatedHours(String(totalDraftHours));
+                    }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold border cursor-pointer transition-all ${
                       isDark
                         ? 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-200'
@@ -1744,7 +1664,10 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setSimulatedHours(String(totalWorkedHoursCombined))}
+                    onClick={() => {
+                      setHasUserEditedSimHours(true);
+                      setSimulatedHours(String(totalWorkedHoursCombined));
+                    }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold border cursor-pointer transition-all ${
                       isDark
                         ? 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-200'
@@ -1755,7 +1678,10 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setSimulatedHours(String(contractedMonthlyQuota))}
+                    onClick={() => {
+                      setHasUserEditedSimHours(true);
+                      setSimulatedHours(String(contractedMonthlyQuota));
+                    }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold border cursor-pointer transition-all ${
                       isDark
                         ? 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-200'

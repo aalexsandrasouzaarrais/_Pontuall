@@ -162,18 +162,6 @@ export const ReminderDetailModal: React.FC<ReminderDetailModalProps> = ({
           }`}
         >
           <div className="flex items-start gap-3 min-w-0">
-            <div
-              className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-md border"
-              style={{
-                background: isLightTheme
-                  ? 'linear-gradient(135deg, #96183C 0%, #ba254d 100%)'
-                  : 'linear-gradient(135deg, #96183c 0%, #5e0d22 100%)',
-                borderColor: 'rgba(248, 150, 66, 0.4)',
-              }}
-            >
-              {typeConfig.icon}
-            </div>
-
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2 mb-1">
                 <span
