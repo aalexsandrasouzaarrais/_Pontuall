@@ -101,6 +101,40 @@ interface ManagerMatrixGridProps {
   onRejectJustification?: (id: string, customFeedback?: string) => void;
 }
 
+export interface BancoHorasItem {
+  id: string;
+  shiftId?: string;
+  employeeId: string;
+  employeeName: string;
+  employeeRole: string;
+  employeeDept: string;
+  employeeAvatar: string;
+  date: string;
+  scheduledTime: string;
+  punchTime: string;
+  diffMinutes: number;
+  diffBadge: string;
+  type: 'hora_extra' | 'atraso' | 'esquecimento';
+  typeLabel: string;
+  reason: string;
+  status: 'Pendente' | 'Homologado' | 'Ajustado';
+  feedback: string;
+}
+
+export const formatDateToDDMMAAAA = (val?: string): string => {
+  if (!val) return '';
+  const clean = val.trim();
+  if (/^\d{2}-\d{2}-\d{4}$/.test(clean)) return clean;
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(clean)) return clean.replace(/\//g, '-');
+  if (/^\d{4}[-/]\d{2}[-/]\d{2}/.test(clean)) {
+    const parts = clean.split(/[-/T ]/);
+    if (parts.length >= 3 && parts[0].length === 4) {
+      return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+  }
+  return clean;
+};
+
 export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   employees,
   shifts,
@@ -151,8 +185,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   const [draftCount, setDraftCount] = useState<number>(27);
   const [isDraftPublished, setIsDraftPublished] = useState<boolean>(false);
 
-  // Tab 2 (Aprovações & Faltas) - Identidade Visual LP & Tabela de Ocorrências
-  const [approvalsFilterTab, setApprovalsFilterTab] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'banco_horas'>('all');
+  // Tab 2 (Aprovações & Faltas) - Atestados, Folgas e Trocas
+  const [approvalsFilterTab, setApprovalsFilterTab] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [approvalsSearch, setApprovalsSearch] = useState('');
   const [approvalsDept, setApprovalsDept] = useState('all');
   const [isNewOccurrenceModalOpen, setIsNewOccurrenceModalOpen] = useState(false);
@@ -190,7 +224,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
   const [approvalsData, setApprovalsData] = useState<Array<{
     id: string;
-    shiftId?: string;
     employeeId?: string;
     employeeName: string;
     employeeRole: string;
@@ -204,8 +237,21 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     status: 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente';
     actionText?: string;
     feedback: string;
-    isShiftOccurrence?: boolean;
   }>>([]);
+
+  // Tab 3 (Relatórios) & Banco de Horas States
+  const [relatorioSubTab, setRelatorioSubTab] = useState<'geral' | 'banco_horas'>('geral');
+  const [bancoHorasData, setBancoHorasData] = useState<BancoHorasItem[]>([]);
+  const [bancoHorasSearch, setBancoHorasSearch] = useState('');
+  const [bancoHorasDate, setBancoHorasDate] = useState('');
+  const [bancoHorasDept, setBancoHorasDept] = useState('all');
+  const [bancoHorasStatus, setBancoHorasStatus] = useState<'all' | 'pending' | 'homologated' | 'adjusted'>('all');
+  const [selectedDetailBancoItem, setSelectedDetailBancoItem] = useState<BancoHorasItem | null>(null);
+  const [expandedBancoReasons, setExpandedBancoReasons] = useState<Record<string, boolean>>({});
+
+  const toggleExpandBancoReason = (id: string) => {
+    setExpandedBancoReasons(prev => ({ ...prev, [id]: !prev[id] }));
+  };
 
   useEffect(() => {
     const mappedJustifications = (justifications || []).map(j => {
@@ -260,149 +306,146 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       };
     });
 
-    // Mapeamento de Ocorrências de Ponto / Horas Extras / Banco de Horas
-    const mappedShiftOccurrences = (shifts || []).filter(s => {
+    // Aba Aprovações & Faltas contém estritamente Atestados Médicos, Trocas de Turno e Folgas
+    setApprovalsData([...mappedJustifications, ...mappedRequests]);
+
+    // Ocorrências de Banco de Horas & Registro de Ponto (Exibidas na Aba de Relatório de Presenças)
+    const today = getTodayDateString();
+    const emp1 = employees[0] || {
+      id: 'emp-1',
+      name: 'Alexsandra Arrais',
+      role: 'Analista de Operações',
+      department: 'Operações',
+      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
+    };
+    const emp2 = employees[1] || emp1;
+    const emp3 = employees[2] || emp1;
+
+    const mappedFromShifts: BancoHorasItem[] = (shifts || []).filter(s => {
       const hasHe = s.notes && s.notes.includes('[HE');
       const hasLate = (s.notes && s.notes.includes('[Atraso')) || s.attendanceStatus === 'late';
       const hasAdjustment = s.notes && (s.notes.includes('Esquecimento') || s.notes.includes('AJUSTE') || s.notes.includes('HOMOLOGADO'));
       return hasHe || hasLate || hasAdjustment;
     }).map(s => {
-      const emp = employees.find(e => e.id === s.employeeId);
+      const emp = employees.find(e => e.id === s.employeeId) || emp1;
       const isHe = s.notes?.includes('[HE');
       const isForget = s.notes?.includes('Esquecimento');
       const isLate = (s.notes?.includes('[Atraso') || s.attendanceStatus === 'late') && !isHe;
 
-      let typeLabel = 'Registro de Ponto';
-      if (isHe) typeLabel = '⏰ Hora Extra / Banco de Horas';
-      else if (isForget) typeLabel = 'ℹ️ Ajuste de Esquecimento';
-      else if (isLate) typeLabel = '⚠️ Atraso de Entrada';
+      let type: 'hora_extra' | 'atraso' | 'esquecimento' = 'hora_extra';
+      let typeLabel = '⏰ Hora Extra';
+      let diffMinutes = 39;
+      let diffBadge = '+39 min';
 
-      const isHomologated = s.notes?.includes('HOMOLOGADO') || s.notes?.includes('AJUSTE GESTOR');
+      if (isForget) {
+        type = 'esquecimento';
+        typeLabel = 'ℹ️ Esquecimento de Saída';
+        diffMinutes = 0;
+        diffBadge = '0 min (Esquecimento)';
+      } else if (isLate) {
+        type = 'atraso';
+        typeLabel = '⚠️ Atraso de Entrada';
+        const lateMatch = s.notes?.match(/\[Atraso (\d+)m/);
+        diffMinutes = lateMatch ? -Number(lateMatch[1]) : -35;
+        diffBadge = `${diffMinutes} min`;
+      } else if (isHe) {
+        type = 'hora_extra';
+        typeLabel = '⏰ Hora Extra';
+        const heMatch = s.notes?.match(/\[HE \+(\d+)m/);
+        diffMinutes = heMatch ? Number(heMatch[1]) : 39;
+        diffBadge = `+${diffMinutes} min`;
+      }
+
+      const isHomologated = s.notes?.includes('HOMOLOGADO');
+      const isAdjusted = s.notes?.includes('AJUSTE GESTOR');
 
       return {
-        id: `shift-occ-${s.id}`,
+        id: `bh-shift-${s.id}`,
         shiftId: s.id,
         employeeId: s.employeeId,
-        employeeName: emp?.name || 'Colaborador',
-        employeeRole: emp?.role || 'Colaborador',
-        employeeDept: emp?.department || 'Geral',
-        employeeAvatar: emp?.avatar || '',
-        type: typeLabel,
+        employeeName: emp.name,
+        employeeRole: emp.role || 'Colaborador',
+        employeeDept: emp.department || 'Geral',
+        employeeAvatar: emp.avatar || '',
+        date: s.date,
+        scheduledTime: `${s.startTime} às ${s.endTime}`,
+        punchTime: `${s.checkInTime || '--:--'} às ${s.checkOutTime || '--:--'}`,
+        diffMinutes,
+        diffBadge,
+        type,
+        typeLabel,
         reason: s.notes || (isLate ? 'Entrada com atraso superior à tolerância CLT' : 'Ocorrência de jornada'),
-        date: `${s.date} (Previsto: ${s.startTime} às ${s.endTime} | Ponto: ${s.checkInTime || '--:--'} às ${s.checkOutTime || '--:--'})`,
-        documentName: 'Espelho Eletrônico (Portaria 671)',
-        documentUrl: undefined,
-        status: (isHomologated ? 'Aprovado' : 'Pendente') as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
-        actionText: isHomologated ? 'Homologado / Ajustado' : undefined,
-        feedback: s.notes?.includes('AJUSTE GESTOR')
-          ? 'Ponto mantido com ajuste para jornada contratual (sem HE indevida)'
-          : s.notes?.includes('HOMOLOGADO')
-          ? 'Aprovado para Banco de Horas / Folha'
-          : '',
-        isShiftOccurrence: true,
+        status: isHomologated ? 'Homologado' : isAdjusted ? 'Ajustado' : 'Pendente',
+        feedback: isAdjusted ? 'Ponto mantido com ajuste para jornada contratual (sem HE indevida)' : isHomologated ? 'Aprovado para Banco de Horas / Folha' : '',
       };
     });
 
-    // Se ainda não houver ocorrências nos turnos reais, fornece 3 casos de teste demonstrativos para validação imediata do gestor
-    let finalShiftOccurrences = mappedShiftOccurrences;
-    if (finalShiftOccurrences.length === 0) {
-      const today = getTodayDateString();
-      const emp1 = employees[0] || {
-        id: 'emp-1',
-        name: 'Alexsandra Arrais',
-        role: 'Analista de Operações',
-        department: 'Operações',
-        avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
-      };
-      const emp2 = employees[1] || emp1;
-      const emp3 = employees[2] || emp1;
-
-      finalShiftOccurrences = [
+    if (mappedFromShifts.length > 0) {
+      setBancoHorasData(mappedFromShifts);
+    } else {
+      setBancoHorasData([
         {
-          id: 'shift-occ-sim-he-1',
-          shiftId: 'sim-shift-he-1',
+          id: 'bh-sim-1',
           employeeId: emp1.id,
           employeeName: emp1.name,
-          employeeRole: emp1.role || 'Colaborador',
+          employeeRole: emp1.role || 'Analista de Operações',
           employeeDept: emp1.department || 'Operações',
-          employeeAvatar: emp1.avatar || '',
-          type: '⏰ Hora Extra / Banco de Horas',
-          reason: '[HE +39m: Atendimento urgente e suporte estendido a cliente corporativo]',
-          date: `${today} (Previsto: 08:00 às 15:20 | Ponto: 08:00 às 15:59)`,
-          documentName: 'Espelho Eletrônico (Portaria 671)',
-          documentUrl: undefined,
-          status: 'Pendente' as const,
-          actionText: undefined,
+          employeeAvatar: emp1.avatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
+          date: today,
+          scheduledTime: '08:00 às 15:20',
+          punchTime: '08:00 às 15:59',
+          diffMinutes: 39,
+          diffBadge: '+39 min',
+          type: 'hora_extra',
+          typeLabel: '⏰ Hora Extra',
+          reason: 'Atendimento urgente e suporte estendido a cliente corporativo',
+          status: 'Pendente',
           feedback: '',
-          isShiftOccurrence: true,
         },
         {
-          id: 'shift-occ-sim-late-1',
-          shiftId: 'sim-shift-late-1',
+          id: 'bh-sim-2',
           employeeId: emp2.id,
-          employeeName: emp2.name,
+          employeeName: emp2.name || 'Carlos Silveira',
           employeeRole: emp2.role || 'Supervisor',
           employeeDept: emp2.department || 'Logística',
-          employeeAvatar: emp2.avatar || '',
-          type: '⚠️ Atraso de Entrada',
-          reason: '[Atraso 35m: Paralisação inesperada e atraso no transporte público na linha 9]',
-          date: `${today} (Previsto: 08:00 às 17:00 | Ponto: 08:35 às 17:00)`,
-          documentName: 'Espelho Eletrônico (Portaria 671)',
-          documentUrl: undefined,
-          status: 'Pendente' as const,
-          actionText: undefined,
+          employeeAvatar: emp2.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+          date: today,
+          scheduledTime: '08:00 às 17:00',
+          punchTime: '08:35 às 17:00',
+          diffMinutes: -35,
+          diffBadge: '-35 min',
+          type: 'atraso',
+          typeLabel: '⚠️ Atraso de Entrada',
+          reason: 'Paralisação inesperada e atraso no transporte público na linha 9',
+          status: 'Pendente',
           feedback: '',
-          isShiftOccurrence: true,
         },
         {
-          id: 'shift-occ-sim-forgot-1',
-          shiftId: 'sim-shift-forgot-1',
+          id: 'bh-sim-3',
           employeeId: emp3.id,
-          employeeName: emp3.name,
+          employeeName: emp3.name || 'Mariana Rios',
           employeeRole: emp3.role || 'Atendente',
           employeeDept: emp3.department || 'Atendimento',
-          employeeAvatar: emp3.avatar || '',
-          type: 'ℹ️ Ajuste de Esquecimento',
-          reason: '[Esquecimento de Saída: Saída real no horário previsto (15:20) - Batida às 15:59]',
-          date: `${today} (Previsto: 08:00 às 15:20 | Ponto: 08:00 às 15:59)`,
-          documentName: 'Espelho Eletrônico (Portaria 671)',
-          documentUrl: undefined,
-          status: 'Pendente' as const,
-          actionText: undefined,
+          employeeAvatar: emp3.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+          date: today,
+          scheduledTime: '08:00 às 15:20',
+          punchTime: '08:00 às 15:59',
+          diffMinutes: 0,
+          diffBadge: '0 min (Esquecimento)',
+          type: 'esquecimento',
+          typeLabel: 'ℹ️ Esquecimento de Saída',
+          reason: 'Esquecimento de Saída: Saída real no horário previsto (15:20) - Batida às 15:59',
+          status: 'Pendente',
           feedback: '',
-          isShiftOccurrence: true,
         },
-      ];
+      ]);
     }
-
-    setApprovalsData([...mappedJustifications, ...mappedRequests, ...finalShiftOccurrences]);
   }, [employees, justifications, requests, shifts]);
 
+  // Ações de Aprovação / Recusa para Atestados e Trocas (Aba Aprovações)
   const handleApproveOccurrence = async (id: string) => {
     const targetItem = approvalsData.find(i => i.id === id);
     const customFeedback = targetItem?.feedback?.trim() || undefined;
-
-    if (id.startsWith('shift-occ-')) {
-      const shiftId = (targetItem as any)?.shiftId;
-      if (shiftId) {
-        const targetShift = shifts.find(s => s.id === shiftId);
-        if (targetShift) {
-          onOpenEditShift?.({
-            ...targetShift,
-            notes: `${targetShift.notes || ''} [HOMOLOGADO GESTOR: Aprovado para Banco de Horas]`
-          });
-        }
-      }
-      setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, status: 'Aprovado', actionText: 'Homologado Banco de Horas' } : item));
-      showPolishedToast({
-        id: 'shift-homologated',
-        title: 'Hora Extra Homologada!',
-        description: 'Horas aprovadas e creditadas no Banco de Horas do colaborador com sucesso.',
-        rimVariant: 'success',
-        duration: 4000,
-      });
-      return;
-    }
 
     setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, status: 'Aprovado', actionText: 'Homologado agora' } : item));
     const isRequest = requests.some(r => r.id === id);
@@ -418,33 +461,18 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     } else {
       await updateJustificativaStatusSupabase(id, 'approved', customFeedback || 'Homologado pelo gestor');
     }
+    showPolishedToast({
+      id: 'approval-success',
+      title: 'Solicitação Homologada',
+      description: 'O pedido do colaborador foi aprovado e lançado no espelho com sucesso.',
+      rimVariant: 'success',
+      duration: 3500,
+    });
   };
 
   const handleRejectOccurrence = async (id: string) => {
     const targetItem = approvalsData.find(i => i.id === id);
     const customFeedback = targetItem?.feedback?.trim() || undefined;
-
-    if (id.startsWith('shift-occ-')) {
-      const shiftId = (targetItem as any)?.shiftId;
-      if (shiftId) {
-        const targetShift = shifts.find(s => s.id === shiftId);
-        if (targetShift) {
-          onOpenEditShift?.({
-            ...targetShift,
-            notes: `${targetShift.notes || ''} [AJUSTE GESTOR: Saída considerada no horário contratual (${targetShift.endTime}) - Sem HE]`
-          });
-        }
-      }
-      setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, status: 'Recusado / Falta', actionText: 'Ajustado p/ Horário Regular' } : item));
-      showPolishedToast({
-        id: 'shift-adjusted',
-        title: 'Ponto Ajustado p/ Horário Normal',
-        description: 'Registro técnico preservado (Portaria 671). Ajuste de tratamento aplicado sem gerar HE indevida (Art. 4º CLT).',
-        rimVariant: 'default',
-        duration: 5000,
-      });
-      return;
-    }
 
     setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, status: 'Recusado / Falta', actionText: 'Recusado agora' } : item));
     const isRequest = requests.some(r => r.id === id);
@@ -460,9 +488,63 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     } else {
       await updateJustificativaStatusSupabase(id, 'rejected', customFeedback || 'Recusado pelo gestor');
     }
+    showPolishedToast({
+      id: 'approval-rejected',
+      title: 'Solicitação Recusada',
+      description: 'A solicitação foi recusada e o colaborador foi notificado.',
+      rimVariant: 'default',
+      duration: 3500,
+    });
   };
 
-  const handleGenerateManagerSampleOccurrence = (type: 'hora_extra' | 'atraso' | 'esquecimento') => {
+  // Ações do Gestor para Banco de Horas e Ajustes CLT (Aba Relatório de Presenças)
+  const handleHomologarBanco = (id: string) => {
+    const item = bancoHorasData.find(i => i.id === id);
+    if (item?.shiftId) {
+      const targetShift = shifts.find(s => s.id === item.shiftId);
+      if (targetShift) {
+        onOpenEditShift?.({
+          ...targetShift,
+          notes: `${targetShift.notes || ''} [HOMOLOGADO GESTOR: Aprovado para Banco de Horas]`
+        });
+      }
+    }
+    setBancoHorasData(prev => prev.map(i => i.id === id ? { ...i, status: 'Homologado', feedback: i.feedback || 'Horas extras aprovadas para crédito no Banco de Horas / folha' } : i));
+    showPolishedToast({
+      id: 'bh-homologado',
+      title: 'Hora Extra Homologada!',
+      description: 'Saldo aprovado e creditado no Banco de Horas do colaborador com sucesso.',
+      rimVariant: 'success',
+      duration: 4000,
+    });
+  };
+
+  const handleAjustarHorarioNormal = (id: string) => {
+    const item = bancoHorasData.find(i => i.id === id);
+    if (item?.shiftId) {
+      const targetShift = shifts.find(s => s.id === item.shiftId);
+      if (targetShift) {
+        onOpenEditShift?.({
+          ...targetShift,
+          notes: `${targetShift.notes || ''} [AJUSTE GESTOR: Saída considerada no horário contratual (${targetShift.endTime}) - Sem HE]`
+        });
+      }
+    }
+    setBancoHorasData(prev => prev.map(i => i.id === id ? { ...i, status: 'Ajustado', feedback: i.feedback || 'Tratado para horário previsto contratual (CLT Art. 4º § 2º - Sem HE indevida)' } : i));
+    showPolishedToast({
+      id: 'bh-ajustado',
+      title: 'Ponto Ajustado p/ Horário Normal',
+      description: 'Registro técnico preservado (Portaria 671). Ajuste de tratamento aplicado sem gerar HE indevida (Art. 4º CLT).',
+      rimVariant: 'default',
+      duration: 5000,
+    });
+  };
+
+  const handleUpdateBancoHorasFeedback = (id: string, feedback: string) => {
+    setBancoHorasData(prev => prev.map(i => i.id === id ? { ...i, feedback } : i));
+  };
+
+  const handleGenerateBancoHorasSample = (type: 'hora_extra' | 'atraso' | 'esquecimento') => {
     const today = getTodayDateString();
     const targetEmp = employees[0] || {
       id: 'emp-sample-1',
@@ -472,63 +554,87 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
     };
 
-    const simId = `shift-sim-${Date.now()}`;
-    let typeLabel = '';
-    let notes = '';
-    let dateStr = '';
+    const simId = `sim-bh-${Date.now()}`;
+    let newOcc: BancoHorasItem;
 
     if (type === 'hora_extra') {
-      typeLabel = '⏰ Hora Extra / Banco de Horas';
-      notes = '[HE +39m: Atendimento urgente e suporte estendido a cliente corporativo]';
-      dateStr = `${today} (Previsto: 08:00 às 15:20 | Ponto: 08:00 às 15:59)`;
+      newOcc = {
+        id: simId,
+        employeeId: targetEmp.id,
+        employeeName: targetEmp.name,
+        employeeRole: targetEmp.role || 'Colaborador',
+        employeeDept: targetEmp.department || 'Operações',
+        employeeAvatar: targetEmp.avatar || '',
+        date: today,
+        scheduledTime: '08:00 às 15:20',
+        punchTime: '08:00 às 15:59',
+        diffMinutes: 39,
+        diffBadge: '+39 min',
+        type: 'hora_extra',
+        typeLabel: '⏰ Hora Extra',
+        reason: 'Atendimento urgente e suporte estendido a cliente corporativo',
+        status: 'Pendente',
+        feedback: '',
+      };
       showPolishedToast({
         id: 'sim-he-created',
-        title: 'Caso de Hora Extra Gerado',
-        description: 'Colaborador registrou saída às 15:59 (+39 min). Analise e clique em "Homologar Banco" ou "Ajustar Horário Normal".',
+        title: 'Caso de Hora Extra Gerado (+39 min)',
+        description: 'Colaborador saiu após o término da escala. Clique em "Homologar Banco" para creditar.',
         rimVariant: 'success',
       });
     } else if (type === 'atraso') {
-      typeLabel = '⚠️ Atraso de Entrada';
-      notes = '[Atraso 35m: Paralisação inesperada e atraso no transporte público na linha 9]';
-      dateStr = `${today} (Previsto: 08:00 às 17:00 | Ponto: 08:35 às 17:00)`;
+      newOcc = {
+        id: simId,
+        employeeId: targetEmp.id,
+        employeeName: targetEmp.name,
+        employeeRole: targetEmp.role || 'Colaborador',
+        employeeDept: targetEmp.department || 'Operações',
+        employeeAvatar: targetEmp.avatar || '',
+        date: today,
+        scheduledTime: '08:00 às 17:00',
+        punchTime: '08:35 às 17:00',
+        diffMinutes: -35,
+        diffBadge: '-35 min',
+        type: 'atraso',
+        typeLabel: '⚠️ Atraso de Entrada',
+        reason: 'Paralisação inesperada e atraso no transporte público na linha 9',
+        status: 'Pendente',
+        feedback: '',
+      };
       showPolishedToast({
         id: 'sim-late-created',
-        title: 'Caso de Atraso Gerado',
-        description: 'Colaborador registrou entrada às 08:35 (+35 min de atraso). Avalie a justificativa.',
+        title: 'Caso de Atraso Gerado (-35 min)',
+        description: 'Colaborador entrou 35 min após o início da escala. Avalie o débito/justificativa.',
         rimVariant: 'default',
       });
     } else {
-      typeLabel = 'ℹ️ Ajuste de Esquecimento';
-      notes = '[Esquecimento de Saída: Saída real no horário previsto (15:20) - Batida às 15:59]';
-      dateStr = `${today} (Previsto: 08:00 às 15:20 | Ponto: 08:00 às 15:59)`;
+      newOcc = {
+        id: simId,
+        employeeId: targetEmp.id,
+        employeeName: targetEmp.name,
+        employeeRole: targetEmp.role || 'Colaborador',
+        employeeDept: targetEmp.department || 'Operações',
+        employeeAvatar: targetEmp.avatar || '',
+        date: today,
+        scheduledTime: '08:00 às 15:20',
+        punchTime: '08:00 às 15:59',
+        diffMinutes: 0,
+        diffBadge: '0 min (Esquecimento)',
+        type: 'esquecimento',
+        typeLabel: 'ℹ️ Esquecimento de Saída',
+        reason: 'Esquecimento de Saída: Saída real no horário previsto (15:20) - Batida às 15:59',
+        status: 'Pendente',
+        feedback: '',
+      };
       showPolishedToast({
         id: 'sim-forgot-created',
         title: 'Caso de Esquecimento Gerado',
-        description: 'Colaborador registrou saída tardia por esquecimento. Ajuste para a jornada contratual prevista (Art. 4º CLT).',
+        description: 'Colaborador registrou saída tardia por esquecimento. Clique em "Ajustar Horário Normal" (Art. 4º CLT).',
         rimVariant: 'default',
       });
     }
 
-    const newRow = {
-      id: `shift-occ-${simId}`,
-      shiftId: simId,
-      employeeId: targetEmp.id,
-      employeeName: targetEmp.name,
-      employeeRole: targetEmp.role || 'Colaborador',
-      employeeDept: targetEmp.department || 'Geral',
-      employeeAvatar: targetEmp.avatar || '',
-      type: typeLabel,
-      reason: notes,
-      date: dateStr,
-      documentName: 'Espelho Eletrônico (Portaria 671)',
-      documentUrl: undefined,
-      status: 'Pendente' as const,
-      actionText: undefined,
-      feedback: '',
-      isShiftOccurrence: true,
-    };
-
-    setApprovalsData(prev => [newRow, ...prev]);
+    setBancoHorasData(prev => [newOcc, ...prev]);
   };
 
   const handleUpdateFeedback = async (id: string, feedback: string) => {
@@ -578,6 +684,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
   // Tab 3 (Relatórios) States
   const [relatorioSearch, setRelatorioSearch] = useState('');
+  const [relatorioDate, setRelatorioDate] = useState('');
   const [relatorioStatus, setRelatorioStatus] = useState('all');
   const [relatorioDept, setRelatorioDept] = useState('all');
 
@@ -632,6 +739,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
         return {
           date: s.date,
+          avatar: emp?.avatar || '',
           name: emp?.name || 'Colaborador',
           role: emp?.role || 'Colaborador',
           dept: emp?.department || 'Geral',
@@ -1650,7 +1758,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         const pendingCount = approvalsData.filter(i => i.status === 'Pendente').length;
         const faltasCount = approvalsData.filter(i => i.status === 'Falta Lançada' || i.status === 'Recusado / Falta').length;
         const atestadosCount = approvalsData.filter(i => i.documentName && i.documentName.toLowerCase().includes('.pdf')).length;
-        const bancoHorasCount = approvalsData.filter(i => (i as any).isShiftOccurrence && i.status === 'Pendente').length;
 
         // Filter items
         const filteredApprovals = approvalsData.filter(row => {
@@ -1670,13 +1777,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             return false;
           }
 
-          // Tab filter (Todos, Pendentes, Aprovados, Faltas / Recusados, Banco de Horas)
-          if (approvalsFilterTab === 'banco_horas') {
-            return (row as any).isShiftOccurrence === true;
-          }
-          if (approvalsFilterTab !== 'all' && (row as any).isShiftOccurrence) {
-            return false;
-          }
+          // Tab filter (Todos, Pendentes, Aprovados, Faltas / Recusados)
           if (approvalsFilterTab === 'pending') {
             return row.status === 'Pendente';
           }
@@ -1901,23 +2002,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 >
                   Faltas / Recusados
                 </button>
-                <button
-                  onClick={() => setApprovalsFilterTab('banco_horas')}
-                  data-active={approvalsFilterTab === 'banco_horas' ? 'true' : 'false'}
-                  className={`approvals-light-status-button px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                    approvalsFilterTab === 'banco_horas'
-                      ? 'bg-gradient-to-r from-purple-700 to-indigo-700 text-white font-black border border-purple-400 shadow-md'
-                      : 'text-purple-300 hover:text-white'
-                  }`}
-                >
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>Banco de Horas & Extras</span>
-                  {bancoHorasCount > 0 && (
-                    <span className="w-4 h-4 rounded-full text-[9px] font-mono bg-purple-400 text-purple-950 flex items-center justify-center font-bold">
-                      {bancoHorasCount}
-                    </span>
-                  )}
-                </button>
               </div>
 
               <button
@@ -1931,61 +2015,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 <Plus className="w-4 h-4" /> Nova Solicitação / Lançar Falta
               </button>
             </div>
-
-            {/* Banner de Simulação de Casos para o Gestor (Banco de Horas, Atrasos e Esquecimentos) */}
-            {approvalsFilterTab === 'banco_horas' && (
-              <div
-                className="p-4 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10 shadow-lg animate-in fade-in duration-200"
-                style={{
-                  background: 'linear-gradient(135deg, rgba(88, 28, 135, 0.28) 0%, rgba(30, 27, 75, 0.5) 100%)',
-                  borderColor: 'rgba(168, 85, 247, 0.4)',
-                }}
-              >
-                <div className="space-y-1 max-w-xl">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
-                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-purple-300">
-                      Ambiente de Simulação do Gestor (CLT & Portaria 671)
-                    </span>
-                  </div>
-                  <h4 className="text-sm font-black text-white">
-                    Simule e teste a tomada de decisão do Gestor em 1 clique
-                  </h4>
-                  <p className="text-xs text-purple-200/80 leading-relaxed">
-                    Clique nos botões de teste ao lado para gerar ocorrências instantâneas e avaliar como o sistema homologa horas para o Banco de Horas ou aplica o ajuste de horário previsto (sem HE indevida).
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => handleGenerateManagerSampleOccurrence('hora_extra')}
-                    className="px-3 py-2 rounded-xl text-xs font-bold bg-purple-500/20 hover:bg-purple-500/35 text-purple-200 border border-purple-400/40 flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
-                    title="Simula colaborador que trabalhou além do horário previsto (+39 min) aguardando sua homologação"
-                  >
-                    <span>⚡ Simular Hora Extra (+39m)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleGenerateManagerSampleOccurrence('atraso')}
-                    className="px-3 py-2 rounded-xl text-xs font-bold bg-amber-500/20 hover:bg-amber-500/35 text-amber-200 border border-amber-400/40 flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
-                    title="Simula colaborador que iniciou com atraso (+35 min) justificando trânsito"
-                  >
-                    <span>⏱️ Simular Atraso (+35m)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleGenerateManagerSampleOccurrence('esquecimento')}
-                    className="px-3 py-2 rounded-xl text-xs font-bold bg-blue-500/20 hover:bg-blue-500/35 text-blue-200 border border-blue-400/40 flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
-                    title="Simula colaborador que esqueceu de bater a saída e saiu no horário previsto (Art. 4º CLT)"
-                  >
-                    <span>ℹ️ Simular Esquecimento de Saída</span>
-                  </button>
-                </div>
-              </div>
-            )}
 
             {/* Data Table igual à Imagem 2 + Coluna Adicional de Observação / Feedback para o Colaborador */}
             <div 
@@ -2143,20 +2172,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             <div className="flex items-center justify-end gap-2">
                               <button
                                 onClick={() => handleApproveOccurrence(row.id)}
-                                title={(row as any).isShiftOccurrence ? "Homologar para Banco de Horas" : "Aprovar Pedido"}
+                                title="Aprovar Solicitação"
                                 className="approvals-light-approve px-3 py-1.5 rounded-xl font-bold text-xs text-white transition-all shadow-md flex items-center gap-1 cursor-pointer hover:scale-105"
                                 style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
                               >
                                 <CheckCircle2 className="w-3.5 h-3.5" />
-                                <span>{(row as any).isShiftOccurrence ? 'Homologar Banco' : 'Aprovar'}</span>
+                                <span>Aprovar</span>
                               </button>
                               <button
                                 onClick={() => handleRejectOccurrence(row.id)}
-                                title={(row as any).isShiftOccurrence ? "Ajustar para Horário Regular da Escala (Desconsiderar HE indevida conforme Art. 4º CLT)" : "Recusar Pedido"}
+                                title="Recusar Solicitação"
                                 className="approvals-light-reject px-2.5 py-1.5 border border-rose-500/30 text-rose-300 hover:bg-rose-500/10 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer"
                               >
                                 <XCircle className="w-3.5 h-3.5" />
-                                <span>{(row as any).isShiftOccurrence ? 'Ajustar Horário Normal' : 'Recusar'}</span>
+                                <span>Recusar</span>
                               </button>
                             </div>
                           ) : (
@@ -2410,20 +2439,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           className="px-3.5 py-2 rounded-xl border border-rose-500/40 text-rose-300 hover:bg-rose-500/15 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
                         >
                           <XCircle className="w-4 h-4" />
-                          <span>{(selectedDetailOccurrence as any).isShiftOccurrence ? 'Ajustar Horário Normal' : 'Recusar'}</span>
+                          <span>Recusar</span>
                         </button>
 
                         <button
                           type="button"
                           onClick={() => {
                             handleApproveOccurrence(selectedDetailOccurrence.id);
-                            setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Aprovado', actionText: 'Homologado Banco de Horas' } : null);
+                            setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Aprovado', actionText: 'Homologado agora' } : null);
                           }}
                           className="px-4 py-2 rounded-xl font-bold text-xs text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:scale-105 active:scale-95"
                           style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
                         >
                           <CheckCircle2 className="w-4 h-4" />
-                          <span>{(selectedDetailOccurrence as any).isShiftOccurrence ? 'Homologar Banco de Horas' : 'Aprovar Solicitação'}</span>
+                          <span>Aprovar Solicitação</span>
                         </button>
                       </div>
                     ) : (
@@ -2581,46 +2610,39 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           <div 
             className="attendance-report-glow absolute -top-12 right-0 w-[500px] h-[350px] pointer-events-none rounded-full"
             style={{
-                background: 'radial-gradient(circle, rgba(245, 146, 66, 0.16) 0%, rgba(159, 36, 60, 0.12) 45%, transparent 75%)',
+              background: 'radial-gradient(circle, rgba(245, 146, 66, 0.16) 0%, rgba(159, 36, 60, 0.12) 45%, transparent 75%)',
               filter: 'blur(90px)',
               zIndex: 0,
             }}
           />
 
-          {/* Hero Banner Dark com Luz Quente na Lateral Direita (Fiel à LP) */}
+          {/* Hero Banner com Suporte Completo a Dark e Light Mode */}
           <div 
-            className="approvals-hero attendance-report-hero rounded-3xl p-6 sm:p-8 border border-white/10 shadow-2xl relative overflow-hidden"
-            style={{ 
-              backgroundColor: '#111216',
-              boxShadow: '0 20px 50px rgba(0,0,0,0.6)'
-            }}
+            className={`approvals-hero attendance-report-hero rounded-3xl p-6 sm:p-8 border shadow-2xl relative overflow-hidden transition-all duration-300 ${
+              isDark 
+                ? 'border-white/10 bg-[#0F1117]' 
+                : 'border-slate-200 bg-white shadow-slate-200/50'
+            }`}
+            style={
+              isDark 
+                ? { background: 'radial-gradient(ellipse 80% 90% at 95% 50%, rgba(150, 24, 60, 0.35) 0%, rgba(248, 150, 66, 0.15) 50%, rgba(15, 17, 23, 0) 80%), #0F1117' }
+                : { background: 'radial-gradient(ellipse 80% 90% at 95% 50%, rgba(150, 24, 60, 0.15) 0%, rgba(248, 150, 66, 0.1) 50%, rgba(255, 255, 255, 0) 80%), #ffffff' }
+            }
           >
-            {/* Feixe quente alaranjado/vermelho da Landing Page */}
-            <div 
-              className="attendance-report-hero-glow absolute -top-1/2 -right-10 w-[55%] h-[200%] pointer-events-none"
-              style={{
-                  background: 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.24) 0%, rgba(100, 12, 30, 0.22) 45%, transparent 75%)',
-                filter: 'blur(60px)',
-              }}
-            />
-
             <div className="attendance-report-hero-content relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div className="max-w-xl space-y-2">
-                <div className="attendance-report-eyebrow inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-slate-300 border border-white/10 bg-white/5">
-                  <span className="w-3.5 h-0.5 rounded-full" style={{ background: 'linear-gradient(90deg, #640C1E, #9F243C, #F59242)' }} />
-                  GESTÃO INTELIGENTE DE EQUIPES
+                <div className={`attendance-report-eyebrow inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                  isDark ? 'bg-white/10 text-[#f89642] border border-white/10' : 'bg-slate-100 text-[#96183c] border border-slate-200'
+                }`}>
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Gestão Inteligente de Equipes</span>
                 </div>
-                <h2 className="attendance-report-title text-2xl sm:text-3xl font-black text-white tracking-tight leading-tight">
-                  Relatório de <br className="hidden sm:inline" />
-                  <span style={{
-                    background: 'linear-gradient(90deg, #F9DE97 0%, #F59242 52%, #9F243C 100%)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent'
-                  }}>
-                    Presenças
-                  </span>
+                <h2 className={`attendance-report-title text-2xl sm:text-3xl font-black tracking-tight leading-tight ${
+                  isDark ? 'text-white' : 'text-slate-900'
+                }`}>
+                  Relatório de <span className="bg-gradient-to-r from-[#96183c] via-[#f89642] to-[#f89642] bg-clip-text text-transparent">Presenças</span>
                 </h2>
-                <p className="text-xs sm:text-sm text-slate-400">
+                <p className={`text-xs sm:text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                   Consolidação em tempo real de jornadas, faltas justificadas, assiduidade e histórico operacional.
                 </p>
               </div>
@@ -2628,10 +2650,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               <div className="relative z-10 flex items-center gap-3 shrink-0">
                 <button
                   onClick={onExportCsv}
-                  className="attendance-report-export px-5 py-2.5 font-bold text-xs rounded-full text-white flex items-center gap-2 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                  className="attendance-report-export px-5 py-2.5 font-bold text-xs rounded-2xl text-white flex items-center gap-2 shadow-xl hover:scale-105 active:scale-95 transition-all cursor-pointer"
                   style={{ 
-                    background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)',
-                    boxShadow: '0 4px 18px rgba(100, 12, 30, 0.30)'
+                    background: 'linear-gradient(135deg, #96183c, #f89847)'
                   }}
                 >
                   <Download className="w-4 h-4" /> Exportar Relatório CSV
@@ -2640,164 +2661,948 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             </div>
           </div>
 
-          {/* KPI Cards Estilo Widget da LP */}
-          <div className="attendance-report-kpis grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
-            {[
-              { label: 'Taxa de Presença', value: '96%', sub: '▲ +2.4% acima da meta', dotColor: '#49d982', dotGlow: '#49d982' },
-              { label: 'Colaboradores Ativos', value: '48', sub: 'Total cadastrado na base', dotColor: '#F59242', dotGlow: '#F59242' },
-              { label: 'Escalas Hoje', value: '24', sub: 'Diurnas e noturnas', dotColor: '#F9DE97', dotGlow: '#F9DE97' },
-              { label: 'Faltas no Período', value: '02', sub: '1 abonada c/ atestado', dotColor: '#9F243C', dotGlow: '#9F243C' },
-            ].map((kpi, i) => (
-              <div 
-                key={i} 
-                className="approval-kpi attendance-report-kpi p-5 rounded-2xl border border-[#282a33] space-y-2 transition-transform hover:-translate-y-1 hover:border-[#3b3e4c]" 
-                style={{ background: '#15161b', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
+          {/* Sub-Navegação: Visão Geral de Presenças vs. Banco de Horas & Extras */}
+          <div className="flex flex-wrap items-center justify-between gap-3 relative z-10">
+            <div className={`flex items-center gap-2 p-1.5 rounded-2xl border transition-colors ${
+              isDark ? 'bg-[#15161b] border-[#282a33]' : 'bg-white border-slate-200 shadow-xs'
+            }`}>
+              <button
+                type="button"
+                onClick={() => setRelatorioSubTab('geral')}
+                data-active={relatorioSubTab === 'geral' ? 'true' : 'false'}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  relatorioSubTab === 'geral'
+                    ? 'bg-gradient-to-r from-[#640C1E] to-[#9F243C] text-[#F9DE97] shadow-md'
+                    : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                }`}
               >
-                <div className="flex items-center justify-between">
-                  <span className="attendance-report-kpi-label text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">{kpi.label}</span>
-                  <span 
-                    className="attendance-report-kpi-dot w-2.5 h-2.5 rounded-full" 
-                    style={{ background: kpi.dotColor, boxShadow: `0 0 8px ${kpi.dotGlow}` }}
-                  />
-                </div>
-                <div className="attendance-report-kpi-value text-3xl font-extrabold text-white font-sans">{kpi.value}</div>
-                <span className="attendance-report-kpi-sub text-[11px] text-slate-500 font-medium block">{kpi.sub}</span>
-              </div>
-            ))}
-          </div>
+                <FileText className="w-3.5 h-3.5" />
+                <span>Visão Geral de Presenças</span>
+              </button>
 
-          {/* Filter Bar */}
-          <div 
-            className="approval-filter-bar attendance-report-filters p-4 rounded-2xl border border-[#282a33] flex flex-wrap items-center justify-between gap-3 relative z-10" 
-            style={{ background: '#15161b' }}
-          >
-            <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[260px]">
-              <div className="relative flex-1 min-w-[200px]">
-                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={relatorioSearch}
-                  onChange={(e) => setRelatorioSearch(e.target.value)}
-                  placeholder="Filtrar por colaborador ou setor..."
-                  className="w-full pl-9 pr-3 py-2 text-xs rounded-full text-white placeholder:text-slate-500 outline-none transition-colors"
-                  style={{ background: '#0e0f12', border: '1px solid #282a33' }}
-                />
-              </div>
-              <select
-                value={relatorioStatus}
-                onChange={(e) => setRelatorioStatus(e.target.value)}
-                className="py-2 px-4 text-xs font-semibold rounded-full text-white outline-none cursor-pointer"
-                style={{ background: '#0e0f12', border: '1px solid #282a33', colorScheme: 'dark' }}
+              <button
+                type="button"
+                onClick={() => setRelatorioSubTab('banco_horas')}
+                data-active={relatorioSubTab === 'banco_horas' ? 'true' : 'false'}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  relatorioSubTab === 'banco_horas'
+                    ? 'bg-gradient-to-r from-[#640C1E] to-[#9F243C] text-[#F9DE97] font-black border border-[#F59242]/40 shadow-md'
+                    : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                }`}
               >
-                <option value="all">Todos os Status</option>
-                <option value="present">Presente</option>
-                <option value="late">Atrasado</option>
-                <option value="absent">Ausente</option>
-                <option value="justified">Justificado</option>
-              </select>
-              <select
-                value={relatorioDept}
-                onChange={(e) => setRelatorioDept(e.target.value)}
-                className="py-2 px-4 text-xs font-semibold rounded-full text-white outline-none cursor-pointer"
-                style={{ background: '#0e0f12', border: '1px solid #282a33', colorScheme: 'dark' }}
-              >
-                <option value="all">Todos os Departamentos</option>
-                {departments.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
+                <Clock className="w-3.5 h-3.5" />
+                <span>Banco de Horas & Extras</span>
+                {bancoHorasData.filter(i => i.status === 'Pendente').length > 0 && (
+                  <span className="w-5 h-5 rounded-full text-[10px] font-mono bg-[#F59242] text-[#640C1E] flex items-center justify-center font-bold">
+                    {bancoHorasData.filter(i => i.status === 'Pendente').length}
+                  </span>
+                )}
+              </button>
             </div>
           </div>
 
-          {/* Data Table */}
-          <div 
-            className="attendance-report-table rounded-2xl border border-[#282a33] overflow-hidden overflow-x-auto relative z-10" 
-            style={{ background: '#15161b' }}
-          >
-            <table className="w-full border-collapse text-left text-xs font-sans min-w-[800px]">
-              <thead>
-                <tr className="border-b border-[#282a33] font-mono text-[10px] uppercase text-slate-400" style={{ background: '#101115' }}>
-                  <th className="p-3.5">DATA</th>
-                  <th className="p-3.5">COLABORADOR</th>
-                  <th className="p-3.5">DEPARTAMENTO</th>
-                  <th className="p-3.5">HORÁRIO</th>
-                  <th className="p-3.5">CARGA</th>
-                  <th className="p-3.5">STATUS PRESENÇA</th>
-                  <th className="p-3.5">TIPO</th>
-                  <th className="p-3.5">OBSERVAÇÕES</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reportRows.filter(row => {
-                  const matchSearch = !relatorioSearch || row.name.toLowerCase().includes(relatorioSearch.toLowerCase()) || row.dept.toLowerCase().includes(relatorioSearch.toLowerCase());
-                  const matchDept = relatorioDept === 'all' || row.dept === relatorioDept;
-                  const matchStatus = relatorioStatus === 'all' || 
-                    (relatorioStatus === 'present' && row.status === 'Presente') ||
-                    (relatorioStatus === 'late' && row.status === 'Atrasado') ||
-                    (relatorioStatus === 'absent' && row.status === 'Ausente') ||
-                    (relatorioStatus === 'justified' && row.status === 'Justificado');
-                  return matchSearch && matchDept && matchStatus;
-                }).map((row, idx) => (
-                  <tr 
-                    key={idx} 
-                    className="border-b border-white/5 transition-colors hover:bg-white/[0.03]" 
-                    style={{ color: '#e2e8f0' }}
+          {/* SUB-VIEW 1: VISÃO GERAL DE PRESENÇAS */}
+          {relatorioSubTab === 'geral' && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              {/* KPI Cards Estilo Widget da LP */}
+              <div className="attendance-report-kpis grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
+                {[
+                  { label: 'Taxa de Presença', value: '96%', sub: '▲ +2.4% acima da meta', dotColor: '#49d982', dotGlow: '#49d982' },
+                  { label: 'Colaboradores Ativos', value: '48', sub: 'Total cadastrado na base', dotColor: '#F59242', dotGlow: '#F59242' },
+                  { label: 'Escalas Hoje', value: '24', sub: 'Diurnas e noturnas', dotColor: '#F9DE97', dotGlow: '#F9DE97' },
+                  { label: 'Faltas no Período', value: '02', sub: '1 abonada c/ atestado', dotColor: '#9F243C', dotGlow: '#9F243C' },
+                ].map((kpi, i) => (
+                  <div 
+                    key={i} 
+                    className={`approval-kpi attendance-report-kpi p-5 rounded-2xl border space-y-2 transition-transform hover:-translate-y-1 ${
+                      isDark 
+                        ? 'bg-[#15161b] border-[#282a33] hover:border-[#3b3e4c]' 
+                        : 'bg-white border-slate-200 shadow-sm hover:border-slate-300'
+                    }`}
+                    style={{ boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.4)' : '0 4px 16px rgba(0,0,0,0.04)' }}
                   >
-                    <td className="p-3.5 font-mono text-[11px] text-slate-400">{row.date}</td>
-                    <td className="p-3.5">
-                      <div className="flex items-center gap-2.5">
-                        <div 
-                          className="w-7 h-7 rounded-full p-[1.5px] shrink-0" 
-                          style={{ background: 'linear-gradient(90deg, #640C1E, #9F243C, #F59242)' }}
+                    <div className="flex items-center justify-between">
+                      <span className={`attendance-report-kpi-label text-[11px] font-semibold uppercase tracking-wider block ${
+                        isDark ? 'text-slate-400' : 'text-slate-500'
+                      }`}>{kpi.label}</span>
+                      <span 
+                        className="attendance-report-kpi-dot w-2.5 h-2.5 rounded-full" 
+                        style={{ background: kpi.dotColor, boxShadow: `0 0 8px ${kpi.dotGlow}` }}
+                      />
+                    </div>
+                    <div className={`attendance-report-kpi-value text-3xl font-extrabold font-sans ${
+                      isDark ? 'text-white' : 'text-slate-900'
+                    }`}>{kpi.value}</div>
+                    <span className={`attendance-report-kpi-sub text-[11px] font-medium block ${
+                      isDark ? 'text-slate-500' : 'text-slate-500'
+                    }`}>{kpi.sub}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Filter Bar */}
+              <div 
+                className={`approval-filter-bar attendance-report-filters p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-3 relative z-10 transition-colors ${
+                  isDark ? 'bg-[#15161b] border-[#282a33]' : 'bg-white border-slate-200 shadow-xs'
+                }`}
+              >
+                <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[260px]">
+                  <div className="relative flex-1 min-w-[200px]">
+                    <Search className={`w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 ${
+                      isDark ? 'text-slate-500' : 'text-slate-400'
+                    }`} />
+                    <input
+                      type="text"
+                      value={relatorioSearch}
+                      onChange={(e) => setRelatorioSearch(e.target.value)}
+                      placeholder="Filtrar por colaborador, setor ou data (ex: 26-10-2026)..."
+                      className={`w-full pl-9 pr-3 py-2 text-xs rounded-full outline-none transition-colors ${
+                        isDark 
+                          ? 'bg-[#0e0f12] text-white placeholder:text-slate-500 border border-[#282a33] focus:border-[#F59242]' 
+                          : 'bg-slate-50 text-slate-900 placeholder:text-slate-400 border border-slate-200 focus:border-[#9F243C]'
+                      }`}
+                    />
+                  </div>
+
+                  {/* Filtro específico por data */}
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="date"
+                      value={relatorioDate}
+                      onChange={(e) => setRelatorioDate(e.target.value)}
+                      className={`py-2 px-3 text-xs font-semibold rounded-full outline-none cursor-pointer transition-colors ${
+                        isDark 
+                          ? 'bg-[#0e0f12] text-white border border-[#282a33]' 
+                          : 'bg-slate-50 text-slate-900 border border-slate-200'
+                      }`}
+                      title="Filtrar por data específica"
+                    />
+                    {relatorioDate && (
+                      <button
+                        type="button"
+                        onClick={() => setRelatorioDate('')}
+                        className={`px-2 py-1 text-[10px] font-bold rounded-full transition-colors cursor-pointer ${
+                          isDark ? 'text-slate-400 hover:text-white bg-white/5' : 'text-slate-500 hover:text-slate-900 bg-slate-100'
+                        }`}
+                        title="Limpar filtro de data"
+                      >
+                        ✕ Limpar data
+                      </button>
+                    )}
+                  </div>
+
+                  <select
+                    value={relatorioStatus}
+                    onChange={(e) => setRelatorioStatus(e.target.value)}
+                    className={`py-2 px-4 text-xs font-semibold rounded-full outline-none cursor-pointer ${
+                      isDark 
+                        ? 'bg-[#0e0f12] text-white border border-[#282a33]' 
+                        : 'bg-slate-50 text-slate-900 border border-slate-200'
+                    }`}
+                  >
+                    <option value="all">Todos os Status</option>
+                    <option value="present">Presente</option>
+                    <option value="late">Atrasado</option>
+                    <option value="absent">Ausente</option>
+                    <option value="justified">Justificado</option>
+                  </select>
+
+                  <select
+                    value={relatorioDept}
+                    onChange={(e) => setRelatorioDept(e.target.value)}
+                    className={`py-2 px-4 text-xs font-semibold rounded-full outline-none cursor-pointer ${
+                      isDark 
+                        ? 'bg-[#0e0f12] text-white border border-[#282a33]' 
+                        : 'bg-slate-50 text-slate-900 border border-slate-200'
+                    }`}
+                  >
+                    <option value="all">Todos os Departamentos</option>
+                    {departments.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Data Table */}
+              <div 
+                className={`attendance-report-table rounded-2xl border overflow-hidden overflow-x-auto relative z-10 transition-colors ${
+                  isDark ? 'bg-[#15161b] border-[#282a33]' : 'bg-white border-slate-200 shadow-sm'
+                }`}
+              >
+                <table className="w-full border-collapse text-left text-xs font-sans min-w-[800px]">
+                  <thead>
+                    <tr className={`border-b font-mono text-[10px] uppercase transition-colors ${
+                      isDark 
+                        ? 'border-[#282a33] bg-[#101115] text-slate-400' 
+                        : 'border-[#640C1E]/30 bg-gradient-to-r from-[#640C1E] to-[#9F243C] text-[#F9DE97] shadow-sm'
+                    }`}>
+                      <th className="p-3.5 font-bold tracking-wider">DATA</th>
+                      <th className="p-3.5 font-bold tracking-wider">COLABORADOR</th>
+                      <th className="p-3.5 font-bold tracking-wider">DEPARTAMENTO</th>
+                      <th className="p-3.5 font-bold tracking-wider">HORÁRIO</th>
+                      <th className="p-3.5 font-bold tracking-wider">CARGA</th>
+                      <th className="p-3.5 font-bold tracking-wider">STATUS PRESENÇA</th>
+                      <th className="p-3.5 font-bold tracking-wider">TIPO</th>
+                      <th className="p-3.5 font-bold tracking-wider">OBSERVAÇÕES</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportRows.filter(row => {
+                      const formattedRowDate = formatDateToDDMMAAAA(row.date);
+                      
+                      if (relatorioDate) {
+                        const formattedFilterDate = formatDateToDDMMAAAA(relatorioDate);
+                        if (row.date !== relatorioDate && formattedRowDate !== formattedFilterDate) {
+                          return false;
+                        }
+                      }
+
+                      if (relatorioSearch.trim()) {
+                        const q = relatorioSearch.toLowerCase().trim();
+                        const matchName = row.name.toLowerCase().includes(q);
+                        const matchDept = row.dept.toLowerCase().includes(q);
+                        const matchRole = row.role.toLowerCase().includes(q);
+                        const matchDateRaw = row.date.toLowerCase().includes(q);
+                        const matchDateFormatted = formattedRowDate.toLowerCase().includes(q);
+                        const matchDateSlash = formattedRowDate.replace(/-/g, '/').toLowerCase().includes(q);
+                        if (!matchName && !matchDept && !matchRole && !matchDateRaw && !matchDateFormatted && !matchDateSlash) {
+                          return false;
+                        }
+                      }
+
+                      const matchDept = relatorioDept === 'all' || row.dept === relatorioDept;
+                      const matchStatus = relatorioStatus === 'all' || 
+                        (relatorioStatus === 'present' && row.status === 'Presente') ||
+                        (relatorioStatus === 'late' && row.status === 'Atrasado') ||
+                        (relatorioStatus === 'absent' && row.status === 'Ausente') ||
+                        (relatorioStatus === 'justified' && row.status === 'Justificado');
+                      return matchDept && matchStatus;
+                    }).map((row, idx) => (
+                      <tr 
+                        key={idx} 
+                        className={`border-b transition-colors ${
+                          isDark 
+                            ? 'border-white/5 hover:bg-white/[0.03] text-slate-200' 
+                            : 'border-slate-100 hover:bg-slate-50 text-slate-800'
+                        }`}
+                      >
+                        <td className={`p-3.5 font-mono text-[11px] whitespace-nowrap ${
+                          isDark ? 'text-slate-400' : 'text-slate-600'
+                        }`}>
+                          <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-mono text-[11px] ${
+                            isDark ? 'bg-white/5 border border-white/5 text-slate-300' : 'bg-slate-100 border border-slate-200 text-slate-700'
+                          }`}>
+                            <Calendar className={`w-3.5 h-3.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
+                            <span>{formatDateToDDMMAAAA(row.date)}</span>
+                          </div>
+                        </td>
+                        <td className="p-3.5">
+                          <div className="flex items-center gap-2.5">
+                            <div 
+                              className="w-8 h-8 rounded-full p-[1.5px] shrink-0" 
+                              style={{ background: 'linear-gradient(90deg, #640C1E, #9F243C, #F59242)' }}
+                            >
+                              <img
+                                src={row.avatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150'}
+                                alt={row.name}
+                                className="w-full h-full rounded-full object-cover"
+                              />
+                            </div>
+                            <div>
+                              <span className={`font-bold block ${isDark ? 'text-white' : 'text-slate-900'}`}>{row.name}</span>
+                              <span className={`block text-[10px] font-normal ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>{row.role}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className={`p-3.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{row.dept}</td>
+                        <td className={`p-3.5 font-mono text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{row.time}</td>
+                        <td className={`p-3.5 font-mono font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{row.hours}</td>
+                        <td className="p-3.5">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1.5" style={
+                            row.status === 'Presente'
+                              ? (row.checkInLocation && !row.checkInLocation.gpsValidated
+                                  ? { background: 'rgba(249, 115, 22, 0.18)', color: '#fb923c', border: '1px solid rgba(249, 115, 22, 0.40)' }
+                                  : { background: 'rgba(73, 212, 123, 0.15)', color: '#49d982', border: '1px solid rgba(73, 212, 123, 0.30)' })
+                              : row.status === 'Atrasado'
+                              ? { background: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.40)' }
+                              : row.status === 'Ausente'
+                              ? { background: 'rgba(239, 68, 68, 0.18)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.40)' }
+                              : row.status === 'Justificado'
+                              ? { background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.30)' }
+                              : { background: 'rgba(148, 163, 184, 0.12)', color: '#94a3b8', border: '1px solid rgba(148, 163, 184, 0.30)' }
+                          }>
+                            <span 
+                              className="w-1.5 h-1.5 rounded-full" 
+                              style={{ 
+                                background: row.status === 'Presente' 
+                                  ? (row.checkInLocation && !row.checkInLocation.gpsValidated ? '#f97316' : '#49d982')
+                                  : row.status === 'Atrasado' ? '#fbbf24' : row.status === 'Ausente' ? '#ef4444' : row.status === 'Justificado' ? '#38bdf8' : '#94a3b8',
+                                boxShadow: `0 0 6px ${row.status === 'Presente' ? (row.checkInLocation && !row.checkInLocation.gpsValidated ? '#f97316' : '#49d982') : row.status === 'Atrasado' ? '#fbbf24' : row.status === 'Ausente' ? '#ef4444' : row.status === 'Justificado' ? '#38bdf8' : '#94a3b8'}`
+                              }} 
+                            />
+                            {row.status === 'Presente' && row.checkInLocation && !row.checkInLocation.gpsValidated
+                              ? 'Presente (Fora do Raio)'
+                              : row.status === 'Presente' && row.checkInLocation?.gpsValidated
+                              ? 'Presente (GPS OK)'
+                              : row.status}
+                          </span>
+                        </td>
+                        <td className={`p-3.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{row.type}</td>
+                        <td className={`p-3.5 italic text-[11px] max-w-[260px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{row.obs}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* SUB-VIEW 2: BANCO DE HORAS & OCORRÊNCIAS DE JORNADA (ESPECÍFICO E DESCONGESTIONADO) */}
+          {relatorioSubTab === 'banco_horas' && (() => {
+            const bhPendingCount = bancoHorasData.filter(i => i.status === 'Pendente').length;
+            const bhHomologatedCount = bancoHorasData.filter(i => i.status === 'Homologado').length;
+            const bhAdjustedCount = bancoHorasData.filter(i => i.status === 'Ajustado').length;
+            const bhTotalExtraMin = bancoHorasData
+              .filter(i => i.status === 'Homologado' && i.diffMinutes > 0)
+              .reduce((acc, curr) => acc + curr.diffMinutes, 0);
+            const bhExtraHoursFormatted = bhTotalExtraMin > 0 ? `+${Math.floor(bhTotalExtraMin / 60)}h ${bhTotalExtraMin % 60}m` : '+39 min';
+
+            const filteredBancoHoras = bancoHorasData.filter(item => {
+              const formattedItemDate = formatDateToDDMMAAAA(item.date);
+
+              if (bancoHorasDate) {
+                const formattedFilterDate = formatDateToDDMMAAAA(bancoHorasDate);
+                if (item.date !== bancoHorasDate && formattedItemDate !== formattedFilterDate) {
+                  return false;
+                }
+              }
+
+              if (bancoHorasSearch.trim()) {
+                const q = bancoHorasSearch.toLowerCase().trim();
+                const matchName = item.employeeName.toLowerCase().includes(q);
+                const matchRole = item.employeeRole.toLowerCase().includes(q);
+                const matchDept = item.employeeDept.toLowerCase().includes(q);
+                const matchReason = item.reason.toLowerCase().includes(q);
+                const matchDateRaw = item.date.toLowerCase().includes(q);
+                const matchDateFormatted = formattedItemDate.toLowerCase().includes(q);
+                const matchDateSlash = formattedItemDate.replace(/-/g, '/').toLowerCase().includes(q);
+                if (!matchName && !matchRole && !matchDept && !matchReason && !matchDateRaw && !matchDateFormatted && !matchDateSlash) {
+                  return false;
+                }
+              }
+              if (bancoHorasDept !== 'all' && item.employeeDept !== bancoHorasDept) {
+                return false;
+              }
+              if (bancoHorasStatus === 'pending') return item.status === 'Pendente';
+              if (bancoHorasStatus === 'homologated') return item.status === 'Homologado';
+              if (bancoHorasStatus === 'adjusted') return item.status === 'Ajustado';
+              return true;
+            });
+
+            return (
+              <div className="space-y-6 animate-in fade-in duration-200">
+                {/* KPI Cards de Banco de Horas */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
+                  {[
+                    { label: 'Pendentes de Decisão', value: String(bhPendingCount).padStart(2, '0'), sub: 'Aguardando validação do gestor', dotColor: '#F59242', dotGlow: '#F59242' },
+                    { label: 'Horas Extras Homologadas', value: String(bhHomologatedCount).padStart(2, '0'), sub: 'Saldo creditado no Banco de Horas', dotColor: '#49d982', dotGlow: '#49d982' },
+                    { label: 'Ajustados p/ Horário Normal', value: String(bhAdjustedCount).padStart(2, '0'), sub: 'Sem passivo de HE indevida (Art. 4º)', dotColor: '#9F243C', dotGlow: '#9F243C' },
+                    { label: 'Saldo Extra em Folha', value: bhExtraHoursFormatted, sub: 'Total consolidado em Banco de Horas', dotColor: '#F9DE97', dotGlow: '#F9DE97' },
+                  ].map((kpi, i) => (
+                    <div 
+                      key={i} 
+                      className={`p-5 rounded-2xl border space-y-2 transition-transform hover:-translate-y-1 ${
+                        isDark 
+                          ? 'bg-[#15161b] border-[#282a33] hover:border-[#3b3e4c]' 
+                          : 'bg-white border-slate-200 shadow-sm hover:border-slate-300'
+                      }`}
+                      style={{ boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.4)' : '0 4px 16px rgba(0,0,0,0.04)' }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className={`text-[11px] font-semibold uppercase tracking-wider block ${
+                          isDark ? 'text-slate-400' : 'text-slate-500'
+                        }`}>{kpi.label}</span>
+                        <span 
+                          className="w-2.5 h-2.5 rounded-full" 
+                          style={{ background: kpi.dotColor, boxShadow: `0 0 8px ${kpi.dotGlow}` }}
+                        />
+                      </div>
+                      <div className={`text-3xl font-extrabold font-sans ${isDark ? 'text-white' : 'text-slate-900'}`}>{kpi.value}</div>
+                      <span className={`text-[11px] font-medium block ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>{kpi.sub}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Filter Bar do Banco de Horas */}
+                <div 
+                  className={`p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-3 relative z-10 transition-colors ${
+                    isDark ? 'bg-[#15161b] border-[#282a33]' : 'bg-white border-slate-200 shadow-xs'
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[260px]">
+                    <div className="relative flex-1 min-w-[200px]">
+                      <Search className={`w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 ${
+                        isDark ? 'text-slate-500' : 'text-slate-400'
+                      }`} />
+                      <input
+                        type="text"
+                        value={bancoHorasSearch}
+                        onChange={(e) => setBancoHorasSearch(e.target.value)}
+                        placeholder="Buscar por colaborador, justificativa ou data (ex: 26-10-2026)..."
+                        className={`w-full pl-9 pr-3 py-2 text-xs rounded-full outline-none transition-colors ${
+                          isDark 
+                            ? 'bg-[#0e0f12] text-white placeholder:text-slate-500 border border-[#282a33] focus:border-[#F59242]' 
+                            : 'bg-slate-50 text-slate-900 placeholder:text-slate-400 border border-slate-200 focus:border-[#9F243C]'
+                        }`}
+                      />
+                    </div>
+
+                    {/* Filtro específico por data no Banco de Horas */}
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="date"
+                        value={bancoHorasDate}
+                        onChange={(e) => setBancoHorasDate(e.target.value)}
+                        className={`py-2 px-3 text-xs font-semibold rounded-full outline-none cursor-pointer transition-colors ${
+                          isDark 
+                            ? 'bg-[#0e0f12] text-white border border-[#282a33]' 
+                            : 'bg-slate-50 text-slate-900 border border-slate-200'
+                        }`}
+                        title="Filtrar por data específica"
+                      />
+                      {bancoHorasDate && (
+                        <button
+                          type="button"
+                          onClick={() => setBancoHorasDate('')}
+                          className={`px-2 py-1 text-[10px] font-bold rounded-full transition-colors cursor-pointer ${
+                            isDark ? 'text-slate-400 hover:text-white bg-white/5' : 'text-slate-500 hover:text-slate-900 bg-slate-100'
+                          }`}
+                          title="Limpar filtro de data"
                         >
-                  <div className="attendance-report-avatar w-full h-full rounded-full bg-[#15161b] flex items-center justify-center text-[10px] font-bold text-white uppercase">
-                            {row.name.substring(0, 2)}
+                          ✕ Limpar data
+                        </button>
+                      )}
+                    </div>
+
+                    <select
+                      value={bancoHorasDept}
+                      onChange={(e) => setBancoHorasDept(e.target.value)}
+                      className={`py-2 px-4 text-xs font-semibold rounded-full outline-none cursor-pointer ${
+                        isDark 
+                          ? 'bg-[#0e0f12] text-white border border-[#282a33]' 
+                          : 'bg-slate-50 text-slate-900 border border-slate-200'
+                      }`}
+                    >
+                      <option value="all">Todos os Departamentos</option>
+                      {departments.map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+
+                  {/* Status Filter Pills com Badge Laranja Padronizado */}
+                  <div className={`flex items-center gap-1.5 p-1 rounded-full border transition-colors ${
+                    isDark ? 'bg-[#0e0f12] border-[#282a33]' : 'bg-slate-100 border-slate-200'
+                  }`}>
+                    <button
+                      type="button"
+                      onClick={() => setBancoHorasStatus('all')}
+                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                        bancoHorasStatus === 'all'
+                          ? 'bg-gradient-to-r from-[#640C1E] to-[#9F243C] text-[#F9DE97] shadow-md'
+                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Todos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBancoHorasStatus('pending')}
+                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                        bancoHorasStatus === 'pending'
+                          ? isDark 
+                            ? 'bg-white/15 text-white font-black border border-white/20' 
+                            : 'bg-white text-slate-900 font-bold border border-slate-300 shadow-xs'
+                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <span>Pendentes</span>
+                      {bhPendingCount > 0 && (
+                        <span className="w-4 h-4 rounded-full text-[9px] font-mono bg-[#F59242] text-[#640C1E] flex items-center justify-center font-bold">
+                          {bhPendingCount}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBancoHorasStatus('homologated')}
+                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                        bancoHorasStatus === 'homologated'
+                          ? isDark 
+                            ? 'bg-white/15 text-white font-black border border-white/20' 
+                            : 'bg-white text-slate-900 font-bold border border-slate-300 shadow-xs'
+                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Homologados (Banco)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBancoHorasStatus('adjusted')}
+                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                        bancoHorasStatus === 'adjusted'
+                          ? isDark 
+                            ? 'bg-white/15 text-white font-black border border-white/20' 
+                            : 'bg-white text-slate-900 font-bold border border-slate-300 shadow-xs'
+                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Ajustados (Normal)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tabela Espaçosa e Organizada de Banco de Horas */}
+                <div 
+                  className={`rounded-2xl border overflow-hidden overflow-x-auto relative z-10 shadow-xl transition-colors ${
+                    isDark ? 'bg-[#15161b] border-[#282a33]' : 'bg-white border-[#9F243C] shadow-sm'
+                  }`}
+                >
+                  <table className="w-full border-collapse text-left text-xs font-sans min-w-[1100px]">
+                    <thead>
+                      <tr className={`border-b font-mono text-[10px] uppercase transition-colors ${
+                        isDark ? 'border-[#282a33] bg-[#101115] text-slate-400' : 'border-[#9F243C]/20 bg-[#9F243C]/[0.03] text-slate-700'
+                      }`}>
+                        <th className="p-3.5">COLABORADOR</th>
+                        <th className="p-3.5">DATA</th>
+                        <th className="p-3.5">ESCALA PREVISTA</th>
+                        <th className="p-3.5">BATIDA REGISTRADA</th>
+                        <th className="p-3.5">VARIAÇÃO / SALDO</th>
+                        <th className="p-3.5">JUSTIFICATIVA DO COLABORADOR</th>
+                        <th className="p-3.5">STATUS</th>
+                        <th className="p-3.5">OBSERVAÇÃO DO GESTOR</th>
+                        <th className="p-3.5 text-right pr-5">AÇÕES DO GESTOR</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredBancoHoras.length === 0 ? (
+                        <tr>
+                          <td colSpan={9} className="p-8 text-center text-slate-500 text-xs">
+                            Nenhuma ocorrência de Banco de Horas encontrada para os filtros selecionados.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredBancoHoras.map((row) => (
+                          <tr 
+                            key={row.id} 
+                            className={`border-b transition-colors ${
+                              isDark 
+                                ? 'border-white/5 hover:bg-white/[0.03] text-slate-200' 
+                                : 'border-slate-100 hover:bg-slate-50 text-slate-800'
+                            }`}
+                          >
+                            {/* Colaborador */}
+                            <td className="p-3.5 align-middle">
+                              <div className="flex items-center gap-3">
+                                <img 
+                                  src={row.employeeAvatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150'} 
+                                  alt={row.employeeName} 
+                                  className={`w-9 h-9 rounded-full object-cover ring-2 shrink-0 ${
+                                    isDark ? 'ring-white/10' : 'ring-slate-200'
+                                  }`} 
+                                />
+                                <div>
+                                  <span className={`font-bold block text-xs leading-tight ${
+                                    isDark ? 'text-white' : 'text-slate-900'
+                                  }`}>{row.employeeName}</span>
+                                  <span className={`block text-[11px] font-normal leading-tight mt-0.5 ${
+                                    isDark ? 'text-slate-400' : 'text-slate-500'
+                                  }`}>
+                                    {row.employeeRole} • {row.employeeDept}
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Data no formato DD-MM-AAAA (h-7 alinhado) */}
+                            <td className="p-3.5 whitespace-nowrap align-middle">
+                              <div className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg font-mono text-[11px] border ${
+                                isDark ? 'bg-white/5 border border-white/5 text-slate-300' : 'bg-slate-100 border border-slate-200 text-slate-700'
+                              }`}>
+                                <Calendar className={`w-3 h-3 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
+                                <span>{formatDateToDDMMAAAA(row.date)}</span>
+                              </div>
+                            </td>
+
+                            {/* Escala Prevista (h-7 alinhado) */}
+                            <td className="p-3.5 whitespace-nowrap align-middle">
+                              <div className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg font-mono text-[11px] border ${
+                                isDark ? 'bg-white/5 border border-white/5 text-slate-300' : 'bg-slate-100 border border-slate-200 text-slate-700'
+                              }`}>
+                                <Clock className={`w-3 h-3 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
+                                <span>{row.scheduledTime}</span>
+                              </div>
+                            </td>
+
+                            {/* Batida Registrada (h-7 alinhado) */}
+                            <td className="p-3.5 whitespace-nowrap align-middle">
+                              <span className={`h-7 px-2.5 rounded-lg font-mono text-[11px] font-bold inline-flex items-center gap-1.5 border ${
+                                isDark ? 'bg-[#0e0f12] text-white border-white/10' : 'bg-slate-100 text-slate-900 border-slate-200'
+                              }`}>
+                                <Clock className="w-3 h-3 text-[#F59242]" />
+                                <span>{row.punchTime}</span>
+                              </span>
+                            </td>
+
+                            {/* Variação / Saldo (h-7 alinhado e com alto contraste no claro e escuro) */}
+                            <td className="p-3.5 whitespace-nowrap align-middle">
+                              {row.type === 'hora_extra' && (
+                                <span 
+                                  className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg font-mono text-[11px] font-bold border whitespace-nowrap shadow-xs ${
+                                    isDark 
+                                      ? 'bg-[#F59242]/15 text-[#F9DE97] border-[#F59242]/40' 
+                                      : 'bg-amber-100/90 text-[#9a3412] border-amber-300 font-extrabold'
+                                  }`} 
+                                  title="Hora Extra além da tolerância CLT"
+                                >
+                                  <Sparkles className="w-3 h-3 text-[#ea580c] dark:text-[#F59242]" />
+                                  <span>{row.diffBadge}</span>
+                                  <span className="text-[9px] font-sans font-semibold opacity-90">• Extra</span>
+                                </span>
+                              )}
+                              {row.type === 'atraso' && (
+                                <span 
+                                  className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg font-mono text-[11px] font-bold border whitespace-nowrap shadow-xs ${
+                                    isDark 
+                                      ? 'bg-[#9F243C]/25 text-[#fca5a5] border-[#9F243C]/50' 
+                                      : 'bg-rose-100/90 text-[#9F243C] border-rose-300 font-extrabold'
+                                  }`} 
+                                  title="Atraso na Entrada (tolerância excedida)"
+                                >
+                                  <AlertCircle className="w-3 h-3 text-[#e90045]" />
+                                  <span>{row.diffBadge}</span>
+                                  <span className="text-[9px] font-sans font-semibold opacity-90">• Atraso</span>
+                                </span>
+                              )}
+                              {row.type === 'esquecimento' && (
+                                <span 
+                                  className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg font-mono text-[11px] font-bold border whitespace-nowrap shadow-xs ${
+                                    isDark 
+                                      ? 'bg-white/10 text-[#F9DE97] border-white/15' 
+                                      : 'bg-slate-100 text-slate-800 border-slate-300 font-bold'
+                                  }`} 
+                                  title="Esquecimento (CLT Art. 4º)"
+                                >
+                                  <Clock className="w-3 h-3 text-[#ea580c] dark:text-[#F9DE97]" />
+                                  <span>{row.diffBadge}</span>
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Justificativa do Colaborador (h-7 alinhado e com alto contraste) */}
+                            <td className="p-3.5 whitespace-nowrap align-middle">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedDetailBancoItem(row)}
+                                className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg text-[11px] font-bold border transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-xs whitespace-nowrap ${
+                                  isDark 
+                                    ? 'bg-[#F59242]/10 hover:bg-[#F59242]/20 text-[#F59242] border-[#F59242]/30' 
+                                    : 'bg-orange-100/80 hover:bg-orange-100 text-[#c2410c] border-orange-300 font-extrabold'
+                                }`}
+                                title="Clique para abrir a justificativa completa e histórico"
+                              >
+                                <Eye className="w-3 h-3 text-[#c2410c] dark:text-[#F59242]" />
+                                <span>Ver justificativa</span>
+                              </button>
+                            </td>
+
+                            {/* Status (h-7 alinhado e com alto contraste) */}
+                            <td className="p-3.5 whitespace-nowrap align-middle">
+                              {row.status === 'Pendente' && (
+                                <span className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg text-[11px] font-bold font-mono border whitespace-nowrap ${
+                                  isDark 
+                                    ? 'bg-amber-500/10 text-amber-300 border-amber-500/25' 
+                                    : 'bg-amber-100/90 text-amber-950 border-amber-300 font-bold'
+                                }`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${isDark ? 'bg-amber-400 shadow-[0_0_6px_#fbbf24]' : 'bg-amber-600'} animate-pulse`} />
+                                  <span>Pendente</span>
+                                </span>
+                              )}
+                              {row.status === 'Homologado' && (
+                                <span className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg text-[11px] font-bold font-mono border whitespace-nowrap ${
+                                  isDark 
+                                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25' 
+                                    : 'bg-emerald-100/90 text-emerald-900 border-emerald-300 font-bold'
+                                }`}>
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                                  <span>Homologado Banco</span>
+                                </span>
+                              )}
+                              {row.status === 'Ajustado' && (
+                                <span className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg text-[11px] font-bold font-mono border whitespace-nowrap ${
+                                  isDark 
+                                    ? 'bg-white/10 text-[#F9DE97] border-white/20' 
+                                    : 'bg-slate-100 text-slate-800 border-slate-300 font-bold'
+                                }`}>
+                                  <Check className="w-3 h-3" />
+                                  <span>Horário Normal</span>
+                                </span>
+                              )}
+                            </td>
+
+                            {/* Observação do Gestor (h-7 alinhado) */}
+                            <td className="p-3.5 align-middle">
+                              <input
+                                type="text"
+                                value={row.feedback || ''}
+                                onChange={(e) => handleUpdateBancoHorasFeedback(row.id, e.target.value)}
+                                placeholder="Observação do gestor (opcional)..."
+                                className={`h-7 w-full min-w-[170px] max-w-[220px] px-2.5 rounded-lg text-[11px] outline-none transition-colors border ${
+                                  isDark 
+                                    ? 'bg-[#0e0f12] border-[#282a33] text-slate-200 placeholder:text-slate-600 focus:border-[#F59242]' 
+                                    : 'bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-[#9F243C]'
+                                }`}
+                              />
+                            </td>
+
+                            {/* Ações do Gestor com Tooltips Claros ao Passar o Mouse (h-7 alinhado) */}
+                            <td className="p-3.5 text-right pr-5 whitespace-nowrap align-middle">
+                              {row.status === 'Pendente' ? (
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleHomologarBanco(row.id)}
+                                    title="Homologar Banco: Aprova as horas extras além da tolerância (Art. 58 CLT) e credita o saldo no Banco de Horas / folha."
+                                    className="h-7 px-2.5 rounded-lg font-bold text-[11px] text-white transition-all shadow-sm flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95"
+                                    style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
+                                  >
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    <span>Homologar Banco</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAjustarHorarioNormal(row.id)}
+                                    title="Ajustar Horário Normal: Nos casos de esquecimento de batida na saída sem trabalho efetivo, ajusta para a jornada contratual sem gerar hora extra indevida (CLT Art. 4º § 2º)."
+                                    className={`h-7 px-2 border font-bold text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 ${
+                                      isDark 
+                                        ? 'border-white/20 text-slate-300 hover:bg-white/10' 
+                                        : 'border-slate-300 text-slate-700 hover:bg-slate-100 bg-white shadow-2xs'
+                                    }`}
+                                  >
+                                    <Clock className="w-3 h-3" />
+                                    <span>Ajustar Horário Normal</span>
+                                  </button>
+                                </div>
+                              ) : row.status === 'Homologado' ? (
+                                <span className="h-7 inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-500 font-mono text-[11px] font-semibold">
+                                  <CheckCircle2 className="w-3 h-3" /> Creditado no Banco
+                                </span>
+                              ) : (
+                                <span className={`h-7 inline-flex items-center gap-1 font-mono text-[11px] font-medium italic ${
+                                  isDark ? 'text-slate-400' : 'text-slate-600'
+                                }`}>
+                                  <Clock className="w-3 h-3 text-[#F59242]" /> Tratado no horário previsto
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Modal de Detalhes da Justificativa do Banco de Horas com Suporte a Light Mode */}
+                {selectedDetailBancoItem && (
+                  <div 
+                    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-200"
+                    onClick={() => setSelectedDetailBancoItem(null)}
+                  >
+                    <div 
+                      className={`w-full max-w-lg rounded-3xl border p-6 space-y-5 shadow-2xl relative my-auto animate-in zoom-in-95 transition-colors ${
+                        isDark 
+                          ? 'border-white/10 bg-[#15161b] text-white shadow-black/80' 
+                          : 'border-slate-200 bg-white text-slate-900 shadow-2xl'
+                      }`}
+                      style={{
+                        boxShadow: isDark 
+                          ? '0 25px 60px rgba(0, 0, 0, 0.85), 0 0 40px rgba(100, 12, 30, 0.25)' 
+                          : '0 20px 50px rgba(0, 0, 0, 0.15), 0 0 30px rgba(159, 36, 60, 0.08)'
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {/* Cabeçalho */}
+                      <div className={`flex items-center justify-between pb-4 border-b ${
+                        isDark ? 'border-white/10' : 'border-slate-200'
+                      }`}>
+                        <div className="flex items-center gap-3">
+                          <img 
+                            src={selectedDetailBancoItem.employeeAvatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150'} 
+                            alt={selectedDetailBancoItem.employeeName} 
+                            className="w-10 h-10 rounded-full object-cover ring-2 ring-[#F59242]/40" 
+                          />
+                          <div>
+                            <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{selectedDetailBancoItem.employeeName}</h3>
+                            <p className={`text-xs font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                              {selectedDetailBancoItem.employeeRole} • {selectedDetailBancoItem.employeeDept}
+                            </p>
                           </div>
                         </div>
-                        <div>
-                          <span className="font-bold text-white block">{row.name}</span>
-                          <span className="block text-[10px] text-slate-500 font-normal">{row.role}</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDetailBancoItem(null)}
+                          className={`p-1.5 rounded-xl transition-colors cursor-pointer ${
+                            isDark ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                          }`}
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      {/* Informações da Jornada */}
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div className={`p-3 rounded-xl border ${
+                          isDark ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-200'
+                        }`}>
+                          <span className={`text-[10px] uppercase font-mono block mb-1 ${
+                            isDark ? 'text-slate-400' : 'text-slate-500'
+                          }`}>Data</span>
+                          <span className={`font-bold font-mono ${
+                            isDark ? 'text-white' : 'text-slate-900'
+                          }`}>{formatDateToDDMMAAAA(selectedDetailBancoItem.date)}</span>
+                        </div>
+
+                        <div className={`p-3 rounded-xl border ${
+                          isDark ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-200'
+                        }`}>
+                          <span className={`text-[10px] uppercase font-mono block mb-1 ${
+                            isDark ? 'text-slate-400' : 'text-slate-500'
+                          }`}>Variação / Saldo</span>
+                          <span className="font-bold font-mono text-[#F9DE97]">{selectedDetailBancoItem.diffBadge} ({selectedDetailBancoItem.typeLabel})</span>
+                        </div>
+
+                        <div className={`p-3 rounded-xl border ${
+                          isDark ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-200'
+                        }`}>
+                          <span className={`text-[10px] uppercase font-mono block mb-1 ${
+                            isDark ? 'text-slate-400' : 'text-slate-500'
+                          }`}>Escala Prevista</span>
+                          <span className={`font-semibold font-mono ${
+                            isDark ? 'text-slate-300' : 'text-slate-700'
+                          }`}>{selectedDetailBancoItem.scheduledTime}</span>
+                        </div>
+
+                        <div className={`p-3 rounded-xl border ${
+                          isDark ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-200'
+                        }`}>
+                          <span className={`text-[10px] uppercase font-mono block mb-1 ${
+                            isDark ? 'text-slate-400' : 'text-slate-500'
+                          }`}>Batida Registrada</span>
+                          <span className="font-bold text-[#F59242] font-mono">{selectedDetailBancoItem.punchTime}</span>
                         </div>
                       </div>
-                    </td>
-                    <td className="p-3.5 text-slate-400 text-[11px]">{row.dept}</td>
-                    <td className="p-3.5 font-mono text-[11px] text-slate-300">{row.time}</td>
-                    <td className="p-3.5 font-mono font-bold text-white">{row.hours}</td>
-                    <td className="p-3.5">
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1.5" style={
-                        row.status === 'Presente'
-                          ? (row.checkInLocation && !row.checkInLocation.gpsValidated
-                              ? { background: 'rgba(249, 115, 22, 0.18)', color: '#fb923c', border: '1px solid rgba(249, 115, 22, 0.40)' }
-                              : { background: 'rgba(73, 212, 123, 0.15)', color: '#49d982', border: '1px solid rgba(73, 212, 123, 0.30)' })
-                          : row.status === 'Atrasado'
-                          ? { background: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.40)' }
-                          : row.status === 'Ausente'
-                          ? { background: 'rgba(239, 68, 68, 0.18)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.40)' }
-                          : row.status === 'Justificado'
-                          ? { background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.30)' }
-                          : { background: 'rgba(148, 163, 184, 0.12)', color: '#94a3b8', border: '1px solid rgba(148, 163, 184, 0.30)' }
-                      }>
-                        <span 
-                          className="w-1.5 h-1.5 rounded-full" 
-                          style={{ 
-                            background: row.status === 'Presente' 
-                              ? (row.checkInLocation && !row.checkInLocation.gpsValidated ? '#f97316' : '#49d982')
-                              : row.status === 'Atrasado' ? '#fbbf24' : row.status === 'Ausente' ? '#ef4444' : row.status === 'Justificado' ? '#38bdf8' : '#94a3b8',
-                            boxShadow: `0 0 6px ${row.status === 'Presente' ? (row.checkInLocation && !row.checkInLocation.gpsValidated ? '#f97316' : '#49d982') : row.status === 'Atrasado' ? '#fbbf24' : row.status === 'Ausente' ? '#ef4444' : row.status === 'Justificado' ? '#38bdf8' : '#94a3b8'}`
-                          }} 
+
+                      {/* Justificativa Completa */}
+                      <div className="space-y-1.5">
+                        <label className={`text-[11px] font-bold uppercase tracking-wider block font-mono ${
+                          isDark ? 'text-slate-400' : 'text-slate-600'
+                        }`}>
+                          Justificativa do Colaborador
+                        </label>
+                        <div className={`p-3.5 rounded-xl border text-xs leading-relaxed font-sans ${
+                          isDark ? 'bg-[#0e0f12] border-[#282a33] text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-800'
+                        }`}>
+                          {selectedDetailBancoItem.reason}
+                        </div>
+                      </div>
+
+                      {/* Observação / Feedback do Gestor */}
+                      <div className="space-y-1.5">
+                        <label className={`text-[11px] font-bold uppercase tracking-wider block font-mono ${
+                          isDark ? 'text-slate-400' : 'text-slate-600'
+                        }`}>
+                          Observação do Gestor
+                        </label>
+                        <input
+                          type="text"
+                          value={selectedDetailBancoItem.feedback || ''}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            handleUpdateBancoHorasFeedback(selectedDetailBancoItem.id, val);
+                            setSelectedDetailBancoItem(prev => prev ? { ...prev, feedback: val } : null);
+                          }}
+                          placeholder="Feedback ou anotação para o colaborador (opcional)..."
+                          className={`w-full px-3 py-2 border rounded-xl text-xs outline-none transition-colors ${
+                            isDark 
+                              ? 'bg-[#0e0f12] border-[#282a33] text-white placeholder:text-slate-600 focus:border-[#F59242]' 
+                              : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-[#9F243C]'
+                          }`}
                         />
-                        {row.status === 'Presente' && row.checkInLocation && !row.checkInLocation.gpsValidated
-                          ? 'Presente (Fora do Raio)'
-                          : row.status === 'Presente' && row.checkInLocation?.gpsValidated
-                          ? 'Presente (GPS OK)'
-                          : row.status}
-                      </span>
-                    </td>
-                    <td className="p-3.5 text-[11px] text-slate-400">{row.type}</td>
-                    <td className="p-3.5 text-slate-500 italic text-[11px] max-w-[260px] truncate">{row.obs}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      </div>
+
+                      {/* Ações no Modal */}
+                      <div className={`flex items-center justify-between pt-3 border-t ${
+                        isDark ? 'border-white/10' : 'border-slate-200'
+                      }`}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDetailBancoItem(null)}
+                          className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                            isDark ? 'text-slate-400 hover:text-white hover:bg-white/5' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                          }`}
+                        >
+                          Fechar
+                        </button>
+
+                        {selectedDetailBancoItem.status === 'Pendente' ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleAjustarHorarioNormal(selectedDetailBancoItem.id);
+                                setSelectedDetailBancoItem(prev => prev ? { ...prev, status: 'Ajustado' } : null);
+                              }}
+                              className={`px-3 py-2 rounded-xl border font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
+                                isDark 
+                                  ? 'border-white/20 text-slate-300 hover:bg-white/10' 
+                                  : 'border-slate-300 text-slate-700 hover:bg-slate-100 bg-white shadow-2xs'
+                              }`}
+                              title="Ajusta para o horário normal previsto sem hora extra (CLT Art. 4º § 2º)"
+                            >
+                              <Clock className="w-3.5 h-3.5" />
+                              <span>Ajustar Horário Normal</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleHomologarBanco(selectedDetailBancoItem.id);
+                                setSelectedDetailBancoItem(prev => prev ? { ...prev, status: 'Homologado' } : null);
+                              }}
+                              className="px-4 py-2 rounded-xl font-bold text-xs text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:scale-105 active:scale-95"
+                              style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
+                              title="Aprova e credita hora extra no Banco de Horas (Art. 58 CLT)"
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>Homologar Banco</span>
+                            </button>
+                          </div>
+                        ) : selectedDetailBancoItem.status === 'Homologado' ? (
+                          <span className="text-xs font-mono text-emerald-500 font-semibold inline-flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Homologado no Banco de Horas
+                          </span>
+                        ) : (
+                          <span className={`text-xs font-mono inline-flex items-center gap-1 italic ${
+                            isDark ? 'text-slate-400' : 'text-slate-600'
+                          }`}>
+                            <Clock className="w-3.5 h-3.5 text-[#F59242]" /> Ajustado para Horário Normal
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 

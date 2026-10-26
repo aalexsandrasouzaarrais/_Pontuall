@@ -534,559 +534,358 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
         isLightTheme ? 'text-[#0F172A]' : 'text-white'
       }`}
     >
-      {/* 1. TOP SECTION: HERO WITH DIGITAL CLOCK & FLOATING PROOF WIDGET (Modo Claro e Escuro) */}
+      {/* 1. TOP SECTION: HERO COM AS CORES DA MARCA & LAYOUT COMPLETO */}
       <div
-        className={`rounded-3xl p-6 sm:p-7 relative overflow-hidden transition-all duration-300 border ${
+        className={`rounded-3xl p-4 sm:p-7 relative overflow-hidden transition-all duration-300 border shadow-2xl ${
           isLightTheme
-            ? 'border-amber-200/70 shadow-xl'
-            : 'border-white/10 shadow-2xl'
+            ? 'bg-[#FFFDF9] border-amber-200/70 shadow-xl text-slate-900'
+            : 'bg-[#0B080D] border-white/10 shadow-black/60 text-white'
         }`}
         style={{
           background: isLightTheme
-            ? 'radial-gradient(ellipse 75% 75% at 18% 45%, rgba(249, 222, 151, 0.45) 0%, rgba(245, 146, 66, 0.18) 40%, rgba(255, 255, 255, 0) 70%), radial-gradient(ellipse 85% 85% at 78% 55%, rgba(254, 205, 211, 0.55) 0%, rgba(254, 226, 226, 0.3) 45%, rgba(255, 255, 255, 0) 75%), #FFFDF9'
-            : 'radial-gradient(ellipse 75% 75% at 18% 45%, rgba(245, 215, 140, 0.32) 0%, rgba(200, 150, 60, 0.15) 38%, rgba(10, 8, 13, 0) 70%), radial-gradient(ellipse 85% 85% at 78% 55%, rgba(230, 90, 45, 0.45) 0%, rgba(150, 24, 60, 0.35) 40%, rgba(10, 8, 13, 0) 75%), #0B080D',
+            ? 'radial-gradient(ellipse 75% 75% at 18% 45%, rgba(249, 222, 151, 0.12) 0%, rgba(245, 146, 66, 0.04) 40%, transparent 70%), #FFFDF9'
+            : 'radial-gradient(ellipse 75% 75% at 18% 45%, rgba(245, 215, 140, 0.08) 0%, rgba(200, 150, 60, 0.02) 38%, transparent 70%), radial-gradient(ellipse 85% 85% at 78% 55%, rgba(230, 90, 45, 0.10) 0%, rgba(150, 24, 60, 0.08) 40%, transparent 75%), #0B080D',
         }}
       >
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-start justify-between gap-6">
-          {/* Left Column: Big Digital Clock with orange bar indicator, Date & Shift Box */}
-          <div className="flex-1 space-y-4">
-            {/* Big Clean Digital Clock & Date */}
-            <div className={`border-l-[3.5px] ${isLightTheme ? 'border-[#e85d45]' : 'border-[#f89642]'} pl-3.5 space-y-0.5`}>
-              <div
-                className={`text-4xl sm:text-5xl font-black tracking-tight font-sans ${
+        {employee.contractType === 'PJ' ? (
+          <div className="p-2 space-y-3">
+            <PjTimesheetTracker 
+              employee={employee}
+              isDark={!isLightTheme}
+              compactMode={true}
+              onNavigateToFullView={onNavigateToPjReports}
+            />
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Linha Superior: Relógio Digital com risquinho e segundos + Badge de Status */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className={`border-l-[3.5px] ${isLightTheme ? 'border-[#e85d45]' : 'border-[#f89642]'} pl-3.5 space-y-0.5`}>
+                <div className={`text-4xl sm:text-5xl font-black tracking-tight font-sans ${
                   isLightTheme ? 'text-slate-900' : 'text-white'
-                }`}
-              >
-                {currentTime.toLocaleTimeString('pt-BR', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  second: '2-digit',
-                })}
+                }`}>
+                  {currentTime.toLocaleTimeString('pt-BR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                  })}
+                </div>
+                <div className={`text-xs sm:text-sm font-bold mt-1 ${
+                  isLightTheme ? 'text-slate-700' : 'text-slate-200'
+                }`}>
+                  {(() => {
+                    const weekday = currentTime.toLocaleDateString('pt-BR', { weekday: 'long' });
+                    const day = currentTime.getDate();
+                    const month = currentTime.toLocaleDateString('pt-BR', { month: 'long' });
+                    const year = currentTime.getFullYear();
+                    const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+                    const formattedWeekday = weekday.split('-').map(cap).join('-');
+                    return `${formattedWeekday}, ${day} De ${cap(month)} De ${year}`;
+                  })()}
+                </div>
               </div>
 
-              <div
-                className={`text-xs sm:text-sm font-bold mt-1 ${
-                  isLightTheme ? 'text-slate-700' : 'text-slate-200'
-                }`}
-              >
-                {(() => {
-                  const weekday = currentTime.toLocaleDateString('pt-BR', { weekday: 'long' });
-                  const day = currentTime.getDate();
-                  const month = currentTime.toLocaleDateString('pt-BR', { month: 'long' });
-                  const year = currentTime.getFullYear();
-                  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-                  const formattedWeekday = weekday.split('-').map(cap).join('-');
-                  return `${formattedWeekday}, ${day} De ${cap(month)} De ${year}`;
-                })()}
+              {/* Status Badge / Pill nas cores da marca */}
+              <div className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border self-start sm:self-auto text-xs font-bold transition-all shadow-xs ${
+                isLightTheme
+                  ? 'bg-amber-50 border-amber-300 text-[#96183c]'
+                  : 'bg-[#2a131a]/90 border-[#F89847]/40 text-[#F9DE97]'
+              }`}>
+                <div className="w-5 h-5 rounded-full bg-[#F89847]/20 border border-[#F89847]/40 flex items-center justify-center shrink-0">
+                  <Clock className="w-3 h-3 text-[#F89847]" />
+                </div>
+                <span>
+                  {hasCheckedIn && hasCheckedOut
+                    ? 'Jornada concluída'
+                    : hasCheckedIn
+                    ? 'Expediente em andamento'
+                    : 'Aguardando início'}
+                </span>
               </div>
             </div>
 
-            {/* Today's Shift Card (Contraste nítido e legível) */}
-            <div
-              className={`rounded-2xl p-4 sm:p-5 border transition-all duration-300 max-w-lg ${
-                isLightTheme
-                  ? 'bg-white border-slate-200 shadow-md'
-                  : 'bg-[#151822]/95 border-white/10 shadow-lg'
-              }`}
-            >
-              {todayShift ? (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <CalendarDays
-                      className={`w-4 h-4 ${
-                        isLightTheme ? 'text-slate-700' : 'text-slate-300'
-                      }`}
-                    />
-                    <span
-                      className={`text-[11px] font-black tracking-wider uppercase font-mono ${
-                        isLightTheme ? 'text-slate-700' : 'text-slate-300'
-                      }`}
-                    >
-                      TURNO DE HOJE
-                    </span>
-                  </div>
-
-                  {/* Hours & Title */}
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <Clock
-                        className={`w-4 h-4 ${
-                          isLightTheme ? 'text-[#96183c]' : 'text-[#F89847]'
-                        }`}
-                      />
-                      <span
-                        className={`text-base font-black font-mono ${
-                          isLightTheme ? 'text-slate-900' : 'text-white'
-                        }`}
-                      >
-                        {todayShift.startTime} - {todayShift.endTime}
-                      </span>
-                      <span
-                        className={`text-xs font-bold ${
-                          isLightTheme ? 'text-slate-600' : 'text-slate-400'
-                        }`}
-                      >
-                        ({calculateShiftDurationHours(
-                          todayShift.startTime,
-                          todayShift.endTime,
-                          todayShift.breakMinutes
-                        )}h)
-                      </span>
-                    </div>
-
-                    <p
-                      className={`text-xs font-bold pl-6 ${
-                        isLightTheme ? 'text-slate-700' : 'text-slate-300'
-                      }`}
-                    >
-                      {todayShift.title || 'Comercial (5x2)'}
-                    </p>
-                  </div>
-
-                  {/* Workplace Location & Address & How to get there */}
-                  <div
-                    className={`pt-2.5 border-t space-y-2.5 ${
-                      isLightTheme ? 'border-slate-200' : 'border-white/10'
-                    }`}
-                  >
-                    <div className="flex items-start gap-2">
-                      <MapPin
-                        className="w-4 h-4 text-[#e85d45] shrink-0 mt-0.5"
-                      />
-                      <div>
-                        <p
-                          className={`text-xs font-black leading-tight ${
-                            isLightTheme ? 'text-slate-900' : 'text-slate-100'
-                          }`}
-                        >
-                          {currentShiftWorkplace?.name || todayShift.workplace || 'Posto Presencial'}
-                        </p>
-                        <p
-                          className="text-[11.5px] mt-0.5 font-semibold leading-snug"
-                          style={{ color: isLightTheme ? '#334155' : '#cbd5e1' }}
-                        >
-                          {currentShiftWorkplace?.address || 'Endereço definido pelo gestor'}
-                        </p>
-                      </div>
-                    </div>
-
-                    {workplaceMapsUrl && (
-                      <a
-                        href={workplaceMapsUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all border shadow-xs cursor-pointer"
-                        style={
-                          isLightTheme
-                            ? { backgroundColor: '#f0f9ff', color: '#0369a1', borderColor: '#bae6fd' }
-                            : { backgroundColor: 'rgba(14, 165, 233, 0.15)', color: '#bae6fd', borderColor: 'rgba(14, 165, 233, 0.4)' }
-                        }
-                        title="Abrir rota no Google Maps"
-                      >
-                        <MapPin className="w-3.5 h-3.5" />
-                        <span>Como Chegar (Google Maps)</span>
-                      </a>
+            {/* Linha do Meio: Linha do Tempo / Stepper totalmente responsiva sem estouro no mobile */}
+            <div className="w-full px-0.5 sm:px-1 py-1">
+              <div className="flex items-center justify-between relative w-full">
+                {/* Etapa 1: Entrada */}
+                <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+                  <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center shrink-0 transition-all ${
+                    hasCheckedIn
+                      ? 'bg-[#F89847]/20 border-2 border-[#F89847] shadow-[0_0_10px_rgba(248,152,71,0.3)]'
+                      : isLightTheme ? 'bg-slate-100 border border-slate-300' : 'bg-white/5 border border-white/15'
+                  }`}>
+                    {hasCheckedIn ? (
+                      <div className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-[#96183c] dark:bg-[#F89847]" />
+                    ) : (
+                      <div className={`w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full ${isLightTheme ? 'bg-slate-300' : 'bg-white/20'}`} />
                     )}
                   </div>
+                  <div className="leading-tight">
+                    <span className={`block text-[11px] sm:text-xs font-bold whitespace-nowrap ${
+                      hasCheckedIn
+                        ? isLightTheme ? 'text-[#96183c]' : 'text-[#F9DE97]'
+                        : isLightTheme ? 'text-slate-500' : 'text-slate-400'
+                    }`}>
+                      Entrada
+                    </span>
+                    <span className={`block text-[11px] sm:text-xs font-mono font-black ${
+                      hasCheckedIn
+                        ? isLightTheme ? 'text-slate-900' : 'text-white'
+                        : isLightTheme ? 'text-slate-400' : 'text-slate-500'
+                    }`}>
+                      {todayShift?.checkInTime || '--:--'}
+                    </span>
+                  </div>
                 </div>
-              ) : (
-                <div
-                  className={`text-xs py-1 flex items-center gap-2 font-bold ${
-                    isLightTheme ? 'text-slate-700' : 'text-slate-300'
-                  }`}
-                >
-                  <CalendarDays
-                    className={`w-4 h-4 ${
-                      isLightTheme ? 'text-[#96183c]' : 'text-[#F89847]'
-                    }`}
-                  />
-                  <span>Você não possui turno escalado para hoje. Folga programada!</span>
-                </div>
-              )}
-            </div>
-          </div>
 
-          {/* Right Column: Floating Proof / Check-In Widget */}
-          <div className="shrink-0 lg:w-84">
-            <div
-              className={`rounded-3xl border overflow-hidden transition-all duration-300 shadow-xl ${
-                isLightTheme
-                  ? 'bg-white border-slate-200 shadow-slate-900/10'
-                  : 'bg-[#151821] border-white/10 shadow-black/50'
-              }`}
-            >
-              {/* Para Prestadores PJ: Timesheet em Tempo Real */}
-              {employee.contractType === 'PJ' ? (
-                <div className="p-5 space-y-3">
-                  <PjTimesheetTracker 
-                    employee={employee}
-                    isDark={!isLightTheme}
-                    compactMode={true}
-                    onNavigateToFullView={onNavigateToPjReports}
-                  />
+                {/* Linha Conectora 1 */}
+                <div className={`flex-1 min-w-[6px] h-[2px] mx-1 sm:mx-3 transition-colors ${
+                  hasCheckedIn
+                    ? 'bg-gradient-to-r from-[#F89847] to-[#96183c]'
+                    : isLightTheme ? 'bg-slate-200' : 'bg-white/10'
+                }`} />
+
+                {/* Etapa 2: Em andamento */}
+                <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+                  <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center shrink-0 transition-all ${
+                    hasCheckedIn && !hasCheckedOut
+                      ? 'bg-[#96183c]/30 border-2 border-[#F89847] shadow-[0_0_10px_rgba(248,152,71,0.3)]'
+                      : hasCheckedOut
+                      ? 'bg-[#96183c]/40 border-2 border-[#96183c]'
+                      : isLightTheme ? 'bg-slate-100 border border-slate-300' : 'bg-white/5 border border-white/15'
+                  }`}>
+                    <div className={`w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full ${
+                      hasCheckedOut
+                        ? 'bg-[#F9DE97]'
+                        : hasCheckedIn
+                        ? 'bg-[#F89847] animate-pulse'
+                        : isLightTheme ? 'bg-slate-300' : 'bg-white/20'
+                    }`} />
+                  </div>
+                  <div className="leading-tight">
+                    <span className={`block text-[11px] sm:text-xs font-semibold whitespace-nowrap ${
+                      hasCheckedIn && !hasCheckedOut
+                        ? isLightTheme ? 'text-[#96183c]' : 'text-[#F9DE97]'
+                        : isLightTheme ? 'text-slate-600' : 'text-slate-400'
+                    }`}>
+                      Em andamento
+                    </span>
+                    <span className={`block text-[11px] sm:text-xs font-bold font-mono ${
+                      hasCheckedIn && !hasCheckedOut
+                        ? isLightTheme ? 'text-[#96183c]' : 'text-[#F9DE97]'
+                        : isLightTheme ? 'text-slate-800' : 'text-slate-300'
+                    }`}>
+                      {hasCheckedIn && hasCheckedOut
+                        ? calculateTodayWorkedHours() || '8h'
+                        : hasCheckedIn
+                        ? `${calculateShiftDurationHours(todayShift?.startTime || '08:00', todayShift?.endTime || '17:00', todayShift?.breakMinutes)}h`
+                        : '0h'}
+                    </span>
+                  </div>
                 </div>
-              ) : (
-                <>
-                  {/* Warm Gradient Header - Matches image reference */}
-                  <div className="bg-gradient-to-r from-[#F89847] via-[#ea580c] to-[#96183c] p-4 sm:p-5 text-white flex items-center gap-3.5 shadow-sm">
-                    <div className="w-11 h-11 rounded-full bg-amber-100 text-[#b43403] flex items-center justify-center shrink-0 shadow-md">
-                      <Clock className="w-5 h-5 stroke-[2.5]" />
+
+                {/* Linha Conectora 2 */}
+                <div className={`flex-1 min-w-[6px] h-[2px] mx-1 sm:mx-3 transition-colors ${
+                  hasCheckedIn && hasCheckedOut
+                    ? 'bg-gradient-to-r from-[#96183c] to-[#F89847]'
+                    : isLightTheme ? 'bg-slate-200' : 'bg-white/10'
+                }`} />
+
+                {/* Etapa 3: Saída */}
+                <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+                  <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center shrink-0 transition-all ${
+                    hasCheckedOut
+                      ? 'bg-[#96183c]/30 border-2 border-[#96183c] dark:border-[#F89847] shadow-[0_0_10px_rgba(248,152,71,0.3)]'
+                      : isLightTheme ? 'bg-slate-100 border border-slate-300' : 'bg-white/5 border border-white/15'
+                  }`}>
+                    {hasCheckedOut ? (
+                      <div className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-[#96183c] dark:bg-[#F89847]" />
+                    ) : (
+                      <div className={`w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full ${isLightTheme ? 'bg-slate-300' : 'bg-white/20'}`} />
+                    )}
+                  </div>
+                  <div className="leading-tight text-right sm:text-left">
+                    <span className={`block text-[11px] sm:text-xs font-semibold whitespace-nowrap ${
+                      hasCheckedOut
+                        ? isLightTheme ? 'text-[#96183c]' : 'text-[#F9DE97]'
+                        : isLightTheme ? 'text-slate-500' : 'text-slate-400'
+                    }`}>
+                      Saída
+                    </span>
+                    <span className={`block text-[11px] sm:text-xs font-mono font-black ${
+                      hasCheckedOut
+                        ? isLightTheme ? 'text-slate-900' : 'text-white'
+                        : isLightTheme ? 'text-slate-400' : 'text-slate-500'
+                    }`}>
+                      {todayShift?.checkOutTime || '--:--'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Card Unificado com as cores da marca (risquinho lateral & badges harmonizados) */}
+            <div className={`rounded-2xl border border-l-4 p-4 transition-all ${
+              isLightTheme
+                ? 'bg-slate-50/90 border-slate-200 border-l-[#e85d45] shadow-sm'
+                : 'bg-[#14161f]/90 border-white/10 border-l-[#F89847] shadow-md'
+            }`}>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                {/* Lado Esquerdo: Turno de hoje */}
+                <div className="flex items-center gap-3.5 md:flex-1">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border ${
+                    isLightTheme
+                      ? 'bg-amber-100 border-amber-200 text-[#96183c]'
+                      : 'bg-[#2a1b1b] border-[#F89847]/30 text-[#F89847]'
+                  }`}>
+                    <Clock className="w-4 h-4 stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <span className={`block text-[11px] font-bold ${
+                      isLightTheme ? 'text-slate-500' : 'text-slate-400'
+                    }`}>
+                      Turno de hoje
+                    </span>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className={`text-xs sm:text-sm font-black font-mono ${
+                        isLightTheme ? 'text-slate-900' : 'text-white'
+                      }`}>
+                        {todayShift?.startTime || '08:00'} – {todayShift?.endTime || '17:00'} ({calculateShiftDurationHours(todayShift?.startTime || '08:00', todayShift?.endTime || '17:00', todayShift?.breakMinutes)}h)
+                      </span>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <h4 className="text-sm font-black text-white leading-tight">
-                        {hasCheckedIn && hasCheckedOut
-                          ? 'Jornada Concluída'
-                          : hasCheckedIn
-                          ? 'Expediente em Andamento'
-                          : 'Aguardando Início'}
-                      </h4>
-                      <p className="text-xs text-white font-semibold mt-0.5 truncate">
-                        {hasCheckedIn && hasCheckedOut
-                          ? `Total trabalhado: ${calculateTodayWorkedHours() || '8h'}`
-                          : hasCheckedIn
-                          ? `Entrada às ${todayShift.checkInTime || '15:26'}`
-                          : 'Registre sua entrada ao chegar'}
+                    <span className={`inline-block mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                      isLightTheme
+                        ? 'bg-white border-slate-200 text-[#96183c]'
+                        : 'bg-[#96183c]/15 border-[#F89847]/25 text-[#F9DE97]'
+                    }`}>
+                      {todayShift?.title || 'Comercial (5x2)'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Separador vertical em telas médias/grandes */}
+                <div className={`hidden md:block w-px h-12 ${isLightTheme ? 'bg-slate-200' : 'bg-white/10'}`} />
+
+                {/* Lado Direito: Meu local atual */}
+                <div className="flex items-center justify-between gap-3 md:flex-1">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border ${
+                      isLightTheme
+                        ? 'bg-rose-100 border-rose-200 text-[#96183c]'
+                        : 'bg-[#2a1b1b] border-[#F89847]/30 text-[#F89847]'
+                    }`}>
+                      <MapPin className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <span className={`block text-[11px] font-bold ${
+                        isLightTheme ? 'text-slate-500' : 'text-slate-400'
+                      }`}>
+                        Meu local atual
+                      </span>
+                      <p className={`text-xs sm:text-sm font-black truncate leading-tight mt-0.5 ${
+                        isLightTheme ? 'text-slate-900' : 'text-white'
+                      }`}>
+                        {currentShiftWorkplace?.name || todayShift?.workplace || 'BNE'}
+                      </p>
+                      <p className={`text-[10.5px] truncate font-medium mt-0.5 ${
+                        isLightTheme ? 'text-slate-500' : 'text-slate-400'
+                      }`}>
+                        {currentShiftWorkplace?.address || 'Rua Antônio Chemin - São Gabriel, Colombo - PR'}
                       </p>
                     </div>
                   </div>
 
-                  {/* Body Content */}
-                  <div className="p-4 sm:p-5 space-y-3">
-                    {/* Feedback de Confirmação Digital */}
-                    {checkInSuccess && (
-                      <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-900 dark:text-emerald-300 text-xs flex items-center gap-2.5 animate-in fade-in duration-200">
-                        <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
-                        <div className="min-w-0">
-                          <p className="font-bold text-[11px]">Ponto Registrado com Sucesso</p>
-                          <p className="text-[10px] font-mono opacity-80">Protocolo #{Date.now().toString().slice(-6)} • Horário Oficial de Brasília</p>
-                        </div>
-                      </div>
-                    )}
+                  {workplaceMapsUrl && (
+                    <a
+                      href={workplaceMapsUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-xs ${
+                        isLightTheme
+                          ? 'bg-white border-slate-300 text-slate-800 hover:bg-slate-50'
+                          : 'bg-[#1e171a] border-[#F89847]/40 text-[#F9DE97] hover:border-[#F89847] hover:bg-[#282024]'
+                      }`}
+                      title="Abrir rota no Google Maps"
+                    >
+                      <MapPin className="w-3.5 h-3.5 text-[#F89847]" />
+                      <span>Como chegar</span>
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
 
-                    {hasCheckedIn && hasCheckedOut ? (
-                      /* ESTADO 1: JORNADA COMPLETA */
-                      <div className="space-y-3">
-                        {/* Entrada */}
-                        <div
-                          className={`rounded-2xl p-3 border space-y-1 ${
-                            isLightTheme
-                              ? 'bg-slate-50 border-slate-200 text-slate-800'
-                              : 'bg-white/5 border-white/10 text-white/90'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between font-black text-xs">
-                            <span
-                              className="flex items-center gap-1.5 text-xs font-black"
-                              style={{ color: isLightTheme ? '#064e3b' : '#6ee7b7' }}
-                            >
-                              <span
-                                className="w-2.5 h-2.5 rounded-full shrink-0"
-                                style={{ backgroundColor: '#10b981' }}
-                              />
-                              Entrada: {todayShift.checkInTime}
-                            </span>
-                            {isGpsValidDynamic ? (
-                              <span
-                                className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs"
-                                style={
-                                  isLightTheme
-                                    ? { backgroundColor: '#dcfce7', color: '#064e3b', borderColor: '#86efac' }
-                                    : { backgroundColor: 'rgba(16, 185, 129, 0.25)', color: '#a7f3d0', borderColor: 'rgba(16, 185, 129, 0.4)' }
-                                }
-                              >
-                                GPS OK ({formatDistance(dynamicDistance)})
-                              </span>
-                            ) : (
-                              <span
-                                className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs"
-                                style={
-                                  isLightTheme
-                                    ? { backgroundColor: '#fef3c7', color: '#78350f', borderColor: '#fcd34d' }
-                                    : { backgroundColor: 'rgba(245, 158, 11, 0.25)', color: '#fde68a', borderColor: 'rgba(245, 158, 11, 0.4)' }
-                                }
-                              >
-                                Fora ({formatDistance(dynamicDistance)})
-                              </span>
-                            )}
-                          </div>
-                          <p
-                            className="text-xs font-semibold truncate"
-                            style={{ color: isLightTheme ? '#334155' : '#cbd5e1' }}
-                          >
-                            {todayShift.checkInLocation?.address || 'Localização Registrada'}
-                          </p>
-                        </div>
-
-                        {/* Saída */}
-                        <div
-                          className={`rounded-2xl p-3 border space-y-1 ${
-                            isLightTheme
-                              ? 'bg-slate-50 border-slate-200 text-slate-800'
-                              : 'bg-white/5 border-white/10 text-white/90'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between font-black text-xs">
-                            <span
-                              className="flex items-center gap-1.5 text-xs font-black"
-                              style={{ color: isLightTheme ? '#881337' : '#fda4af' }}
-                            >
-                              <span
-                                className="w-2.5 h-2.5 rounded-full shrink-0"
-                                style={{ backgroundColor: '#f43f5e' }}
-                              />
-                              Saída: {todayShift.checkOutTime}
-                            </span>
-                            {isGpsOutValidDynamic ? (
-                              <span
-                                className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs"
-                                style={
-                                  isLightTheme
-                                    ? { backgroundColor: '#dcfce7', color: '#064e3b', borderColor: '#86efac' }
-                                    : { backgroundColor: 'rgba(16, 185, 129, 0.25)', color: '#a7f3d0', borderColor: 'rgba(16, 185, 129, 0.4)' }
-                                }
-                              >
-                                GPS OK ({formatDistance(dynamicOutDistance)})
-                              </span>
-                            ) : (
-                              <span
-                                className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs"
-                                style={
-                                  isLightTheme
-                                    ? { backgroundColor: '#fef3c7', color: '#78350f', borderColor: '#fcd34d' }
-                                    : { backgroundColor: 'rgba(245, 158, 11, 0.25)', color: '#fde68a', borderColor: 'rgba(245, 158, 11, 0.4)' }
-                                }
-                              >
-                                Fora ({formatDistance(dynamicOutDistance)})
-                              </span>
-                            )}
-                          </div>
-                          <p
-                            className="text-xs font-semibold truncate"
-                            style={{ color: isLightTheme ? '#334155' : '#cbd5e1' }}
-                          >
-                            {todayShift.checkOutLocation?.address || 'Localização Registrada'}
-                          </p>
-                        </div>
-
-                        {/* Botão Meus Registros de Presenças */}
-                        <button
-                          type="button"
-                          onClick={() => setIsHistoryOpen(true)}
-                          className={`w-full py-2.5 px-4 rounded-2xl border font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs ${
-                            isLightTheme
-                              ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
-                              : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-200'
-                          }`}
-                        >
-                          <History className="w-4 h-4" />
-                          <span>Meus Registros de Presenças</span>
-                        </button>
-                      </div>
-                    ) : hasCheckedIn ? (
-                      /* ESTADO 2: ENTRADA JÁ REGISTRADA, SAÍDA PENDENTE */
-                      <div className="space-y-3">
-                        {/* Card Entrada Registrada com verde nítido e alto contraste */}
-                        <div
-                          className={`rounded-2xl p-3 border space-y-1 ${
-                            isLightTheme
-                              ? 'bg-slate-50 border-slate-200 text-slate-800'
-                              : 'bg-white/5 border-white/10 text-white/90'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between font-black text-xs">
-                            <span
-                              className="flex items-center gap-1.5 text-xs font-black"
-                              style={{ color: isLightTheme ? '#064e3b' : '#6ee7b7' }}
-                            >
-                              <span
-                                className="w-2.5 h-2.5 rounded-full shrink-0"
-                                style={{ backgroundColor: '#10b981' }}
-                              />
-                              Entrada: {todayShift.checkInTime || '15:26'}
-                            </span>
-                            {isGpsValidDynamic ? (
-                              <span
-                                className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs"
-                                style={
-                                  isLightTheme
-                                    ? { backgroundColor: '#dcfce7', color: '#064e3b', borderColor: '#86efac' }
-                                    : { backgroundColor: 'rgba(16, 185, 129, 0.25)', color: '#a7f3d0', borderColor: 'rgba(16, 185, 129, 0.4)' }
-                                }
-                              >
-                                GPS OK ({formatDistance(dynamicDistance)})
-                              </span>
-                            ) : (
-                              <span
-                                className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs"
-                                style={
-                                  isLightTheme
-                                    ? { backgroundColor: '#fef3c7', color: '#78350f', borderColor: '#fcd34d' }
-                                    : { backgroundColor: 'rgba(245, 158, 11, 0.25)', color: '#fde68a', borderColor: 'rgba(245, 158, 11, 0.4)' }
-                                }
-                              >
-                                Fora ({formatDistance(dynamicDistance)})
-                              </span>
-                            )}
-                          </div>
-                          <p
-                            className="text-xs font-semibold truncate"
-                            style={{ color: isLightTheme ? '#334155' : '#cbd5e1' }}
-                          >
-                            {todayShift.checkInLocation?.address || 'Localização Registrada'}
-                          </p>
-                        </div>
-
-                        {/* Botão Registrar Saída */}
-                        <button
-                          type="button"
-                          onClick={() => handlePunchClock('saida')}
-                          disabled={isCapturingGps}
-                          className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#96183c] to-[#b32047] hover:brightness-110 active:scale-[0.99] text-white font-black text-xs shadow-md shadow-[#96183c]/30 flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-                        >
-                          <Clock className="w-4 h-4 stroke-[2.5]" />
-                          <span>{isCapturingGps ? 'Obtendo GPS e Endereço...' : 'Registrar Saída'}</span>
-                        </button>
-
-                        {/* Mensagem de Erro de GPS amigável se a permissão for negada */}
-                        {gpsError && (
-                          <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-[11px] font-bold text-left">
-                            ⚠️ {gpsError}
-                          </div>
-                        )}
-
-                        {/* Botão Meus Registros de Presenças */}
-                        <button
-                          type="button"
-                          onClick={() => setIsHistoryOpen(true)}
-                          className={`w-full py-2.5 px-4 rounded-2xl border font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                            isLightTheme
-                              ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
-                              : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-200'
-                          }`}
-                        >
-                          <History className="w-4 h-4" />
-                          <span>Meus Registros de Presenças</span>
-                        </button>
-
-                        {/* 🧪 Testes Rápidos CLT & Portaria 671 (Validação Imediata) */}
-                        <div className="pt-2 border-t border-dashed border-purple-500/30 flex flex-col gap-1.5 text-left">
-                          <div className="flex items-center justify-between text-[10px] font-bold">
-                            <span className="text-purple-400 font-mono flex items-center gap-1">
-                              🧪 TESTE RÁPIDO CLT
-                            </span>
-                            <span className="text-slate-400 text-[9px]">Ambiente de Validação</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleSimulatePunch('saida_extra')}
-                            className="w-full py-2 px-3 rounded-xl border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-300 font-bold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer transition-all"
-                            title="Simula bater o ponto 39 minutos após o fim do expediente para testar a tela de Hora Extra / Esquecimento"
-                          >
-                            <span>⚡ Testar Saída com Hora Extra (+39m)</span>
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      /* ESTADO 3: ENTRADA PENDENTE (NENHUM PONTO BATIDO AINDA) */
-                      <div className="space-y-3">
-                        {isTemporaryWorker && (
-                          <div className="text-left space-y-1 mb-2">
-                            <label
-                              className={`text-[10px] font-bold uppercase tracking-wider block ${
-                                isLightTheme ? 'text-slate-700' : 'text-slate-300'
-                              }`}
-                            >
-                              Posto / Cliente Atendido:
-                            </label>
-                            <input
-                              type="text"
-                              value={temporaryWorkplaceName}
-                              onChange={(e) => setTemporaryWorkplaceName(e.target.value)}
-                              placeholder="Ex: Stand Feira Anhembi, Obra Torre B..."
-                              className={`w-full px-3 py-2 text-xs rounded-xl border font-medium outline-hidden transition-all ${
-                                isLightTheme
-                                  ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-slate-600'
-                                  : 'bg-white/10 border-white/20 text-white focus:border-white/40'
-                              }`}
-                            />
-                          </div>
-                        )}
-
-                        {/* Botão Registrar Entrada */}
-                        <button
-                          type="button"
-                          onClick={() => handlePunchClock('entrada')}
-                          disabled={isCapturingGps}
-                          className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#96183c] to-[#b32047] hover:brightness-110 active:scale-[0.99] text-white font-black text-xs shadow-md shadow-[#96183c]/30 flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-                        >
-                          <Clock className="w-4 h-4 stroke-[2.5]" />
-                          <span>{isCapturingGps ? 'Obtendo GPS e Endereço...' : 'Registrar Entrada'}</span>
-                        </button>
-
-                        {/* Mensagem de Erro de GPS amigável se a permissão for negada */}
-                        {gpsError && (
-                          <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-[11px] font-bold text-left">
-                            ⚠️ {gpsError}
-                          </div>
-                        )}
-
-                        <p
-                          className={`text-[11px] font-semibold text-center ${
-                            isLightTheme ? 'text-slate-600' : 'text-slate-400'
-                          }`}
-                        >
-                          Início da jornada com geolocalização auditável
-                        </p>
-
-                        {/* Botão Meus Registros de Presenças */}
-                        <button
-                          type="button"
-                          onClick={() => setIsHistoryOpen(true)}
-                          className={`w-full py-2.5 px-4 rounded-2xl border font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                            isLightTheme
-                              ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
-                              : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-200'
-                          }`}
-                        >
-                          <History className="w-4 h-4" />
-                          <span>Meus Registros de Presenças</span>
-                        </button>
-
-                        {/* 🧪 Testes Rápidos CLT & Portaria 671 (Validação Imediata) */}
-                        <div className="pt-2 border-t border-dashed border-amber-500/25 flex flex-col gap-1.5 text-left">
-                          <div className="flex items-center justify-between text-[10px] font-bold">
-                            <span className="text-amber-500 font-mono flex items-center gap-1">
-                              🧪 TESTE RÁPIDO CLT
-                            </span>
-                            <span className="text-slate-400 text-[9px]">Ambiente de Validação</span>
-                          </div>
-                          <div className="grid grid-cols-2 gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => handleSimulatePunch('entrada_atraso')}
-                              className="py-2 px-2 rounded-xl border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-300 font-bold text-[11px] flex items-center justify-center gap-1 cursor-pointer transition-all"
-                              title="Simula bater o ponto 35 minutos após o início do expediente para testar o modal de Atraso"
-                            >
-                              <span>⏱️ Testar Atraso (+35m)</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleSimulatePunch('saida_extra')}
-                              className="py-2 px-2 rounded-xl border border-purple-500/30 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-300 font-bold text-[11px] flex items-center justify-center gap-1 cursor-pointer transition-all"
-                              title="Simula bater a saída com hora extra (+39 min)"
-                            >
-                              <span>⚡ Testar Saída (+39m)</span>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </>
+            {/* Linha de Ações: Botão Principal (com degradê bordô-laranja) + Meus Registros */}
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              {/* Botão de Registro de Ponto */}
+              {hasCheckedIn && hasCheckedOut ? (
+                <div className={`w-full sm:flex-1 py-3.5 px-6 rounded-2xl border text-center font-bold text-xs sm:text-sm flex items-center justify-center gap-2 ${
+                  isLightTheme
+                    ? 'bg-rose-50 border-rose-200 text-[#96183c]'
+                    : 'bg-[#96183c]/15 border-[#96183c]/40 text-[#F9DE97]'
+                }`}>
+                  <CheckCircle2 className={`w-4 h-4 ${isLightTheme ? 'text-[#96183c]' : 'text-[#F89847]'}`} />
+                  <span>Jornada de Hoje Concluída</span>
+                </div>
+              ) : hasCheckedIn ? (
+                <button
+                  type="button"
+                  onClick={() => handlePunchClock('saida')}
+                  disabled={isCapturingGps}
+                  className="w-full sm:flex-1 py-3.5 px-6 rounded-2xl text-white font-black text-xs sm:text-sm shadow-xl flex items-center justify-center gap-2 cursor-pointer transition-all hover:brightness-110 active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed"
+                  style={{
+                    background: 'linear-gradient(90deg, #640C1E 0%, #96183c 55%, #F89847 100%)',
+                    boxShadow: '0 8px 24px rgba(150, 24, 60, 0.35)'
+                  }}
+                >
+                  <ArrowRight className="w-4 h-4 stroke-[3]" />
+                  <span>{isCapturingGps ? 'Obtendo GPS e Endereço...' : 'Registrar Saída'}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handlePunchClock('entrada')}
+                  disabled={isCapturingGps}
+                  className="w-full sm:flex-1 py-3.5 px-6 rounded-2xl text-white font-black text-xs sm:text-sm shadow-xl flex items-center justify-center gap-2 cursor-pointer transition-all hover:brightness-110 active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed"
+                  style={{
+                    background: 'linear-gradient(90deg, #640C1E 0%, #96183c 55%, #F89847 100%)',
+                    boxShadow: '0 8px 24px rgba(150, 24, 60, 0.35)'
+                  }}
+                >
+                  <ArrowRight className="w-4 h-4 stroke-[3]" />
+                  <span>{isCapturingGps ? 'Obtendo GPS e Endereço...' : 'Registrar Entrada'}</span>
+                </button>
               )}
+
+              {/* Botão Secundário: Meus Registros */}
+              <button
+                type="button"
+                onClick={() => setIsHistoryOpen(true)}
+                className={`w-full sm:flex-1 py-3.5 px-6 rounded-2xl border font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs ${
+                  isLightTheme
+                    ? 'bg-white hover:bg-slate-50 border-slate-300 text-slate-800'
+                    : 'bg-transparent hover:bg-white/5 border-white/15 text-white hover:border-[#F89847]/40'
+                }`}
+              >
+                <History className="w-4 h-4 text-[#F89847]" />
+                <span>Meus Registros</span>
+              </button>
+            </div>
+
+            {/* Barra Inferior: GPS Auditado */}
+            <div className="pt-3 border-t border-dashed border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${isGpsValidDynamic ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                <span className={`text-[11px] font-semibold ${isLightTheme ? 'text-slate-600' : 'text-slate-400'}`}>
+                  GPS: {isGpsValidDynamic ? `No perímetro (${formatDistance(dynamicDistance)})` : `Fora (${formatDistance(dynamicDistance)})`}
+                </span>
+                {gpsError && (
+                  <span className="text-[11px] text-rose-400 ml-1">⚠️ {gpsError}</span>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* 2. CENTRAL WIDGETS: CARGA HORÁRIA, FREQUÊNCIA & AÇÕES RÁPIDAS */}
@@ -1458,7 +1257,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                           className={`inline-block text-[9px] font-black px-2 py-0.5 rounded-full mt-1 ${
                             isLightTheme
                               ? 'bg-[#faf0ac] text-[#96183c] border border-[#f89642]/40'
-                              : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                              : 'bg-[#96183c]/20 text-[#f89847] border border-[#f89847]/30'
                           }`}
                         >
                           Reunião
@@ -1866,7 +1665,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                 <div
                   className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
                     tolerancePrompt.type === 'saida'
-                      ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400'
+                      ? 'bg-[#96183c]/15 text-[#96183c] dark:bg-[#96183c]/30 dark:text-[#F89847]'
                       : 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
                   }`}
                 >
@@ -1894,7 +1693,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
             <div
               className={`p-3.5 rounded-2xl border text-xs space-y-1 mb-4 ${
                 tolerancePrompt.type === 'saida'
-                  ? 'bg-purple-500/10 border-purple-500/30 text-purple-900 dark:text-purple-200'
+                  ? 'bg-[#96183c]/10 border-[#96183c]/30 text-[#96183c] dark:text-[#F9DE97] dark:bg-[#640C1E]/25 dark:border-[#96183c]/40'
                   : 'bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-200'
               }`}
             >
@@ -1925,7 +1724,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                     onClick={() => setExitReasonType('overtime')}
                     className={`flex items-start gap-3 p-3 rounded-2xl border cursor-pointer transition-all ${
                       exitReasonType === 'overtime'
-                        ? 'border-purple-500 bg-purple-500/10 ring-1 ring-purple-500'
+                        ? 'border-[#96183c] bg-[#96183c]/10 ring-1 ring-[#96183c] dark:border-[#F89847] dark:bg-[#F89847]/10 dark:ring-[#F89847]'
                         : isLightTheme ? 'border-slate-200 hover:bg-slate-50' : 'border-white/10 hover:bg-white/5'
                     }`}
                   >
@@ -1934,7 +1733,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                       name="exitReason"
                       checked={exitReasonType === 'overtime'}
                       onChange={() => setExitReasonType('overtime')}
-                      className="mt-0.5 text-purple-600 focus:ring-purple-500 cursor-pointer"
+                      className="mt-0.5 accent-[#96183c] dark:accent-[#F89847] cursor-pointer"
                     />
                     <div className="text-xs">
                       <span className="font-black text-slate-900 dark:text-white block">
@@ -1960,7 +1759,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                       name="exitReason"
                       checked={exitReasonType === 'forgot'}
                       onChange={() => setExitReasonType('forgot')}
-                      className="mt-0.5 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                      className="mt-0.5 accent-amber-600 dark:accent-amber-500 cursor-pointer"
                     />
                     <div className="text-xs">
                       <span className="font-black text-slate-900 dark:text-white block">
@@ -1985,8 +1784,8 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                       rows={2}
                       className={`w-full p-2.5 rounded-xl border text-xs outline-none transition-all resize-none ${
                         isLightTheme
-                          ? 'bg-slate-50 border-slate-200 text-slate-900 focus:border-purple-600'
-                          : 'bg-black/30 border-white/10 text-white focus:border-purple-500'
+                          ? 'bg-slate-50 border-slate-200 text-slate-900 focus:border-[#96183c]'
+                          : 'bg-black/30 border-white/10 text-white focus:border-[#F89847]'
                       }`}
                     />
                   </div>
