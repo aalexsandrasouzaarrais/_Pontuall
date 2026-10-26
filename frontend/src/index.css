@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Paleta global Pontual — reduz a saturação dos antigos verdes, roxos e rosas. */
 :root {
   --pontual-creme: #F9DE97;
