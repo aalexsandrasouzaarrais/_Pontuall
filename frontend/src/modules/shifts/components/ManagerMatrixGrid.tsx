@@ -56,7 +56,8 @@ import {
 import { EmployeesManagementView } from '@/modules/manager/components/EmployeesManagementView';
 import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
 import { DeleteShiftsModal } from './DeleteShiftsModal';
-import { addDaysLocal, startOfWeekMonday, toLocalDateString } from '@/shared/utils/dateUtils';
+import { addDaysLocal, startOfWeekMonday, toLocalDateString, getTodayDateString } from '@/shared/utils/dateUtils';
+import { showPolishedToast } from '@/components/ui/halo-toast';
 import {
   ReminderItem,
   getRemindersSupabase,
@@ -302,7 +303,79 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       };
     });
 
-    setApprovalsData([...mappedJustifications, ...mappedRequests, ...mappedShiftOccurrences]);
+    // Se ainda não houver ocorrências nos turnos reais, fornece 3 casos de teste demonstrativos para validação imediata do gestor
+    let finalShiftOccurrences = mappedShiftOccurrences;
+    if (finalShiftOccurrences.length === 0) {
+      const today = getTodayDateString();
+      const emp1 = employees[0] || {
+        id: 'emp-1',
+        name: 'Alexsandra Arrais',
+        role: 'Analista de Operações',
+        department: 'Operações',
+        avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
+      };
+      const emp2 = employees[1] || emp1;
+      const emp3 = employees[2] || emp1;
+
+      finalShiftOccurrences = [
+        {
+          id: 'shift-occ-sim-he-1',
+          shiftId: 'sim-shift-he-1',
+          employeeId: emp1.id,
+          employeeName: emp1.name,
+          employeeRole: emp1.role || 'Colaborador',
+          employeeDept: emp1.department || 'Operações',
+          employeeAvatar: emp1.avatar || '',
+          type: '⏰ Hora Extra / Banco de Horas',
+          reason: '[HE +39m: Atendimento urgente e suporte estendido a cliente corporativo]',
+          date: `${today} (Previsto: 08:00 às 15:20 | Ponto: 08:00 às 15:59)`,
+          documentName: 'Espelho Eletrônico (Portaria 671)',
+          documentUrl: undefined,
+          status: 'Pendente' as const,
+          actionText: undefined,
+          feedback: '',
+          isShiftOccurrence: true,
+        },
+        {
+          id: 'shift-occ-sim-late-1',
+          shiftId: 'sim-shift-late-1',
+          employeeId: emp2.id,
+          employeeName: emp2.name,
+          employeeRole: emp2.role || 'Supervisor',
+          employeeDept: emp2.department || 'Logística',
+          employeeAvatar: emp2.avatar || '',
+          type: '⚠️ Atraso de Entrada',
+          reason: '[Atraso 35m: Paralisação inesperada e atraso no transporte público na linha 9]',
+          date: `${today} (Previsto: 08:00 às 17:00 | Ponto: 08:35 às 17:00)`,
+          documentName: 'Espelho Eletrônico (Portaria 671)',
+          documentUrl: undefined,
+          status: 'Pendente' as const,
+          actionText: undefined,
+          feedback: '',
+          isShiftOccurrence: true,
+        },
+        {
+          id: 'shift-occ-sim-forgot-1',
+          shiftId: 'sim-shift-forgot-1',
+          employeeId: emp3.id,
+          employeeName: emp3.name,
+          employeeRole: emp3.role || 'Atendente',
+          employeeDept: emp3.department || 'Atendimento',
+          employeeAvatar: emp3.avatar || '',
+          type: 'ℹ️ Ajuste de Esquecimento',
+          reason: '[Esquecimento de Saída: Saída real no horário previsto (15:20) - Batida às 15:59]',
+          date: `${today} (Previsto: 08:00 às 15:20 | Ponto: 08:00 às 15:59)`,
+          documentName: 'Espelho Eletrônico (Portaria 671)',
+          documentUrl: undefined,
+          status: 'Pendente' as const,
+          actionText: undefined,
+          feedback: '',
+          isShiftOccurrence: true,
+        },
+      ];
+    }
+
+    setApprovalsData([...mappedJustifications, ...mappedRequests, ...finalShiftOccurrences]);
   }, [employees, justifications, requests, shifts]);
 
   const handleApproveOccurrence = async (id: string) => {
@@ -321,6 +394,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         }
       }
       setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, status: 'Aprovado', actionText: 'Homologado Banco de Horas' } : item));
+      showPolishedToast({
+        id: 'shift-homologated',
+        title: 'Hora Extra Homologada!',
+        description: 'Horas aprovadas e creditadas no Banco de Horas do colaborador com sucesso.',
+        rimVariant: 'success',
+        duration: 4000,
+      });
       return;
     }
 
@@ -356,6 +436,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         }
       }
       setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, status: 'Recusado / Falta', actionText: 'Ajustado p/ Horário Regular' } : item));
+      showPolishedToast({
+        id: 'shift-adjusted',
+        title: 'Ponto Ajustado p/ Horário Normal',
+        description: 'Registro técnico preservado (Portaria 671). Ajuste de tratamento aplicado sem gerar HE indevida (Art. 4º CLT).',
+        rimVariant: 'default',
+        duration: 5000,
+      });
       return;
     }
 
@@ -373,6 +460,75 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     } else {
       await updateJustificativaStatusSupabase(id, 'rejected', customFeedback || 'Recusado pelo gestor');
     }
+  };
+
+  const handleGenerateManagerSampleOccurrence = (type: 'hora_extra' | 'atraso' | 'esquecimento') => {
+    const today = getTodayDateString();
+    const targetEmp = employees[0] || {
+      id: 'emp-sample-1',
+      name: 'Alexsandra Arrais',
+      role: 'Analista de Operações',
+      department: 'Operações',
+      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
+    };
+
+    const simId = `shift-sim-${Date.now()}`;
+    let typeLabel = '';
+    let notes = '';
+    let dateStr = '';
+
+    if (type === 'hora_extra') {
+      typeLabel = '⏰ Hora Extra / Banco de Horas';
+      notes = '[HE +39m: Atendimento urgente e suporte estendido a cliente corporativo]';
+      dateStr = `${today} (Previsto: 08:00 às 15:20 | Ponto: 08:00 às 15:59)`;
+      showPolishedToast({
+        id: 'sim-he-created',
+        title: 'Caso de Hora Extra Gerado',
+        description: 'Colaborador registrou saída às 15:59 (+39 min). Analise e clique em "Homologar Banco" ou "Ajustar Horário Normal".',
+        rimVariant: 'success',
+      });
+    } else if (type === 'atraso') {
+      typeLabel = '⚠️ Atraso de Entrada';
+      notes = '[Atraso 35m: Paralisação inesperada e atraso no transporte público na linha 9]';
+      dateStr = `${today} (Previsto: 08:00 às 17:00 | Ponto: 08:35 às 17:00)`;
+      showPolishedToast({
+        id: 'sim-late-created',
+        title: 'Caso de Atraso Gerado',
+        description: 'Colaborador registrou entrada às 08:35 (+35 min de atraso). Avalie a justificativa.',
+        rimVariant: 'default',
+      });
+    } else {
+      typeLabel = 'ℹ️ Ajuste de Esquecimento';
+      notes = '[Esquecimento de Saída: Saída real no horário previsto (15:20) - Batida às 15:59]';
+      dateStr = `${today} (Previsto: 08:00 às 15:20 | Ponto: 08:00 às 15:59)`;
+      showPolishedToast({
+        id: 'sim-forgot-created',
+        title: 'Caso de Esquecimento Gerado',
+        description: 'Colaborador registrou saída tardia por esquecimento. Ajuste para a jornada contratual prevista (Art. 4º CLT).',
+        rimVariant: 'default',
+      });
+    }
+
+    const newRow = {
+      id: `shift-occ-${simId}`,
+      shiftId: simId,
+      employeeId: targetEmp.id,
+      employeeName: targetEmp.name,
+      employeeRole: targetEmp.role || 'Colaborador',
+      employeeDept: targetEmp.department || 'Geral',
+      employeeAvatar: targetEmp.avatar || '',
+      type: typeLabel,
+      reason: notes,
+      date: dateStr,
+      documentName: 'Espelho Eletrônico (Portaria 671)',
+      documentUrl: undefined,
+      status: 'Pendente' as const,
+      actionText: undefined,
+      feedback: '',
+      isShiftOccurrence: true,
+    };
+
+    setApprovalsData(prev => [newRow, ...prev]);
   };
 
   const handleUpdateFeedback = async (id: string, feedback: string) => {
@@ -1776,6 +1932,61 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               </button>
             </div>
 
+            {/* Banner de Simulação de Casos para o Gestor (Banco de Horas, Atrasos e Esquecimentos) */}
+            {approvalsFilterTab === 'banco_horas' && (
+              <div
+                className="p-4 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10 shadow-lg animate-in fade-in duration-200"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(88, 28, 135, 0.28) 0%, rgba(30, 27, 75, 0.5) 100%)',
+                  borderColor: 'rgba(168, 85, 247, 0.4)',
+                }}
+              >
+                <div className="space-y-1 max-w-xl">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" />
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-purple-300">
+                      Ambiente de Simulação do Gestor (CLT & Portaria 671)
+                    </span>
+                  </div>
+                  <h4 className="text-sm font-black text-white">
+                    Simule e teste a tomada de decisão do Gestor em 1 clique
+                  </h4>
+                  <p className="text-xs text-purple-200/80 leading-relaxed">
+                    Clique nos botões de teste ao lado para gerar ocorrências instantâneas e avaliar como o sistema homologa horas para o Banco de Horas ou aplica o ajuste de horário previsto (sem HE indevida).
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleGenerateManagerSampleOccurrence('hora_extra')}
+                    className="px-3 py-2 rounded-xl text-xs font-bold bg-purple-500/20 hover:bg-purple-500/35 text-purple-200 border border-purple-400/40 flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
+                    title="Simula colaborador que trabalhou além do horário previsto (+39 min) aguardando sua homologação"
+                  >
+                    <span>⚡ Simular Hora Extra (+39m)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleGenerateManagerSampleOccurrence('atraso')}
+                    className="px-3 py-2 rounded-xl text-xs font-bold bg-amber-500/20 hover:bg-amber-500/35 text-amber-200 border border-amber-400/40 flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
+                    title="Simula colaborador que iniciou com atraso (+35 min) justificando trânsito"
+                  >
+                    <span>⏱️ Simular Atraso (+35m)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleGenerateManagerSampleOccurrence('esquecimento')}
+                    className="px-3 py-2 rounded-xl text-xs font-bold bg-blue-500/20 hover:bg-blue-500/35 text-blue-200 border border-blue-400/40 flex items-center gap-1.5 transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
+                    title="Simula colaborador que esqueceu de bater a saída e saiu no horário previsto (Art. 4º CLT)"
+                  >
+                    <span>ℹ️ Simular Esquecimento de Saída</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Data Table igual à Imagem 2 + Coluna Adicional de Observação / Feedback para o Colaborador */}
             <div 
               className="approval-table-card approvals-light-table rounded-2xl border border-[#282a33] overflow-hidden overflow-x-auto relative z-10 shadow-xl" 
@@ -2194,25 +2405,25 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           type="button"
                           onClick={() => {
                             handleRejectOccurrence(selectedDetailOccurrence.id);
-                            setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Recusado / Falta', actionText: 'Recusado agora' } : null);
+                            setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Recusado / Falta', actionText: 'Ajustado p/ Horário Regular' } : null);
                           }}
                           className="px-3.5 py-2 rounded-xl border border-rose-500/40 text-rose-300 hover:bg-rose-500/15 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
                         >
                           <XCircle className="w-4 h-4" />
-                          <span>Recusar</span>
+                          <span>{(selectedDetailOccurrence as any).isShiftOccurrence ? 'Ajustar Horário Normal' : 'Recusar'}</span>
                         </button>
 
                         <button
                           type="button"
                           onClick={() => {
                             handleApproveOccurrence(selectedDetailOccurrence.id);
-                            setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Aprovado', actionText: 'Homologado agora' } : null);
+                            setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Aprovado', actionText: 'Homologado Banco de Horas' } : null);
                           }}
                           className="px-4 py-2 rounded-xl font-bold text-xs text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:scale-105 active:scale-95"
                           style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
                         >
                           <CheckCircle2 className="w-4 h-4" />
-                          <span>Aprovar Solicitação</span>
+                          <span>{(selectedDetailOccurrence as any).isShiftOccurrence ? 'Homologar Banco de Horas' : 'Aprovar Solicitação'}</span>
                         </button>
                       </div>
                     ) : (
