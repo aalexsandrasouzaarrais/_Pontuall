@@ -4,7 +4,6 @@ import {
   Pause, 
   Square, 
   RotateCcw, 
-  Clock, 
   Plus, 
   Briefcase, 
   FileText, 
@@ -532,8 +531,8 @@ export const PjTimesheetTracker: React.FC<PjTimesheetTrackerProps> = ({
           {!isRunning ? (
             <button
               onClick={handleStartTimer}
-              className="col-span-2 py-2.5 px-3 rounded-xl font-bold text-xs text-white shadow-lg flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.01]"
-              style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
+              className="col-span-2 py-2.5 px-3 rounded-xl font-bold text-xs text-white shadow-lg flex items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.01] hover:brightness-110"
+              style={{ background: '#670D20' }}
             >
               <Play className="w-4 h-4 fill-white" />
               <span>Dar Play na Atividade</span>
@@ -551,7 +550,8 @@ export const PjTimesheetTracker: React.FC<PjTimesheetTrackerProps> = ({
               ) : (
                 <button
                   onClick={handlePauseTimer}
-                  className="py-2 px-3 rounded-xl font-bold text-xs text-amber-900 bg-amber-400 hover:bg-amber-300 shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="py-2 px-3 rounded-xl font-bold text-xs text-white shadow-md flex items-center justify-center gap-1.5 cursor-pointer hover:brightness-110 transition-all"
+                  style={{ background: '#670D20' }}
                 >
                   <Pause className="w-3.5 h-3.5 fill-current" />
                   <span>Pausar</span>
@@ -623,54 +623,33 @@ export const PjTimesheetTracker: React.FC<PjTimesheetTrackerProps> = ({
       <div className="flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-6">
         
         {/* Coluna da Esquerda: Cronômetro & Status */}
-        <div className="flex items-center gap-5 shrink-0">
-          <div className="relative">
-            <div className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center border transition-all ${
-              isRunning 
-                ? (isPaused 
-                    ? isDark ? 'bg-amber-500/20 border-amber-500/40 text-amber-400' : 'bg-amber-100 border-amber-300 text-amber-700' 
-                    : isDark ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400 animate-pulse' : 'bg-emerald-100 border-emerald-300 text-emerald-700 animate-pulse') 
-                : isDark ? 'bg-[#9F243C]/20 border-[#F59242]/30 text-[#f89847]' : 'bg-[#96183c]/10 border-[#96183c]/25 text-[#96183c]'
-            }`}>
-              <Clock className="w-8 h-8 sm:w-10 sm:h-10" />
-            </div>
-            {isRunning && (
-              <span className={`absolute -top-1 -right-1 w-4 h-4 rounded-full border-2 ${isDark ? 'border-slate-900' : 'border-white'} ${
-                isPaused ? 'bg-amber-400' : 'bg-emerald-400 animate-ping'
-              }`} />
-            )}
-          </div>
-
-          <div>
+        <div className="shrink-0 space-y-1">
+          {isRunning && (
             <div className="flex items-center gap-2">
               <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                isRunning 
-                  ? (isPaused
-                      ? isDark ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-amber-100 text-amber-800 border border-amber-300'
-                      : isDark ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-emerald-100 text-emerald-800 border border-emerald-300')
-                  : isDark
-                  ? 'bg-[#9F243C]/20 text-[#F9DE97] border border-[#F59242]/30'
-                  : 'bg-[#96183c]/10 text-[#96183c] border border-[#96183c]/25'
+                isPaused
+                  ? isDark ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-amber-100 text-amber-800 border border-amber-300'
+                  : isDark ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
               }`}>
-                {isRunning ? (isPaused ? '⏸️ Atividade em Pausa' : '⏱️ Rastreando em Tempo Real') : 'Timesheet Interativo'}
+                {isPaused ? '⏸️ Atividade em Pausa' : '⏱️ Rastreando em Tempo Real'}
               </span>
-              {startClockTime && isRunning && (
+              {startClockTime && (
                 <span className={`text-xs font-mono ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Iniciado às {startClockTime}</span>
               )}
             </div>
+          )}
 
-            <div className={`font-mono text-3xl sm:text-4xl font-black tracking-tight mt-1 ${
-              isDark ? 'text-white' : 'text-slate-900'
-            }`}>
-              {formatTime(elapsedSeconds)}
-            </div>
+          <div className={`font-mono text-3xl sm:text-4xl font-black tracking-tight ${
+            isDark ? 'text-white' : 'text-slate-900'
+          }`}>
+            {formatTime(elapsedSeconds)}
+          </div>
 
-            <div className={`text-xs mt-0.5 flex items-center gap-3 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-              {breakSeconds > 0 && (
-                <span className={`font-medium ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>Pausa acumulada: {formatTime(breakSeconds)}</span>
-              )}
-              <span>• Prestação de Serviços PJ</span>
-            </div>
+          <div className={`text-xs mt-0.5 flex items-center gap-3 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+            {breakSeconds > 0 && (
+              <span className={`font-medium ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>Pausa acumulada: {formatTime(breakSeconds)}</span>
+            )}
+            <span>• Prestação de Serviços PJ</span>
           </div>
         </div>
 
@@ -770,10 +749,10 @@ export const PjTimesheetTracker: React.FC<PjTimesheetTrackerProps> = ({
               <button
                 onClick={handleStartTimer}
                 className="flex-1 px-5 py-3 rounded-2xl font-black text-xs sm:text-sm text-white shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
+                style={{ background: '#670D20' }}
               >
                 <Play className="w-4 h-4 fill-white" />
-                <span>Iniciar Play ▶️</span>
+                <span>Iniciar</span>
               </button>
 
               <button
@@ -800,7 +779,8 @@ export const PjTimesheetTracker: React.FC<PjTimesheetTrackerProps> = ({
               ) : (
                 <button
                   onClick={handlePauseTimer}
-                  className="px-4 py-2.5 rounded-xl font-bold text-xs text-amber-950 bg-amber-400 hover:bg-amber-300 shadow-lg transition-all flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl font-bold text-xs text-white shadow-lg transition-all flex items-center gap-1.5 cursor-pointer hover:brightness-110"
+                  style={{ background: '#670D20' }}
                   title="Pausa para almoço, descanso ou interrupção"
                 >
                   <Pause className="w-3.5 h-3.5 fill-current" />

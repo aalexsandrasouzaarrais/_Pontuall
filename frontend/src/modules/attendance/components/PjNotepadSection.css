@@ -1,0 +1,315 @@
+.pj-bloco-notas-wrapper {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+}
+
+.pj-quadro-notas {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px 10px;
+  align-items: start;
+}
+
+.pj-nota {
+  position: relative;
+  min-height: 340px;
+  border-radius: 18px;
+  overflow: visible;
+  border: 0;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.16);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+  transition: box-shadow 0.2s ease;
+}
+
+.pj-nota:hover {
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.24);
+}
+
+/* Z-index decrescente na linha para que as presilhas da esquerda nunca fiquem escondidas atrás do card da direita */
+.pj-nota:nth-child(3n + 1) {
+  z-index: 30;
+  background-color: #8f263c;
+  background-image: var(--tex-vinho);
+  color: #fffaf5;
+}
+
+.pj-nota:nth-child(3n + 2) {
+  z-index: 20;
+  background-color: #d6763b;
+  background-image: var(--tex-laranja);
+  color: #fffaf5;
+}
+
+.pj-nota:nth-child(3n) {
+  z-index: 10;
+  background-color: #d9b650;
+  background-image: var(--tex-amarelo);
+  color: #fffdf8;
+}
+
+/* Camada mais opaca / fosca sobre a textura da nota para suavizar a cor e destacar o texto */
+.pj-nota::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 18px;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(64, 14, 24, 0.48), rgba(45, 10, 18, 0.42));
+  backdrop-filter: saturate(0.82);
+}
+
+.pj-nota:nth-child(3n + 2)::before {
+  background: linear-gradient(135deg, rgba(162, 62, 22, 0.46), rgba(135, 48, 16, 0.40));
+}
+
+.pj-nota:nth-child(3n)::before {
+  background: linear-gradient(135deg, rgba(156, 112, 24, 0.44), rgba(132, 92, 18, 0.38));
+}
+
+.pj-nota-conteudo {
+  position: relative;
+  z-index: 2;
+  min-height: 340px;
+  padding: 24px 28px 18px 28px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Presilhas horizontais centralizadas entre os cards */
+.pj-espiral {
+  position: absolute;
+  right: -24px;
+  top: 9%;
+  bottom: 9%;
+  width: 38px;
+  display: none;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.pj-nota:not(:nth-child(3n)):not(:last-child) .pj-espiral {
+  display: flex;
+}
+
+.pj-espiral span {
+  position: relative;
+  display: block;
+  width: 38px;
+  height: 15px;
+  flex: 0 0 15px;
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+.pj-nota-topo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.pj-indicador {
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  flex: 0 0 13px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.18);
+}
+
+/* Sobrescreve regras globais do modo claro (index.css) para manter o título transparente sobre a nota */
+.pj-nota input.pj-titulo,
+.light .pj-nota input.pj-titulo,
+html.light .pj-nota input.pj-titulo,
+body.light .pj-nota input.pj-titulo {
+  width: 100%;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.34) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  color: #fffdf9 !important;
+  font-size: 1.32rem !important;
+  font-weight: 800 !important;
+  padding: 6px 2px 8px !important;
+  outline: none !important;
+  text-shadow: 0 1px 2px rgba(38, 12, 18, 0.32);
+}
+
+.pj-nota input.pj-titulo::placeholder,
+.light .pj-nota input.pj-titulo::placeholder,
+.pj-texto::placeholder {
+  color: rgba(255, 252, 246, 0.88) !important;
+}
+
+.pj-ferramentas-nota {
+  display: flex;
+  justify-content: flex-end;
+  margin: -4px 0 8px;
+}
+
+.pj-botao-lista {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(34, 10, 16, 0.14);
+  color: rgba(255, 253, 249, 0.9) !important;
+  border-radius: 999px;
+  padding: 2.5px 9px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  backdrop-filter: blur(2px);
+  opacity: 0.85;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.pj-botao-lista:hover,
+.pj-botao-lista.ativo {
+  opacity: 1;
+  background: rgba(34, 10, 16, 0.30);
+  border-color: rgba(255, 255, 255, 0.48);
+  transform: translateY(-1px);
+}
+
+.pj-texto {
+  width: 100%;
+  flex: 1;
+  min-height: 205px;
+  resize: none;
+  border: 0;
+  background: transparent;
+  color: #fffdf9 !important;
+  font-size: 1.14rem;
+  line-height: 1.62;
+  font-weight: 600;
+  outline: none;
+  text-shadow: 0 1px 2px rgba(38, 12, 18, 0.28);
+}
+
+.pj-editor {
+  overflow-y: auto;
+  word-break: break-word;
+  white-space: pre-wrap;
+  cursor: text;
+}
+
+.pj-editor:empty::before {
+  content: attr(data-placeholder);
+  color: rgba(255, 252, 246, 0.88);
+  pointer-events: none;
+}
+
+.pj-editor ul {
+  margin: 4px 0 !important;
+  padding-left: 1.55rem !important;
+  list-style-type: disc !important;
+  list-style-position: outside !important;
+}
+
+.pj-editor ol {
+  margin: 4px 0 !important;
+  padding-left: 1.55rem !important;
+  list-style-type: decimal !important;
+  list-style-position: outside !important;
+}
+
+.pj-editor li {
+  display: list-item !important;
+  list-style-type: disc !important;
+  margin: 5px 0 !important;
+  color: #fffdf9 !important;
+}
+
+.pj-editor li::marker {
+  color: #ffffff !important;
+  font-size: 1.15em;
+}
+
+.pj-excluir {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: rgba(255, 253, 249, 0.88) !important;
+  background: rgba(33, 10, 15, 0.14);
+  font-size: 0.92rem;
+  line-height: 1;
+  flex-shrink: 0;
+  opacity: 0.8;
+  transition: background 0.18s ease, transform 0.18s ease, opacity 0.18s ease, border-color 0.18s ease;
+}
+
+.pj-excluir:hover {
+  opacity: 1;
+  background: rgba(33, 10, 15, 0.32);
+  border-color: rgba(255, 255, 255, 0.36);
+  transform: scale(1.05);
+}
+
+.pj-nota-rodape {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+  margin-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.28);
+  font-size: 0.84rem;
+  color: rgba(255, 252, 246, 0.94) !important;
+  font-weight: 700;
+}
+
+.pj-vazio {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 58px 24px;
+  border-radius: 28px;
+  border: 2px dashed rgba(159, 31, 62, 0.26);
+}
+
+@media (max-width: 980px) {
+  .pj-quadro-notas {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pj-nota:nth-child(2n + 1) {
+    z-index: 20;
+  }
+
+  .pj-nota:nth-child(2n) {
+    z-index: 10;
+  }
+
+  .pj-nota .pj-espiral {
+    display: none !important;
+  }
+
+  .pj-nota:nth-child(2n + 1):not(:last-child) .pj-espiral {
+    display: flex !important;
+  }
+}
+
+@media (max-width: 650px) {
+  .pj-quadro-notas {
+    grid-template-columns: 1fr;
+  }
+
+  .pj-nota .pj-espiral {
+    display: none !important;
+  }
+
+  .pj-nota-conteudo {
+    padding-right: 24px;
+    padding-left: 24px;
+  }
+}

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   CalendarDays, 
   ChevronLeft, 
@@ -14,11 +14,20 @@ import {
   MapPin,
   Coffee,
   Calendar as CalendarIcon,
-  AlertCircle
+  AlertCircle,
+  Lock,
+  Trash2
 } from 'lucide-react';
 import { Employee, Shift } from '@/types';
 import { calculateShiftDurationHours } from '@/shared/utils/dateUtils';
 import { getMutedShiftColor } from './OrbitCalendarView';
+import {
+  PjPrivateScheduleBlock,
+  getPjPrivateScheduleLocal,
+  syncPjPrivateScheduleFromSupabase,
+  addPjPrivateScheduleBlock,
+  deletePjPrivateScheduleBlock
+} from '@/modules/attendance/services/pjNotesService';
 
 interface EmployeeCalendarViewProps {
   employee: Employee;
@@ -79,9 +88,92 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
   const [viewMode, setViewMode] = useState<ViewMode>('Semanal');
   const [currentDate, setCurrentDate] = useState(new Date());
 
+  const isPj = employee.contractType === 'PJ';
+
+  // Escala Pessoal Privada exclusiva para Colaboradores PJ (Gestor não tem acesso)
+  const [privateBlocks, setPrivateBlocks] = useState<PjPrivateScheduleBlock[]>(() =>
+    isPj ? getPjPrivateScheduleLocal(employee.id) : []
+  );
+  const [isPrivateModalOpen, setIsPrivateModalOpen] = useState(false);
+  const [selectedPrivateBlock, setSelectedPrivateBlock] = useState<PjPrivateScheduleBlock | null>(null);
+  const [formDate, setFormDate] = useState(() => formatDateToYYYYMMDD(new Date()));
+  const [formStart, setFormStart] = useState('09:00');
+  const [formEnd, setFormEnd] = useState('18:00');
+  const [formTitle, setFormTitle] = useState('');
+  const [formNotes, setFormNotes] = useState('');
+
+  useEffect(() => {
+    if (!isPj) return;
+    setPrivateBlocks(getPjPrivateScheduleLocal(employee.id));
+    syncPjPrivateScheduleFromSupabase(employee.id).then(synced => {
+      setPrivateBlocks(synced);
+    });
+  }, [employee.id, isPj]);
+
+  const handleOpenNewPrivateModal = (dateStr?: string) => {
+    setSelectedPrivateBlock(null);
+    setFormDate(dateStr || formatDateToYYYYMMDD(currentDate));
+    setFormStart('09:00');
+    setFormEnd('18:00');
+    setFormTitle('');
+    setFormNotes('');
+    setIsPrivateModalOpen(true);
+  };
+
+  const handleSavePrivateBlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formDate || !formStart || !formEnd) return;
+    const updated = await addPjPrivateScheduleBlock(employee.id, {
+      date: formDate,
+      startTime: formStart,
+      endTime: formEnd,
+      title: formTitle.trim() || 'Minha Escala Pessoal',
+      notes: formNotes.trim() || undefined,
+    });
+    setPrivateBlocks(updated);
+    setIsPrivateModalOpen(false);
+  };
+
+  const handleDeletePrivateBlock = async (blockId: string) => {
+    const updated = await deletePjPrivateScheduleBlock(employee.id, blockId);
+    setPrivateBlocks(updated);
+    setSelectedPrivateBlock(null);
+    setIsPrivateModalOpen(false);
+  };
+
+  // Combina reuniões/turnos publicados com os blocos privados do PJ
   const empShifts = useMemo(() => {
-    return shifts.filter(s => s.employeeId === employee.id && s.status === 'published');
-  }, [shifts, employee.id]);
+    const official = shifts.filter(s => s.employeeId === employee.id && s.status === 'published');
+    if (!isPj) return official;
+
+    const privateAsShifts: Shift[] = privateBlocks.map(b => ({
+      id: b.id,
+      employeeId: employee.id,
+      date: b.date,
+      startTime: b.startTime,
+      endTime: b.endTime,
+      status: 'published',
+      attendanceStatus: 'pending',
+      type: 'regular',
+      title: `🔒 ${b.title}`,
+      notes: b.notes || 'Escala pessoal privada (visível apenas para você)',
+      workplace: 'Escala Pessoal Privada (PJ)',
+    }));
+
+    return [...official, ...privateAsShifts].sort((a, b) => a.startTime.localeCompare(b.startTime));
+  }, [shifts, employee.id, isPj, privateBlocks]);
+
+  const handleCalendarShiftClick = (s: Shift) => {
+    if (isPj) {
+      const priv = privateBlocks.find(b => b.id === s.id);
+      if (priv) {
+        setSelectedPrivateBlock(priv);
+        setIsPrivateModalOpen(true);
+        return;
+      }
+    }
+    onShiftClick(s);
+  };
 
   const todayStr = formatDateToYYYYMMDD(new Date());
   const selectedDateStr = formatDateToYYYYMMDD(currentDate);
@@ -246,8 +338,22 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
         </div>
       </div>
 
-      {/* View Switcher Pill */}
-      <div className="flex items-center justify-end">
+      {/* View Switcher Pill + Botão Escala Pessoal PJ */}
+      <div className="flex flex-wrap items-center justify-end gap-2.5">
+        {isPj && (
+          <button
+            type="button"
+            onClick={() => handleOpenNewPrivateModal(selectedDateStr)}
+            className="px-4 py-2 rounded-full text-xs font-extrabold text-white shadow-lg flex items-center gap-1.5 cursor-pointer transition-all hover:scale-[1.02] active:scale-95"
+            style={{ background: 'linear-gradient(135deg, #640C1E, #9F243C, #F59242)' }}
+            title="Adicionar horário na sua escala pessoal privada (o gestor não tem acesso)"
+          >
+            <Lock className="w-3.5 h-3.5" />
+            <Plus className="w-3.5 h-3.5" />
+            <span>Minha Escala Pessoal</span>
+          </button>
+        )}
+
         <div className={`flex items-center p-1 rounded-full border transition-colors ${
           isLightTheme 
             ? viewMode === 'Diário' && !inSemanalGradient
@@ -281,12 +387,43 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
 
   return (
     <div className="w-full">
+      {/* Banner Informativo de Privacidade para PJ */}
+      {isPj && (
+        <div
+          className={`mb-4 px-4 py-3 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
+            isLightTheme
+              ? 'bg-orange-50/90 border-orange-200 text-slate-800'
+              : 'bg-[#151822] border-[#F59242]/30 text-slate-200'
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-[#96183c]/20 text-[#f89847] flex items-center justify-center shrink-0">
+              <Lock className="w-4 h-4" />
+            </div>
+            <div>
+              <strong className="font-extrabold block">
+                Escala Pessoal Privada PJ (Sem acesso do Gestor)
+              </strong>
+              <span className="opacity-80">
+                Organize seus próprios horários e blocos de trabalho neste calendário. Tudo o que você adicionar aqui é 100% privado e invisível para a gestão.
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => handleOpenNewPrivateModal(selectedDateStr)}
+            className="px-4 py-2 rounded-xl text-xs font-bold text-white shadow-md flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+            style={{ background: 'linear-gradient(135deg, #96183c, #f89847)' }}
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Adicionar Horário Pessoal</span>
+          </button>
+        </div>
+      )}
+
       {/* =========================================================================
           1. EXPERIÊNCIA MOBILE DEDICADA (< 768px)
-          Inspirada nas 3 imagens de referência:
-          - Imagem 1: Dark theme timeline minimalista com barra horizontal e badge "HOJE"
-          - Imagem 2: Mini-calendário + Feed de eventos com trilho
-          - Imagem 3: Trilho vertical com horários e nós conectados
           ========================================================================= */}
       <div className="block md:hidden w-full font-sans pb-10">
         
@@ -364,7 +501,7 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
             </div>
           </div>
 
-          {/* ── MODO SEMANAL MOBILE: BARRA DE DIAS HORIZONTAL (Referência 1 e Usuário) ── */}
+          {/* ── MODO SEMANAL MOBILE: BARRA DE DIAS HORIZONTAL ── */}
           {(viewMode === 'Semanal' || viewMode === 'Diário') && (
             <div>
               <div className="flex items-center mb-2 px-1">
@@ -375,7 +512,6 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                 </span>
               </div>
 
-              {/* Faixa Horizontal de 7 Dias com Cards Brancos / Degradê */}
               <div className="grid grid-cols-7 gap-1 sm:gap-2">
                 {weekDays.map((d) => {
                   const isSelected = selectedDateStr === d.dateString;
@@ -398,7 +534,6 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                       }`}
                       style={{ minHeight: '66px' }}
                     >
-                      {/* Dia da Semana (SEG, TER...) */}
                       <span className={`text-[9px] sm:text-[10px] font-extrabold uppercase tracking-tight ${
                         isSelected
                           ? isLightTheme ? 'text-[#e65a37]' : 'text-white/90'
@@ -407,7 +542,6 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                         {d.dayNameShort}
                       </span>
 
-                      {/* Número do Dia */}
                       <span className={`text-base sm:text-lg font-black tracking-tight leading-none my-0.5 ${
                         isSelected
                           ? isLightTheme ? 'text-black' : 'text-white'
@@ -416,7 +550,6 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                         {d.dayNumber}
                       </span>
 
-                      {/* Badge "HOJE" ou Ponto de Turno */}
                       <div className="h-3 flex items-center justify-center">
                         {isDayToday ? (
                           <span className={`px-1 py-0.2 rounded-full text-[7px] font-black tracking-tighter uppercase leading-none ${
@@ -447,7 +580,7 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
           )}
         </div>
 
-        {/* Switcher de Visualização Mobile (Pílula Segmentada) - Fora do card degradê */}
+        {/* Switcher de Visualização Mobile */}
         <div className={`flex items-center p-1 rounded-2xl border mb-3.5 ${
           isLightTheme ? 'bg-slate-100 border-slate-200' : 'bg-[#181a24] border-white/10'
         }`}>
@@ -481,7 +614,7 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
           </button>
         </div>
 
-        {/* ── MODO MENSAL MOBILE: MINI-CALENDÁRIO COMPACTO (Referência 2) ── */}
+        {/* ── MODO MENSAL MOBILE ── */}
         {viewMode === 'Mensal' && (
           <div className={`p-4 rounded-3xl border mb-3.5 ${
             isLightTheme ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#13161f] border-white/10 shadow-lg'
@@ -544,11 +677,10 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
           </div>
         )}
 
-        {/* ── SEÇÃO DA AGENDA & LINHA DO TEMPO MOBILE (Referência 1, 2 e 3) ── */}
+        {/* ── SEÇÃO DA AGENDA & LINHA DO TEMPO MOBILE ── */}
         <div className={`p-4 sm:p-5 rounded-3xl border ${
           isLightTheme ? 'bg-white border-slate-200 shadow-sm' : 'bg-[#13161f] border-white/10 shadow-lg'
         }`}>
-          {/* Título do Dia Selecionado */}
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/5">
             <div>
               <span className={`text-[10px] font-mono uppercase font-bold tracking-wider block ${
@@ -564,9 +696,7 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
             </div>
           </div>
 
-          {/* Lista de Turnos / Linha do Tempo */}
           {selectedDayShifts.length === 0 ? (
-            /* Empty State Elegante (Dia Livre) */
             <div className={`py-10 px-4 rounded-2xl border text-center flex flex-col items-center justify-center ${
               isLightTheme
                 ? 'bg-slate-50 border-slate-200/80 text-slate-600'
@@ -581,13 +711,13 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                 Nenhum turno agendado
               </h4>
               <p className="text-xs max-w-xs leading-relaxed opacity-80">
-                Você não possui escalas ou plantões cadastrados para este dia. Aproveite sua folga!
+                {isPj
+                  ? 'Clique em "Adicionar Horário Pessoal" para planejar sua escala neste dia.'
+                  : 'Você não possui escalas ou plantões cadastrados para este dia. Aproveite sua folga!'}
               </p>
             </div>
           ) : (
-            /* Feed Conectado por Trilho Vertical (Referência 2 e 3) */
             <div className="relative pl-6 sm:pl-7 space-y-4">
-              {/* Trilho Vertical Conector */}
               <div
                 className="absolute left-2.5 top-2 bottom-4 w-0.5 rounded-full pointer-events-none"
                 style={{
@@ -597,7 +727,6 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                 }}
               />
 
-              {/* Indicador de "Linha Agora" se for hoje */}
               {isSelectedToday && (
                 <div className="relative flex items-center gap-2 -ml-6 mb-2">
                   <div className="w-5 h-5 rounded-full bg-[#f89847] text-black flex items-center justify-center text-[8px] font-black shadow-md ring-2 ring-black">
@@ -610,13 +739,12 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                 </div>
               )}
 
-              {selectedDayShifts.map((s, idx) => {
+              {selectedDayShifts.map((s) => {
                 const isOnCall = s.type === 'on_call';
                 const mutedStyle = getMutedShiftColor(s, !isLightTheme);
 
                 return (
                   <div key={s.id} className="relative group">
-                    {/* Nó Circular no Trilho */}
                     <div
                       className="absolute -left-6 sm:-left-7 top-4 w-3.5 h-3.5 rounded-full border-2 border-[#13161f] shadow-sm"
                       style={{
@@ -624,9 +752,8 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                       }}
                     />
 
-                    {/* Card Amplo e Touch-Friendly */}
                     <div
-                      onClick={() => onShiftClick(s)}
+                      onClick={() => handleCalendarShiftClick(s)}
                       className="p-4 rounded-2xl border transition-all cursor-pointer shadow-md active:scale-[0.98] select-none"
                       style={{
                         background: mutedStyle.bg,
@@ -636,8 +763,6 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                         color: mutedStyle.text,
                       }}
                     >
-
-                      {/* Título do Turno */}
                       <h4
                         className="text-base font-black leading-snug mb-1"
                         style={{ color: mutedStyle.text }}
@@ -645,7 +770,6 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                         {s.title || (isOnCall ? 'Plantão 12x36' : 'Atendimento Geral')}
                       </h4>
 
-                      {/* Horário Principal (Destaque Grande) */}
                       <div className="flex items-center gap-2 mb-3">
                         <div
                           className="text-sm font-mono font-black flex items-center gap-1.5"
@@ -662,7 +786,6 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                         ) : null}
                       </div>
 
-                      {/* Local de Atuação / GPS */}
                       <div className="flex items-center justify-between pt-2.5 border-t border-black/10 text-xs">
                         <div className="flex items-center gap-1.5 opacity-90 truncate max-w-[220px]">
                           <MapPin className="w-3.5 h-3.5 shrink-0 opacity-80" />
@@ -686,7 +809,6 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
 
       {/* =========================================================================
           2. EXPERIÊNCIA DESKTOP COMPLETA (≥ 768px)
-          Preserva o layout desktop consagrado (grade semanal e mensal ampla)
           ========================================================================= */}
       <div
         className={`hidden md:block rounded-[32px] overflow-hidden min-h-[840px] font-sans transition-all duration-300 relative border ${
@@ -727,11 +849,9 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
             >
               {renderDesktopHeader(true)}
 
-              {/* Days of the Week Bar (aligned with shifts below) */}
               <div className="grid grid-cols-[48px_1fr] gap-3">
                 <div className="w-12 shrink-0" aria-hidden="true" />
 
-                {/* 7 Floating Day Cards */}
                 <div className="grid grid-cols-7 gap-2.5">
                   {weekDays.map((d) => {
                     const isSelected = formatDateToYYYYMMDD(currentDate) === d.dateString;
@@ -781,7 +901,6 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
               }`}
             >
               <div className="grid grid-cols-[48px_1fr] gap-3">
-                {/* Timeline Left Column */}
                 <div className="space-y-12 pt-2 text-right pr-2">
                   {['8 am', '9 am', '10 am', '11 am', '12 am', '14:00', '16:00'].map((t) => (
                     <div key={t} className={`text-[11px] font-mono font-medium h-5 ${
@@ -792,7 +911,6 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                   ))}
                 </div>
 
-                {/* 7 Days Grid with Event Cards */}
                 <div className="grid grid-cols-7 gap-2.5 relative">
                   <div className="absolute inset-0 pointer-events-none flex flex-col justify-between opacity-40">
                     {Array.from({ length: 7 }).map((_, i) => (
@@ -814,7 +932,7 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                         return (
                           <div
                             key={s.id}
-                            onClick={() => onShiftClick(s)}
+                            onClick={() => handleCalendarShiftClick(s)}
                             className="relative p-3.5 rounded-2xl cursor-pointer transition-all hover:scale-[1.02] shadow-md border overflow-hidden"
                             style={{
                               background: mutedStyle.bg,
@@ -840,13 +958,6 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                                   alt={employee.name}
                                   className="inline-block h-5 w-5 rounded-full object-cover ring-2 ring-black/20"
                                 />
-                                {isMeeting && (
-                                  <img
-                                    src="https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80"
-                                    alt="Beatriz"
-                                    className="inline-block h-5 w-5 rounded-full object-cover ring-2 ring-black/20"
-                                  />
-                                )}
                               </div>
                               <span className="text-[10px] font-bold opacity-90" style={{ color: mutedStyle.text }}>
                                 {employee.name.split(' ')[0]}
@@ -911,12 +1022,22 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                           : 'bg-[#1a1d24] border border-white/5 hover:border-white/20'
                     }`}
                   >
-                    <div className={`text-xs font-black px-1 ${
+                    <div className={`text-xs font-black px-1 flex items-center justify-between ${
                       isToday 
                         ? isLightTheme ? 'text-orange-600' : 'text-[#F89847]' 
                         : isLightTheme ? 'text-slate-700' : 'text-white/60'
                     }`}>
-                      {cell.dayNumber}
+                      <span>{cell.dayNumber}</span>
+                      {isPj && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenNewPrivateModal(cell.dateString)}
+                          className="w-5 h-5 rounded-lg flex items-center justify-center opacity-50 hover:opacity-100 hover:bg-[#96183c]/20 text-[#f89847] transition-all cursor-pointer"
+                          title="Adicionar horário pessoal neste dia"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      )}
                     </div>
                     <div className="space-y-1">
                       {cell.shifts.map((s) => {
@@ -924,7 +1045,7 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                         return (
                           <div
                             key={s.id}
-                            onClick={() => onShiftClick(s)}
+                            onClick={() => handleCalendarShiftClick(s)}
                             className="px-2 py-1.5 rounded-xl border cursor-pointer text-left transition-all hover:scale-[1.02]"
                             style={{
                               background: mutedStyle.bg,
@@ -988,7 +1109,7 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                   return (
                     <div
                       key={s.id}
-                      onClick={() => onShiftClick(s)}
+                      onClick={() => handleCalendarShiftClick(s)}
                       className="p-5 rounded-2xl border cursor-pointer transition-all flex items-center justify-between hover:scale-[1.01]"
                       style={{
                         background: mutedStyle.bg,
@@ -1043,6 +1164,168 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
         )}
 
       </div>
+
+      {/* MODAL DE ESCALA PESSOAL PRIVADA DO COLABORADOR PJ */}
+      {isPj && isPrivateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in">
+          <div
+            className={`w-full max-w-md rounded-3xl border p-6 shadow-2xl space-y-5 ${
+              isLightTheme ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#10121A] border-[#252A3A] text-white'
+            }`}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2.5">
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-md"
+                  style={{ background: 'linear-gradient(135deg, #96183c, #f89847)' }}
+                >
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base">
+                    {selectedPrivateBlock ? 'Detalhes da Minha Escala Pessoal' : 'Adicionar à Minha Escala Pessoal'}
+                  </h3>
+                  <span className="text-[11px] text-emerald-400 font-bold block">
+                    🔒 Visível somente para você (sem acesso do gestor)
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPrivateModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {selectedPrivateBlock ? (
+              <div className="space-y-4 text-xs">
+                <div
+                  className={`p-4 rounded-2xl border space-y-2 ${
+                    isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-[#151822] border-white/10'
+                  }`}
+                >
+                  <div className="font-black text-sm">{selectedPrivateBlock.title}</div>
+                  <div className="font-mono font-bold text-[#f89847]">
+                    📅 {selectedPrivateBlock.date.split('-').reverse().join('/')} • ⏰ {selectedPrivateBlock.startTime} às {selectedPrivateBlock.endTime}
+                  </div>
+                  {selectedPrivateBlock.notes && (
+                    <p className="opacity-80 pt-1">{selectedPrivateBlock.notes}</p>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleDeletePrivateBlock(selectedPrivateBlock.id)}
+                    className="px-4 py-2.5 rounded-xl font-bold bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Excluir Horário</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsPrivateModalOpen(false)}
+                    className={`px-5 py-2.5 rounded-xl font-bold cursor-pointer ${
+                      isLightTheme ? 'bg-slate-200 text-slate-800' : 'bg-white/10 text-white'
+                    }`}
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleSavePrivateBlock} className="space-y-4 text-xs font-semibold">
+                <div className="space-y-1">
+                  <label className="opacity-80 block">Título / Atividade da Escala*</label>
+                  <input
+                    type="text"
+                    required
+                    value={formTitle}
+                    onChange={(e) => setFormTitle(e.target.value)}
+                    placeholder="Ex: Desenvolvimento Front-end, Plantão Pessoal..."
+                    className={`w-full px-3.5 py-2.5 rounded-xl border outline-none ${
+                      isLightTheme ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0c10] border-[#252A3A] text-white'
+                    }`}
+                  />
+                </div>
+
+                <div className="grid grid-cols-3 gap-2.5">
+                  <div className="space-y-1">
+                    <label className="opacity-80 block">Data*</label>
+                    <input
+                      type="date"
+                      required
+                      value={formDate}
+                      onChange={(e) => setFormDate(e.target.value)}
+                      className={`w-full px-2.5 py-2 rounded-xl border outline-none ${
+                        isLightTheme ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0c10] border-[#252A3A] text-white'
+                      }`}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="opacity-80 block">Início*</label>
+                    <input
+                      type="time"
+                      required
+                      value={formStart}
+                      onChange={(e) => setFormStart(e.target.value)}
+                      className={`w-full px-2.5 py-2 rounded-xl border outline-none ${
+                        isLightTheme ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0c10] border-[#252A3A] text-white'
+                      }`}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="opacity-80 block">Término*</label>
+                    <input
+                      type="time"
+                      required
+                      value={formEnd}
+                      onChange={(e) => setFormEnd(e.target.value)}
+                      className={`w-full px-2.5 py-2 rounded-xl border outline-none ${
+                        isLightTheme ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0c10] border-[#252A3A] text-white'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="opacity-80 block">Observações Pessoais (Opcional)</label>
+                  <textarea
+                    rows={2}
+                    value={formNotes}
+                    onChange={(e) => setFormNotes(e.target.value)}
+                    placeholder="Anotações sobre este bloco de horário..."
+                    className={`w-full px-3.5 py-2 rounded-xl border outline-none ${
+                      isLightTheme ? 'bg-slate-50 border-slate-300 text-slate-900' : 'bg-[#0b0c10] border-[#252A3A] text-white'
+                    }`}
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setIsPrivateModalOpen(false)}
+                    className={`px-4 py-2 rounded-xl cursor-pointer ${
+                      isLightTheme ? 'bg-slate-100 text-slate-700' : 'bg-white/5 text-slate-300'
+                    }`}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 rounded-xl text-white font-bold shadow-md cursor-pointer"
+                    style={{ background: 'linear-gradient(135deg, #96183c, #f89847)' }}
+                  >
+                    Salvar na Minha Escala
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

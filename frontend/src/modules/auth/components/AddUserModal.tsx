@@ -1,10 +1,11 @@
 import { getTodayDateString } from '@/shared/utils/dateUtils';
 import React, { useState, useEffect } from 'react';
-import { User, X, Check, Sparkles, RefreshCw, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+import { User, X, Check, Sparkles, RefreshCw, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, Clock, DollarSign } from 'lucide-react';
 import { Employee } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
 import { safeStorage } from '@/shared/utils/safeStorage';
 import { sendWelcomeEmail as sendWelcomeEmailService } from '@/modules/auth/services/emailService';
+import { savePjContractParamsLocal } from '@/modules/auth/services/colaboradorService';
 
 interface AddUserModalProps {
   isOpen: boolean;
@@ -37,6 +38,10 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
   const [startDate, setStartDate] = useState(getTodayDateString());
   const [contractEndDate, setContractEndDate] = useState('');
   const [contractEndDateError, setContractEndDateError] = useState(false);
+
+  // Campos de Contrato PJ (Valor da Hora e Quantidade de Horas Mensais)
+  const [pjHourlyRate, setPjHourlyRate] = useState<string>('85');
+  const [pjMonthlyHoursQuota, setPjMonthlyHoursQuota] = useState<string>('160');
 
   // Função para gerar uma matrícula aleatória única
   const generateRandomId = () => {
@@ -98,6 +103,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       setStartDate(getTodayDateString());
       setContractEndDate('');
       setContractEndDateError(false);
+      setPjHourlyRate('85');
+      setPjMonthlyHoursQuota('160');
       setSendWelcomeEmail(true);
       setFirstNameError(false);
       setLastNameError(false);
@@ -163,6 +170,15 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       }
     }
 
+    if (employmentType === 'PJ') {
+      const parsedRate = Number(pjHourlyRate.replace(',', '.'));
+      const parsedQuota = Number(pjMonthlyHoursQuota);
+      if (isNaN(parsedRate) || parsedRate <= 0 || isNaN(parsedQuota) || parsedQuota <= 0) {
+        setErrorMessage('Para colaborador PJ, informe o Valor da Hora (R$) e a Quantidade de Horas Mensais contratadas.');
+        return false;
+      }
+    }
+
     setContractEndDateError(false);
     setErrorMessage(null);
     return true;
@@ -224,6 +240,9 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     const isGestorSelected = userRole === 'Gestor';
     const roleTypeVal: 'rh' | 'gestor' | 'colaborador' = isRhSelected ? 'rh' : isGestorSelected ? 'gestor' : 'colaborador';
 
+    const parsedRate = employmentType === 'PJ' ? Number(pjHourlyRate.replace(',', '.')) || 0 : undefined;
+    const parsedQuota = employmentType === 'PJ' ? Number(pjMonthlyHoursQuota) || 160 : undefined;
+
     const newEmp: Employee = {
       id: `emp-${cleanId}`,
       registrationId: cleanId,
@@ -233,11 +252,12 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName || 'Colaborador')}&background=96183c&color=fff&size=150`,
       email: email.trim() || `${firstName.toLowerCase().replace(/\s+/g, '')}@pontual.com.br`,
       phone: phone.trim() || '(11) 98765-4321',
-      standardHoursPerWeek: employmentType === 'PJ' ? 40 : 44,
+      standardHoursPerWeek: employmentType === 'PJ' ? Math.round((parsedQuota || 160) / 4) : 44,
       contractType: employmentType as 'CLT' | 'PJ' | 'TEMPORARIO',
       contractStartDate: startDate || undefined,
       contractEndDate: employmentType === 'TEMPORARIO' ? (contractEndDate || undefined) : undefined,
-      monthlyHoursQuota: employmentType === 'PJ' ? 160 : undefined,
+      monthlyHoursQuota: parsedQuota,
+      hourlyRate: parsedRate,
       workplace: 'Sede Pontual - Matriz',
       companyId: activeCompanyId,
       roleType: roleTypeVal,
@@ -245,6 +265,16 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       isMasterManager: isRhSelected,
       managerIds: activeGestorId ? [activeGestorId] : []
     };
+
+    if (employmentType === 'PJ') {
+      savePjContractParamsLocal({
+        id: newEmp.id,
+        registrationId: newEmp.registrationId,
+        email: newEmp.email,
+        hourlyRate: parsedRate,
+        monthlyHoursQuota: parsedQuota,
+      });
+    }
 
     onAddEmployee(newEmp);
 
@@ -270,17 +300,20 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     }, 700);
   };
 
+  const estimatedMonthlyTotal =
+    (Number(pjHourlyRate.replace(',', '.')) || 0) * (Number(pjMonthlyHoursQuota) || 0);
+
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150"
     >
       <div
-        className={`relative w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-150 font-sans border transition-colors ${
+        className={`relative w-full max-w-3xl rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-150 font-sans border transition-colors ${
           isDark
             ? 'bg-[#12131A] border-white/10 text-slate-100 shadow-black/80'
             : 'bg-white border-slate-200 text-slate-800 shadow-2xl'
         }`}
-        style={{ maxHeight: '92vh' }}
+        style={{ maxHeight: '95vh' }}
       >
         {/* Top Accent Gradient Bar */}
         <div className="h-1.5 w-full bg-gradient-to-r from-[#96183c] via-[#f89847] to-[#faf0ac]" />
@@ -386,8 +419,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
         )}
 
         {/* Modal Form */}
-        <form onSubmit={handleSubmit} className="overflow-y-auto" style={{ maxHeight: 'calc(92vh - 210px)' }}>
-          <div className="p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="overflow-y-auto" style={{ maxHeight: 'calc(95vh - 175px)' }}>
+          <div className="p-6 sm:p-7 space-y-5">
 
             {activeTab === 'PERFIL' && (
               <div className="space-y-4 animate-in fade-in duration-150">
@@ -693,11 +726,105 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                       }`}
                     >
                       <option value="CLT" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>CLT Integral (44h)</option>
-                      <option value="PJ" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>PJ / Prestador (160h)</option>
+                      <option value="PJ" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>PJ / Prestador</option>
                       <option value="TEMPORARIO" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>Temporário</option>
                     </select>
                   </div>
                 </div>
+
+                {/* Bloco Condicional para Colaborador PJ (Valor da Hora e Horas Contratadas) */}
+                {employmentType === 'PJ' && (
+                  <div className={`p-5 rounded-2xl border space-y-4 animate-in fade-in duration-200 ${
+                    isDark ? 'bg-[#9F243C]/10 border-[#F59242]/30' : 'bg-orange-50/70 border-orange-200'
+                  }`}>
+                    <div className="flex items-center justify-between gap-3 flex-wrap pb-3 border-b border-white/10">
+                      <div className="flex items-center gap-2.5">
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                          isDark ? 'bg-[#F59242]/20 text-[#F59242]' : 'bg-[#96183c]/10 text-[#96183c]'
+                        }`}>
+                          <DollarSign className="w-4 h-4" />
+                        </div>
+                        <span className={`text-xs sm:text-sm font-bold ${isDark ? 'text-[#F9DE97]' : 'text-[#96183c]'}`}>
+                          Condições Contratuais do Prestador PJ
+                        </span>
+                      </div>
+                      {estimatedMonthlyTotal > 0 && (
+                        <span className={`text-xs font-extrabold px-3 py-1 rounded-full border ${
+                          isDark
+                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                            : 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                        }`}>
+                          Estimativa Mensal: {estimatedMonthlyTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+                      <div className="flex flex-col">
+                        <label className={`text-xs font-semibold mb-1.5 block min-h-[20px] ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                          Valor da Hora Trabalhada (R$ / hora)*
+                        </label>
+                        <div className="relative">
+                          <span className={`absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold select-none ${
+                            isDark ? 'text-slate-400' : 'text-slate-500'
+                          }`}>
+                            R$
+                          </span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={pjHourlyRate}
+                            onChange={(e) => setPjHourlyRate(e.target.value)}
+                            placeholder="85.00"
+                            className={`w-full pl-9 pr-12 py-2.5 rounded-xl text-sm font-semibold outline-none border transition-all ${
+                              isDark
+                                ? 'bg-[#181A24] border-white/10 text-white focus:border-[#f89847]'
+                                : 'bg-white border-slate-200 text-slate-800 focus:border-[#96183c]'
+                            }`}
+                          />
+                          <span className={`absolute right-3.5 top-1/2 -translate-y-1/2 text-[11px] font-medium select-none ${
+                            isDark ? 'text-slate-400' : 'text-slate-500'
+                          }`}>
+                            /hora
+                          </span>
+                        </div>
+                        <span className={`text-[11px] mt-1.5 leading-snug block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                          Valor acordado por hora para cálculo automático do PJ.
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col">
+                        <label className={`text-xs font-semibold mb-1.5 block min-h-[20px] ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                          Quantidade de Horas a Trabalhar (Horas / mês)*
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            step="1"
+                            min="1"
+                            value={pjMonthlyHoursQuota}
+                            onChange={(e) => setPjMonthlyHoursQuota(e.target.value)}
+                            placeholder="160"
+                            className={`w-full pl-3.5 pr-20 py-2.5 rounded-xl text-sm font-semibold outline-none border transition-all ${
+                              isDark
+                                ? 'bg-[#181A24] border-white/10 text-white focus:border-[#f89847]'
+                                : 'bg-white border-slate-200 text-slate-800 focus:border-[#96183c]'
+                            }`}
+                          />
+                          <span className={`absolute right-3.5 top-1/2 -translate-y-1/2 text-[11px] font-medium select-none ${
+                            isDark ? 'text-slate-400' : 'text-slate-500'
+                          }`}>
+                            horas/mês
+                          </span>
+                        </div>
+                        <span className={`text-[11px] mt-1.5 leading-snug block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                          Meta de horas mensais previstas no contrato PJ.
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Bloco Condicional para Colaborador Temporário */}
                 {employmentType === 'TEMPORARIO' && (

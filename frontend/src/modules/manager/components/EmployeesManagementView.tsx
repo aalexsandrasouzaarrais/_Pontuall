@@ -19,10 +19,12 @@ import {
   List,
   Sparkles,
   UserX,
-  Clock
+  Clock,
+  DollarSign
 } from 'lucide-react';
 import { Employee } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
+import { savePjContractParamsLocal } from '@/modules/auth/services/colaboradorService';
 
 interface EmployeesManagementViewProps {
   employees: Employee[];
@@ -62,6 +64,8 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
     contractType: 'CLT' as 'CLT' | 'PJ' | 'TEMPORARIO',
     contractStartDate: '',
     contractEndDate: '',
+    hourlyRate: '85',
+    monthlyHoursQuota: '160',
   });
 
   // Lista de gestores únicos e disponíveis para vinculação
@@ -127,6 +131,8 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
       contractType: (emp.contractType || 'CLT') as 'CLT' | 'PJ' | 'TEMPORARIO',
       contractStartDate: emp.contractStartDate || '',
       contractEndDate: emp.contractEndDate || '',
+      hourlyRate: emp.hourlyRate !== undefined ? String(emp.hourlyRate) : '85',
+      monthlyHoursQuota: emp.monthlyHoursQuota !== undefined ? String(emp.monthlyHoursQuota) : '160',
     });
   };
 
@@ -136,6 +142,8 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
     if (!editingEmployee) return;
 
     const isRhRole = editForm.roleType === 'rh';
+    const parsedRate = editForm.contractType === 'PJ' ? Number(String(editForm.hourlyRate).replace(',', '.')) || 0 : undefined;
+    const parsedQuota = editForm.contractType === 'PJ' ? Number(editForm.monthlyHoursQuota) || 160 : undefined;
 
     const updated: Employee = {
       ...editingEmployee,
@@ -151,7 +159,19 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
       contractType: editForm.contractType,
       contractStartDate: editForm.contractStartDate || undefined,
       contractEndDate: editForm.contractType === 'TEMPORARIO' ? (editForm.contractEndDate || undefined) : undefined,
+      hourlyRate: parsedRate,
+      monthlyHoursQuota: parsedQuota,
     };
+
+    if (editForm.contractType === 'PJ') {
+      savePjContractParamsLocal({
+        id: updated.id,
+        registrationId: updated.registrationId,
+        email: updated.email,
+        hourlyRate: parsedRate,
+        monthlyHoursQuota: parsedQuota,
+      });
+    }
 
     onUpdateEmployee(updated);
     setEditingEmployee(null);
@@ -431,6 +451,20 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                       </div>
                     </div>
 
+                    {emp.contractType === 'PJ' && (emp.hourlyRate || emp.monthlyHoursQuota) && (
+                      <div className={`text-[11px] p-2 rounded-lg border flex items-center justify-between ${
+                        isDark ? 'bg-[#9F243C]/15 border-[#F59242]/25 text-[#F9DE97]' : 'bg-orange-50 border-orange-200 text-[#96183c]'
+                      }`}>
+                        <span className="flex items-center gap-1 font-bold">
+                          <DollarSign className="w-3 h-3 text-[#f89847]" />
+                          <span>Contrato PJ:</span>
+                        </span>
+                        <span className="font-mono font-bold">
+                          {emp.hourlyRate ? `R$ ${Number(emp.hourlyRate).toFixed(2).replace('.', ',')}/h` : '—'} • {emp.monthlyHoursQuota || 160}h/mês
+                        </span>
+                      </div>
+                    )}
+
                     {emp.contractType === 'TEMPORARIO' && (emp.contractStartDate || emp.contractEndDate) && (
                       <div className={`text-[11px] p-2 rounded-lg border flex items-center justify-between ${
                         isDark ? 'bg-amber-500/10 border-amber-500/20 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-800'
@@ -641,7 +675,7 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
       {/* MODAL DE EDIÇÃO CADASTRAL */}
       {editingEmployee && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in">
-          <div className={`w-full max-w-lg rounded-3xl border p-6 sm:p-7 shadow-2xl space-y-6 ${
+          <div className={`w-full max-w-lg rounded-3xl border p-6 sm:p-7 shadow-2xl space-y-6 max-h-[92vh] overflow-y-auto ${
             isDark ? 'bg-[#0F1117] border-[#252A3A] text-white' : 'bg-white border-slate-200 text-slate-900'
           }`}>
             <div className="flex items-center justify-between pb-4 border-b border-white/10">
@@ -775,10 +809,55 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                   }`}
                 >
                   <option value="CLT">CLT Integral (44h)</option>
-                  <option value="PJ">PJ / Prestador de Serviços (160h)</option>
+                  <option value="PJ">PJ / Prestador de Serviços</option>
                   <option value="TEMPORARIO">Temporário</option>
                 </select>
               </div>
+
+              {editForm.contractType === 'PJ' && (
+                <div className={`p-3.5 rounded-2xl border space-y-3 ${
+                  isDark ? 'bg-[#9F243C]/10 border-[#F59242]/30' : 'bg-orange-50/70 border-orange-200'
+                }`}>
+                  <div className={`flex items-center gap-1.5 text-xs font-bold ${isDark ? 'text-[#F9DE97]' : 'text-[#96183c]'}`}>
+                    <DollarSign className="w-4 h-4 text-[#f89847]" />
+                    <span>Condições Contratuais do Prestador PJ</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className={`text-[11px] block ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                        Valor da Hora Trabalhada (R$ / h)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={editForm.hourlyRate}
+                        onChange={e => setEditForm({ ...editForm, hourlyRate: e.target.value })}
+                        placeholder="Ex: 85.00"
+                        className={`w-full px-3 py-2 rounded-xl border outline-none ${
+                          isDark ? 'bg-[#0b0c10] border-[#252A3A] text-white' : 'bg-white border-slate-200 text-slate-900'
+                        }`}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className={`text-[11px] block ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                        Quantidade de Horas (Horas / mês)
+                      </label>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        value={editForm.monthlyHoursQuota}
+                        onChange={e => setEditForm({ ...editForm, monthlyHoursQuota: e.target.value })}
+                        placeholder="Ex: 160"
+                        className={`w-full px-3 py-2 rounded-xl border outline-none ${
+                          isDark ? 'bg-[#0b0c10] border-[#252A3A] text-white' : 'bg-white border-slate-200 text-slate-900'
+                        }`}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {editForm.contractType === 'TEMPORARIO' && (
                 <div className={`p-3.5 rounded-2xl border space-y-3 ${
