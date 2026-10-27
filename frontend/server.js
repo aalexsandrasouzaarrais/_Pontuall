@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
@@ -18,15 +19,24 @@ app.use(express.json());
 const PORT = process.env.PORT || 5000;
 const EMAIL_USER = process.env.EMAIL_USER || 'pontual.escalas@gmail.com';
 const EMAIL_PASS = process.env.EMAIL_PASS || 'xiqp afqt inqe qizb';
+const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
+const SMTP_PORT = Number(process.env.SMTP_PORT) || 465;
+const SMTP_SECURE = process.env.SMTP_SECURE !== undefined ? process.env.SMTP_SECURE === 'true' : true;
 
 console.log(`[SMTP Config] Utilizando conta: ${EMAIL_USER}`);
 
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: SMTP_HOST,
+  port: SMTP_PORT,
+  secure: SMTP_SECURE,
   auth: {
     user: EMAIL_USER,
     pass: EMAIL_PASS,
   },
+  tls: {
+    rejectUnauthorized: false,
+    minVersion: 'TLSv1.2'
+  }
 });
 
 transporter.verify((error) => {
@@ -48,15 +58,46 @@ const handleSendWelcomeEmail = async (req, res) => {
   const origin = configuredAppUrl || req.headers.origin || 'http://localhost:3000';
   const resetLink = link || `${origin.replace(/\/+$/, '')}/colaborador?matricula=${encodeURIComponent(matricula || '')}&primeiro_acesso=true`;
 
+  const cleanNome = (nome || 'Colaborador').trim();
+  const cleanMatricula = (matricula || 'PNT-1000').trim();
+  const senderDomain = EMAIL_USER.includes('@') ? EMAIL_USER.split('@')[1] : 'pontual.com.br';
+  const messageId = `<pontual.${Date.now()}.${crypto.randomBytes(6).toString('hex')}@${senderDomain}>`;
+
+  const plainText = [
+    `Olá, ${cleanNome}!`,
+    '',
+    'Seu acesso à plataforma Pontual Gestão de Escalas & Pontos foi liberado com sucesso.',
+    '',
+    '--------------------------------------------------',
+    `SUA SENHA TEMPORÁRIA / MATRÍCULA: ${cleanMatricula}`,
+    '--------------------------------------------------',
+    '',
+    'Para realizar seu primeiro acesso e cadastrar sua senha definitiva, acesse o link abaixo:',
+    resetLink,
+    '',
+    'Recomendamos que você acesse a plataforma e altere sua senha no primeiro login.',
+    '',
+    'Caso não reconheça este cadastro, contate o administrador da sua empresa.',
+    '',
+    'Atenciosamente,',
+    'Equipe Pontual - Gestão de Escalas & Pontos',
+    'Este é um e-mail transacional automático do sistema.'
+  ].join('\n');
+
   const html = `
     <!DOCTYPE html>
     <html lang="pt-BR">
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Bem-vindo(a) à Pontual!</title>
+      <meta http-equiv="X-UA-Compatible" content="IE=edge">
+      <title>Bem-vindo(a) à Pontual - Primeiro Acesso</title>
     </head>
-    <body style="margin: 0; padding: 28px 12px; background-color: #0b0c10; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+    <body style="margin: 0; padding: 28px 12px; background-color: #0b0c10; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #e2e8f0;">
+      <!-- Preheader invisível para clientes de e-mail (evita spam e melhora preview) -->
+      <div style="display: none; max-height: 0px; overflow: hidden; font-size: 1px; line-height: 1px; color: #0b0c10; opacity: 0; mso-hide: all;">
+        Seu acesso à plataforma Pontual foi liberado. Confira sua senha temporária e instruções para o primeiro acesso.
+      </div>
       <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #0b0c10;">
         <tr>
           <td align="center">
@@ -79,7 +120,7 @@ const handleSendWelcomeEmail = async (req, res) => {
 
                   <!-- Saudação com nome do colaborador em destaque -->
                   <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.6; color: #94a3b8;">
-                    Olá <strong style="color: #e2e8f0; font-weight: 700;">${nome || 'Colaborador'}</strong>, seu cadastro foi realizado com sucesso pelo seu gestor.
+                    Olá <strong style="color: #e2e8f0; font-weight: 700;">${cleanNome}</strong>, seu cadastro foi realizado com sucesso pelo seu gestor.
                   </p>
 
                   <!-- Instrução -->
@@ -95,7 +136,7 @@ const handleSendWelcomeEmail = async (req, res) => {
                           SUA SENHA TEMPORÁRIA / MATRÍCULA
                         </div>
                         <div style="font-size: 30px; font-weight: 800; color: #ffffff; letter-spacing: 2.5px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-                          ${matricula || 'PNT-1000'}
+                          ${cleanMatricula}
                         </div>
                       </td>
                     </tr>
@@ -127,9 +168,10 @@ const handleSendWelcomeEmail = async (req, res) => {
                     </a>
                   </div>
 
-                  <!-- Rodapé discreto -->
-                  <div style="text-align: center; font-size: 11px; color: #475569; line-height: 1.5;">
-                    Pontual Gestão de Escalas & Pontos • Este é um e-mail automático do sistema.
+                  <!-- Rodapé com contexto transacional que previne classificação como SPAM -->
+                  <div style="text-align: center; font-size: 11px; color: #64748b; line-height: 1.6; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 16px;">
+                    Pontual Gestão de Escalas & Pontos • Este é um e-mail transacional enviado automaticamente.<br>
+                    Você recebeu esta mensagem porque foi cadastrado na plataforma Pontual pela equipe de RH da sua organização.
                   </div>
 
                 </td>
@@ -144,10 +186,22 @@ const handleSendWelcomeEmail = async (req, res) => {
 
   try {
     const info = await transporter.sendMail({
-      from: `"Pontual Escalas" <${EMAIL_USER}>`,
+      from: `"Pontual Gestão de Escalas" <${EMAIL_USER}>`,
+      replyTo: `"Suporte Pontual" <${EMAIL_USER}>`,
       to: email,
-      subject: `Bem-vindo(a) à Pontual - Primeiro Acesso (${matricula || 'Pontual'})`,
+      subject: `Bem-vindo(a) à Pontual - Primeiro Acesso (${cleanMatricula})`,
+      text: plainText,
       html,
+      messageId,
+      headers: {
+        'X-Mailer': 'Pontual-Mailer-v1.0',
+        'X-Priority': '3',
+        'X-MSMail-Priority': 'Normal',
+        'Importance': 'Normal',
+        'Auto-Submitted': 'auto-generated',
+        'X-Auto-Response-Suppress': 'OOF, AutoReply',
+        'Feedback-ID': 'welcome:pontual:transactional',
+      }
     });
 
     console.log(`[SMTP] E-mail enviado com sucesso para ${email}! ID: ${info.messageId}`);
