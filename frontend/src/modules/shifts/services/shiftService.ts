@@ -267,6 +267,29 @@ export async function updateShiftSupabase(shift: Shift): Promise<boolean> {
   }
 }
 
+export async function updateShiftAttendanceStatusSupabase(shiftId: string, status: string): Promise<boolean> {
+  try {
+    if (!isValidUuid(shiftId)) return false;
+    const { error } = await supabase
+      .from('TAB_Escala_Turno')
+      .update({
+        Tpo_Status_Presenca: status,
+        Dta_Atualizacao: new Date().toISOString()
+      })
+      .eq('Idf_Turno', shiftId);
+
+    if (error) {
+      console.warn('Erro ao atualizar presença do turno no Supabase:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.error('Erro ao atualizar presença da escala:', err?.message);
+    return false;
+  }
+}
+
+
 export async function registerPunchSupabase(
   shiftId: string,
   employeeId: string,

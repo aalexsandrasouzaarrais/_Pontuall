@@ -1,4 +1,4 @@
-import { getTodayDateString } from '@/shared/utils/dateUtils';
+import { getTodayDateString, evaluatePunchTolerance } from '@/shared/utils/dateUtils';
 import React, { useState, useEffect } from 'react';
 import { 
   EmployeeSidebar 
@@ -59,6 +59,7 @@ import {
   getShiftsSupabase, 
   createShiftSupabase, 
   updateShiftSupabase,
+  updateShiftAttendanceStatusSupabase,
   registerPunchSupabase,
   deleteShiftSupabase,
   deleteBulkShiftsSupabase
@@ -570,20 +571,54 @@ function AppContent() {
       distanceMeters?: number;
       reportedWorkplace?: string;
     },
-    punchType: 'entrada' | 'saida' = 'entrada'
+    punchType: 'entrada' | 'saida' = 'entrada',
+    notesOrReason?: string,
+    simulatedTime?: string
   ) => {
     const now = new Date();
-    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const timeStr = simulatedTime || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const targetShift = shifts.find(s => s.id === shiftId);
+
+    // Avaliação de tolerância conforme Art. 58 § 1º CLT
+    let punchAttendanceStatus: 'present' | 'late' = 'present';
+    let lateDiffMinutes = 0;
+    let overtimeDiffMinutes = 0;
+
+    if (punchType === 'entrada' && targetShift?.startTime) {
+      const tol = evaluatePunchTolerance(targetShift.startTime, timeStr, 'entrada', 10);
+      if (tol.isLate) {
+        punchAttendanceStatus = 'late';
+        lateDiffMinutes = tol.diffMinutes;
+      }
+    } else if (punchType === 'saida' && targetShift?.endTime) {
+      const tol = evaluatePunchTolerance(targetShift.endTime, timeStr, 'saida', 10);
+      if (tol.isOvertime) {
+        overtimeDiffMinutes = tol.diffMinutes;
+      }
+    }
     
     // Salva o registro de ponto na TAB_Registro_Ponto no Supabase com coordenadas reais e tipo
     registerPunchSupabase(shiftId, activeEmployee.id, locationData, punchType);
+    if (punchType === 'entrada') {
+      updateShiftAttendanceStatusSupabase(shiftId, punchAttendanceStatus);
+    }
+
+    const isForgetfulness = notesOrReason?.toLowerCase().includes('esqueci') || notesOrReason?.toLowerCase().includes('esquecimento');
 
     setShifts(prev => prev.map(s => {
       if (s.id === shiftId) {
         if (punchType === 'saida') {
+          let updatedNotes = s.notes || '';
+          if (overtimeDiffMinutes > 0) {
+            const heTag = isForgetfulness
+              ? `[Esquecimento de Saída: Saída real no horário previsto (${s.endTime || '15:20'}) - Batida às ${timeStr}]`
+              : `[HE +${overtimeDiffMinutes}m: ${notesOrReason || 'Sem justificativa informada'}]`;
+            updatedNotes = updatedNotes ? `${updatedNotes} | ${heTag}` : heTag;
+          }
           return {
             ...s,
             checkOutTime: timeStr,
+            notes: updatedNotes,
             checkOutLocation: {
               latitude: locationData.latitude ?? -23.5505,
               longitude: locationData.longitude ?? -46.6333,
@@ -596,10 +631,16 @@ function AppContent() {
             }
           };
         } else {
+          let updatedNotes = s.notes || '';
+          if (lateDiffMinutes > 0 && notesOrReason) {
+            const lateTag = `[Atraso ${lateDiffMinutes}m: ${notesOrReason}]`;
+            updatedNotes = updatedNotes ? `${updatedNotes} | ${lateTag}` : lateTag;
+          }
           return {
             ...s,
-            attendanceStatus: 'present',
+            attendanceStatus: punchAttendanceStatus,
             checkInTime: timeStr,
+            notes: updatedNotes,
             checkInLocation: {
               latitude: locationData.latitude ?? -23.5505,
               longitude: locationData.longitude ?? -46.6333,
@@ -625,17 +666,63 @@ function AppContent() {
     }
 
     const isExit = punchType === 'saida';
+    let notifTitle = isExit
+      ? (locationData.gpsValidated ? 'Saída Registrada com Sucesso!' : 'Saída Registrada (Aviso de Perímetro)')
+      : (locationData.gpsValidated ? 'Entrada Registrada com Sucesso!' : 'Entrada Registrada (Aviso de Perímetro)');
+    
+    if (punchType === 'entrada' && lateDiffMinutes > 0) {
+      notifTitle = `Entrada Registrada (Atraso de ${lateDiffMinutes} min)`;
+    } else if (punchType === 'saida' && overtimeDiffMinutes > 0) {
+      notifTitle = isForgetfulness
+        ? `Saída Registrada (Ajuste de Esquecimento de Ponto)`
+        : `Saída Registrada (Hora Extra: +${overtimeDiffMinutes} min)`;
+    }
+
     const newNotif: NotificationItem = {
       id: `notif-${Date.now()}`,
-      title: isExit
-        ? (locationData.gpsValidated ? 'Saída Registrada com Sucesso!' : 'Saída Registrada (Aviso de Perímetro)')
-        : (locationData.gpsValidated ? 'Entrada Registrada com Sucesso!' : 'Entrada Registrada (Aviso de Perímetro)'),
+      title: notifTitle,
       message: `${isExit ? 'Saída' : 'Presença'} confirmada às ${timeStr} (${statusMsg}). Local: ${locationData.address}`,
       type: 'system',
       timestamp: 'Agora',
       read: false,
     };
     setNotifications(prev => [newNotif, ...prev]);
+
+    // Localiza gestores do colaborador para notificações operacionais
+    const managers = employees.filter(e => 
+      activeEmployee.managerIds?.includes(e.id) ||
+      (e.roleType === 'gestor' && e.department?.toLowerCase() === activeEmployee.department?.toLowerCase()) ||
+      e.isMasterManager ||
+      e.isRh
+    );
+
+    // Alerta gestor em caso de atraso
+    if (punchType === 'entrada' && lateDiffMinutes > 0) {
+      managers.forEach(mgr => {
+        createNotificationSupabase({
+          targetEmployeeId: mgr.id,
+          title: 'Alerta de Atraso de Ponto',
+          message: `${activeEmployee.name} iniciou o turno com ${lateDiffMinutes} min de atraso às ${timeStr} (previsto: ${targetShift?.startTime || '08:00'}).${notesOrReason ? ` Motivo: "${notesOrReason}".` : ''}`,
+          type: 'system',
+          actionRequired: true,
+        });
+      });
+    }
+
+    // Alerta gestor em caso de saída após o horário (hora extra ou esquecimento)
+    if (punchType === 'saida' && overtimeDiffMinutes > 0) {
+      managers.forEach(mgr => {
+        createNotificationSupabase({
+          targetEmployeeId: mgr.id,
+          title: isForgetfulness ? 'Registro de Ponto: Ajuste de Esquecimento' : 'Alerta de Hora Extra / Saída Fora do Horário',
+          message: isForgetfulness
+            ? `${activeEmployee.name} registrou a saída às ${timeStr} informando esquecimento de batida e encerramento efetivo no horário previsto (${targetShift?.endTime || '15:20'}). Ponto gravado para auditoria (Portaria 671 MTE).`
+            : `${activeEmployee.name} registrou saída às ${timeStr} (+${overtimeDiffMinutes} min após o término previsto às ${targetShift?.endTime || '17:00'}). Motivo informado: "${notesOrReason || 'Permanência após o expediente'}". Requer homologação no Banco de Horas.`,
+          type: isForgetfulness ? 'system' : 'approval',
+          actionRequired: !isForgetfulness,
+        });
+      });
+    }
   };
 
   const handleUpdateEmployee = async (updated: Employee) => {
@@ -1035,15 +1122,31 @@ function AppContent() {
     const target = justifications.find(j => j.id === id);
     setJustifications(prev => prev.map(j => j.id === id ? { ...j, status: 'approved', managerNotes: feedback } : j));
     await updateJustificativaStatusSupabase(id, 'approved', feedback);
+
+    // Sincroniza o turno para 'justified' na memória e no Supabase
+    if (target) {
+      let shiftIdToUpdate = target.shiftId;
+      if (!shiftIdToUpdate && target.employeeId && target.date) {
+        const found = shifts.find(s => s.employeeId === target.employeeId && s.date === target.date);
+        shiftIdToUpdate = found?.id;
+      }
+      if (shiftIdToUpdate) {
+        setShifts(prev => prev.map(s => s.id === shiftIdToUpdate ? { ...s, attendanceStatus: 'justified' } : s));
+        await updateShiftAttendanceStatusSupabase(shiftIdToUpdate, 'justified');
+      } else if (target.employeeId && target.date) {
+        setShifts(prev => prev.map(s => (s.employeeId === target.employeeId && s.date === target.date) ? { ...s, attendanceStatus: 'justified' } : s));
+      }
+    }
+
     if (target?.employeeId) {
       await createNotificationSupabase({
         targetEmployeeId: target.employeeId,
         title: 'Atestado Homologado',
-        message: `Seu atestado médico para ${target.date} foi homologado. Parecer: "${feedback}".`,
+        message: `Seu atestado médico para ${target.date} foi homologado. Parecer: "${feedback}". As horas do dia foram abonadas.`,
         type: 'justification',
       });
     }
-    showToast('Atestado Homologado', 'O atestado/justificativa foi homologado e atualizado no Supabase.', 'success');
+    showToast('Atestado Homologado', 'O atestado/justificativa foi homologado e o turno atualizado no sistema.', 'success');
   };
 
   const handleRejectJustification = async (id: string, customFeedback?: string) => {
@@ -1051,6 +1154,19 @@ function AppContent() {
     const target = justifications.find(j => j.id === id);
     setJustifications(prev => prev.map(j => j.id === id ? { ...j, status: 'rejected', managerNotes: feedback } : j));
     await updateJustificativaStatusSupabase(id, 'rejected', feedback);
+
+    if (target) {
+      let shiftIdToUpdate = target.shiftId;
+      if (!shiftIdToUpdate && target.employeeId && target.date) {
+        const found = shifts.find(s => s.employeeId === target.employeeId && s.date === target.date);
+        shiftIdToUpdate = found?.id;
+      }
+      if (shiftIdToUpdate) {
+        setShifts(prev => prev.map(s => s.id === shiftIdToUpdate ? { ...s, attendanceStatus: 'absent' } : s));
+        await updateShiftAttendanceStatusSupabase(shiftIdToUpdate, 'absent');
+      }
+    }
+
     if (target?.employeeId) {
       await createNotificationSupabase({
         targetEmployeeId: target.employeeId,
@@ -1383,6 +1499,7 @@ function AppContent() {
                   onShiftClick={handleOpenShiftDetails}
                   isLightTheme={!isDark}
                   employees={employees}
+                  justifications={justifications}
                 />
               );
             })()}
