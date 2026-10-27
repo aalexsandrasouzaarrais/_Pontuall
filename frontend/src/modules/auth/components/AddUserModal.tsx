@@ -5,12 +5,12 @@ import { Employee } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
 import { safeStorage } from '@/shared/utils/safeStorage';
 import { sendWelcomeEmail as sendWelcomeEmailService } from '@/modules/auth/services/emailService';
-import { savePjContractParamsLocal } from '@/modules/auth/services/colaboradorService';
+import { savePjContractParamsLocal, checkEmailExists } from '@/modules/auth/services/colaboradorService';
 
 interface AddUserModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddEmployee: (employee: Employee) => void;
+  onAddEmployee: (employee: Employee) => Promise<void> | void;
   employees?: Employee[];
   activeEmployee?: Employee;
   theme?: 'light' | 'dark';
@@ -32,6 +32,10 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState(false);
+  const [emailErrorMessage, setEmailErrorMessage] = useState<string | null>(null);
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [phone, setPhone] = useState('');
   const [employeeId, setEmployeeId] = useState('');
   const [sendWelcomeEmail, setSendWelcomeEmail] = useState(true);
@@ -94,6 +98,10 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       setFirstName('');
       setLastName('');
       setEmail('');
+      setEmailError(false);
+      setEmailErrorMessage(null);
+      setIsCheckingEmail(false);
+      setIsSubmitting(false);
       setPhone('');
       setEmployeeId(generateRandomId());
       setRole('');
@@ -132,8 +140,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Validação da etapa 1
-  const validateStep1 = () => {
+  // Validação da etapa 1 (incluindo verificação de e-mail duplicado)
+  const validateStep1 = async (): Promise<boolean> => {
     const isFirstEmpty = !firstName.trim();
     const isLastEmpty = !lastName.trim();
 
@@ -145,8 +153,97 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       return false;
     }
 
+    const cleanEmail = email.trim().toLowerCase();
+    const generatedFallback = `${firstName.toLowerCase().replace(/\s+/g, '')}@pontual.com.br`;
+    const targetEmail = cleanEmail || generatedFallback;
+
+    // Se o usuário digitou e-mail explicitamente, valida o formato
+    if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setEmailError(true);
+      setEmailErrorMessage('Por favor, informe um endereço de e-mail corporativo válido (ex: nome@empresa.com).');
+      setErrorMessage('Por favor, informe um endereço de e-mail corporativo válido.');
+      return false;
+    }
+
+    // 1. Verifica se já existe colaborador com esse e-mail na lista da equipe carregada
+    const existsInList = employees?.some(emp => {
+      const empEmail = (emp.email || '').trim().toLowerCase();
+      return empEmail === targetEmail;
+    });
+
+    if (existsInList) {
+      setEmailError(true);
+      const msg = cleanEmail
+        ? `O e-mail "${cleanEmail}" já está cadastrado no sistema. Não é possível cadastrar novamente.`
+        : `O e-mail gerado automaticamente (${targetEmail}) já está em uso. Por favor, informe um e-mail corporativo específico.`;
+      setEmailErrorMessage(msg);
+      setErrorMessage(msg);
+      return false;
+    }
+
+    // 2. Consulta no Supabase / Storage
+    setIsCheckingEmail(true);
+    try {
+      const existsInDb = await checkEmailExists(targetEmail);
+      if (existsInDb) {
+        setEmailError(true);
+        const msg = cleanEmail
+          ? `O e-mail "${cleanEmail}" já está cadastrado no sistema. Não é possível cadastrar novamente.`
+          : `O e-mail gerado automaticamente (${targetEmail}) já está em uso. Por favor, informe um e-mail corporativo específico.`;
+        setEmailErrorMessage(msg);
+        setErrorMessage(msg);
+        setIsCheckingEmail(false);
+        return false;
+      }
+    } catch (err) {
+      console.warn('Erro ao verificar disponibilidade do e-mail:', err);
+    } finally {
+      setIsCheckingEmail(false);
+    }
+
+    setEmailError(false);
+    setEmailErrorMessage(null);
     setErrorMessage(null);
     return true;
+  };
+
+  // Validação em tempo real ao desfocar o campo de e-mail
+  const handleEmailBlur = async () => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      setEmailError(false);
+      setEmailErrorMessage(null);
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setEmailError(true);
+      setEmailErrorMessage('Formato de e-mail corporativo inválido.');
+      return;
+    }
+
+    const existsLocally = employees?.some(emp => (emp.email || '').trim().toLowerCase() === cleanEmail);
+    if (existsLocally) {
+      setEmailError(true);
+      setEmailErrorMessage(`O e-mail "${cleanEmail}" já está cadastrado no sistema.`);
+      return;
+    }
+
+    setIsCheckingEmail(true);
+    try {
+      const existsInDb = await checkEmailExists(cleanEmail);
+      if (existsInDb) {
+        setEmailError(true);
+        setEmailErrorMessage(`O e-mail "${cleanEmail}" já está cadastrado no sistema.`);
+      } else {
+        setEmailError(false);
+        setEmailErrorMessage(null);
+      }
+    } catch (err) {
+      console.warn(err);
+    } finally {
+      setIsCheckingEmail(false);
+    }
   };
 
   // Validação da etapa 2
@@ -184,19 +281,21 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     return true;
   };
 
-  const handleNextStep = () => {
-    if (validateStep1()) {
+  const handleNextStep = async () => {
+    const isValid = await validateStep1();
+    if (isValid) {
       setActiveTab('ATRIBUIÇÕES');
     }
   };
 
-  const handleTabChange = (targetTab: 'PERFIL' | 'ATRIBUIÇÕES') => {
+  const handleTabChange = async (targetTab: 'PERFIL' | 'ATRIBUIÇÕES') => {
     if (targetTab === 'PERFIL') {
       setActiveTab('PERFIL');
       setErrorMessage(null);
     } else {
-      // Para ir para Atribuições, precisa preencher a etapa 1 primeiro
-      if (validateStep1()) {
+      // Para ir para Atribuições, precisa validar a etapa 1 primeiro
+      const isValid = await validateStep1();
+      if (isValid) {
         setActiveTab('ATRIBUIÇÕES');
       }
     }
@@ -207,13 +306,14 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
 
     // Se estiver na etapa 1, não permite salvar! Deve avançar para a etapa 2.
     if (activeTab === 'PERFIL') {
-      handleNextStep();
+      await handleNextStep();
       return;
     }
 
     // Se estiver na etapa 2:
     // 1. Valida se a etapa 1 continua válida
-    if (!validateStep1()) {
+    const isStep1Valid = await validateStep1();
+    if (!isStep1Valid) {
       setActiveTab('PERFIL');
       return;
     }
@@ -276,28 +376,43 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       });
     }
 
-    onAddEmployee(newEmp);
+    setIsSubmitting(true);
+    try {
+      await onAddEmployee(newEmp);
 
-    if (sendWelcomeEmail && newEmp.email) {
-      try {
-        await sendWelcomeEmailService({
-          email: newEmp.email,
-          nome: newEmp.name,
-          matricula: cleanId,
-        });
-      } catch (err) {
-        console.warn('Erro ao disparar e-mail de ativação:', err);
+      if (sendWelcomeEmail && newEmp.email) {
+        try {
+          await sendWelcomeEmailService({
+            email: newEmp.email,
+            nome: newEmp.name,
+            matricula: cleanId,
+          });
+        } catch (err) {
+          console.warn('Erro ao disparar e-mail de ativação:', err);
+        }
+      }
+
+      setIsSaved(true);
+      setErrorMessage(null);
+
+      // Fecha suavemente após confirmar o salvamento na tela
+      setTimeout(() => {
+        onClose();
+        setIsSaved(false);
+        setIsSubmitting(false);
+      }, 700);
+    } catch (err: any) {
+      setIsSubmitting(false);
+      const isDuplicate = err?.message?.includes('já está cadastrado') || err?.message?.includes('DUPLICATE_EMAIL');
+      if (isDuplicate) {
+        setActiveTab('PERFIL');
+        setEmailError(true);
+        setEmailErrorMessage('Este e-mail já está cadastrado no sistema. Não é possível cadastrar novamente.');
+        setErrorMessage('Este e-mail já está cadastrado no sistema. Não é possível cadastrar novamente.');
+      } else {
+        setErrorMessage(err?.message || 'Ocorreu um erro ao salvar o colaborador.');
       }
     }
-
-    setIsSaved(true);
-    setErrorMessage(null);
-
-    // Fecha suavemente após confirmar o salvamento na tela
-    setTimeout(() => {
-      onClose();
-      setIsSaved(false);
-    }, 700);
   };
 
   const estimatedMonthlyTotal =
@@ -483,22 +598,45 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                     </div>
 
                     <div>
-                      <label className={`text-xs font-semibold mb-1.5 block ${
-                        isDark ? 'text-slate-300' : 'text-slate-700'
-                      }`}>
-                        E-mail Corporativo
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className={`text-xs font-semibold block ${
+                          isDark ? 'text-slate-300' : 'text-slate-700'
+                        }`}>
+                          E-mail Corporativo
+                        </label>
+                        {isCheckingEmail && (
+                          <span className="text-[10px] text-amber-500 animate-pulse flex items-center gap-1 font-medium">
+                            <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                            Verificando e-mail...
+                          </span>
+                        )}
+                      </div>
                       <input
                         type="email"
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        onChange={(e) => {
+                          setEmail(e.target.value);
+                          if (emailError) {
+                            setEmailError(false);
+                            setEmailErrorMessage(null);
+                          }
+                        }}
+                        onBlur={handleEmailBlur}
                         placeholder="carlos.silva@pontual.com.br"
                         className={`w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all border ${
-                          isDark
-                            ? 'bg-[#181A24] border-white/10 text-white placeholder:text-slate-500 focus:border-[#f89847] focus:ring-2 focus:ring-[#f89847]/10'
-                            : 'bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-[#96183c] focus:ring-2 focus:ring-[#96183c]/10'
+                          emailError
+                            ? 'border-rose-500 ring-2 ring-rose-500/20'
+                            : isDark
+                              ? 'bg-[#181A24] border-white/10 text-white placeholder:text-slate-500 focus:border-[#f89847] focus:ring-2 focus:ring-[#f89847]/10'
+                              : 'bg-slate-50 border-slate-200 text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-[#96183c] focus:ring-2 focus:ring-[#96183c]/10'
                         }`}
                       />
+                      {emailError && (
+                        <span className="text-[11px] text-rose-500 mt-1.5 flex items-center gap-1.5 font-medium leading-tight">
+                          <AlertCircle className="w-3.5 h-3.5 inline shrink-0 text-rose-500" />
+                          {emailErrorMessage || 'Este e-mail já está cadastrado no sistema. Não é possível cadastrar novamente.'}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -952,19 +1090,29 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
               <button
                 type="button"
                 onClick={handleNextStep}
-                className="px-5 py-2.5 rounded-xl text-sm font-bold transition-all hover:opacity-95 active:scale-95 shadow-md flex items-center gap-2 cursor-pointer text-white"
+                disabled={isCheckingEmail}
+                className="px-5 py-2.5 rounded-xl text-sm font-bold transition-all hover:opacity-95 active:scale-95 shadow-md flex items-center gap-2 cursor-pointer text-white disabled:opacity-60"
                 style={{
                   background: 'linear-gradient(135deg, #96183c 0%, #f89847 100%)',
                 }}
               >
-                <span>Avançar para Atribuições</span>
-                <ArrowRight className="w-4 h-4" />
+                {isCheckingEmail ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Verificando e-mail...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Avançar para Atribuições</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </button>
             ) : (
               <button
                 type="submit"
-                disabled={isSaved}
-                className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer text-white ${
+                disabled={isSaved || isSubmitting || isCheckingEmail}
+                className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer text-white disabled:opacity-60 ${
                   isSaved
                     ? 'bg-emerald-600 hover:bg-emerald-600 cursor-default ring-2 ring-emerald-400/40'
                     : 'hover:opacity-95 active:scale-95'
@@ -973,8 +1121,17 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                   background: 'linear-gradient(135deg, #96183c 0%, #f89847 100%)',
                 } : undefined}
               >
-                <Check className="w-4 h-4" />
-                <span>{isSaved ? 'Salvo com Sucesso!' : 'Salvar Colaborador'}</span>
+                {isSubmitting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Salvando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>{isSaved ? 'Salvo com Sucesso!' : 'Salvar Colaborador'}</span>
+                  </>
+                )}
               </button>
             )}
           </div>

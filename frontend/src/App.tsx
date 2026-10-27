@@ -1248,12 +1248,34 @@ function AppContent() {
   };
 
   const handleAddEmployee = async (newEmp: Employee) => {
+    const cleanEmail = (newEmp.email || '').trim().toLowerCase();
+
+    // Verificação preventiva local na equipe carregada
+    if (cleanEmail && employees.some(e => (e.email || '').trim().toLowerCase() === cleanEmail)) {
+      showToast(
+        'E-mail já cadastrado',
+        `O e-mail "${newEmp.email}" já está cadastrado no sistema. Não é possível cadastrar novamente.`,
+        'error'
+      );
+      throw new Error(`O e-mail "${newEmp.email}" já está cadastrado no sistema.`);
+    }
+
     try {
       // Salva diretamente na tabela TAB_Colaborador do Supabase e vincula ao gestor ativo (M:N)
       const saved = await createColaboradorSupabase(newEmp, activeEmployee?.id);
       setEmployees(prev => [...prev, saved]);
-    } catch (err) {
-      console.warn('Fallback local ao salvar colaborador:', err);
+    } catch (err: any) {
+      console.warn('Erro ao salvar colaborador:', err);
+      // Se for erro de duplicidade de e-mail, NÃO salva localmente e propaga o erro!
+      if (err?.message?.includes('já está cadastrado') || err?.message?.includes('DUPLICATE_EMAIL')) {
+        showToast(
+          'E-mail já cadastrado',
+          `O e-mail informado já pertence a outro usuário. Cadastro não permitido.`,
+          'error'
+        );
+        throw err;
+      }
+      // Fallback offline apenas para falha de conexão com banco
       setEmployees(prev => [...prev, newEmp]);
     }
     const newNotif: NotificationItem = {
