@@ -298,6 +298,17 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
                 {currentUser.role} • {currentUser.department}
               </p>
 
+              {currentUser.contractType === 'PJ' && (
+                <div className="mt-2 flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-black bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-mono">
+                    💰 R$ {Number(currentUser.hourlyRate || 0).toFixed(2).replace('.', ',')} / hora
+                  </span>
+                  <span className={`text-[11px] font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    (Franquia: {currentUser.monthlyHoursQuota || 160}h/mês)
+                  </span>
+                </div>
+              )}
+
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 mt-3 text-xs">
                 <span className={`inline-flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                   <Mail className="w-3.5 h-3.5 text-[#f89847]" />
@@ -610,6 +621,29 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
                   {currentUser.contractType === 'PJ' ? 'PJ / Prestador' : currentUser.contractType === 'TEMPORARIO' ? 'Contrato Temporário' : 'CLT Integral'}
                 </span>
               </div>
+
+              {/* Card Destaque: Valor da Hora PJ */}
+              {currentUser.contractType === 'PJ' && (
+                <>
+                  <div className={`p-3 rounded-xl border ${isDark ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200'}`}>
+                    <span className={`text-[10px] font-mono uppercase font-bold block ${isDark ? 'text-emerald-400' : 'text-emerald-800'}`}>
+                      Remuneração Contratada (R$/h)
+                    </span>
+                    <span className="text-sm font-black font-mono text-emerald-600 dark:text-emerald-400 mt-0.5 block">
+                      R$ {Number(currentUser.hourlyRate || 0).toFixed(2).replace('.', ',')} / hora
+                    </span>
+                  </div>
+
+                  <div className={`p-3 rounded-xl border ${isDark ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200'}`}>
+                    <span className={`text-[10px] font-mono uppercase font-bold block ${isDark ? 'text-emerald-400' : 'text-emerald-800'}`}>
+                      Faturamento Total Estimado
+                    </span>
+                    <span className="text-sm font-black font-mono text-emerald-600 dark:text-emerald-400 mt-0.5 block">
+                      R$ {((Number(currentUser.hourlyRate || 0)) * (Number(currentUser.monthlyHoursQuota || 160))).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / mês
+                    </span>
+                  </div>
+                </>
+              )}
 
               {/* Bloco de Vigência de Contrato Temporário */}
               {currentUser.contractType === 'TEMPORARIO' && (

@@ -184,29 +184,28 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
   const contractedHourlyRate = Number(employee.hourlyRate) > 0 ? Number(employee.hourlyRate) : 85;
   const contractedMonthlyQuota = Number(employee.monthlyHoursQuota) > 0 ? Number(employee.monthlyHoursQuota) : 160;
 
-  // Estados da Calculadora de Recebimento do Colaborador PJ
+  // Estados da Calculadora de Recebimento do Colaborador PJ (Simulador independente)
   const [hasUserEditedSimHours, setHasUserEditedSimHours] = useState(false);
   const [simulatedHours, setSimulatedHours] = useState<string>(() =>
-    totalWorkedHoursCombined > 0 ? String(totalWorkedHoursCombined) : String(contractedMonthlyQuota)
+    totalWorkedHoursCombined > 0 ? String(totalWorkedHoursCombined) : '0'
   );
 
   useEffect(() => {
     if (!hasUserEditedSimHours) {
-      if (totalWorkedHoursCombined > 0) {
-        setSimulatedHours(String(totalWorkedHoursCombined));
-      } else {
-        setSimulatedHours(String(contractedMonthlyQuota));
-      }
+      setSimulatedHours(totalWorkedHoursCombined > 0 ? String(totalWorkedHoursCombined) : '0');
     }
-  }, [totalWorkedHoursCombined, contractedMonthlyQuota, hasUserEditedSimHours]);
+  }, [totalWorkedHoursCombined, hasUserEditedSimHours]);
 
   const parsedSimHours = Math.max(0, Number(String(simulatedHours).replace(',', '.')) || 0);
   const simulatedEarnings = parsedSimHours * contractedHourlyRate;
   const openTimesheetEarnings = totalDraftHours * contractedHourlyRate;
   const approvedEarnings = totalHoursApproved * contractedHourlyRate;
   const fullQuotaEarnings = contractedMonthlyQuota * contractedHourlyRate;
-  const remainingHoursToQuota = Math.max(0, Number((contractedMonthlyQuota - parsedSimHours).toFixed(2)));
-  const quotaProgressPercent = Math.min(100, Math.round((parsedSimHours / Math.max(1, contractedMonthlyQuota)) * 100));
+
+  // PROGRESSO REAL DO FATURAMENTO: Calculado estritamente pelas horas reais trabalhadas (em aberto + em aprovação + aprovadas)
+  const realHoursTotal = totalWorkedHoursCombined;
+  const realRemainingHoursToQuota = Math.max(0, Number((contractedMonthlyQuota - realHoursTotal).toFixed(2)));
+  const realQuotaProgressPercent = Math.min(100, Math.round((realHoursTotal / Math.max(1, contractedMonthlyQuota)) * 100));
 
   const formatBRL = (val: number) =>
     val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -597,6 +596,14 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                 <p className={`text-xs sm:text-sm leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                   Acompanhe seu faturamento, organize sua rotina e fique por dentro das suas tarefas.
                 </p>
+                <div className="pt-1 flex flex-wrap items-center gap-2 text-xs font-bold">
+                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-mono">
+                    💰 {formatBRL(contractedHourlyRate)} / hora
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-xl bg-white/5 border border-white/10 text-slate-300 font-mono">
+                    ⏱️ Franquia: {contractedMonthlyQuota}h / mês
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -714,21 +721,21 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                 </div>
               </div>
 
-              {/* Barra de Progresso do Faturamento */}
+              {/* Barra de Progresso do Faturamento (Baseada estritamente nas horas reais) */}
               <div className="space-y-2 pt-1">
                 <div className="flex items-center justify-between text-xs font-bold">
                   <span className={isDark ? 'text-slate-300' : 'text-slate-800'}>
-                    Progresso do faturamento ({parsedSimHours}h de {contractedMonthlyQuota}h)
+                    Progresso do faturamento ({realHoursTotal}h de {contractedMonthlyQuota}h)
                   </span>
                   <span className={`font-mono ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                    <strong className={isDark ? 'text-white' : 'text-slate-900 font-black'}>{quotaProgressPercent}%</strong> concluído
+                    <strong className={isDark ? 'text-white' : 'text-slate-900 font-black'}>{realQuotaProgressPercent}%</strong> concluído
                   </span>
                 </div>
                 <div className={`w-full h-2 rounded-full overflow-hidden ${isDark ? 'bg-white/10' : 'bg-slate-200'}`}>
                   <div
                     className="h-full rounded-full transition-all duration-300"
                     style={{
-                      width: `${quotaProgressPercent}%`,
+                      width: `${realQuotaProgressPercent}%`,
                       background: 'linear-gradient(90deg, #96183c, #f89847)',
                     }}
                   />
@@ -737,13 +744,17 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                   <span className={isDark ? 'text-slate-400' : 'text-slate-600 font-semibold'}>
                     Meta mensal: {contractedMonthlyQuota}h
                   </span>
-                  {remainingHoursToQuota > 0 ? (
+                  {realRemainingHoursToQuota > 0 ? (
                     <span className={`font-bold ${isDark ? 'text-amber-400/80' : 'text-amber-700'}`}>
-                      Faltam {remainingHoursToQuota}h para a meta
+                      Faltam {realRemainingHoursToQuota}h para a meta
                     </span>
-                  ) : (
+                  ) : realHoursTotal >= contractedMonthlyQuota ? (
                     <span className={`font-bold ${isDark ? 'text-emerald-400' : 'text-emerald-700'}`}>
                       Meta mensal atingida! ✓
+                    </span>
+                  ) : (
+                    <span className={`font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      Inicie suas atividades para pontuar
                     </span>
                   )}
                 </div>

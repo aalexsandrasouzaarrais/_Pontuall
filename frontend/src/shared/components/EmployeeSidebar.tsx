@@ -576,6 +576,11 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
                   {activeEmployee.registrationId && (
                     <span className="opacity-75 font-mono ml-1">#{activeEmployee.registrationId}</span>
                   )}
+                  {activeEmployee.contractType === 'PJ' && (
+                    <span className="ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                      R$ {Number(activeEmployee.hourlyRate || 0).toFixed(2).replace('.', ',')}/h
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
