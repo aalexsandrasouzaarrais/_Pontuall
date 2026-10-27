@@ -246,6 +246,7 @@ function AppContent() {
   const [pjReports, setPjReports] = useState<PjDeliverableReport[]>([]);
   
   // Employee Tabs
+  const [managerActiveTab, setManagerActiveTab] = useState<any>('orbit');
   const [employeeTab, setEmployeeTab] = useState<'overview' | 'pj_reports' | 'calendar' | 'requests' | 'justifications' | 'chat'>('overview');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -549,6 +550,18 @@ function AppContent() {
       await clearAllNotificationsSupabase(activeEmployee.id);
     }
     showToast('Notificações Apagadas', 'Todas as notificações foram removidas com sucesso.', 'info');
+  };
+
+  // Retorna à tela inicial / painel ao clicar no logotipo Pontual
+  const handleNavigateHome = () => {
+    setIsProfileModalOpen(false);
+    setIsChatModalOpen(false);
+    setIsNotificationsModalOpen(false);
+    setIsManagerRequestsModalOpen(false);
+    setIsSwapModalOpen(false);
+    setIsShiftDetailsOpen(false);
+    setEmployeeTab('overview');
+    setManagerActiveTab('orbit');
   };
 
   // Floating Halo Toast Notification
@@ -1319,8 +1332,14 @@ function AppContent() {
       <header className={`backdrop-blur-xl border-b px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3 text-xs sticky top-0 z-50 shadow-md transition-colors ${
         !isDark ? 'bg-white/95 border-slate-200 text-slate-800' : 'bg-[#0D0F15]/95 border-[#222634]/80 text-white'
       }`}>
-        {/* Left: Logo */}
-        <div className="flex items-center gap-3">
+        {/* Left: Logo (Clicável: retorna ao painel inicial) */}
+        <button
+          type="button"
+          onClick={handleNavigateHome}
+          className="flex items-center gap-3 cursor-pointer hover:opacity-80 active:scale-95 transition-all text-left bg-transparent border-0 p-0 focus:outline-none"
+          title="Ir para o Painel Inicial"
+          aria-label="Ir para o Painel Inicial"
+        >
           <img
             src={!isDark ? logoWideDark : logoWideLight}
             alt="Pontual"
@@ -1334,7 +1353,7 @@ function AppContent() {
               }
             }}
           />
-        </div>
+        </button>
 
         {/* Right: Perfil (mobile) + Tema + Sair (desktop) */}
         <div className="flex items-center gap-2 sm:gap-2.5 ml-auto">
@@ -1399,6 +1418,8 @@ function AppContent() {
         /* MANAGER VIEW (Full screen width) */
         <div className={`flex-1 w-full flex flex-col min-h-0 manager-scope ${theme}`}>
           <ManagerView
+            activeTab={managerActiveTab}
+            onTabChange={setManagerActiveTab}
             employees={visibleEmployees}
             shifts={shifts}
             activeEmployee={activeEmployee}

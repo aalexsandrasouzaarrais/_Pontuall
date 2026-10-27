@@ -605,7 +605,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         ================================================== */}
         <div className="left-panel">
           {/* Logo */}
-          <div className="logo2">
+          <div className="logo2 cursor-pointer" onClick={() => setViewMode('login')} title="Ir para o início">
             <img src={logoPontualTransparente} alt="Pontual Logo" width="160px" />
             <img src={pontualBranco} alt="" />
           </div>
@@ -841,6 +841,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
               className={`icon-login ${isDark ? 'icon-login--dark' : 'icon-login--light'}`}
               src={isDark ? logoPontualTransparente : logoPontualClaro}
               alt="Pontual Logo"
+              onClick={() => setViewMode('login')}
+              title="Ir para o início"
+              style={{ cursor: 'pointer' }}
             />
 
             {/* MENSAGEM DE FEEDBACK FLUTUANTE */}
