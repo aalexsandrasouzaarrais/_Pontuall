@@ -2,18 +2,28 @@ import { Router, Request, Response } from 'express';
 import { supabaseAdmin } from '../../shared/supabase.js';
 import nodemailer from 'nodemailer';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 
 export const authRoutes = Router();
 
 const EMAIL_USER = process.env.EMAIL_USER || 'pontual.escalas@gmail.com';
 const EMAIL_PASS = process.env.EMAIL_PASS || 'xiqp afqt inqe qizb';
+const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
+const SMTP_PORT = Number(process.env.SMTP_PORT) || 465;
+const SMTP_SECURE = process.env.SMTP_SECURE !== undefined ? process.env.SMTP_SECURE === 'true' : true;
 
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: SMTP_HOST,
+  port: SMTP_PORT,
+  secure: SMTP_SECURE,
   auth: {
     user: EMAIL_USER,
     pass: EMAIL_PASS,
   },
+  tls: {
+    rejectUnauthorized: false,
+    minVersion: 'TLSv1.2'
+  }
 });
 
 // Login de colaborador ou gestor
@@ -322,88 +332,117 @@ authRoutes.post('/send-welcome-email', async (req: Request, res: Response): Prom
     const origin = configuredAppUrl || req.headers.origin || 'http://localhost:3000';
     const resetLink = link || `${origin.replace(/\/+$/, '')}/colaborador?matricula=${encodeURIComponent(matricula || '')}&primeiro_acesso=true`;
 
+    const cleanNome = (nome || 'Colaborador').trim();
+    const cleanMatricula = (matricula || 'PNT-1000').trim();
+
+    const plainText = [
+      `Olá, ${cleanNome}!`,
+      '',
+      'Sua conta de colaborador na plataforma Pontual foi ativada com sucesso pelo RH da sua organização.',
+      '',
+      '--------------------------------------------------',
+      `MATRÍCULA DE ACESSO: ${cleanMatricula}`,
+      '--------------------------------------------------',
+      '',
+      'Para acessar o Portal do Colaborador, utilize o link seguro abaixo:',
+      resetLink,
+      '',
+      'Recomendamos que você realize o seu primeiro acesso para consultar sua escala de trabalho e verificar seus dados cadastrais.',
+      '',
+      'Atenciosamente,',
+      'Equipe Pontual - Gestão de Escalas e Pessoas',
+      'Mensagem automática do sistema Pontual. Caso tenha dúvidas, consulte a equipe de RH.'
+    ].join('\n');
+
     const html = `
       <!DOCTYPE html>
       <html lang="pt-BR">
       <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Bem-vindo(a) à Pontual!</title>
+        <title>Ativação de Acesso - Pontual Gestão de Pessoas</title>
       </head>
-      <body style="margin: 0; padding: 28px 12px; background-color: #0b0c10; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
-        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #0b0c10;">
+      <body style="margin: 0; padding: 24px 12px; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #334155;">
+        <!-- Preheader invisível para clientes de e-mail -->
+        <div style="display: none; max-height: 0px; overflow: hidden; font-size: 1px; line-height: 1px; color: #f1f5f9; opacity: 0; mso-hide: all;">
+          Sua conta de colaborador na Pontual está pronta para uso. Acesse suas escalas e registros de jornada.
+        </div>
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #f1f5f9;">
           <tr>
             <td align="center">
-              <!-- Card Principal -->
-              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 520px; background-color: #121319; border-radius: 20px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6); text-align: left;">
+              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 540px; background-color: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04); text-align: left;">
                 
-                <!-- Linha Superior Gradiente (Branding Pontual) -->
+                <!-- Barra Superior Pontual -->
                 <tr>
-                  <td style="height: 5px; background: linear-gradient(90deg, #96183c 0%, #f89847 60%, #faf0ac 100%); background-color: #f89847; font-size: 0; line-height: 0;">&nbsp;</td>
+                  <td style="height: 4px; background-color: #670D20; font-size: 0; line-height: 0;">&nbsp;</td>
                 </tr>
                 
-                <!-- Conteúdo -->
+                <!-- Cabeçalho Institucional -->
                 <tr>
-                  <td style="padding: 36px 32px 32px 32px;">
-                    
-                    <!-- Título com "Pontual" destacado em laranja -->
-                    <h1 style="margin: 0 0 22px 0; font-size: 26px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px; line-height: 1.2;">
-                      Bem-vindo(a) à <span style="color: #f89847;">Pontual</span>!
-                    </h1>
+                  <td style="padding: 24px 32px 16px 32px; border-bottom: 1px solid #f1f5f9;">
+                    <span style="color: #670D20; font-weight: 800; font-size: 19px; letter-spacing: -0.5px;">PONTUAL</span>
+                    <span style="color: #94a3b8; font-size: 13px; font-weight: 500; margin-left: 8px;">| Gestão de Escalas</span>
+                  </td>
+                </tr>
 
-                    <!-- Saudação com nome do colaborador em destaque -->
-                    <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.6; color: #94a3b8;">
-                      Olá <strong style="color: #e2e8f0; font-weight: 700;">${nome || 'Colaborador'}</strong>, seu cadastro foi realizado com sucesso pelo seu gestor.
+                <!-- Conteúdo Principal -->
+                <tr>
+                  <td style="padding: 28px 32px 32px 32px;">
+                    <h2 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 700; color: #0f172a; line-height: 1.3;">
+                      Olá, ${cleanNome}
+                    </h2>
+
+                    <p style="margin: 0 0 16px 0; font-size: 14.5px; line-height: 1.6; color: #334155;">
+                      Sua conta de colaborador na plataforma <strong>Pontual</strong> foi ativada com sucesso pelo setor de Recursos Humanos.
                     </p>
 
-                    <!-- Instrução -->
-                    <p style="margin: 0 0 24px 0; font-size: 14px; line-height: 1.6; color: #94a3b8;">
-                      Para realizar o seu primeiro login e registrar seus turnos e pontos, utilize a sua senha temporária abaixo:
+                    <p style="margin: 0 0 20px 0; font-size: 14.5px; line-height: 1.6; color: #334155;">
+                      A partir de agora, você já pode acessar o sistema para consultar sua escala de trabalho, solicitar folgas e acompanhar seus turnos.
                     </p>
 
-                    <!-- Caixa de Matrícula / Senha Temporária -->
-                    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin: 0 0 24px 0; background-color: #181920; border-radius: 14px; border: 1px solid rgba(248, 152, 71, 0.28);">
+                    <!-- Caixa de Credencial / Matrícula -->
+                    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin: 0 0 24px 0; background-color: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; border-left: 4px solid #670D20;">
                       <tr>
-                        <td align="center" style="padding: 24px 20px;">
-                          <div style="font-size: 11px; font-weight: 700; color: #f89847; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 10px;">
-                            SUA SENHA TEMPORÁRIA / MATRÍCULA
+                        <td style="padding: 18px 20px;">
+                          <div style="font-size: 11px; font-weight: 700; color: #670D20; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px;">
+                            SUA MATRÍCULA DE IDENTIFICAÇÃO
                           </div>
-                          <div style="font-size: 30px; font-weight: 800; color: #ffffff; letter-spacing: 2.5px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-                            ${matricula || 'PNT-1000'}
+                          <div style="font-size: 24px; font-weight: 800; color: #0f172a; letter-spacing: 1px;">
+                            ${cleanMatricula}
                           </div>
                         </td>
                       </tr>
                     </table>
 
-                    <!-- Recomendação de definição de senha -->
-                    <p style="margin: 0 0 26px 0; font-size: 14px; line-height: 1.6; color: #94a3b8;">
-                      Recomendamos que você acesse o sistema pelo botão abaixo e defina sua senha definitiva:
+                    <p style="margin: 0 0 22px 0; font-size: 14px; line-height: 1.6; color: #475569;">
+                      Clique no botão abaixo para acessar o Portal do Colaborador e concluir o seu acesso:
                     </p>
 
-                    <!-- Botão de Ação Redondo Gradiente -->
-                    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin: 0 0 28px 0;">
+                    <!-- Botão de Ação -->
+                    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin: 0 0 26px 0;">
                       <tr>
-                        <td align="center">
-                          <a href="${resetLink}" target="_blank" style="display: inline-block; background-color: #d94826; background: linear-gradient(90deg, #9b1d36 0%, #d94826 45%, #eb7028 100%); color: #ffffff; text-decoration: none; font-size: 14.5px; font-weight: 700; padding: 14px 34px; border-radius: 9999px; box-shadow: 0 10px 25px rgba(155, 29, 54, 0.35); text-align: center;">
-                            Acessar e Definir Minha Senha
+                        <td>
+                          <a href="${resetLink}" target="_blank" style="display: inline-block; background-color: #670D20; color: #ffffff; text-decoration: none; font-size: 14.5px; font-weight: 600; padding: 13px 28px; border-radius: 8px; text-align: center;">
+                            Acessar Portal do Colaborador
                           </a>
                         </td>
                       </tr>
                     </table>
 
-                    <!-- Link alternativo -->
-                    <div style="margin: 0 0 34px 0;">
+                    <!-- Link de Acesso Alternativo -->
+                    <div style="margin: 0 0 28px 0; padding-top: 14px; border-top: 1px solid #f1f5f9;">
                       <p style="margin: 0 0 6px 0; font-size: 12px; color: #64748b; line-height: 1.5;">
-                        Ou copie e cole este link no seu navegador:
+                        Se preferir, copie e cole o link direto em seu navegador:
                       </p>
-                      <a href="${resetLink}" target="_blank" style="font-size: 12px; color: #3b82f6; text-decoration: underline; word-break: break-all; line-height: 1.5;">
+                      <a href="${resetLink}" target="_blank" style="font-size: 12px; color: #2563eb; text-decoration: underline; word-break: break-all; line-height: 1.5;">
                         ${resetLink}
                       </a>
                     </div>
 
-                    <!-- Rodapé discreto -->
-                    <div style="text-align: center; font-size: 11px; color: #475569; line-height: 1.5;">
-                      Pontual Gestão de Escalas & Pontos • Este é um e-mail automático do sistema.
+                    <!-- Rodapé Institucional Transacional -->
+                    <div style="font-size: 11.5px; color: #64748b; line-height: 1.6; border-top: 1px solid #e2e8f0; padding-top: 16px;">
+                      Pontual Gestão de Escalas • Mensagem automática institucional.<br>
+                      Você recebeu este e-mail porque foi cadastrado na plataforma pela sua empresa. Em caso de dúvidas, consulte o seu gestor ou departamento de RH.
                     </div>
 
                   </td>
@@ -417,9 +456,11 @@ authRoutes.post('/send-welcome-email', async (req: Request, res: Response): Prom
     `;
 
     const info = await transporter.sendMail({
-      from: `"Pontual Escalas" <${EMAIL_USER}>`,
+      from: `"Pontual Gestão de Pessoas" <${EMAIL_USER}>`,
+      replyTo: `"Suporte Pontual" <${EMAIL_USER}>`,
       to: email,
-      subject: `Bem-vindo(a) à Pontual - Primeiro Acesso (${matricula || 'Pontual'})`,
+      subject: `Ativação de Acesso - Pontual Gestão de Pessoas`,
+      text: plainText,
       html,
     });
 
