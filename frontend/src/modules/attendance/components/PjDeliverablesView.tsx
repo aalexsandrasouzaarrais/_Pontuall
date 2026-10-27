@@ -596,15 +596,7 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                 <p className={`text-xs sm:text-sm leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                   Acompanhe seu faturamento, organize sua rotina e fique por dentro das suas tarefas.
                 </p>
-                <div className="pt-1 flex flex-wrap items-center gap-2 text-xs font-bold">
-                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-mono">
-                    💰 {formatBRL(contractedHourlyRate)} / hora
-                  </span>
-                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-xl bg-white/5 border border-white/10 text-slate-300 font-mono">
-                    ⏱️ Franquia: {contractedMonthlyQuota}h / mês
-                  </span>
-                </div>
-              </div>
+                              </div>
             </div>
 
             {/* 2. MEU FATURAMENTO & CALCULADORA DE HORAS PJ */}
