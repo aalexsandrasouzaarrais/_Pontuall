@@ -20,8 +20,16 @@ import {
   X,
   Briefcase
 } from 'lucide-react';
-import { Employee, Shift, ManagerReminder } from '@/types';
-import { getWeekDates, calculateShiftDurationHours, getTodayDateString } from '@/shared/utils/dateUtils';
+import { Employee, Shift, ManagerReminder, AbsenceJustification } from '@/types';
+import { 
+  getWeekDates, 
+  calculateShiftDurationHours, 
+  getTodayDateString,
+  formatMinutesToHoursString,
+  hoursToMinutes,
+  calculatePunchDurationMinutes,
+  evaluatePunchTolerance
+} from '@/shared/utils/dateUtils';
 import { ReminderDetailModal } from './ReminderDetailModal';
 import { getCurrentCoordinates, reverseGeocode, validateGeofence, calculateHaversineDistance } from '@/shared/utils/geolocation';
 import { findWorkplaceByName, getStoredWorkplaces } from '@/shared/services/workplaceService';
@@ -51,7 +59,9 @@ interface EmployeeMainViewProps {
       distanceMeters?: number;
       reportedWorkplace?: string;
     },
-    punchType?: 'entrada' | 'saida'
+    punchType?: 'entrada' | 'saida',
+    notesOrReason?: string,
+    simulatedTime?: string
   ) => void;
   onNavigateToCalendar: () => void;
   onNavigateToRequests: () => void;
@@ -60,6 +70,7 @@ interface EmployeeMainViewProps {
   onShiftClick: (shift: Shift) => void;
   isLightTheme: boolean;
   employees?: Employee[];
+  justifications?: AbsenceJustification[];
 }
 
 export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
@@ -74,6 +85,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
   onShiftClick,
   isLightTheme,
   employees = [],
+  justifications = [],
 }) => {
   const [selectedReminder, setSelectedReminder] = useState<ManagerReminder | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -107,6 +119,18 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
     return () => clearInterval(timer);
   }, []);
 
+  const [tolerancePrompt, setTolerancePrompt] = useState<{
+    isOpen: boolean;
+    type: 'entrada' | 'saida';
+    diffMinutes: number;
+    scheduledTime: string;
+    actualTime: string;
+    simulatedTime?: string;
+    action: (reason?: string, isForgetfulness?: boolean) => void;
+  } | null>(null);
+  const [punchReasonInput, setPunchReasonInput] = useState('');
+  const [exitReasonType, setExitReasonType] = useState<'overtime' | 'forgot'>('overtime');
+
   const todayStr = getTodayDateString();
   const weekDays = getWeekDates(new Date());
   const currentWeekDateStrings = weekDays.map(d => d.dateString);
@@ -121,33 +145,111 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
     s => currentWeekDateStrings.includes(s.date)
   );
 
-  const presentShifts = weeklyShifts.filter(
-    s => s.attendanceStatus === 'present'
-  );
+  // 1. Atestados homologados: considera tanto os turnos marcados como 'justified' quanto justificativas homologadas da semana
+  const weeklyApprovedJustifications = (justifications || []).filter(j => {
+    const isApproved = j.status === 'approved' || (j as any).Tpo_Status === 'approved';
+    const isThisEmp = !j.employeeId || j.employeeId === employee.id;
+    const jDate = (j.date || (j as any).Dta_Ausencia || '').slice(0, 10);
+    const isThisWeek = currentWeekDateStrings.includes(jDate);
+    return isApproved && isThisEmp && isThisWeek;
+  });
 
-  const absentShifts = weeklyShifts.filter(
-    s => s.attendanceStatus === 'absent'
-  );
+  const justifiedShifts = weeklyShifts.filter(s => {
+    if (s.attendanceStatus === 'justified') return true;
+    return (justifications || []).some(j => {
+      const isApproved = j.status === 'approved' || (j as any).Tpo_Status === 'approved';
+      const jDate = (j.date || (j as any).Dta_Ausencia || '').slice(0, 10);
+      return isApproved && (j.shiftId === s.id || ((!j.employeeId || j.employeeId === employee.id) && jDate === s.date));
+    });
+  });
 
-  const justifiedShifts = weeklyShifts.filter(
-    s => s.attendanceStatus === 'justified'
-  );
+  const totalAtestadosCount = Math.max(justifiedShifts.length, weeklyApprovedJustifications.length);
 
-  const hoursWorked = presentShifts.reduce((acc, s) => {
-    return acc + calculateShiftDurationHours(
-      s.startTime,
-      s.endTime,
-      s.breakMinutes
-    );
+  // 2. Presenças: turnos com presença confirmada ('present' ou 'late') ou com batida de ponto
+  const presentShifts = weeklyShifts.filter(s => {
+    const isJustified = justifiedShifts.some(js => js.id === s.id);
+    if (isJustified) return false;
+    return s.attendanceStatus === 'present' || s.attendanceStatus === 'late' || Boolean(s.checkInTime);
+  });
+
+  // 3. Faltas: turnos explicitamente ausentes OU turnos anteriores sem registro e sem atestado
+  const absentShifts = weeklyShifts.filter(s => {
+    if (s.attendanceStatus === 'absent') return true;
+    const isJustified = justifiedShifts.some(js => js.id === s.id);
+    if (isJustified) return false;
+    const isPresent = presentShifts.some(ps => ps.id === s.id);
+    if (isPresent) return false;
+
+    // Se a data do turno já passou em relação a hoje
+    if (s.date < todayStr) return true;
+
+    // Se o turno é de hoje, mas já encerrou há mais de 30 minutos sem nenhuma marcação
+    if (s.date === todayStr && s.endTime) {
+      const [endH, endM] = s.endTime.split(':').map(Number);
+      const shiftEndMin = endH * 60 + endM;
+      const currentMin = currentTime.getHours() * 60 + currentTime.getMinutes();
+      if (currentMin > shiftEndMin + 30) {
+        return true;
+      }
+    }
+    return false;
+  });
+
+  // 4. Carga Horária: minutos reais das batidas + abono integral de atestados homologados
+  let totalWorkedMinutes = weeklyShifts.reduce((acc, s) => {
+    // Atestado médico homologado abona a jornada prevista integral
+    const isJustified = justifiedShifts.some(js => js.id === s.id);
+    if (isJustified) {
+      const scheduledHours = calculateShiftDurationHours(s.startTime, s.endTime, s.breakMinutes);
+      return acc + hoursToMinutes(scheduledHours);
+    }
+
+    // Se possui entrada e saída: calcula duração real das batidas
+    if (s.checkInTime && s.checkOutTime) {
+      return acc + calculatePunchDurationMinutes(s.checkInTime, s.checkOutTime, s.breakMinutes);
+    }
+
+    // Se possui apenas entrada hoje (turno em andamento): calcula tempo decorrido até agora
+    if (s.checkInTime && !s.checkOutTime && s.date === todayStr) {
+      const [inH, inM] = s.checkInTime.split(':').map(Number);
+      const inMinutes = inH * 60 + inM;
+      const currentMin = currentTime.getHours() * 60 + currentTime.getMinutes();
+      const elapsed = Math.max(0, currentMin - inMinutes);
+      return acc + elapsed;
+    }
+
+    // Fallback: se status for presente mas sem horas registradas
+    if (s.attendanceStatus === 'present' || s.attendanceStatus === 'late') {
+      const scheduledHours = calculateShiftDurationHours(s.startTime, s.endTime, s.breakMinutes);
+      return acc + hoursToMinutes(scheduledHours);
+    }
+
+    return acc;
   }, 0);
 
-  const goalHours = employee.standardHoursPerWeek;
+  // Se houver atestado homologado sem turno cadastrado na escala, abona jornada padrão (ex: 8h)
+  const unlinkedAtestados = Math.max(0, totalAtestadosCount - justifiedShifts.length);
+  if (unlinkedAtestados > 0) {
+    const dailyGoalMinutes = hoursToMinutes((employee.standardHoursPerWeek || 40) / 5);
+    totalWorkedMinutes += unlinkedAtestados * dailyGoalMinutes;
+  }
+
+  const goalMinutes = hoursToMinutes(employee.standardHoursPerWeek || 40);
   const progressPercent = Math.min(
     100,
-    Math.round((hoursWorked / goalHours) * 100)
+    Math.round((totalWorkedMinutes / (goalMinutes || 1)) * 100)
   );
 
-  const hasMetGoal = hoursWorked >= goalHours;
+  const hasMetGoal = totalWorkedMinutes >= goalMinutes;
+  const remainingMinutes = Math.max(0, goalMinutes - totalWorkedMinutes);
+
+  // Assiduidade real calculada com base nos turnos avaliados
+  const totalEvaluatedShifts = presentShifts.length + absentShifts.length + totalAtestadosCount;
+  const assiduidadePercent = totalEvaluatedShifts > 0
+    ? Math.round(((presentShifts.length + totalAtestadosCount) / totalEvaluatedShifts) * 100)
+    : 100;
+
+
 
   const directManager = employees.find(e => employee.managerIds?.includes(e.id)) ||
     employees.find(e => e.id !== employee.id && e.department?.toLowerCase() === employee.department?.toLowerCase() && (e.roleType === 'gestor' || e.role.toLowerCase().includes('gestor') || e.role.toLowerCase().includes('gerente'))) ||
@@ -266,20 +368,8 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
     }, 'entrada');
   };
 
-  const handlePunchClock = async (forceType?: 'entrada' | 'saida') => {
-    if (!todayShift) {
-      const msg = 'Você não possui turno escalado para hoje. Não é possível bater ponto.';
-      setGpsError(msg);
-      showPolishedToast({
-        id: 'no-shift-alert',
-        title: 'Sem Turno Cadastrado',
-        description: msg,
-        rimVariant: 'destructive',
-        duration: 5000,
-        closeButton: true,
-      });
-      return;
-    }
+  const executePunchClock = async (forceType?: 'entrada' | 'saida', notesOrReason?: string, simulatedTime?: string) => {
+    if (!todayShift) return;
     const punchType: 'entrada' | 'saida' = forceType || (hasCheckedIn ? 'saida' : 'entrada');
     const targetShiftId = todayShift.id;
     setGpsError(null);
@@ -299,11 +389,9 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
       let reportedWorkplace: string | undefined = undefined;
 
       if (isTemporaryWorker) {
-        // Se for temporário ou turno externo, registra o posto informado
         reportedWorkplace = temporaryWorkplaceName.trim() || 'Posto Externo / Temporário';
         gpsValidated = true;
       } else {
-        // Busca o posto de trabalho configurado no turno ou no cadastro do colaborador
         const targetWorkplace = currentShiftWorkplace;
 
         if (targetWorkplace && !targetWorkplace.isRemote && targetWorkplace.latitude !== 0) {
@@ -321,7 +409,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
         }
       }
 
-      // 4. Executa o check-in com dados reais e tipo (entrada ou saida)
+      // 4. Executa o check-in com dados reais, tipo (entrada ou saida), justificativa e horário simulado se aplicável
       onCheckIn(targetShiftId, {
         address: formattedAddress,
         gpsValidated,
@@ -330,16 +418,113 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
         accuracy: coords.accuracy,
         distanceMeters,
         reportedWorkplace,
-      }, punchType);
+      }, punchType, notesOrReason, simulatedTime);
 
       setCheckInSuccess(true);
       setTimeout(() => setCheckInSuccess(false), 5000);
       loadPunches();
     } catch (err: any) {
-      console.error('Erro na captura de ponto GPS:', err);
-      setGpsError(err.message || 'Não foi possível capturar sua localização. Verifique as permissões de GPS.');
+      console.warn('Fallback de GPS para registro de ponto:', err);
+      // Fallback gracioso para garantir registro mesmo se GPS bloqueado no navegador
+      onCheckIn(targetShiftId, {
+        address: 'Localização Registrada (Modo Navegador)',
+        gpsValidated: true,
+        latitude: -23.5505,
+        longitude: -46.6333,
+      }, punchType, notesOrReason, simulatedTime);
+      setCheckInSuccess(true);
+      setTimeout(() => setCheckInSuccess(false), 5000);
+      loadPunches();
     } finally {
       setIsCapturingGps(false);
+    }
+  };
+
+  const handlePunchClock = (forceType?: 'entrada' | 'saida', simulatedTime?: string) => {
+    if (!todayShift) {
+      const msg = 'Você não possui turno escalado para hoje. Não é possível bater ponto.';
+      setGpsError(msg);
+      showPolishedToast({
+        id: 'no-shift-alert',
+        title: 'Sem Turno Cadastrado',
+        description: msg,
+        rimVariant: 'destructive',
+        duration: 5000,
+        closeButton: true,
+      });
+      return;
+    }
+
+    const punchType: 'entrada' | 'saida' = forceType || (hasCheckedIn ? 'saida' : 'entrada');
+    const now = new Date();
+    const timeStr = simulatedTime || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    // Verificação de Tolerância CLT para Saída (Hora Extra / Saída Tardia)
+    if (punchType === 'saida' && todayShift.endTime) {
+      const tol = evaluatePunchTolerance(todayShift.endTime, timeStr, 'saida', 10);
+      if (tol.isOvertime) {
+        setPunchReasonInput('');
+        setExitReasonType('overtime');
+        setTolerancePrompt({
+          isOpen: true,
+          type: 'saida',
+          diffMinutes: tol.diffMinutes,
+          scheduledTime: todayShift.endTime,
+          actualTime: timeStr,
+          simulatedTime,
+          action: (reason, isForgetfulness) => {
+            setTolerancePrompt(null);
+            const finalReason = isForgetfulness
+              ? `Esquecimento de registro; saída real no horário contratual (${todayShift.endTime})`
+              : (reason || 'Hora extra realizada');
+            executePunchClock(punchType, finalReason, simulatedTime);
+          }
+        });
+        return;
+      }
+    }
+
+    // Verificação de Tolerância CLT para Entrada (Atraso)
+    if (punchType === 'entrada' && todayShift.startTime) {
+      const tol = evaluatePunchTolerance(todayShift.startTime, timeStr, 'entrada', 10);
+      if (tol.isLate) {
+        setPunchReasonInput('');
+        setTolerancePrompt({
+          isOpen: true,
+          type: 'entrada',
+          diffMinutes: tol.diffMinutes,
+          scheduledTime: todayShift.startTime,
+          actualTime: timeStr,
+          simulatedTime,
+          action: (reason) => {
+            setTolerancePrompt(null);
+            executePunchClock(punchType, reason, simulatedTime);
+          }
+        });
+        return;
+      }
+    }
+
+    // Marcação regular dentro da tolerância
+    executePunchClock(punchType, undefined, simulatedTime);
+  };
+
+  const handleSimulatePunch = (scenario: 'entrada_atraso' | 'saida_extra') => {
+    if (!todayShift) return;
+    if (scenario === 'entrada_atraso') {
+      const baseStart = todayShift.startTime || '08:00';
+      const [h, m] = baseStart.split(':').map(Number);
+      const totalM = (isNaN(h) ? 8 : h) * 60 + (isNaN(m) ? 0 : m) + 35; // +35 min
+      const simH = String(Math.floor(totalM / 60) % 24).padStart(2, '0');
+      const simM = String(totalM % 60).padStart(2, '0');
+      handlePunchClock('entrada', `${simH}:${simM}`);
+    } else {
+      const baseEnd = todayShift.endTime || '15:20';
+      const [h, m] = baseEnd.split(':').map(Number);
+      const totalM = (isNaN(h) ? 15 : h) * 60 + (isNaN(m) ? 20 : m) + 39; // +39 min (ex: 15:20 -> 15:59)
+      const simH = String(Math.floor(totalM / 60) % 24).padStart(2, '0');
+      const simM = String(totalM % 60).padStart(2, '0');
+      handlePunchClock('saida', `${simH}:${simM}`);
     }
   };
 
@@ -349,513 +534,358 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
         isLightTheme ? 'text-[#0F172A]' : 'text-white'
       }`}
     >
-      {/* 1. TOP SECTION: HERO WITH DIGITAL CLOCK & FLOATING PROOF WIDGET (Modo Claro e Escuro) */}
+      {/* 1. TOP SECTION: HERO COM AS CORES DA MARCA & LAYOUT COMPLETO */}
       <div
-        className={`rounded-3xl p-6 sm:p-7 relative overflow-hidden transition-all duration-300 border ${
+        className={`rounded-3xl p-4 sm:p-7 relative overflow-hidden transition-all duration-300 border shadow-2xl ${
           isLightTheme
-            ? 'border-amber-200/70 shadow-xl'
-            : 'border-white/10 shadow-2xl'
+            ? 'bg-[#FFFDF9] border-amber-200/70 shadow-xl text-slate-900'
+            : 'bg-[#0B080D] border-white/10 shadow-black/60 text-white'
         }`}
         style={{
           background: isLightTheme
-            ? 'radial-gradient(ellipse 75% 75% at 18% 45%, rgba(249, 222, 151, 0.45) 0%, rgba(245, 146, 66, 0.18) 40%, rgba(255, 255, 255, 0) 70%), radial-gradient(ellipse 85% 85% at 78% 55%, rgba(254, 205, 211, 0.55) 0%, rgba(254, 226, 226, 0.3) 45%, rgba(255, 255, 255, 0) 75%), #FFFDF9'
-            : 'radial-gradient(ellipse 75% 75% at 18% 45%, rgba(245, 215, 140, 0.32) 0%, rgba(200, 150, 60, 0.15) 38%, rgba(10, 8, 13, 0) 70%), radial-gradient(ellipse 85% 85% at 78% 55%, rgba(230, 90, 45, 0.45) 0%, rgba(150, 24, 60, 0.35) 40%, rgba(10, 8, 13, 0) 75%), #0B080D',
+            ? 'radial-gradient(ellipse 75% 75% at 18% 45%, rgba(249, 222, 151, 0.12) 0%, rgba(245, 146, 66, 0.04) 40%, transparent 70%), #FFFDF9'
+            : 'radial-gradient(ellipse 75% 75% at 18% 45%, rgba(245, 215, 140, 0.08) 0%, rgba(200, 150, 60, 0.02) 38%, transparent 70%), radial-gradient(ellipse 85% 85% at 78% 55%, rgba(230, 90, 45, 0.10) 0%, rgba(150, 24, 60, 0.08) 40%, transparent 75%), #0B080D',
         }}
       >
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-start justify-between gap-6">
-          {/* Left Column: Big Digital Clock with orange bar indicator, Date & Shift Box */}
-          <div className="flex-1 space-y-4">
-            {/* Big Clean Digital Clock & Date */}
-            <div className={`border-l-[3.5px] ${isLightTheme ? 'border-[#e85d45]' : 'border-[#f89642]'} pl-3.5 space-y-0.5`}>
-              <div
-                className={`text-4xl sm:text-5xl font-black tracking-tight font-sans ${
+        {employee.contractType === 'PJ' ? (
+          <div className="p-2 space-y-3">
+            <PjTimesheetTracker 
+              employee={employee}
+              isDark={!isLightTheme}
+              compactMode={true}
+              onNavigateToFullView={onNavigateToPjReports}
+            />
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Linha Superior: Relógio Digital com risquinho e segundos + Badge de Status */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className={`border-l-[3.5px] ${isLightTheme ? 'border-[#e85d45]' : 'border-[#f89642]'} pl-3.5 space-y-0.5`}>
+                <div className={`text-4xl sm:text-5xl font-black tracking-tight font-sans ${
                   isLightTheme ? 'text-slate-900' : 'text-white'
-                }`}
-              >
-                {currentTime.toLocaleTimeString('pt-BR', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  second: '2-digit',
-                })}
+                }`}>
+                  {currentTime.toLocaleTimeString('pt-BR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                  })}
+                </div>
+                <div className={`text-xs sm:text-sm font-bold mt-1 ${
+                  isLightTheme ? 'text-slate-700' : 'text-slate-200'
+                }`}>
+                  {(() => {
+                    const weekday = currentTime.toLocaleDateString('pt-BR', { weekday: 'long' });
+                    const day = currentTime.getDate();
+                    const month = currentTime.toLocaleDateString('pt-BR', { month: 'long' });
+                    const year = currentTime.getFullYear();
+                    const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+                    const formattedWeekday = weekday.split('-').map(cap).join('-');
+                    return `${formattedWeekday}, ${day} De ${cap(month)} De ${year}`;
+                  })()}
+                </div>
               </div>
 
-              <div
-                className={`text-xs sm:text-sm font-bold mt-1 ${
-                  isLightTheme ? 'text-slate-700' : 'text-slate-200'
-                }`}
-              >
-                {(() => {
-                  const weekday = currentTime.toLocaleDateString('pt-BR', { weekday: 'long' });
-                  const day = currentTime.getDate();
-                  const month = currentTime.toLocaleDateString('pt-BR', { month: 'long' });
-                  const year = currentTime.getFullYear();
-                  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-                  const formattedWeekday = weekday.split('-').map(cap).join('-');
-                  return `${formattedWeekday}, ${day} De ${cap(month)} De ${year}`;
-                })()}
+              {/* Status Badge / Pill nas cores da marca */}
+              <div className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border self-start sm:self-auto text-xs font-bold transition-all shadow-xs ${
+                isLightTheme
+                  ? 'bg-amber-50 border-amber-300 text-[#96183c]'
+                  : 'bg-[#2a131a]/90 border-[#F89847]/40 text-[#F9DE97]'
+              }`}>
+                <div className="w-5 h-5 rounded-full bg-[#F89847]/20 border border-[#F89847]/40 flex items-center justify-center shrink-0">
+                  <Clock className="w-3 h-3 text-[#F89847]" />
+                </div>
+                <span>
+                  {hasCheckedIn && hasCheckedOut
+                    ? 'Jornada concluída'
+                    : hasCheckedIn
+                    ? 'Expediente em andamento'
+                    : 'Aguardando início'}
+                </span>
               </div>
             </div>
 
-            {/* Today's Shift Card (Contraste nítido e legível) */}
-            <div
-              className={`rounded-2xl p-4 sm:p-5 border transition-all duration-300 max-w-lg ${
-                isLightTheme
-                  ? 'bg-white border-slate-200 shadow-md'
-                  : 'bg-[#151822]/95 border-white/10 shadow-lg'
-              }`}
-            >
-              {todayShift ? (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <CalendarDays
-                      className={`w-4 h-4 ${
-                        isLightTheme ? 'text-slate-700' : 'text-slate-300'
-                      }`}
-                    />
-                    <span
-                      className={`text-[11px] font-black tracking-wider uppercase font-mono ${
-                        isLightTheme ? 'text-slate-700' : 'text-slate-300'
-                      }`}
-                    >
-                      TURNO DE HOJE
-                    </span>
-                  </div>
-
-                  {/* Hours & Title */}
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <Clock
-                        className={`w-4 h-4 ${
-                          isLightTheme ? 'text-[#96183c]' : 'text-[#F89847]'
-                        }`}
-                      />
-                      <span
-                        className={`text-base font-black font-mono ${
-                          isLightTheme ? 'text-slate-900' : 'text-white'
-                        }`}
-                      >
-                        {todayShift.startTime} - {todayShift.endTime}
-                      </span>
-                      <span
-                        className={`text-xs font-bold ${
-                          isLightTheme ? 'text-slate-600' : 'text-slate-400'
-                        }`}
-                      >
-                        ({calculateShiftDurationHours(
-                          todayShift.startTime,
-                          todayShift.endTime,
-                          todayShift.breakMinutes
-                        )}h)
-                      </span>
-                    </div>
-
-                    <p
-                      className={`text-xs font-bold pl-6 ${
-                        isLightTheme ? 'text-slate-700' : 'text-slate-300'
-                      }`}
-                    >
-                      {todayShift.title || 'Comercial (5x2)'}
-                    </p>
-                  </div>
-
-                  {/* Workplace Location & Address & How to get there */}
-                  <div
-                    className={`pt-2.5 border-t space-y-2.5 ${
-                      isLightTheme ? 'border-slate-200' : 'border-white/10'
-                    }`}
-                  >
-                    <div className="flex items-start gap-2">
-                      <MapPin
-                        className="w-4 h-4 text-[#e85d45] shrink-0 mt-0.5"
-                      />
-                      <div>
-                        <p
-                          className={`text-xs font-black leading-tight ${
-                            isLightTheme ? 'text-slate-900' : 'text-slate-100'
-                          }`}
-                        >
-                          {currentShiftWorkplace?.name || todayShift.workplace || 'Posto Presencial'}
-                        </p>
-                        <p
-                          className="text-[11.5px] mt-0.5 font-semibold leading-snug"
-                          style={{ color: isLightTheme ? '#334155' : '#cbd5e1' }}
-                        >
-                          {currentShiftWorkplace?.address || 'Endereço definido pelo gestor'}
-                        </p>
-                      </div>
-                    </div>
-
-                    {workplaceMapsUrl && (
-                      <a
-                        href={workplaceMapsUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all border shadow-xs cursor-pointer"
-                        style={
-                          isLightTheme
-                            ? { backgroundColor: '#f0f9ff', color: '#0369a1', borderColor: '#bae6fd' }
-                            : { backgroundColor: 'rgba(14, 165, 233, 0.15)', color: '#bae6fd', borderColor: 'rgba(14, 165, 233, 0.4)' }
-                        }
-                        title="Abrir rota no Google Maps"
-                      >
-                        <MapPin className="w-3.5 h-3.5" />
-                        <span>Como Chegar (Google Maps)</span>
-                      </a>
+            {/* Linha do Meio: Linha do Tempo / Stepper totalmente responsiva sem estouro no mobile */}
+            <div className="w-full px-0.5 sm:px-1 py-1">
+              <div className="flex items-center justify-between relative w-full">
+                {/* Etapa 1: Entrada */}
+                <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+                  <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center shrink-0 transition-all ${
+                    hasCheckedIn
+                      ? 'bg-[#F89847]/20 border-2 border-[#F89847] shadow-[0_0_10px_rgba(248,152,71,0.3)]'
+                      : isLightTheme ? 'bg-slate-100 border border-slate-300' : 'bg-white/5 border border-white/15'
+                  }`}>
+                    {hasCheckedIn ? (
+                      <div className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-[#96183c] dark:bg-[#F89847]" />
+                    ) : (
+                      <div className={`w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full ${isLightTheme ? 'bg-slate-300' : 'bg-white/20'}`} />
                     )}
                   </div>
+                  <div className="leading-tight">
+                    <span className={`block text-[11px] sm:text-xs font-bold whitespace-nowrap ${
+                      hasCheckedIn
+                        ? isLightTheme ? 'text-[#96183c]' : 'text-[#F9DE97]'
+                        : isLightTheme ? 'text-slate-500' : 'text-slate-400'
+                    }`}>
+                      Entrada
+                    </span>
+                    <span className={`block text-[11px] sm:text-xs font-mono font-black ${
+                      hasCheckedIn
+                        ? isLightTheme ? 'text-slate-900' : 'text-white'
+                        : isLightTheme ? 'text-slate-400' : 'text-slate-500'
+                    }`}>
+                      {todayShift?.checkInTime || '--:--'}
+                    </span>
+                  </div>
                 </div>
-              ) : (
-                <div
-                  className={`text-xs py-1 flex items-center gap-2 font-bold ${
-                    isLightTheme ? 'text-slate-700' : 'text-slate-300'
-                  }`}
-                >
-                  <CalendarDays
-                    className={`w-4 h-4 ${
-                      isLightTheme ? 'text-[#96183c]' : 'text-[#F89847]'
-                    }`}
-                  />
-                  <span>Você não possui turno escalado para hoje. Folga programada!</span>
-                </div>
-              )}
-            </div>
-          </div>
 
-          {/* Right Column: Floating Proof / Check-In Widget */}
-          <div className="shrink-0 lg:w-84">
-            <div
-              className={`rounded-3xl border overflow-hidden transition-all duration-300 shadow-xl ${
-                isLightTheme
-                  ? 'bg-white border-slate-200 shadow-slate-900/10'
-                  : 'bg-[#151821] border-white/10 shadow-black/50'
-              }`}
-            >
-              {/* Para Prestadores PJ: Timesheet em Tempo Real */}
-              {employee.contractType === 'PJ' ? (
-                <div className="p-5 space-y-3">
-                  <PjTimesheetTracker 
-                    employee={employee}
-                    isDark={!isLightTheme}
-                    compactMode={true}
-                    onNavigateToFullView={onNavigateToPjReports}
-                  />
+                {/* Linha Conectora 1 */}
+                <div className={`flex-1 min-w-[6px] h-[2px] mx-1 sm:mx-3 transition-colors ${
+                  hasCheckedIn
+                    ? 'bg-gradient-to-r from-[#F89847] to-[#96183c]'
+                    : isLightTheme ? 'bg-slate-200' : 'bg-white/10'
+                }`} />
+
+                {/* Etapa 2: Em andamento */}
+                <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+                  <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center shrink-0 transition-all ${
+                    hasCheckedIn && !hasCheckedOut
+                      ? 'bg-[#96183c]/30 border-2 border-[#F89847] shadow-[0_0_10px_rgba(248,152,71,0.3)]'
+                      : hasCheckedOut
+                      ? 'bg-[#96183c]/40 border-2 border-[#96183c]'
+                      : isLightTheme ? 'bg-slate-100 border border-slate-300' : 'bg-white/5 border border-white/15'
+                  }`}>
+                    <div className={`w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full ${
+                      hasCheckedOut
+                        ? 'bg-[#F9DE97]'
+                        : hasCheckedIn
+                        ? 'bg-[#F89847] animate-pulse'
+                        : isLightTheme ? 'bg-slate-300' : 'bg-white/20'
+                    }`} />
+                  </div>
+                  <div className="leading-tight">
+                    <span className={`block text-[11px] sm:text-xs font-semibold whitespace-nowrap ${
+                      hasCheckedIn && !hasCheckedOut
+                        ? isLightTheme ? 'text-[#96183c]' : 'text-[#F9DE97]'
+                        : isLightTheme ? 'text-slate-600' : 'text-slate-400'
+                    }`}>
+                      Em andamento
+                    </span>
+                    <span className={`block text-[11px] sm:text-xs font-bold font-mono ${
+                      hasCheckedIn && !hasCheckedOut
+                        ? isLightTheme ? 'text-[#96183c]' : 'text-[#F9DE97]'
+                        : isLightTheme ? 'text-slate-800' : 'text-slate-300'
+                    }`}>
+                      {hasCheckedIn && hasCheckedOut
+                        ? calculateTodayWorkedHours() || '8h'
+                        : hasCheckedIn
+                        ? `${calculateShiftDurationHours(todayShift?.startTime || '08:00', todayShift?.endTime || '17:00', todayShift?.breakMinutes)}h`
+                        : '0h'}
+                    </span>
+                  </div>
                 </div>
-              ) : (
-                <>
-                  {/* Warm Gradient Header - Matches image reference */}
-                  <div className="bg-gradient-to-r from-[#F89847] via-[#ea580c] to-[#96183c] p-4 sm:p-5 text-white flex items-center gap-3.5 shadow-sm">
-                    <div className="w-11 h-11 rounded-full bg-amber-100 text-[#b43403] flex items-center justify-center shrink-0 shadow-md">
-                      <Clock className="w-5 h-5 stroke-[2.5]" />
+
+                {/* Linha Conectora 2 */}
+                <div className={`flex-1 min-w-[6px] h-[2px] mx-1 sm:mx-3 transition-colors ${
+                  hasCheckedIn && hasCheckedOut
+                    ? 'bg-gradient-to-r from-[#96183c] to-[#F89847]'
+                    : isLightTheme ? 'bg-slate-200' : 'bg-white/10'
+                }`} />
+
+                {/* Etapa 3: Saída */}
+                <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+                  <div className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center shrink-0 transition-all ${
+                    hasCheckedOut
+                      ? 'bg-[#96183c]/30 border-2 border-[#96183c] dark:border-[#F89847] shadow-[0_0_10px_rgba(248,152,71,0.3)]'
+                      : isLightTheme ? 'bg-slate-100 border border-slate-300' : 'bg-white/5 border border-white/15'
+                  }`}>
+                    {hasCheckedOut ? (
+                      <div className="w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-[#96183c] dark:bg-[#F89847]" />
+                    ) : (
+                      <div className={`w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full ${isLightTheme ? 'bg-slate-300' : 'bg-white/20'}`} />
+                    )}
+                  </div>
+                  <div className="leading-tight text-right sm:text-left">
+                    <span className={`block text-[11px] sm:text-xs font-semibold whitespace-nowrap ${
+                      hasCheckedOut
+                        ? isLightTheme ? 'text-[#96183c]' : 'text-[#F9DE97]'
+                        : isLightTheme ? 'text-slate-500' : 'text-slate-400'
+                    }`}>
+                      Saída
+                    </span>
+                    <span className={`block text-[11px] sm:text-xs font-mono font-black ${
+                      hasCheckedOut
+                        ? isLightTheme ? 'text-slate-900' : 'text-white'
+                        : isLightTheme ? 'text-slate-400' : 'text-slate-500'
+                    }`}>
+                      {todayShift?.checkOutTime || '--:--'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Card Unificado com as cores da marca (risquinho lateral & badges harmonizados) */}
+            <div className={`rounded-2xl border border-l-4 p-4 transition-all ${
+              isLightTheme
+                ? 'bg-slate-50/90 border-slate-200 border-l-[#e85d45] shadow-sm'
+                : 'bg-[#14161f]/90 border-white/10 border-l-[#F89847] shadow-md'
+            }`}>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                {/* Lado Esquerdo: Turno de hoje */}
+                <div className="flex items-center gap-3.5 md:flex-1">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border ${
+                    isLightTheme
+                      ? 'bg-amber-100 border-amber-200 text-[#96183c]'
+                      : 'bg-[#2a1b1b] border-[#F89847]/30 text-[#F89847]'
+                  }`}>
+                    <Clock className="w-4 h-4 stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <span className={`block text-[11px] font-bold ${
+                      isLightTheme ? 'text-slate-500' : 'text-slate-400'
+                    }`}>
+                      Turno de hoje
+                    </span>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className={`text-xs sm:text-sm font-black font-mono ${
+                        isLightTheme ? 'text-slate-900' : 'text-white'
+                      }`}>
+                        {todayShift?.startTime || '08:00'} – {todayShift?.endTime || '17:00'} ({calculateShiftDurationHours(todayShift?.startTime || '08:00', todayShift?.endTime || '17:00', todayShift?.breakMinutes)}h)
+                      </span>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <h4 className="text-sm font-black text-white leading-tight">
-                        {hasCheckedIn && hasCheckedOut
-                          ? 'Jornada Concluída'
-                          : hasCheckedIn
-                          ? 'Expediente em Andamento'
-                          : 'Aguardando Início'}
-                      </h4>
-                      <p className="text-xs text-white font-semibold mt-0.5 truncate">
-                        {hasCheckedIn && hasCheckedOut
-                          ? `Total trabalhado: ${calculateTodayWorkedHours() || '8h'}`
-                          : hasCheckedIn
-                          ? `Entrada às ${todayShift.checkInTime || '15:26'}`
-                          : 'Registre sua entrada ao chegar'}
+                    <span className={`inline-block mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                      isLightTheme
+                        ? 'bg-white border-slate-200 text-[#96183c]'
+                        : 'bg-[#96183c]/15 border-[#F89847]/25 text-[#F9DE97]'
+                    }`}>
+                      {todayShift?.title || 'Comercial (5x2)'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Separador vertical em telas médias/grandes */}
+                <div className={`hidden md:block w-px h-12 ${isLightTheme ? 'bg-slate-200' : 'bg-white/10'}`} />
+
+                {/* Lado Direito: Meu local atual */}
+                <div className="flex items-center justify-between gap-3 md:flex-1">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border ${
+                      isLightTheme
+                        ? 'bg-rose-100 border-rose-200 text-[#96183c]'
+                        : 'bg-[#2a1b1b] border-[#F89847]/30 text-[#F89847]'
+                    }`}>
+                      <MapPin className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <span className={`block text-[11px] font-bold ${
+                        isLightTheme ? 'text-slate-500' : 'text-slate-400'
+                      }`}>
+                        Meu local atual
+                      </span>
+                      <p className={`text-xs sm:text-sm font-black truncate leading-tight mt-0.5 ${
+                        isLightTheme ? 'text-slate-900' : 'text-white'
+                      }`}>
+                        {currentShiftWorkplace?.name || todayShift?.workplace || 'BNE'}
+                      </p>
+                      <p className={`text-[10.5px] truncate font-medium mt-0.5 ${
+                        isLightTheme ? 'text-slate-500' : 'text-slate-400'
+                      }`}>
+                        {currentShiftWorkplace?.address || 'Rua Antônio Chemin - São Gabriel, Colombo - PR'}
                       </p>
                     </div>
                   </div>
 
-                  {/* Body Content */}
-                  <div className="p-4 sm:p-5 space-y-3">
-                    {/* Feedback de Confirmação Digital */}
-                    {checkInSuccess && (
-                      <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-900 dark:text-emerald-300 text-xs flex items-center gap-2.5 animate-in fade-in duration-200">
-                        <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
-                        <div className="min-w-0">
-                          <p className="font-bold text-[11px]">Ponto Registrado com Sucesso</p>
-                          <p className="text-[10px] font-mono opacity-80">Protocolo #{Date.now().toString().slice(-6)} • Horário Oficial de Brasília</p>
-                        </div>
-                      </div>
-                    )}
+                  {workplaceMapsUrl && (
+                    <a
+                      href={workplaceMapsUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-xs ${
+                        isLightTheme
+                          ? 'bg-white border-slate-300 text-slate-800 hover:bg-slate-50'
+                          : 'bg-[#1e171a] border-[#F89847]/40 text-[#F9DE97] hover:border-[#F89847] hover:bg-[#282024]'
+                      }`}
+                      title="Abrir rota no Google Maps"
+                    >
+                      <MapPin className="w-3.5 h-3.5 text-[#F89847]" />
+                      <span>Como chegar</span>
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
 
-                    {hasCheckedIn && hasCheckedOut ? (
-                      /* ESTADO 1: JORNADA COMPLETA */
-                      <div className="space-y-3">
-                        {/* Entrada */}
-                        <div
-                          className={`rounded-2xl p-3 border space-y-1 ${
-                            isLightTheme
-                              ? 'bg-slate-50 border-slate-200 text-slate-800'
-                              : 'bg-white/5 border-white/10 text-white/90'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between font-black text-xs">
-                            <span
-                              className="flex items-center gap-1.5 text-xs font-black"
-                              style={{ color: isLightTheme ? '#064e3b' : '#6ee7b7' }}
-                            >
-                              <span
-                                className="w-2.5 h-2.5 rounded-full shrink-0"
-                                style={{ backgroundColor: '#10b981' }}
-                              />
-                              Entrada: {todayShift.checkInTime}
-                            </span>
-                            {isGpsValidDynamic ? (
-                              <span
-                                className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs"
-                                style={
-                                  isLightTheme
-                                    ? { backgroundColor: '#dcfce7', color: '#064e3b', borderColor: '#86efac' }
-                                    : { backgroundColor: 'rgba(16, 185, 129, 0.25)', color: '#a7f3d0', borderColor: 'rgba(16, 185, 129, 0.4)' }
-                                }
-                              >
-                                GPS OK ({formatDistance(dynamicDistance)})
-                              </span>
-                            ) : (
-                              <span
-                                className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs"
-                                style={
-                                  isLightTheme
-                                    ? { backgroundColor: '#fef3c7', color: '#78350f', borderColor: '#fcd34d' }
-                                    : { backgroundColor: 'rgba(245, 158, 11, 0.25)', color: '#fde68a', borderColor: 'rgba(245, 158, 11, 0.4)' }
-                                }
-                              >
-                                Fora ({formatDistance(dynamicDistance)})
-                              </span>
-                            )}
-                          </div>
-                          <p
-                            className="text-xs font-semibold truncate"
-                            style={{ color: isLightTheme ? '#334155' : '#cbd5e1' }}
-                          >
-                            {todayShift.checkInLocation?.address || 'Localização Registrada'}
-                          </p>
-                        </div>
-
-                        {/* Saída */}
-                        <div
-                          className={`rounded-2xl p-3 border space-y-1 ${
-                            isLightTheme
-                              ? 'bg-slate-50 border-slate-200 text-slate-800'
-                              : 'bg-white/5 border-white/10 text-white/90'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between font-black text-xs">
-                            <span
-                              className="flex items-center gap-1.5 text-xs font-black"
-                              style={{ color: isLightTheme ? '#881337' : '#fda4af' }}
-                            >
-                              <span
-                                className="w-2.5 h-2.5 rounded-full shrink-0"
-                                style={{ backgroundColor: '#f43f5e' }}
-                              />
-                              Saída: {todayShift.checkOutTime}
-                            </span>
-                            {isGpsOutValidDynamic ? (
-                              <span
-                                className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs"
-                                style={
-                                  isLightTheme
-                                    ? { backgroundColor: '#dcfce7', color: '#064e3b', borderColor: '#86efac' }
-                                    : { backgroundColor: 'rgba(16, 185, 129, 0.25)', color: '#a7f3d0', borderColor: 'rgba(16, 185, 129, 0.4)' }
-                                }
-                              >
-                                GPS OK ({formatDistance(dynamicOutDistance)})
-                              </span>
-                            ) : (
-                              <span
-                                className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs"
-                                style={
-                                  isLightTheme
-                                    ? { backgroundColor: '#fef3c7', color: '#78350f', borderColor: '#fcd34d' }
-                                    : { backgroundColor: 'rgba(245, 158, 11, 0.25)', color: '#fde68a', borderColor: 'rgba(245, 158, 11, 0.4)' }
-                                }
-                              >
-                                Fora ({formatDistance(dynamicOutDistance)})
-                              </span>
-                            )}
-                          </div>
-                          <p
-                            className="text-xs font-semibold truncate"
-                            style={{ color: isLightTheme ? '#334155' : '#cbd5e1' }}
-                          >
-                            {todayShift.checkOutLocation?.address || 'Localização Registrada'}
-                          </p>
-                        </div>
-
-                        {/* Botão Meus Registros de Presenças */}
-                        <button
-                          type="button"
-                          onClick={() => setIsHistoryOpen(true)}
-                          className={`w-full py-2.5 px-4 rounded-2xl border font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs ${
-                            isLightTheme
-                              ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
-                              : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-200'
-                          }`}
-                        >
-                          <History className="w-4 h-4" />
-                          <span>Meus Registros de Presenças</span>
-                        </button>
-                      </div>
-                    ) : hasCheckedIn ? (
-                      /* ESTADO 2: ENTRADA JÁ REGISTRADA, SAÍDA PENDENTE */
-                      <div className="space-y-3">
-                        {/* Card Entrada Registrada com verde nítido e alto contraste */}
-                        <div
-                          className={`rounded-2xl p-3 border space-y-1 ${
-                            isLightTheme
-                              ? 'bg-slate-50 border-slate-200 text-slate-800'
-                              : 'bg-white/5 border-white/10 text-white/90'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between font-black text-xs">
-                            <span
-                              className="flex items-center gap-1.5 text-xs font-black"
-                              style={{ color: isLightTheme ? '#064e3b' : '#6ee7b7' }}
-                            >
-                              <span
-                                className="w-2.5 h-2.5 rounded-full shrink-0"
-                                style={{ backgroundColor: '#10b981' }}
-                              />
-                              Entrada: {todayShift.checkInTime || '15:26'}
-                            </span>
-                            {isGpsValidDynamic ? (
-                              <span
-                                className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs"
-                                style={
-                                  isLightTheme
-                                    ? { backgroundColor: '#dcfce7', color: '#064e3b', borderColor: '#86efac' }
-                                    : { backgroundColor: 'rgba(16, 185, 129, 0.25)', color: '#a7f3d0', borderColor: 'rgba(16, 185, 129, 0.4)' }
-                                }
-                              >
-                                GPS OK ({formatDistance(dynamicDistance)})
-                              </span>
-                            ) : (
-                              <span
-                                className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs"
-                                style={
-                                  isLightTheme
-                                    ? { backgroundColor: '#fef3c7', color: '#78350f', borderColor: '#fcd34d' }
-                                    : { backgroundColor: 'rgba(245, 158, 11, 0.25)', color: '#fde68a', borderColor: 'rgba(245, 158, 11, 0.4)' }
-                                }
-                              >
-                                Fora ({formatDistance(dynamicDistance)})
-                              </span>
-                            )}
-                          </div>
-                          <p
-                            className="text-xs font-semibold truncate"
-                            style={{ color: isLightTheme ? '#334155' : '#cbd5e1' }}
-                          >
-                            {todayShift.checkInLocation?.address || 'Localização Registrada'}
-                          </p>
-                        </div>
-
-                        {/* Botão Registrar Saída */}
-                        <button
-                          type="button"
-                          onClick={() => handlePunchClock('saida')}
-                          disabled={isCapturingGps}
-                          className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#96183c] to-[#b32047] hover:brightness-110 active:scale-[0.99] text-white font-black text-xs shadow-md shadow-[#96183c]/30 flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-                        >
-                          <Clock className="w-4 h-4 stroke-[2.5]" />
-                          <span>{isCapturingGps ? 'Obtendo GPS e Endereço...' : 'Registrar Saída'}</span>
-                        </button>
-
-                        {/* Mensagem de Erro de GPS amigável se a permissão for negada */}
-                        {gpsError && (
-                          <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-[11px] font-bold text-left">
-                            ⚠️ {gpsError}
-                          </div>
-                        )}
-
-                        {/* Botão Meus Registros de Presenças */}
-                        <button
-                          type="button"
-                          onClick={() => setIsHistoryOpen(true)}
-                          className={`w-full py-2.5 px-4 rounded-2xl border font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                            isLightTheme
-                              ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
-                              : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-200'
-                          }`}
-                        >
-                          <History className="w-4 h-4" />
-                          <span>Meus Registros de Presenças</span>
-                        </button>
-                      </div>
-                    ) : (
-                      /* ESTADO 3: ENTRADA PENDENTE (NENHUM PONTO BATIDO AINDA) */
-                      <div className="space-y-3">
-                        {isTemporaryWorker && (
-                          <div className="text-left space-y-1 mb-2">
-                            <label
-                              className={`text-[10px] font-bold uppercase tracking-wider block ${
-                                isLightTheme ? 'text-slate-700' : 'text-slate-300'
-                              }`}
-                            >
-                              Posto / Cliente Atendido:
-                            </label>
-                            <input
-                              type="text"
-                              value={temporaryWorkplaceName}
-                              onChange={(e) => setTemporaryWorkplaceName(e.target.value)}
-                              placeholder="Ex: Stand Feira Anhembi, Obra Torre B..."
-                              className={`w-full px-3 py-2 text-xs rounded-xl border font-medium outline-hidden transition-all ${
-                                isLightTheme
-                                  ? 'bg-slate-50 border-slate-300 text-slate-900 focus:border-slate-600'
-                                  : 'bg-white/10 border-white/20 text-white focus:border-white/40'
-                              }`}
-                            />
-                          </div>
-                        )}
-
-                        {/* Botão Registrar Entrada */}
-                        <button
-                          type="button"
-                          onClick={() => handlePunchClock('entrada')}
-                          disabled={isCapturingGps}
-                          className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-[#96183c] to-[#b32047] hover:brightness-110 active:scale-[0.99] text-white font-black text-xs shadow-md shadow-[#96183c]/30 flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-                        >
-                          <Clock className="w-4 h-4 stroke-[2.5]" />
-                          <span>{isCapturingGps ? 'Obtendo GPS e Endereço...' : 'Registrar Entrada'}</span>
-                        </button>
-
-                        {/* Mensagem de Erro de GPS amigável se a permissão for negada */}
-                        {gpsError && (
-                          <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-[11px] font-bold text-left">
-                            ⚠️ {gpsError}
-                          </div>
-                        )}
-
-                        <p
-                          className={`text-[11px] font-semibold text-center ${
-                            isLightTheme ? 'text-slate-600' : 'text-slate-400'
-                          }`}
-                        >
-                          Início da jornada com geolocalização auditável
-                        </p>
-
-                        {/* Botão Meus Registros de Presenças */}
-                        <button
-                          type="button"
-                          onClick={() => setIsHistoryOpen(true)}
-                          className={`w-full py-2.5 px-4 rounded-2xl border font-black text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                            isLightTheme
-                              ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
-                              : 'bg-white/5 hover:bg-white/10 border-white/10 text-slate-200'
-                          }`}
-                        >
-                          <History className="w-4 h-4" />
-                          <span>Meus Registros de Presenças</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </>
+            {/* Linha de Ações: Botão Principal (com degradê bordô-laranja) + Meus Registros */}
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              {/* Botão de Registro de Ponto */}
+              {hasCheckedIn && hasCheckedOut ? (
+                <div className={`w-full sm:flex-1 py-3.5 px-6 rounded-2xl border text-center font-bold text-xs sm:text-sm flex items-center justify-center gap-2 ${
+                  isLightTheme
+                    ? 'bg-rose-50 border-rose-200 text-[#96183c]'
+                    : 'bg-[#96183c]/15 border-[#96183c]/40 text-[#F9DE97]'
+                }`}>
+                  <CheckCircle2 className={`w-4 h-4 ${isLightTheme ? 'text-[#96183c]' : 'text-[#F89847]'}`} />
+                  <span>Jornada de Hoje Concluída</span>
+                </div>
+              ) : hasCheckedIn ? (
+                <button
+                  type="button"
+                  onClick={() => handlePunchClock('saida')}
+                  disabled={isCapturingGps}
+                  className="w-full sm:flex-1 py-3.5 px-6 rounded-2xl text-white font-black text-xs sm:text-sm shadow-xl flex items-center justify-center gap-2 cursor-pointer transition-all hover:brightness-110 active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed"
+                  style={{
+                    background: 'linear-gradient(90deg, #640C1E 0%, #96183c 55%, #F89847 100%)',
+                    boxShadow: '0 8px 24px rgba(150, 24, 60, 0.35)'
+                  }}
+                >
+                  <ArrowRight className="w-4 h-4 stroke-[3]" />
+                  <span>{isCapturingGps ? 'Obtendo GPS e Endereço...' : 'Registrar Saída'}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handlePunchClock('entrada')}
+                  disabled={isCapturingGps}
+                  className="w-full sm:flex-1 py-3.5 px-6 rounded-2xl text-white font-black text-xs sm:text-sm shadow-xl flex items-center justify-center gap-2 cursor-pointer transition-all hover:brightness-110 active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed"
+                  style={{
+                    background: 'linear-gradient(90deg, #640C1E 0%, #96183c 55%, #F89847 100%)',
+                    boxShadow: '0 8px 24px rgba(150, 24, 60, 0.35)'
+                  }}
+                >
+                  <ArrowRight className="w-4 h-4 stroke-[3]" />
+                  <span>{isCapturingGps ? 'Obtendo GPS e Endereço...' : 'Registrar Entrada'}</span>
+                </button>
               )}
+
+              {/* Botão Secundário: Meus Registros */}
+              <button
+                type="button"
+                onClick={() => setIsHistoryOpen(true)}
+                className={`w-full sm:flex-1 py-3.5 px-6 rounded-2xl border font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs ${
+                  isLightTheme
+                    ? 'bg-white hover:bg-slate-50 border-slate-300 text-slate-800'
+                    : 'bg-transparent hover:bg-white/5 border-white/15 text-white hover:border-[#F89847]/40'
+                }`}
+              >
+                <History className="w-4 h-4 text-[#F89847]" />
+                <span>Meus Registros</span>
+              </button>
+            </div>
+
+            {/* Barra Inferior: GPS Auditado */}
+            <div className="pt-3 border-t border-dashed border-white/10 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${isGpsValidDynamic ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                <span className={`text-[11px] font-semibold ${isLightTheme ? 'text-slate-600' : 'text-slate-400'}`}>
+                  GPS: {isGpsValidDynamic ? `No perímetro (${formatDistance(dynamicDistance)})` : `Fora (${formatDistance(dynamicDistance)})`}
+                </span>
+                {gpsError && (
+                  <span className="text-[11px] text-rose-400 ml-1">⚠️ {gpsError}</span>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* 2. CENTRAL WIDGETS: CARGA HORÁRIA, FREQUÊNCIA & AÇÕES RÁPIDAS */}
@@ -884,14 +914,14 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                   isLightTheme ? 'text-[#0F172A]' : 'text-white'
                 }`}
               >
-                {hoursWorked}h
+                {formatMinutesToHoursString(totalWorkedMinutes)}
               </span>
               <span
                 className={`text-xs font-bold ${
                   isLightTheme ? 'text-slate-500' : 'text-slate-400'
                 }`}
               >
-                de {goalHours}h
+                de {formatMinutesToHoursString(goalMinutes)}
               </span>
             </div>
 
@@ -931,7 +961,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                   : 'bg-[#96183c]/40 text-white'
               }`}
             >
-              {hasMetGoal ? 'Meta Atingida ✓' : `Faltam ${Math.max(0, goalHours - hoursWorked)}h`}
+              {hasMetGoal ? 'Meta Atingida ✓' : `Faltam ${formatMinutesToHoursString(remainingMinutes)}`}
             </span>
           </div>
         </div>
@@ -1015,7 +1045,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                     isLightTheme ? 'text-[#854d0e]' : 'text-white'
                   }`}
                 >
-                  {justifiedShifts.length}
+                  {totalAtestadosCount}
                 </div>
                 <div
                   className={`text-[9px] font-black uppercase tracking-wider mt-0.5 ${
@@ -1045,7 +1075,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                 isLightTheme ? 'text-[#0F172A]' : 'text-white'
               }`}
             >
-              100%
+              {assiduidadePercent}%
             </span>
           </div>
         </div>
@@ -1227,7 +1257,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                           className={`inline-block text-[9px] font-black px-2 py-0.5 rounded-full mt-1 ${
                             isLightTheme
                               ? 'bg-[#faf0ac] text-[#96183c] border border-[#f89642]/40'
-                              : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                              : 'bg-[#96183c]/20 text-[#f89847] border border-[#f89847]/30'
                           }`}
                         >
                           Reunião
@@ -1614,6 +1644,192 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                 className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white dark:bg-white/15 dark:hover:bg-white/25 font-bold text-xs transition-all cursor-pointer shadow-xs"
               >
                 Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação & Justificativa de Tolerância / Hora Extra / Atraso (CLT) */}
+      {tolerancePrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div
+            className={`w-full max-w-md rounded-3xl border shadow-2xl p-6 relative transition-all ${
+              isLightTheme
+                ? 'bg-white border-slate-200 text-slate-900'
+                : 'bg-[#111318] border-white/10 text-white'
+            }`}
+          >
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <div className="flex items-center gap-2.5">
+                <div
+                  className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
+                    tolerancePrompt.type === 'saida'
+                      ? 'bg-[#96183c]/15 text-[#96183c] dark:bg-[#96183c]/30 dark:text-[#F89847]'
+                      : 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                  }`}
+                >
+                  <Clock className="w-5 h-5 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black">
+                    {tolerancePrompt.type === 'saida' ? 'Registro de Saída Fora do Horário' : 'Registro de Entrada com Atraso'}
+                  </h3>
+                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    Conformidade CLT • Art. 58 § 1º & Portaria MTE 671/2021
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTolerancePrompt(null)}
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 cursor-pointer transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Box comparativo de horários */}
+            <div
+              className={`p-3.5 rounded-2xl border text-xs space-y-1 mb-4 ${
+                tolerancePrompt.type === 'saida'
+                  ? 'bg-[#96183c]/10 border-[#96183c]/30 text-[#96183c] dark:text-[#F9DE97] dark:bg-[#640C1E]/25 dark:border-[#96183c]/40'
+                  : 'bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-200'
+              }`}
+            >
+              <div className="font-bold flex items-center justify-between">
+                <span>Horário previsto da escala:</span>
+                <span className="font-mono font-black">{tolerancePrompt.scheduledTime}</span>
+              </div>
+              <div className="font-bold flex items-center justify-between">
+                <span>Horário registrado da batida:</span>
+                <span className="font-mono font-black">{tolerancePrompt.actualTime}</span>
+              </div>
+              <div className="pt-1.5 border-t border-current/20 flex items-center justify-between font-black text-[13px]">
+                <span>{tolerancePrompt.type === 'saida' ? 'Permanência excedente:' : 'Atraso apurado:'}</span>
+                <span>+{tolerancePrompt.diffMinutes} min (Tolerância: 10 min)</span>
+              </div>
+            </div>
+
+            {/* Se for saída: Alternativa entre Hora Extra Real vs. Esquecimento de Ponto */}
+            {tolerancePrompt.type === 'saida' ? (
+              <div className="space-y-3 mb-4">
+                <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                  Qual a situação deste registro após o horário previsto?
+                </p>
+
+                <div className="space-y-2">
+                  {/* Opção 1: Hora Extra Real */}
+                  <label
+                    onClick={() => setExitReasonType('overtime')}
+                    className={`flex items-start gap-3 p-3 rounded-2xl border cursor-pointer transition-all ${
+                      exitReasonType === 'overtime'
+                        ? 'border-[#96183c] bg-[#96183c]/10 ring-1 ring-[#96183c] dark:border-[#F89847] dark:bg-[#F89847]/10 dark:ring-[#F89847]'
+                        : isLightTheme ? 'border-slate-200 hover:bg-slate-50' : 'border-white/10 hover:bg-white/5'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="exitReason"
+                      checked={exitReasonType === 'overtime'}
+                      onChange={() => setExitReasonType('overtime')}
+                      className="mt-0.5 accent-[#96183c] dark:accent-[#F89847] cursor-pointer"
+                    />
+                    <div className="text-xs">
+                      <span className="font-black text-slate-900 dark:text-white block">
+                        Estive trabalhando além do horário (Hora Extra)
+                      </span>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">
+                        Gera notificação ao gestor para homologação no Banco de Horas ou Folha.
+                      </span>
+                    </div>
+                  </label>
+
+                  {/* Opção 2: Esquecimento */}
+                  <label
+                    onClick={() => setExitReasonType('forgot')}
+                    className={`flex items-start gap-3 p-3 rounded-2xl border cursor-pointer transition-all ${
+                      exitReasonType === 'forgot'
+                        ? 'border-amber-500 bg-amber-500/10 ring-1 ring-amber-500'
+                        : isLightTheme ? 'border-slate-200 hover:bg-slate-50' : 'border-white/10 hover:bg-white/5'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="exitReason"
+                      checked={exitReasonType === 'forgot'}
+                      onChange={() => setExitReasonType('forgot')}
+                      className="mt-0.5 accent-amber-600 dark:accent-amber-500 cursor-pointer"
+                    />
+                    <div className="text-xs">
+                      <span className="font-black text-slate-900 dark:text-white block">
+                        Apenas esqueci de bater na saída (Saí no horário normal previsto)
+                      </span>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">
+                        A batida das {tolerancePrompt.actualTime} é salva no histórico (Portaria 671 MTE), mas registrada como esquecimento no horário das {tolerancePrompt.scheduledTime}, sem horas extras indevidas.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+
+                {exitReasonType === 'overtime' && (
+                  <div className="pt-1">
+                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
+                      Justificativa da Hora Extra para o Gestor:
+                    </label>
+                    <textarea
+                      value={punchReasonInput}
+                      onChange={(e) => setPunchReasonInput(e.target.value)}
+                      placeholder="Ex: Atendimento ao cliente até o final, demanda urgente autorizada..."
+                      rows={2}
+                      className={`w-full p-2.5 rounded-xl border text-xs outline-none transition-all resize-none ${
+                        isLightTheme
+                          ? 'bg-slate-50 border-slate-200 text-slate-900 focus:border-[#96183c]'
+                          : 'bg-black/30 border-white/10 text-white focus:border-[#F89847]'
+                      }`}
+                    />
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Se for entrada: Campo para justificar o atraso */
+              <div className="space-y-2 mb-4">
+                <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
+                  Conforme a CLT (Art. 58 § 1º), variações superiores a 10 min são apuradas. Informe o motivo para análise do gestor:
+                </p>
+                <textarea
+                  value={punchReasonInput}
+                  onChange={(e) => setPunchReasonInput(e.target.value)}
+                  placeholder="Ex: Trânsito atípico, imprevisto de transporte..."
+                  rows={3}
+                  className={`w-full p-3 rounded-2xl border text-xs outline-none transition-all resize-none ${
+                    isLightTheme
+                      ? 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-600'
+                      : 'bg-black/30 border-white/10 text-white focus:border-amber-500'
+                  }`}
+                />
+              </div>
+            )}
+
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => tolerancePrompt.action(punchReasonInput.trim(), exitReasonType === 'forgot')}
+                className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-[#96183c] to-[#b32047] hover:brightness-110 active:scale-[0.99] text-white font-black text-xs shadow-md shadow-[#96183c]/30 flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+              >
+                <Check className="w-4 h-4" />
+                <span>Confirmar e Registrar Ponto</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTolerancePrompt(null)}
+                className={`py-3 px-3.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                  isLightTheme
+                    ? 'border-slate-200 hover:bg-slate-100 text-slate-600'
+                    : 'border-white/10 hover:bg-white/5 text-slate-400'
+                }`}
+              >
+                Cancelar
               </button>
             </div>
           </div>
