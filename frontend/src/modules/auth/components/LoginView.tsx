@@ -342,7 +342,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         companyId: employeeObj.companyId,
         isRh: isRhUser,
         roleType: isRhUser ? 'rh' : (matchedUser.Tpo_Perfil || 'gestor'),
-        Flg_Gestor_Master: isRhUser
+        Flg_Gestor_Master: isRhUser,
+        contractType: employeeObj.contractType,
+        contractStartDate: employeeObj.contractStartDate,
+        contractEndDate: employeeObj.contractEndDate,
+        pjMonthlyHoursQuota: employeeObj.monthlyHoursQuota,
+        hourlyRate: employeeObj.hourlyRate
       }));
 
       setTimeout(() => {

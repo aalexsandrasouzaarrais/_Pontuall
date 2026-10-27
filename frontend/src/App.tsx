@@ -218,10 +218,11 @@ function AppContent() {
           roleType: parsed.roleType || (isRhParsed ? 'rh' : (parsed.Flg_Gestor_Master || parsed.perfil === 'gestor' || parsed.Tpo_Perfil === 'gestor' ? 'gestor' : 'colaborador')),
           companyCnpj: parsed.companyCnpj || undefined,
           managerIds: parsed.managerIds || [],
-          contractType: parsed.contractType || parsed.Tpo_Regime_Contrato || undefined,
+          contractType: parsed.contractType || parsed.Tpo_Regime_Contrato || parsed.Tpo_Contrato || undefined,
           contractStartDate: parsed.contractStartDate || parsed.Dta_Inicio_Contrato || undefined,
           contractEndDate: parsed.contractEndDate || parsed.Dta_Fim_Contrato || undefined,
-          pjMonthlyHoursQuota: parsed.pjMonthlyHoursQuota || undefined
+          pjMonthlyHoursQuota: parsed.pjMonthlyHoursQuota || parsed.Num_Cota_Horas_Mensal || undefined,
+          hourlyRate: parsed.hourlyRate !== undefined ? Number(parsed.hourlyRate) : (parsed.Vlr_Hora_Pj !== undefined ? Number(parsed.Vlr_Hora_Pj) : undefined)
         };
       }
     } catch {}
@@ -284,11 +285,13 @@ function AppContent() {
           currentEmp = { ...currentEmp, ...meInDb };
           setActiveEmployee(prev => ({
             ...prev,
+            ...meInDb,
             managerIds: meInDb.managerIds?.length ? meInDb.managerIds : prev.managerIds,
             contractType: meInDb.contractType || prev.contractType,
             contractStartDate: meInDb.contractStartDate || prev.contractStartDate,
             contractEndDate: meInDb.contractEndDate || prev.contractEndDate,
-            pjMonthlyHoursQuota: meInDb.pjMonthlyHoursQuota || prev.pjMonthlyHoursQuota
+            pjMonthlyHoursQuota: meInDb.monthlyHoursQuota || meInDb.pjMonthlyHoursQuota || prev.pjMonthlyHoursQuota,
+            hourlyRate: meInDb.hourlyRate !== undefined ? meInDb.hourlyRate : prev.hourlyRate,
           }));
         }
 
@@ -478,7 +481,12 @@ function AppContent() {
         Idf_Empresa: emp.companyId,
         companyId: emp.companyId,
         isRh: emp.isRh,
-        roleType: emp.roleType
+        roleType: emp.roleType,
+        contractType: emp.contractType,
+        contractStartDate: emp.contractStartDate,
+        contractEndDate: emp.contractEndDate,
+        pjMonthlyHoursQuota: emp.monthlyHoursQuota,
+        hourlyRate: emp.hourlyRate
       }));
 
       setActiveEmployee(emp);

@@ -87,7 +87,7 @@ export async function syncPjNotesFromSupabase(employeeId: string): Promise<PjNot
 
     if (!error && data && data.length > 0) {
       const mapped: PjNoteItem[] = data.map((row: any) => ({
-        id: row.Idf_Nota,
+        id: row.Idf_Nota_Pj || row.Idf_Nota || `nota-${Date.now()}`,
         titulo: row.Titulo_Nota || '',
         texto: row.Des_Conteudo_Html || '',
         atualizadoEm: row.Dta_Atualizacao || new Date().toISOString(),
@@ -95,9 +95,30 @@ export async function syncPjNotesFromSupabase(employeeId: string): Promise<PjNot
       savePjNotesLocal(employeeId, mapped);
       return mapped;
     }
-  } catch {
-    // Fallback silencioso para notas locais caso a tabela ainda não exista no banco
-  }
+  } catch {}
+
+  // Fallback de contingência caso TAB_Nota_Pessoal_Pj não exista: recupera de TAB_Relatorio_Pj
+  try {
+    const { data: backupData } = await supabase
+      .from('TAB_Relatorio_Pj')
+      .select('*')
+      .eq('Idf_Colaborador', employeeId)
+      .eq('Des_Periodo_Referencia', '__DRAFT_NOTES__')
+      .maybeSingle();
+
+    if (backupData) {
+      const links = Array.isArray(backupData.Des_Links_Json) ? backupData.Des_Links_Json : [];
+      const notesMeta = links.find((l: any) => l?.title === '__NOTES_DATA__');
+      if (notesMeta?.url) {
+        const parsed = JSON.parse(notesMeta.url);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          savePjNotesLocal(employeeId, parsed);
+          return parsed;
+        }
+      }
+    }
+  } catch {}
+
   return localNotes;
 }
 
@@ -105,25 +126,62 @@ export async function savePjNotesToSupabase(employeeId: string, notes: PjNoteIte
   savePjNotesLocal(employeeId, notes);
   if (!isUuid(employeeId)) return;
 
+  let savedToDedicated = false;
   try {
-    await supabase
+    const { error: delError } = await supabase
       .from('TAB_Nota_Pessoal_Pj')
       .delete()
       .eq('Idf_Colaborador', employeeId);
 
-    if (notes.length > 0) {
-      const payload = notes.map((n, idx) => ({
-        ...(isUuid(n.id) ? { Idf_Nota: n.id } : {}),
-        Idf_Colaborador: employeeId,
-        Titulo_Nota: (n.titulo || '').slice(0, 120),
-        Des_Conteudo_Html: n.texto || '',
-        Num_Ordem: idx,
-        Dta_Atualizacao: n.atualizadoEm || new Date().toISOString(),
-      }));
-      await supabase.from('TAB_Nota_Pessoal_Pj').insert(payload);
+    if (!delError) {
+      if (notes.length > 0) {
+        const payload = notes.map((n, idx) => ({
+          ...(isUuid(n.id) ? { Idf_Nota_Pj: n.id } : {}),
+          Idf_Colaborador: employeeId,
+          Titulo_Nota: (n.titulo || '').slice(0, 100),
+          Des_Conteudo_Html: n.texto || '',
+          Num_Ordem: idx,
+          Dta_Atualizacao: n.atualizadoEm || new Date().toISOString(),
+        }));
+        const { error: insError } = await supabase.from('TAB_Nota_Pessoal_Pj').insert(payload);
+        if (!insError) savedToDedicated = true;
+      } else {
+        savedToDedicated = true;
+      }
     }
-  } catch {
-    // Mantém salvo no safeStorage mesmo offline ou sem tabela migrada
+  } catch {}
+
+  // Se a tabela TAB_Nota_Pessoal_Pj não existir ainda no banco,
+  // persiste em TAB_Relatorio_Pj para sincronização entre computadores
+  if (!savedToDedicated) {
+    try {
+      const key = '__DRAFT_NOTES__';
+      const payload = {
+        Num_Horas_Trabalhadas: 0,
+        Des_Atividades: `Bloco de Notas PJ - ${notes.length} nota(s)`,
+        Des_Links_Json: [{ title: '__NOTES_DATA__', url: JSON.stringify(notes) }],
+        Tpo_Status: 'draft',
+      };
+      const { data: existing } = await supabase
+        .from('TAB_Relatorio_Pj')
+        .select('Idf_Relatorio_Pj')
+        .eq('Idf_Colaborador', employeeId)
+        .eq('Des_Periodo_Referencia', key)
+        .maybeSingle();
+
+      if (existing?.Idf_Relatorio_Pj) {
+        await supabase
+          .from('TAB_Relatorio_Pj')
+          .update(payload)
+          .eq('Idf_Relatorio_Pj', existing.Idf_Relatorio_Pj);
+      } else {
+        await supabase
+          .from('TAB_Relatorio_Pj')
+          .insert({ ...payload, Idf_Colaborador: employeeId, Des_Periodo_Referencia: key });
+      }
+    } catch (err) {
+      console.warn('Aviso ao sincronizar notas no backup:', err);
+    }
   }
 }
 

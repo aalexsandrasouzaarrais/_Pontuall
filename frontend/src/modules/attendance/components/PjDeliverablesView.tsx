@@ -39,8 +39,11 @@ import {
   getPjReportsSupabase, 
   createPjReportSupabase,
   getDraftTimesheet,
+  syncDraftTimesheetFromSupabase,
+  saveDraftTimesheetToSupabase,
   deleteDraftTimesheetEntry,
   clearDraftTimesheet,
+  clearDraftTimesheetSupabase,
   exportPjTimesheetSpreadsheet
 } from '@/modules/attendance/services/pjReportService';
 import {
@@ -122,11 +125,13 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const data = await getPjReportsSupabase(employee.id);
+      const [data, drafts, syncedSched] = await Promise.all([
+        getPjReportsSupabase(employee.id),
+        syncDraftTimesheetFromSupabase(employee.id),
+        syncPjPrivateScheduleFromSupabase(employee.id)
+      ]);
       setReports(data);
-      const drafts = getDraftTimesheet(employee.id);
       setDraftEntries(drafts);
-      const syncedSched = await syncPjPrivateScheduleFromSupabase(employee.id);
       setPrivateSchedule(syncedSched);
     } catch (err) {
       console.warn('Erro ao carregar dados PJ:', err);
@@ -141,7 +146,9 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
 
   // Atualiza rascunhos quando uma nova entrada é adicionada via PjTimesheetTracker
   const handleEntryAdded = (newEntry: PjTimesheetEntry) => {
-    setDraftEntries(prev => [newEntry, ...prev.filter(e => e.id !== newEntry.id)]);
+    const updated = [newEntry, ...draftEntries.filter(e => e.id !== newEntry.id)];
+    setDraftEntries(updated);
+    saveDraftTimesheetToSupabase(employee.id, updated);
   };
 
   const handleDeleteDraftEntry = (id: string) => {
@@ -477,7 +484,7 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
       }
 
       setExpandedReportId(created.id);
-      clearDraftTimesheet(employee.id);
+      clearDraftTimesheetSupabase(employee.id);
       setDraftEntries([]);
 
       setSubmitSuccess(true);
