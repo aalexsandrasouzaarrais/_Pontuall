@@ -274,8 +274,59 @@ export async function getColaboradoresSupabase(filter?: { companyId?: string; ge
   }
 }
 
+/**
+ * Verifica se um e-mail já está cadastrado no sistema (Supabase, equipe local ou storage).
+ * Retorna true se o e-mail já estiver em uso.
+ */
+export async function checkEmailExists(email?: string, excludeId?: string): Promise<boolean> {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  if (!cleanEmail) return false;
+
+  // 1. Verifica no localStorage (pontual_registered_users)
+  try {
+    const localUsers = JSON.parse(safeStorage.getItem('pontual_registered_users') || '[]');
+    const foundLocal = localUsers.some((u: any) => {
+      if (excludeId && (u.Idf_Colaborador === excludeId || u.id === excludeId)) return false;
+      const eml = (u.Eml_Corporativo || u.email || '').toLowerCase().trim();
+      const sec = (u.Eml_Secundario || '').toLowerCase().trim();
+      return eml === cleanEmail || sec === cleanEmail;
+    });
+    if (foundLocal) return true;
+  } catch {}
+
+  // 2. Consulta no Supabase (TAB_Colaborador)
+  try {
+    let query = supabase
+      .from('TAB_Colaborador')
+      .select('Idf_Colaborador, Eml_Corporativo, Eml_Secundario')
+      .or(`Eml_Corporativo.ilike.${cleanEmail},Eml_Secundario.ilike.${cleanEmail}`)
+      .limit(1);
+
+    if (excludeId && isUuid(excludeId)) {
+      query = query.neq('Idf_Colaborador', excludeId);
+    }
+
+    const { data, error } = await query;
+    if (!error && data && data.length > 0) {
+      return true;
+    }
+  } catch (err) {
+    console.warn('[checkEmailExists] Erro ao consultar Supabase:', err);
+  }
+
+  return false;
+}
+
 // Salva um novo colaborador diretamente na tabela TAB_Colaborador e estabelece o vínculo M:N em TAB_Gestor_Colaborador
 export async function createColaboradorSupabase(emp: Employee, creatorGestorId?: string): Promise<Employee> {
+  const cleanEmail = emp.email?.trim().toLowerCase();
+  if (cleanEmail) {
+    const emailInUse = await checkEmailExists(cleanEmail, emp.id);
+    if (emailInUse) {
+      throw new Error(`O e-mail "${emp.email}" já está cadastrado no sistema. Não é possível cadastrar novamente.`);
+    }
+  }
+
   const matricula = emp.registrationId || `PNT-${Math.floor(1000 + Math.random() * 9000)}`;
 
   // Salva parâmetros PJ localmente antes de enviar ao banco para garantir disponibilidade imediata
@@ -337,6 +388,9 @@ export async function createColaboradorSupabase(emp: Employee, creatorGestorId?:
   }
 
   if (error) {
+    if (error.code === '23505' || error.message?.includes('Eml_Corporativo') || error.message?.includes('unique') || error.message?.includes('duplicate key')) {
+      throw new Error(`DUPLICATE_EMAIL: O e-mail "${emp.email}" já está cadastrado no sistema. Não é possível cadastrar novamente.`);
+    }
     console.error('Erro ao inserir colaborador no Supabase:', error.message);
     throw new Error(error.message);
   }
@@ -378,6 +432,12 @@ export async function createGestorSupabase(gestorData: {
   isRh?: boolean;
 }): Promise<Employee> {
   const cleanEmail = gestorData.email.trim().toLowerCase();
+
+  const emailInUse = await checkEmailExists(cleanEmail);
+  if (emailInUse) {
+    throw new Error(`DUPLICATE_EMAIL: O e-mail corporativo "${cleanEmail}" já está cadastrado no sistema. Não é possível cadastrar novamente.`);
+  }
+
   const rawCnpj = gestorData.cnpj ? gestorData.cnpj.replace(/\D/g, '') : '';
   let companyId: string | null = null;
   let isMasterManager = gestorData.isRh ?? false;
@@ -458,6 +518,9 @@ export async function createGestorSupabase(gestorData: {
     .single();
 
   if (error) {
+    if (error.code === '23505' || error.message?.includes('Eml_Corporativo') || error.message?.includes('unique') || error.message?.includes('duplicate key')) {
+      throw new Error(`DUPLICATE_EMAIL: O e-mail corporativo "${cleanEmail}" já está cadastrado no sistema. Não é possível cadastrar novamente.`);
+    }
     console.error('Erro ao inserir gestor no Supabase:', error.message);
     throw new Error(error.message);
   }
