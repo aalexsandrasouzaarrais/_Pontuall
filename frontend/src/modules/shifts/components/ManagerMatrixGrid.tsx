@@ -3690,40 +3690,55 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               }}
             />
 
-            {/* Hero Banner Dark com Luz Quente na Lateral Direita (Fiel às Fotos) */}
+            {/* Hero Banner (Suporta Dark e Light) */}
             <div 
-              className="approvals-hero reminders-hero rounded-3xl p-6 sm:p-8 border border-white/10 shadow-2xl relative overflow-hidden"
+              className={`approvals-hero reminders-hero rounded-3xl p-6 sm:p-8 border shadow-2xl relative overflow-hidden ${
+                isDark ? 'border-white/10' : 'border-slate-200'
+              }`}
               style={{ 
-                backgroundColor: '#111216',
-                boxShadow: '0 20px 50px rgba(0,0,0,0.6)'
+                backgroundColor: isDark ? '#111216' : '#ffffff',
+                boxShadow: isDark ? '0 20px 50px rgba(0,0,0,0.6)' : '0 10px 30px rgba(0,0,0,0.06)'
               }}
             >
               {/* Feixe quente suavizado */}
               <div 
                 className="reminders-hero-flare absolute -top-1/2 -right-10 w-[55%] h-[200%] pointer-events-none"
                 style={{
-                  background: 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.16) 0%, rgba(100, 12, 30, 0.18) 45%, transparent 75%)',
+                  background: isDark
+                    ? 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.16) 0%, rgba(100, 12, 30, 0.18) 45%, transparent 75%)'
+                    : 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.12) 0%, rgba(100, 12, 30, 0.08) 45%, transparent 75%)',
                   filter: 'blur(60px)',
                 }}
               />
 
               <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div className="max-w-2xl space-y-2">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-slate-300 border border-white/10 bg-white/5">
+                  <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                    isDark ? 'text-slate-300 border-white/10 bg-white/5' : 'text-slate-600 border-slate-200 bg-slate-100'
+                  }`}>
                     <span className="w-3.5 h-0.5 rounded-full" style={{ background: 'linear-gradient(90deg, #640c1e, #9F243C, #F59242)' }} />
-                    GESTÃO OPERACIONAL & ROTINA
+                    <span>GESTÃO OPERACIONAL & ROTINA</span>
                   </div>
-                  <h1 className="reminders-title text-2xl sm:text-3xl font-black text-white tracking-tight leading-tight">
+                  <h1 className={`reminders-title text-2xl sm:text-3xl font-black tracking-tight leading-tight ${
+                    isDark ? 'text-white' : 'text-slate-900'
+                  }`}>
                     Lembretes e  <br className="hidden sm:inline" />
-                    <span className="reminders-title-highlight" style={{
-                      background: 'linear-gradient(90deg, #F9DE97 0%, #F59242 52%, #9F243C 100%)',
+                    <span className={`reminders-title-highlight inline-block bg-clip-text text-transparent ${
+                      isDark
+                        ? 'bg-gradient-to-r from-[#F9DE97] via-[#F59242] to-[#9F243C]'
+                        : 'bg-gradient-to-r from-[#640C1E] via-[#9F243C] to-[#F59242]'
+                    }`} style={{
                       WebkitBackgroundClip: 'text',
-                      WebkitTextFillColor: 'transparent'
+                      backgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      color: 'transparent'
                     }}>
                       Tarefas
                     </span>
                   </h1>
-                  <p className="reminders-description text-xs sm:text-sm text-slate-400 leading-relaxed">
+                  <p className={`reminders-description text-xs sm:text-sm leading-relaxed ${
+                    isDark ? 'text-slate-400' : 'text-slate-600 font-medium'
+                  }`}>
                     Organize reuniões operacionais, controle prazos de publicação de escalas e monitore tarefas de alinhamento com a equipe em tempo real.
                   </p>
                 </div>
@@ -3743,26 +3758,37 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               </div>
             </div>
 
-            {/* Filter Bar (Igual à imagem de referência com busca, filtro de tipos em pill e filtro de responsáveis) */}
+            {/* Filter Bar (Suporta Dark e Light) */}
             <div 
-              className="approval-filter-bar reminders-filter-bar p-3.5 sm:p-4 rounded-2xl border border-[#282a33] flex flex-wrap items-center justify-between gap-3 relative z-10" 
-              style={{ background: '#15161b' }}
+              className={`approval-filter-bar reminders-filter-bar p-3.5 sm:p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-3 relative z-10 ${
+                isDark ? 'border-[#282a33]' : 'border-slate-200 shadow-xs'
+              }`} 
+              style={{ background: isDark ? '#15161b' : '#ffffff' }}
             >
               {/* Search */}
               <div className="relative flex-1 min-w-[220px] max-w-md">
-                <Search className="reminders-search-icon w-3.5 h-3.5 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Search className={`reminders-search-icon w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 ${
+                  isDark ? 'text-slate-500' : 'text-slate-400'
+                }`} />
                 <input
                   type="text"
                   value={reminderSearch}
                   onChange={(e) => setReminderSearch(e.target.value)}
                   placeholder="Buscar tarefas por título, pauta, tag ou colaborador..."
-                  className="reminders-search-input w-full pl-9 pr-3 py-2 text-xs rounded-full text-white placeholder:text-slate-500 outline-none transition-colors"
-                  style={{ background: '#0e0f12', border: '1px solid #282a33' }}
+                  className={`reminders-search-input w-full pl-9 pr-3 py-2 text-xs rounded-full outline-none transition-colors border ${
+                    isDark ? 'text-white placeholder:text-slate-500' : 'text-slate-900 placeholder:text-slate-400'
+                  }`}
+                  style={{ 
+                    background: isDark ? '#0e0f12' : '#f8fafc', 
+                    border: isDark ? '1px solid #282a33' : '1px solid #e2e8f0' 
+                  }}
                 />
               </div>
 
               {/* Type Filter Pills */}
-              <div className="reminders-type-filter flex items-center gap-1 bg-[#0e0f12] p-1 rounded-full border border-[#282a33] overflow-x-auto custom-scrollbar">
+              <div className={`reminders-type-filter flex items-center gap-1 p-1 rounded-full border overflow-x-auto custom-scrollbar ${
+                isDark ? 'bg-[#0e0f12] border-[#282a33]' : 'bg-slate-100 border-slate-200'
+              }`}>
                 {[
                   { id: 'all', label: 'Todos os Tipos' },
                   { id: 'reuniao', label: 'Reuniões' },
@@ -3779,7 +3805,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                         isActive
                           ? 'shadow-md'
-                          : 'text-slate-300 hover:text-[#F9DE97]'
+                          : isDark
+                          ? 'text-slate-300 hover:text-[#F9DE97]'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
                       }`}
                       style={
                         isActive 
@@ -3794,46 +3822,44 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               </div>
 
               {/* Filter by allocated collaborator */}
-              <div className="flex items-center gap-2 bg-[#0e0f12] px-3.5 py-1.5 rounded-full border border-[#282a33]">
-                <Users className="w-3.5 h-3.5 text-[#F59242] shrink-0" />
+              <div className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full border ${
+                isDark ? 'bg-[#0e0f12] border-[#282a33]' : 'bg-slate-100 border-slate-200'
+              }`}>
+                <Users className={`w-3.5 h-3.5 shrink-0 ${isDark ? 'text-[#F59242]' : 'text-[#96183c]'}`} />
                 <select
                   value={reminderCollaboratorFilter}
                   onChange={(e) => setReminderCollaboratorFilter(e.target.value)}
-                  className="bg-transparent text-xs font-semibold text-slate-200 outline-none cursor-pointer pr-1"
-                  style={{ colorScheme: 'dark' }}
+                  className={`bg-transparent text-xs font-semibold outline-none cursor-pointer pr-1 ${
+                    isDark ? 'text-slate-200' : 'text-slate-800'
+                  }`}
+                  style={{ colorScheme: isDark ? 'dark' : 'light' }}
                 >
-                  <option value="all" className="bg-[#15161b] text-white">Todos os Responsáveis</option>
+                  <option value="all" className={isDark ? 'bg-[#15161b] text-white' : 'bg-white text-slate-900'}>
+                    Todos os Responsáveis
+                  </option>
                   {allAssignablePeople.map((emp) => (
-                    <option key={emp.id} value={emp.id} className="bg-[#15161b] text-white">
+                    <option key={emp.id} value={emp.id} className={isDark ? 'bg-[#15161b] text-white' : 'bg-white text-slate-900'}>
                       {emp.name} ({emp.department})
                     </option>
                   ))}
                 </select>
               </div>
-
-              {/* Action Button */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleOpenNewReminderModal}
-                  className="reminders-primary-button px-5 py-2 font-bold text-xs rounded-full text-white flex items-center justify-center gap-2 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer shrink-0"
-                  style={{ 
-                    background: 'linear-gradient(90deg, #640c1e 0%, #9F243C 55%, #F59242 100%)',
-                    boxShadow: '0 4px 18px rgba(100, 12, 30, 0.38)'
-                  }}
-                >
-                  <Plus className="w-4 h-4" /> Novo Lembrete / Tarefa
-                </button>
-              </div>
             </div>
 
-            {/* Grid de Cards de Tarefas (Identidade Visual Dark das Fotos) */}
+            {/* Grid de Cards de Tarefas (Identidade Visual Dark e Light) */}
             {filteredReminders.length === 0 ? (
-              <div className="reminders-empty-state flex flex-col items-center justify-center py-16 text-center border border-dashed border-[#282a33] rounded-3xl bg-[#15161b] relative z-10">
-                <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mb-3">
-                  <Sparkles className="w-6 h-6 text-slate-500" />
+              <div className={`reminders-empty-state flex flex-col items-center justify-center py-16 text-center border border-dashed rounded-3xl relative z-10 ${
+                isDark ? 'border-[#282a33] bg-[#15161b]' : 'border-slate-300 bg-white shadow-xs'
+              }`}>
+                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-3 ${
+                  isDark ? 'bg-white/5' : 'bg-slate-100'
+                }`}>
+                  <Sparkles className={`w-6 h-6 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
                 </div>
-                <h3 className="text-white font-bold text-sm">Nenhum lembrete ou tarefa encontrado</h3>
-                <p className="text-slate-500 text-xs mt-1 max-w-sm">
+                <h3 className={`font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  Nenhum lembrete ou tarefa encontrado
+                </h3>
+                <p className={`text-xs mt-1 max-w-sm ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
                   {reminderSearch || reminderCollaboratorFilter !== 'all' 
                     ? 'Tente ajustar sua busca ou limpar os filtros de colaboradores.' 
                     : 'Clique em "Novo Lembrete / Tarefa" para criar seu primeiro compromisso.'}
@@ -3852,12 +3878,12 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       key={rem.id}
                       className={`reminders-task-card group relative rounded-2xl p-5 border transition-all duration-200 flex flex-col justify-between overflow-hidden ${
                         rem.completed
-                          ? 'bg-[#15161b]/60 border-[#282a33]/60 opacity-75 hover:opacity-100'
-                          : 'bg-[#15161b] border-[#282a33] hover:border-white/20'
+                          ? isDark ? 'bg-[#15161b]/60 border-[#282a33]/60 opacity-75 hover:opacity-100' : 'bg-slate-50/80 border-slate-200 opacity-75 hover:opacity-100'
+                          : isDark ? 'bg-[#15161b] border-[#282a33] hover:border-white/20' : 'bg-white border-slate-200 shadow-sm hover:border-slate-300 hover:shadow-md'
                       }`}
                       data-reminder-type={rem.type}
                       style={{ 
-                        boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
+                        boxShadow: isDark ? '0 4px 16px rgba(0,0,0,0.35)' : '0 2px 10px rgba(0,0,0,0.04)',
                         borderLeft: rem.completed ? undefined : `3px solid ${badge.accentColor}`,
                       }}
                     >
@@ -3879,7 +3905,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             />
                             {badge.label}
                           </span>
-                          <span className="reminder-tag text-[11px] font-mono text-slate-400 bg-[#0e0f12] px-2.5 py-0.5 rounded-lg border border-[#282a33]">
+                          <span className={`reminder-tag text-[11px] font-mono px-2.5 py-0.5 rounded-lg border ${
+                            isDark ? 'text-slate-400 bg-[#0e0f12] border-[#282a33]' : 'text-slate-600 bg-slate-100 border-slate-200'
+                          }`}>
                             #{rem.tag}
                           </span>
                         </div>
@@ -3896,8 +3924,12 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             data-completed={rem.completed ? 'true' : 'false'}
                             className={`reminders-complete-button p-1.5 rounded-lg transition-colors cursor-pointer ${
                               rem.completed
-                                ? 'text-emerald-400 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30'
-                                : 'text-slate-400 hover:text-emerald-400 hover:bg-white/5 border border-white/5'
+                                ? isDark
+                                  ? 'text-emerald-400 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30'
+                                  : 'text-emerald-700 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300'
+                                : isDark
+                                ? 'text-slate-400 hover:text-emerald-400 hover:bg-white/5 border border-white/5'
+                                : 'text-slate-400 hover:text-emerald-600 hover:bg-slate-100 border border-slate-200'
                             }`}
                           >
                             <CheckCircle2 className="w-4 h-4" />
@@ -3905,7 +3937,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           <button
                             onClick={() => handleOpenEditReminderModal(rem)}
                             title="Editar lembrete / alocar pessoas"
-                            className="reminders-edit-button p-1.5 rounded-lg text-slate-400 hover:text-[#F59242] hover:bg-white/5 transition-colors cursor-pointer border border-transparent hover:border-[#F59242]/20"
+                            className={`reminders-edit-button p-1.5 rounded-lg transition-colors cursor-pointer border ${
+                              isDark
+                                ? 'text-slate-400 hover:text-[#F59242] hover:bg-white/5 border-transparent hover:border-[#F59242]/20'
+                                : 'text-slate-400 hover:text-[#9F243C] hover:bg-slate-100 border-transparent hover:border-slate-300'
+                            }`}
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
@@ -3917,7 +3953,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                               }
                             }}
                             title="Excluir lembrete"
-                            className="reminders-delete-button p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-white/5 transition-colors cursor-pointer border border-transparent hover:border-rose-500/20"
+                            className={`reminders-delete-button p-1.5 rounded-lg transition-colors cursor-pointer border ${
+                              isDark
+                                ? 'text-slate-400 hover:text-rose-400 hover:bg-white/5 border-transparent hover:border-rose-500/20'
+                                : 'text-slate-400 hover:text-rose-600 hover:bg-slate-100 border-transparent hover:border-rose-300'
+                            }`}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -3927,17 +3967,21 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       {/* Content: Title & Description */}
                       <div className="space-y-1.5 mb-2">
                         <h3 className={`reminders-task-title font-bold text-sm tracking-tight leading-snug transition-colors ${
-                          rem.completed ? 'text-slate-500 line-through' : 'text-white group-hover:text-slate-200'
+                          rem.completed ? 'text-slate-400 line-through' : isDark ? 'text-white group-hover:text-slate-200' : 'text-slate-900 group-hover:text-slate-700'
                         }`}>
                           {rem.title}
                         </h3>
-                        <p className="reminders-task-description text-xs text-slate-400 leading-relaxed line-clamp-2">
+                        <p className={`reminders-task-description text-xs leading-relaxed line-clamp-2 ${
+                          isDark ? 'text-slate-400' : 'text-slate-600'
+                        }`}>
                           {rem.description}
                         </p>
                       </div>
 
                       {/* Allocated Collaborators Banner */}
-                      <div className="my-2.5 p-2 rounded-xl bg-[#0e0f12] border border-[#282a33] flex items-center justify-between gap-2.5">
+                      <div className={`my-2.5 p-2 rounded-xl border flex items-center justify-between gap-2.5 ${
+                        isDark ? 'bg-[#0e0f12] border-[#282a33]' : 'bg-slate-50 border-slate-200'
+                      }`}>
                         <div className="flex items-center gap-2 min-w-0 flex-1">
                           {allocatedPeople.length > 0 ? (
                             <div className="flex items-center shrink-0">
@@ -3948,24 +3992,32 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                     src={person.avatar}
                                     alt={person.name}
                                     title={`${person.name} • ${person.role} (${person.department})`}
-                                    className="inline-block w-6 h-6 rounded-full ring-2 ring-[#15161b] object-cover"
+                                    className={`inline-block w-6 h-6 rounded-full ring-2 object-cover ${
+                                      isDark ? 'ring-[#15161b]' : 'ring-white'
+                                    }`}
                                   />
                                 ))}
                               </div>
                               {allocatedPeople.length > 3 && (
-                                <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-white/10 text-slate-300 font-mono">
+                                <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold font-mono ${
+                                  isDark ? 'bg-white/10 text-slate-300' : 'bg-slate-200 text-slate-700'
+                                }`}>
                                   +{allocatedPeople.length - 3}
                                 </span>
                               )}
                             </div>
                           ) : (
-                            <div className="w-6 h-6 rounded-full bg-white/5 border border-white/10 flex items-center justify-center shrink-0 text-slate-400">
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 border ${
+                              isDark ? 'bg-white/5 border-white/10 text-slate-400' : 'bg-slate-200 border-slate-300 text-slate-600'
+                            }`}>
                               <Users className="w-3 h-3" />
                             </div>
                           )}
 
                           <div className="min-w-0 flex-1">
-                            <span className="text-[9px] uppercase font-bold tracking-wider text-slate-400 block font-mono">
+                            <span className={`text-[9px] uppercase font-bold tracking-wider block font-mono ${
+                              isDark ? 'text-slate-400' : 'text-slate-500'
+                            }`}>
                               {allocatedPeople.length === 1 
                                 ? 'Pessoa Alocada' 
                                 : allocatedPeople.length > 1 
@@ -3973,7 +4025,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                 : 'Equipe / Responsáveis'}
                             </span>
                             <span 
-                              className="text-white font-medium truncate block text-xs" 
+                              className={`font-medium truncate block text-xs ${
+                                isDark ? 'text-white' : 'text-slate-900'
+                              }`} 
                               title={allocatedPeople.length > 0 ? allocatedPeople.map(p => p.name).join(', ') : rem.assigneeName || 'Equipe Geral'}
                             >
                               {allocatedPeople.length > 0 
@@ -3984,25 +4038,35 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         </div>
 
                         {allocatedPeople.length > 0 ? (
-                          <span className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-md text-[#F9DE97] bg-[#F59242]/10 border border-[#F59242]/20 font-mono">
+                          <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-md font-mono border ${
+                            isDark ? 'text-[#F9DE97] bg-[#F59242]/10 border-[#F59242]/20' : 'text-amber-800 bg-amber-50 border-amber-200'
+                          }`}>
                             {allocatedPeople.length === 1 ? '1 alocado' : `${allocatedPeople.length} alocados`}
                           </span>
                         ) : (
-                          <span className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-md text-slate-400 bg-white/5 border border-white/10 font-mono">
+                          <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-md font-mono border ${
+                            isDark ? 'text-slate-400 bg-white/5 border-white/10' : 'text-slate-600 bg-slate-200 border-slate-300'
+                          }`}>
                             Geral
                           </span>
                         )}
                       </div>
 
                       {/* Footer Row: Date, Time & Meeting Link */}
-                      <div className="pt-3 border-t border-white/5 flex flex-wrap items-center justify-between gap-2 text-xs">
-                        <div className="flex items-center gap-2 font-mono text-slate-400">
-                          <div className="reminder-meta-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0e0f12] border border-[#282a33] text-slate-300">
-                            <Calendar className="reminder-meta-icon w-3.5 h-3.5 text-slate-400" />
+                      <div className={`pt-3 border-t flex flex-wrap items-center justify-between gap-2 text-xs ${
+                        isDark ? 'border-white/5' : 'border-slate-100'
+                      }`}>
+                        <div className={`flex items-center gap-2 font-mono ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                          <div className={`reminder-meta-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${
+                            isDark ? 'bg-[#0e0f12] border-[#282a33] text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'
+                          }`}>
+                            <Calendar className={`reminder-meta-icon w-3.5 h-3.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
                             <span>{rem.date}</span>
                           </div>
-                          <div className="reminder-meta-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0e0f12] border border-[#282a33] text-slate-300">
-                            <Clock className="reminder-meta-icon w-3.5 h-3.5 text-slate-400" />
+                          <div className={`reminder-meta-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${
+                            isDark ? 'bg-[#0e0f12] border-[#282a33] text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'
+                          }`}>
+                            <Clock className={`reminder-meta-icon w-3.5 h-3.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
                             <span>{rem.time}</span>
                           </div>
                         </div>
@@ -4022,7 +4086,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             <span>Acessar Chamada</span>
                           </a>
                         ) : (
-                          <span className="text-[11px] text-slate-500 font-mono">
+                          <span className={`text-[11px] font-mono ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>
                             {rem.tag}
                           </span>
                         )}
@@ -4043,14 +4107,18 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 }}
               >
                 <div
-                  className="reminders-modal relative w-full max-w-xl max-h-[90vh] rounded-3xl border border-white/10 shadow-2xl p-6 overflow-hidden flex flex-col space-y-4 my-auto bg-[#15161b]"
+                  className={`reminders-modal relative w-full max-w-xl max-h-[90vh] rounded-3xl border shadow-2xl p-6 overflow-hidden flex flex-col space-y-4 my-auto ${
+                    isDark ? 'border-white/10 bg-[#15161b] text-white' : 'border-slate-200 bg-white text-slate-900'
+                  }`}
                   onClick={(e) => e.stopPropagation()}
                 >
                   {/* Modal Header */}
-                  <div className="flex items-center justify-between pb-3 border-b border-white/10 shrink-0">
+                  <div className={`flex items-center justify-between pb-3 border-b shrink-0 ${
+                    isDark ? 'border-white/10' : 'border-slate-200'
+                  }`}>
                     <div className="flex items-center gap-2.5">
                       <div className="w-2.5 h-2.5 rounded-full bg-[#F59242]" />
-                      <h3 className="text-base font-bold text-white">
+                      <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                         {editingReminderId ? 'Editar Lembrete / Tarefa' : 'Criar Novo Lembrete / Tarefa'}
                       </h3>
                     </div>
@@ -4059,7 +4127,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         setIsNewReminderModalOpen(false);
                         setEditingReminderId(null);
                       }}
-                      className="reminders-modal-close w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                      className={`reminders-modal-close w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+                        isDark ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                      }`}
                     >
                       <X className="w-4 h-4" />
                     </button>
@@ -4136,7 +4206,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     className="space-y-4 text-xs overflow-y-auto pr-1 flex-1"
                   >
                     <div>
-                      <label className="text-xs font-semibold text-slate-400 block mb-1">
+                      <label className={`text-xs font-semibold block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                         TÍTULO DO COMPROMISSO
                       </label>
                       <input
@@ -4145,30 +4215,34 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         value={newReminderData.title}
                         onChange={(e) => setNewReminderData({ ...newReminderData, title: e.target.value })}
                         placeholder="Ex: Alinhamento de Metas Mensais"
-                        className="w-full px-3.5 py-2.5 bg-[#0e0f12] border border-[#282a33] rounded-xl text-xs text-white placeholder:text-slate-500 outline-none focus:border-[#F59242] transition-colors"
+                        className={`w-full px-3.5 py-2.5 rounded-xl text-xs outline-none focus:border-[#F59242] transition-colors border ${
+                          isDark ? 'bg-[#0e0f12] border-[#282a33] text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-400'
+                        }`}
                       />
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-xs font-semibold text-slate-400 block mb-1">
+                        <label className={`text-xs font-semibold block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                           TIPO
                         </label>
                         <select
                           value={newReminderData.type}
                           onChange={(e) => setNewReminderData({ ...newReminderData, type: e.target.value as any })}
-                          className="w-full px-3 py-2.5 bg-[#0e0f12] border border-[#282a33] rounded-xl text-xs text-white outline-none focus:border-[#F59242] cursor-pointer"
-                          style={{ colorScheme: 'dark' }}
+                          className={`w-full px-3 py-2.5 rounded-xl text-xs outline-none focus:border-[#F59242] cursor-pointer border ${
+                            isDark ? 'bg-[#0e0f12] border-[#282a33] text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                          }`}
+                          style={{ colorScheme: isDark ? 'dark' : 'light' }}
                         >
-                          <option value="atividade">Atividade Operacional</option>
-                          <option value="reuniao">Reunião de Equipe</option>
-                          <option value="plantao">Plantão / Sobreaviso</option>
-                          <option value="treinamento">Treinamento / Onboarding</option>
+                          <option value="atividade" className={isDark ? 'bg-[#15161b] text-white' : 'bg-white text-slate-900'}>Atividade Operacional</option>
+                          <option value="reuniao" className={isDark ? 'bg-[#15161b] text-white' : 'bg-white text-slate-900'}>Reunião de Equipe</option>
+                          <option value="plantao" className={isDark ? 'bg-[#15161b] text-white' : 'bg-white text-slate-900'}>Plantão / Sobreaviso</option>
+                          <option value="treinamento" className={isDark ? 'bg-[#15161b] text-white' : 'bg-white text-slate-900'}>Treinamento / Onboarding</option>
                         </select>
                       </div>
 
                       <div>
-                        <label className="text-xs font-semibold text-slate-400 block mb-1">
+                        <label className={`text-xs font-semibold block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                           TAG / PROJETO
                         </label>
                         <input
@@ -4176,49 +4250,57 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           value={newReminderData.tag}
                           onChange={(e) => setNewReminderData({ ...newReminderData, tag: e.target.value })}
                           placeholder="Ex: Gestão, Suporte, Metas"
-                          className="w-full px-3 py-2.5 bg-[#0e0f12] border border-[#282a33] rounded-xl text-xs text-white placeholder:text-slate-500 outline-none focus:border-[#F59242] transition-colors"
+                          className={`w-full px-3 py-2.5 rounded-xl text-xs outline-none focus:border-[#F59242] transition-colors border ${
+                            isDark ? 'bg-[#0e0f12] border-[#282a33] text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-400'
+                          }`}
                         />
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-xs font-semibold text-slate-400 block mb-1">
+                        <label className={`text-xs font-semibold block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                           DATA
                         </label>
                         <input
                           type="date"
                           value={newReminderData.date}
                           onChange={(e) => setNewReminderData({ ...newReminderData, date: e.target.value })}
-                          className="w-full px-3 py-2.5 bg-[#0e0f12] border border-[#282a33] rounded-xl text-xs text-white outline-none focus:border-[#F59242] cursor-pointer"
-                          style={{ colorScheme: 'dark' }}
+                          className={`w-full px-3 py-2.5 rounded-xl text-xs outline-none focus:border-[#F59242] cursor-pointer border ${
+                            isDark ? 'bg-[#0e0f12] border-[#282a33] text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                          }`}
+                          style={{ colorScheme: isDark ? 'dark' : 'light' }}
                         />
                       </div>
 
                       <div>
-                        <label className="text-xs font-semibold text-slate-400 block mb-1">
+                        <label className={`text-xs font-semibold block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                           HORÁRIO
                         </label>
                         <input
                           type="time"
                           value={newReminderData.time}
                           onChange={(e) => setNewReminderData({ ...newReminderData, time: e.target.value })}
-                          className="w-full px-3 py-2.5 bg-[#0e0f12] border border-[#282a33] rounded-xl text-xs text-white outline-none focus:border-[#F59242] cursor-pointer"
-                          style={{ colorScheme: 'dark' }}
+                          className={`w-full px-3 py-2.5 rounded-xl text-xs outline-none focus:border-[#F59242] cursor-pointer border ${
+                            isDark ? 'bg-[#0e0f12] border-[#282a33] text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                          }`}
+                          style={{ colorScheme: isDark ? 'dark' : 'light' }}
                         />
                       </div>
                     </div>
 
                     {/* ALOCAR PESSOAS / COLABORADORES RESPONSÁVEIS */}
-                    <div className="rounded-2xl bg-[#0e0f12] border border-[#282a33] p-3.5 space-y-3">
+                    <div className={`rounded-2xl border p-3.5 space-y-3 ${
+                      isDark ? 'bg-[#0e0f12] border-[#282a33]' : 'bg-slate-50 border-slate-200'
+                    }`}>
                       <div className="flex items-center justify-between flex-wrap gap-2">
                         <div className="flex items-center gap-2">
-                          <Users className="w-4 h-4 text-[#F59242]" />
+                          <Users className={`w-4 h-4 ${isDark ? 'text-[#F59242]' : 'text-[#9F243C]'}`} />
                           <div>
-                            <span className="text-xs font-bold text-white block">
+                            <span className={`text-xs font-bold block ${isDark ? 'text-white' : 'text-slate-900'}`}>
                               ALOCAR PESSOAS PARA A TAREFA
                             </span>
-                            <span className="text-[10px] text-slate-400">
+                            <span className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                               Selecione uma ou mais pessoas da equipe
                             </span>
                           </div>
@@ -4234,7 +4316,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                 assignedEmployeeIds: allAssignablePeople.map(p => p.id)
                               }));
                             }}
-                            className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                            className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                              isDark ? 'bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white' : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+                            }`}
                           >
                             Selecionar Todos
                           </button>
@@ -4246,7 +4330,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                 assignedEmployeeIds: []
                               }));
                             }}
-                            className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                            className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                              isDark ? 'bg-white/5 hover:bg-white/10 text-slate-400 hover:text-rose-400' : 'bg-slate-200 hover:bg-slate-300 text-slate-500 hover:text-rose-600'
+                            }`}
                           >
                             Limpar
                           </button>
@@ -4255,13 +4341,17 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
                       {/* Mini Search inside modal */}
                       <div className="relative">
-                        <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <Search className={`w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 ${
+                          isDark ? 'text-slate-500' : 'text-slate-400'
+                        }`} />
                         <input
                           type="text"
                           value={collaboratorSearchInModal}
                           onChange={(e) => setCollaboratorSearchInModal(e.target.value)}
                           placeholder="Buscar colaborador por nome, cargo ou setor..."
-                          className="w-full pl-8 pr-3 py-1.5 bg-[#15161b] border border-[#282a33] rounded-lg text-xs text-white placeholder:text-slate-500 outline-none focus:border-[#F59242] transition-colors"
+                          className={`w-full pl-8 pr-3 py-1.5 rounded-lg text-xs outline-none focus:border-[#F59242] transition-colors border ${
+                            isDark ? 'bg-[#15161b] border-[#282a33] text-white placeholder:text-slate-500' : 'bg-white border-slate-200 text-slate-900 placeholder:text-slate-400'
+                          }`}
                         />
                       </div>
 
@@ -4274,7 +4364,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             return (
                               <span
                                 key={id}
-                                className="inline-flex items-center gap-1.5 pl-1.5 pr-2 py-0.5 rounded-full text-[11px] font-medium bg-[#F59242]/15 border border-[#F59242]/30 text-amber-200"
+                                className={`inline-flex items-center gap-1.5 pl-1.5 pr-2 py-0.5 rounded-full text-[11px] font-medium border ${
+                                  isDark ? 'bg-[#F59242]/15 border-[#F59242]/30 text-amber-200' : 'bg-amber-50 border-amber-300 text-amber-900'
+                                }`}
                               >
                                 <img
                                   src={person.avatar}
@@ -4290,7 +4382,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                       assignedEmployeeIds: prev.assignedEmployeeIds.filter(item => item !== id)
                                     }));
                                   }}
-                                  className="hover:text-white transition-colors cursor-pointer"
+                                  className="hover:opacity-75 transition-opacity cursor-pointer"
                                 >
                                   <X className="w-3 h-3" />
                                 </button>
@@ -4330,14 +4422,14 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                 }}
                                 className={`p-2 rounded-xl border flex items-center gap-2.5 transition-all cursor-pointer select-none ${
                                   isSelected
-                                    ? 'bg-[#F59242]/15 border-[#F59242] shadow-sm'
-                                    : 'bg-[#15161b] border-[#282a33] hover:border-white/20'
+                                    ? isDark ? 'bg-[#F59242]/15 border-[#F59242] shadow-sm' : 'bg-amber-50 border-amber-400 shadow-xs'
+                                    : isDark ? 'bg-[#15161b] border-[#282a33] hover:border-white/20' : 'bg-white border-slate-200 hover:border-slate-300'
                                 }`}
                               >
                                 <div className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 transition-colors ${
                                   isSelected
                                     ? 'bg-[#F59242] border-[#F59242] text-black font-bold'
-                                    : 'border-slate-600 bg-black/40'
+                                    : isDark ? 'border-slate-600 bg-black/40' : 'border-slate-300 bg-white'
                                 }`}>
                                   {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
                                 </div>
@@ -4349,10 +4441,12 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                 />
 
                                 <div className="min-w-0 flex-1">
-                                  <span className={`block font-semibold text-xs truncate ${isSelected ? 'text-white' : 'text-slate-200'}`}>
+                                  <span className={`block font-semibold text-xs truncate ${
+                                    isSelected ? (isDark ? 'text-white' : 'text-slate-900 font-bold') : (isDark ? 'text-slate-200' : 'text-slate-800')
+                                  }`}>
                                     {person.name}
                                   </span>
-                                  <span className="block text-[10px] text-slate-400 truncate">
+                                  <span className={`block text-[10px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                     {person.role} • {person.department}
                                   </span>
                                 </div>
@@ -4361,7 +4455,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           })}
                       </div>
 
-                      <div className="flex items-center justify-between text-[11px] pt-1 text-slate-400 font-mono">
+                      <div className={`flex items-center justify-between text-[11px] pt-1 font-mono ${
+                        isDark ? 'text-slate-400' : 'text-slate-500'
+                      }`}>
                         <span>
                           {newReminderData.assignedEmployeeIds.length === 0
                             ? 'Nenhuma pessoa alocada (será atribuído à Equipe Geral)'
@@ -4371,7 +4467,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     </div>
 
                     <div>
-                      <label className="text-xs font-semibold text-slate-400 block mb-1">
+                      <label className={`text-xs font-semibold block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                         LINK DE VÍDEO (OPCIONAL)
                       </label>
                       <input
@@ -4379,12 +4475,14 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         value={newReminderData.link}
                         onChange={(e) => setNewReminderData({ ...newReminderData, link: e.target.value })}
                         placeholder="https://meet.google.com/..."
-                        className="w-full px-3.5 py-2.5 bg-[#0e0f12] border border-[#282a33] rounded-xl text-xs text-white placeholder:text-slate-500 outline-none focus:border-[#F59242] transition-colors"
+                        className={`w-full px-3.5 py-2.5 rounded-xl text-xs outline-none focus:border-[#F59242] transition-colors border ${
+                          isDark ? 'bg-[#0e0f12] border-[#282a33] text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-400'
+                        }`}
                       />
                     </div>
 
                     <div>
-                      <label className="text-xs font-semibold text-slate-400 block mb-1">
+                      <label className={`text-xs font-semibold block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                         DESCRIÇÃO / PAUTA
                       </label>
                       <textarea
@@ -4392,19 +4490,25 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         value={newReminderData.description}
                         onChange={(e) => setNewReminderData({ ...newReminderData, description: e.target.value })}
                         placeholder="Descreva detalhes ou orientações para a equipe..."
-                        className="w-full px-3.5 py-2 bg-[#0e0f12] border border-[#282a33] rounded-xl text-xs text-white placeholder:text-slate-500 outline-none focus:border-[#F59242] transition-colors resize-none"
+                        className={`w-full px-3.5 py-2 rounded-xl text-xs outline-none focus:border-[#F59242] transition-colors resize-none border ${
+                          isDark ? 'bg-[#0e0f12] border-[#282a33] text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-400'
+                        }`}
                       />
                     </div>
 
                     {/* Modal Footer Buttons */}
-                    <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10 shrink-0">
+                    <div className={`flex items-center justify-end gap-3 pt-3 border-t shrink-0 ${
+                      isDark ? 'border-white/10' : 'border-slate-200'
+                    }`}>
                       <button
                         type="button"
                         onClick={() => {
                           setIsNewReminderModalOpen(false);
                           setEditingReminderId(null);
                         }}
-                        className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                          isDark ? 'text-slate-400 hover:text-white hover:bg-white/5' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                        }`}
                       >
                         Cancelar
                       </button>

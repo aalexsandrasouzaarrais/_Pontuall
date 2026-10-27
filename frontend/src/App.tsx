@@ -189,7 +189,7 @@ function AppContent() {
   const handleLoginSuccess = (user: Employee, role: 'manager' | 'employee') => {
     setActiveEmployee(user);
     setCurrentRole(role);
-    setEmployeeTab(user.contractType === 'PJ' ? 'pj_reports' : 'overview');
+    setEmployeeTab('overview');
     setIsAuthenticated(true);
   };
 
@@ -245,9 +245,7 @@ function AppContent() {
   const [pjReports, setPjReports] = useState<PjDeliverableReport[]>([]);
   
   // Employee Tabs
-  const [employeeTab, setEmployeeTab] = useState<'overview' | 'pj_reports' | 'calendar' | 'requests' | 'justifications' | 'chat'>(() =>
-    activeEmployee?.contractType === 'PJ' ? 'pj_reports' : 'overview'
-  );
+  const [employeeTab, setEmployeeTab] = useState<'overview' | 'pj_reports' | 'calendar' | 'requests' | 'justifications' | 'chat'>('overview');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // Sincronização e filtragem por empresa/gestor com o Supabase
@@ -729,6 +727,9 @@ function AppContent() {
 
   const handleUpdateEmployee = async (updated: Employee) => {
     setEmployees(prev => prev.map(e => e.id === updated.id ? updated : e));
+    if (activeEmployee?.id === updated.id) {
+      setActiveEmployee(updated);
+    }
     try {
       await updateColaboradorSupabase(updated);
     } catch (err) {
@@ -1427,7 +1428,7 @@ function AppContent() {
           <EmployeeSidebar
             activeTab={
               activeEmployee.contractType === 'PJ'
-                ? (employeeTab === 'calendar' || employeeTab === 'chat' ? employeeTab : 'pj_reports')
+                ? (employeeTab === 'chat' || employeeTab === 'pj_reports' ? employeeTab : 'overview')
                 : (employeeTab === 'pj_reports' ? 'overview' : employeeTab)
             }
             onTabChange={(tab) => {
@@ -1443,7 +1444,7 @@ function AppContent() {
             employees={employees}
             onSelectEmployee={(emp) => {
               setActiveEmployee(emp);
-              setEmployeeTab(emp.contractType === 'PJ' ? 'pj_reports' : 'overview');
+              setEmployeeTab('overview');
               safeStorage.setItem('pontual_active_user', JSON.stringify({
                 ...emp,
                 Idf_Colaborador: emp.id,
@@ -1463,7 +1464,8 @@ function AppContent() {
                 contractType: emp.contractType,
                 contractStartDate: emp.contractStartDate,
                 contractEndDate: emp.contractEndDate,
-                pjMonthlyHoursQuota: emp.pjMonthlyHoursQuota
+                monthlyHoursQuota: emp.monthlyHoursQuota,
+                hourlyRate: emp.hourlyRate
               }));
             }}
             notifications={notifications}
@@ -1502,16 +1504,29 @@ function AppContent() {
               );
             })()}
 
-            {/* Tab PJ: Entregas, Horas & Comprovações PJ (Tela Principal do PJ) */}
-            {activeEmployee.contractType === 'PJ' && (employeeTab === 'pj_reports' || employeeTab === 'overview' || employeeTab === 'requests' || employeeTab === 'justifications') && (
-              <PjDeliverablesView
-                employee={activeEmployee}
-                isDark={isDark}
-                onReportCreated={(created) => {
-                  setPjReports(prev => [created, ...prev.filter(p => p.id !== created.id)]);
-                }}
-              />
-            )}
+            {/* Tab PJ: Painel & Notas PJ (overview) OU Timesheet & Entregas PJ (pj_reports) */}
+            {activeEmployee.contractType === 'PJ' && (employeeTab === 'pj_reports' || employeeTab === 'overview' || employeeTab === 'calendar' || employeeTab === 'requests' || employeeTab === 'justifications') && (() => {
+              const pjReminders = (reminders || []).filter(rem => {
+                if (rem.completed) return false;
+                if (!rem.assignedEmployeeIds || rem.assignedEmployeeIds.length === 0) return true;
+                return rem.assignedEmployeeIds.includes(activeEmployee.id);
+              });
+
+              return (
+                <PjDeliverablesView
+                  employee={activeEmployee}
+                  isDark={isDark}
+                  activeSubView={employeeTab === 'pj_reports' ? 'timesheet' : 'overview'}
+                  reminders={pjReminders}
+                  employees={employees}
+                  onNavigateToCalendar={() => setEmployeeTab('calendar')}
+                  onNavigateToTimesheet={() => setEmployeeTab('pj_reports')}
+                  onReportCreated={(created) => {
+                    setPjReports(prev => [created, ...prev.filter(p => p.id !== created.id)]);
+                  }}
+                />
+              );
+            })()}
 
             {/* Tab 2: Monthly / Weekly Calendar */}
             {employeeTab === 'calendar' && (

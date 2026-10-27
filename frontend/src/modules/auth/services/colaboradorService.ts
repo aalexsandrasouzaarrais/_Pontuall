@@ -3,10 +3,73 @@ import { Employee, ContractType } from '@/types';
 import { safeStorage } from '@/shared/utils/safeStorage';
 import bcrypt from 'bcryptjs';
 
+const PJ_CONTRACT_PARAMS_KEY = 'pontual_pj_contract_params_v1';
+
+interface PjContractParams {
+  hourlyRate?: number;
+  monthlyHoursQuota?: number;
+}
+
+function getPjContractParamsMap(): Record<string, PjContractParams> {
+  try {
+    const raw = safeStorage.getItem(PJ_CONTRACT_PARAMS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return {};
+}
+
+export function savePjContractParamsLocal(emp: {
+  id?: string;
+  registrationId?: string;
+  email?: string;
+  hourlyRate?: number;
+  monthlyHoursQuota?: number;
+}) {
+  try {
+    const map = getPjContractParamsMap();
+    const entry: PjContractParams = {
+      hourlyRate: emp.hourlyRate !== undefined ? Number(emp.hourlyRate) : undefined,
+      monthlyHoursQuota: emp.monthlyHoursQuota !== undefined ? Number(emp.monthlyHoursQuota) : undefined,
+    };
+    if (emp.id) map[emp.id] = { ...map[emp.id], ...entry };
+    if (emp.registrationId) map[emp.registrationId.toUpperCase()] = { ...map[emp.registrationId.toUpperCase()], ...entry };
+    if (emp.email) map[emp.email.toLowerCase().trim()] = { ...map[emp.email.toLowerCase().trim()], ...entry };
+    safeStorage.setItem(PJ_CONTRACT_PARAMS_KEY, JSON.stringify(map));
+  } catch {}
+}
+
+function resolvePjContractParams(row: any): PjContractParams {
+  const map = getPjContractParamsMap();
+  const idKey = row.Idf_Colaborador || row.id || '';
+  const regKey = String(row.Cod_Matricula || row.registrationId || '').toUpperCase();
+  const emailKey = String(row.Eml_Corporativo || row.email || '').toLowerCase().trim();
+  const local = map[idKey] || map[regKey] || map[emailKey] || {};
+
+  const dbHourly =
+    row.Vlr_Hora_Pj !== undefined && row.Vlr_Hora_Pj !== null && Number(row.Vlr_Hora_Pj) > 0
+      ? Number(row.Vlr_Hora_Pj)
+      : row.hourlyRate !== undefined && row.hourlyRate !== null && Number(row.hourlyRate) > 0
+      ? Number(row.hourlyRate)
+      : undefined;
+
+  const dbQuota =
+    row.Num_Cota_Horas_Mensal !== undefined && row.Num_Cota_Horas_Mensal !== null && Number(row.Num_Cota_Horas_Mensal) > 0
+      ? Number(row.Num_Cota_Horas_Mensal)
+      : row.monthlyHoursQuota !== undefined && row.monthlyHoursQuota !== null && Number(row.monthlyHoursQuota) > 0
+      ? Number(row.monthlyHoursQuota)
+      : undefined;
+
+  return {
+    hourlyRate: dbHourly ?? local.hourlyRate,
+    monthlyHoursQuota: dbQuota ?? local.monthlyHoursQuota,
+  };
+}
+
 // Converte registro do banco BNE (TAB_Colaborador) para interface Employee do Frontend
 export function mapBneToEmployee(row: any): Employee {
   const isRh = row.Tpo_Perfil === 'rh' || row.Flg_Gestor_Master === true;
   const safeName = row.Nme_Colaborador || 'Colaborador';
+  const pjParams = resolvePjContractParams(row);
   return {
     id: row.Idf_Colaborador || '',
     name: safeName,
@@ -25,7 +88,8 @@ export function mapBneToEmployee(row: any): Employee {
     contractType: (row.Tpo_Contrato as ContractType) || (row.contractType as ContractType) || 'CLT',
     contractStartDate: row.Dta_Inicio_Contrato ? row.Dta_Inicio_Contrato.split('T')[0] : (row.contractStartDate || undefined),
     contractEndDate: row.Dta_Fim_Contrato ? row.Dta_Fim_Contrato.split('T')[0] : (row.contractEndDate || undefined),
-    monthlyHoursQuota: row.Num_Cota_Horas_Mensal || row.monthlyHoursQuota || undefined
+    monthlyHoursQuota: pjParams.monthlyHoursQuota,
+    hourlyRate: pjParams.hourlyRate
   };
 }
 
@@ -214,6 +278,15 @@ export async function getColaboradoresSupabase(filter?: { companyId?: string; ge
 export async function createColaboradorSupabase(emp: Employee, creatorGestorId?: string): Promise<Employee> {
   const matricula = emp.registrationId || `PNT-${Math.floor(1000 + Math.random() * 9000)}`;
 
+  // Salva parâmetros PJ localmente antes de enviar ao banco para garantir disponibilidade imediata
+  savePjContractParamsLocal({
+    id: emp.id,
+    registrationId: matricula,
+    email: emp.email,
+    hourlyRate: emp.hourlyRate,
+    monthlyHoursQuota: emp.monthlyHoursQuota,
+  });
+
   // A empresa do novo cadastro é sempre a do gestor/RH que está cadastrando.
   // Se o objeto não trouxer uma empresa válida, busca no banco a empresa do criador.
   let companyId: string | null = isUuid(emp.companyId) ? emp.companyId! : null;
@@ -223,7 +296,7 @@ export async function createColaboradorSupabase(emp: Employee, creatorGestorId?:
 
   const perfil = emp.roleType === 'rh' ? 'rh' : emp.roleType === 'gestor' ? 'gestor' : (emp.isRh ? 'rh' : 'colaborador');
   const provisionalHash = bcrypt.hashSync(matricula, 10);
-  const payload = {
+  const basePayload: any = {
     Cod_Matricula: matricula,
     Nme_Colaborador: emp.name,
     Eml_Corporativo: emp.email,
@@ -238,21 +311,44 @@ export async function createColaboradorSupabase(emp: Employee, creatorGestorId?:
     Dta_Inicio_Contrato: emp.contractStartDate || null,
     Dta_Fim_Contrato: emp.contractEndDate || null,
     Num_Cota_Horas_Mensal: emp.monthlyHoursQuota || (emp.contractType === 'PJ' ? 160 : null),
+    Vlr_Hora_Pj: emp.hourlyRate !== undefined ? Number(emp.hourlyRate) : (emp.contractType === 'PJ' ? 0 : null),
     Idf_Empresa: companyId,
     Flg_Gestor_Master: perfil === 'rh',
     Flg_Ativo: true
   };
 
-  const { data: novoColaborador, error } = await supabase
+  let { data: novoColaborador, error } = await supabase
     .from('TAB_Colaborador')
-    .insert(payload)
+    .insert(basePayload)
     .select()
     .single();
+
+  // Caso a coluna Vlr_Hora_Pj ainda não tenha sido migrada no banco do cliente, tenta novamente sem ela
+  if (error && error.message && error.message.includes('Vlr_Hora_Pj')) {
+    const fallbackPayload = { ...basePayload };
+    delete fallbackPayload.Vlr_Hora_Pj;
+    const retry = await supabase
+      .from('TAB_Colaborador')
+      .insert(fallbackPayload)
+      .select()
+      .single();
+    novoColaborador = retry.data;
+    error = retry.error;
+  }
 
   if (error) {
     console.error('Erro ao inserir colaborador no Supabase:', error.message);
     throw new Error(error.message);
   }
+
+  // Atualiza também com o UUID gerado pelo banco
+  savePjContractParamsLocal({
+    id: novoColaborador.Idf_Colaborador,
+    registrationId: matricula,
+    email: emp.email,
+    hourlyRate: emp.hourlyRate,
+    monthlyHoursQuota: emp.monthlyHoursQuota,
+  });
 
   // Estabelece os vínculos de gestores (M:N) na tabela TAB_Gestor_Colaborador
   const gestoresParaVincular: string[] = [];
@@ -264,6 +360,8 @@ export async function createColaboradorSupabase(emp: Employee, creatorGestorId?:
 
   const mapped = mapBneToEmployee(novoColaborador);
   mapped.managerIds = gestoresValidos;
+  if (emp.hourlyRate !== undefined) mapped.hourlyRate = Number(emp.hourlyRate);
+  if (emp.monthlyHoursQuota !== undefined) mapped.monthlyHoursQuota = Number(emp.monthlyHoursQuota);
   return mapped;
 }
 
@@ -556,6 +654,14 @@ export async function deactivateColaboradorSupabase(
 // Atualiza dados cadastrais de um colaborador no Supabase
 export async function updateColaboradorSupabase(emp: Partial<Employee> & { id: string }): Promise<boolean> {
   try {
+    savePjContractParamsLocal({
+      id: emp.id,
+      registrationId: emp.registrationId,
+      email: emp.email,
+      hourlyRate: emp.hourlyRate,
+      monthlyHoursQuota: emp.monthlyHoursQuota,
+    });
+
     if (!isUuid(emp.id)) return true;
 
     const payload: any = {};
@@ -568,15 +674,26 @@ export async function updateColaboradorSupabase(emp: Partial<Employee> & { id: s
     if (emp.contractStartDate !== undefined) payload.Dta_Inicio_Contrato = emp.contractStartDate || null;
     if (emp.contractEndDate !== undefined) payload.Dta_Fim_Contrato = emp.contractEndDate || null;
     if (emp.monthlyHoursQuota !== undefined) payload.Num_Cota_Horas_Mensal = emp.monthlyHoursQuota || null;
+    if (emp.hourlyRate !== undefined) payload.Vlr_Hora_Pj = emp.hourlyRate !== null ? Number(emp.hourlyRate) : null;
     if (emp.roleType) {
       payload.Tpo_Perfil = emp.roleType;
       payload.Flg_Gestor_Master = emp.roleType === 'rh';
     }
 
-    const { error } = await supabase
+    let { error } = await supabase
       .from('TAB_Colaborador')
       .update(payload)
       .eq('Idf_Colaborador', emp.id);
+
+    if (error && error.message && error.message.includes('Vlr_Hora_Pj')) {
+      const fallbackPayload = { ...payload };
+      delete fallbackPayload.Vlr_Hora_Pj;
+      const retry = await supabase
+        .from('TAB_Colaborador')
+        .update(fallbackPayload)
+        .eq('Idf_Colaborador', emp.id);
+      error = retry.error;
+    }
 
     if (error) {
       console.warn('Erro ao atualizar colaborador no Supabase:', error.message);
@@ -660,4 +777,3 @@ export async function updateColaboradorPasswordSupabase(identifier: string, nova
     return true;
   }
 }
-

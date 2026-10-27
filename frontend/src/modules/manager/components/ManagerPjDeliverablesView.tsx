@@ -313,13 +313,18 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight leading-tight">
               Timesheet, Entregas &{' '}
-              <span style={{
-                background: isDark
-                  ? 'linear-gradient(90deg, #F9DE97 0%, #F59242 52%, #9F243C 100%)'
-                  : 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent'
-              }}>
+              <span
+                className={`bg-clip-text text-transparent ${
+                  isDark
+                    ? 'bg-gradient-to-r from-[#F9DE97] via-[#F59242] to-[#9F243C]'
+                    : 'bg-gradient-to-r from-[#640C1E] via-[#9F243C] to-[#F59242]'
+                }`}
+                style={{
+                  backgroundClip: 'text',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                }}
+              >
                 Planilhas PJ
               </span>
             </h1>
@@ -448,6 +453,187 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                 isDark ? 'bg-[#151822] border-[#252A3A]' : 'bg-white border-slate-200 shadow-sm'
               }`}
             >
+              {/* TABELA DE ATIVIDADES NO TIMESHEET (Idêntica à organização limpa da visão do Colaborador) */}
+              <div className={`p-4 sm:p-5 rounded-2xl border ${
+                isDark ? 'bg-[#0e1017] border-white/10' : 'bg-slate-50/70 border-slate-200'
+              }`}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                      isDark ? 'bg-[#9F243C]/20 text-[#f89847]' : 'bg-[#96183c]/10 text-[#96183c]'
+                    }`}>
+                      <FolderGit2 className="w-4 h-4" />
+                    </div>
+                    <h3 className="text-xs sm:text-sm font-extrabold flex items-center gap-2">
+                      <span>Atividades Registradas no Timesheet</span>
+                      <span className={`text-[11px] font-mono px-2 py-0.5 rounded-full border ${
+                        isDark
+                          ? 'bg-[#9F243C]/20 text-[#F9DE97] border-[#F59242]/30'
+                          : 'bg-[#96183c]/10 text-[#96183c] border-[#96183c]/25'
+                      }`}>
+                        {group.timesheetRows.length} tarefas ({group.totalHoursLogged}h)
+                      </span>
+                    </h3>
+                  </div>
+                </div>
+
+                {group.timesheetRows.length === 0 ? (
+                  <div className="text-center py-6 text-xs text-slate-500">
+                    Nenhuma tarefa detalhada registrada por este prestador PJ até o momento.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className={`border-b ${isDark ? 'border-white/10 text-slate-400' : 'border-slate-200 text-slate-500'}`}>
+                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">ID Tarefa</th>
+                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Data</th>
+                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Centro de Custo</th>
+                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Projeto / Cliente</th>
+                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Descrição da Tarefa</th>
+                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-center">Horário</th>
+                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-center">Pausas</th>
+                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-center">Duração</th>
+                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Evidências</th>
+                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-right">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className={`divide-y ${isDark ? 'divide-white/5' : 'divide-slate-200'}`}>
+                        {group.timesheetRows.map((entry, idx) => (
+                          <tr key={entry.id || idx} className={`${isDark ? 'hover:bg-white/5' : 'hover:bg-white'} transition-colors`}>
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <span className={`font-mono font-bold text-[11px] px-2 py-0.5 rounded-md border ${
+                                isDark
+                                  ? 'bg-white/5 text-[#F9DE97] border-[#F59242]/30'
+                                  : 'bg-[#96183c]/10 text-[#96183c] border-[#96183c]/25'
+                              }`}>
+                                {entry.taskCode || `TK-${String(idx + 1).padStart(3, '0')}`}
+                              </span>
+                            </td>
+                            <td className={`py-3 px-3 font-mono whitespace-nowrap ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                              {entry.date
+                                ? new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                  })
+                                : '-'}
+                            </td>
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
+                                isDark
+                                  ? 'bg-white/5 text-slate-300 border-white/10'
+                                  : 'bg-slate-100 text-slate-700 border-slate-200'
+                              }`}>
+                                {entry.costCenter || group.defaultCostCenter}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <span className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
+                                isDark
+                                  ? 'bg-[#9F243C]/20 text-[#F9DE97] border-[#F59242]/30'
+                                  : 'bg-[#96183c]/10 text-[#96183c] border-[#96183c]/25'
+                              }`}>
+                                {entry.project}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 max-w-xs sm:max-w-md">
+                              <span className={`font-medium block truncate ${isDark ? 'text-slate-200' : 'text-slate-800'}`} title={entry.taskDescription}>
+                                {entry.taskDescription}
+                              </span>
+                              {entry.isLiveTracked ? (
+                                <span className={`inline-flex items-center gap-1 text-[10px] mt-0.5 ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                                  <Check className="w-3 h-3" /> Cronometrado em tempo real
+                                </span>
+                              ) : (
+                                <span className={`inline-flex items-center gap-1 text-[10px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                  Registro manual
+                                </span>
+                              )}
+                            </td>
+                            <td className={`py-3 px-3 font-mono text-center whitespace-nowrap ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                              {entry.startTime} → {entry.endTime}
+                            </td>
+                            <td className={`py-3 px-3 text-center font-mono whitespace-nowrap ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>
+                              {entry.breakMinutes > 0 ? `${entry.breakMinutes}m` : '-'}
+                            </td>
+                            <td className="py-3 px-3 text-center whitespace-nowrap">
+                              <span className={`font-mono font-bold text-sm ${isDark ? 'text-[#f89847]' : 'text-[#96183c]'}`}>
+                                {entry.durationHours}h
+                              </span>
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {entry.links?.map((link, lIdx) => (
+                                  <a
+                                    key={lIdx}
+                                    href={link.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={`p-1 rounded-md ${
+                                      isDark
+                                        ? 'bg-[#9F243C]/20 text-[#F9DE97] hover:bg-[#9F243C]/35'
+                                        : 'bg-[#96183c]/10 text-[#96183c] hover:bg-[#96183c]/20'
+                                    }`}
+                                    title={link.title || link.url}
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                  </a>
+                                ))}
+                                {entry.images?.map((img, iIdx) => (
+                                  <button
+                                    key={iIdx}
+                                    type="button"
+                                    onClick={() => setSelectedImage(img)}
+                                    className={`p-1 rounded-md cursor-pointer ${
+                                      isDark
+                                        ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30'
+                                        : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                                    }`}
+                                    title="Ver print comprobatório"
+                                  >
+                                    <ImageIcon className="w-3.5 h-3.5" />
+                                  </button>
+                                ))}
+                                {!entry.links?.length && !entry.images?.length && (
+                                  <span className="text-slate-500 text-[11px]">-</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 text-right whitespace-nowrap">
+                              {entry.reportStatus === 'approved' ? (
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                  isDark ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                }`}>
+                                  Homologado
+                                </span>
+                              ) : entry.reportStatus === 'rejected' ? (
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                  isDark ? 'bg-rose-500/20 text-rose-400 border-rose-500/30' : 'bg-rose-100 text-rose-700 border-rose-200'
+                                }`}>
+                                  Com Ajuste
+                                </span>
+                              ) : entry.reportStatus === 'pending' ? (
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                  isDark ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-amber-100 text-amber-700 border-amber-200'
+                                }`}>
+                                  Aguardando
+                                </span>
+                              ) : (
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                  isDark ? 'bg-white/10 text-slate-300 border-white/15' : 'bg-slate-200 text-slate-700 border-slate-300'
+                                }`}>
+                                  Em Aberto
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
               {/* CABEÇALHO DO COLABORADOR PJ + BOTÕES DE EXPORTAR PLANILHA */}
               <div className={`flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b ${
                 isDark ? 'border-white/10' : 'border-slate-200'
@@ -715,186 +901,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                 </div>
               )}
 
-              {/* TABELA DE ATIVIDADES NO TIMESHEET (Idêntica à organização limpa da visão do Colaborador) */}
-              <div className={`p-4 sm:p-5 rounded-2xl border ${
-                isDark ? 'bg-[#0e1017] border-white/10' : 'bg-slate-50/70 border-slate-200'
-              }`}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
-                      isDark ? 'bg-[#9F243C]/20 text-[#f89847]' : 'bg-[#96183c]/10 text-[#96183c]'
-                    }`}>
-                      <FolderGit2 className="w-4 h-4" />
-                    </div>
-                    <h3 className="text-xs sm:text-sm font-extrabold flex items-center gap-2">
-                      <span>Atividades Registradas no Timesheet</span>
-                      <span className={`text-[11px] font-mono px-2 py-0.5 rounded-full border ${
-                        isDark
-                          ? 'bg-[#9F243C]/20 text-[#F9DE97] border-[#F59242]/30'
-                          : 'bg-[#96183c]/10 text-[#96183c] border-[#96183c]/25'
-                      }`}>
-                        {group.timesheetRows.length} tarefas ({group.totalHoursLogged}h)
-                      </span>
-                    </h3>
-                  </div>
-                </div>
 
-                {group.timesheetRows.length === 0 ? (
-                  <div className="text-center py-6 text-xs text-slate-500">
-                    Nenhuma tarefa detalhada registrada por este prestador PJ até o momento.
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead>
-                        <tr className={`border-b ${isDark ? 'border-white/10 text-slate-400' : 'border-slate-200 text-slate-500'}`}>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">ID Tarefa</th>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Data</th>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Centro de Custo</th>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Projeto / Cliente</th>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Descrição da Tarefa</th>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-center">Horário</th>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-center">Pausas</th>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-center">Duração</th>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Evidências</th>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-right">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className={`divide-y ${isDark ? 'divide-white/5' : 'divide-slate-200'}`}>
-                        {group.timesheetRows.map((entry, idx) => (
-                          <tr key={entry.id || idx} className={`${isDark ? 'hover:bg-white/5' : 'hover:bg-white'} transition-colors`}>
-                            <td className="py-3 px-3 whitespace-nowrap">
-                              <span className={`font-mono font-bold text-[11px] px-2 py-0.5 rounded-md border ${
-                                isDark
-                                  ? 'bg-white/5 text-[#F9DE97] border-[#F59242]/30'
-                                  : 'bg-[#96183c]/10 text-[#96183c] border-[#96183c]/25'
-                              }`}>
-                                {entry.taskCode || `TK-${String(idx + 1).padStart(3, '0')}`}
-                              </span>
-                            </td>
-                            <td className={`py-3 px-3 font-mono whitespace-nowrap ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                              {entry.date
-                                ? new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR', {
-                                    day: '2-digit',
-                                    month: '2-digit',
-                                  })
-                                : '-'}
-                            </td>
-                            <td className="py-3 px-3 whitespace-nowrap">
-                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
-                                isDark
-                                  ? 'bg-white/5 text-slate-300 border-white/10'
-                                  : 'bg-slate-100 text-slate-700 border-slate-200'
-                              }`}>
-                                {entry.costCenter || group.defaultCostCenter}
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 whitespace-nowrap">
-                              <span className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
-                                isDark
-                                  ? 'bg-[#9F243C]/20 text-[#F9DE97] border-[#F59242]/30'
-                                  : 'bg-[#96183c]/10 text-[#96183c] border-[#96183c]/25'
-                              }`}>
-                                {entry.project}
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 max-w-xs sm:max-w-md">
-                              <span className={`font-medium block truncate ${isDark ? 'text-slate-200' : 'text-slate-800'}`} title={entry.taskDescription}>
-                                {entry.taskDescription}
-                              </span>
-                              {entry.isLiveTracked ? (
-                                <span className={`inline-flex items-center gap-1 text-[10px] mt-0.5 ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
-                                  <Check className="w-3 h-3" /> Cronometrado em tempo real
-                                </span>
-                              ) : (
-                                <span className={`inline-flex items-center gap-1 text-[10px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                  Registro manual
-                                </span>
-                              )}
-                            </td>
-                            <td className={`py-3 px-3 font-mono text-center whitespace-nowrap ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                              {entry.startTime} → {entry.endTime}
-                            </td>
-                            <td className={`py-3 px-3 text-center font-mono whitespace-nowrap ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>
-                              {entry.breakMinutes > 0 ? `${entry.breakMinutes}m` : '-'}
-                            </td>
-                            <td className="py-3 px-3 text-center whitespace-nowrap">
-                              <span className={`font-mono font-bold text-sm ${isDark ? 'text-[#f89847]' : 'text-[#96183c]'}`}>
-                                {entry.durationHours}h
-                              </span>
-                            </td>
-                            <td className="py-3 px-3">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                {entry.links?.map((link, lIdx) => (
-                                  <a
-                                    key={lIdx}
-                                    href={link.url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className={`p-1 rounded-md ${
-                                      isDark
-                                        ? 'bg-[#9F243C]/20 text-[#F9DE97] hover:bg-[#9F243C]/35'
-                                        : 'bg-[#96183c]/10 text-[#96183c] hover:bg-[#96183c]/20'
-                                    }`}
-                                    title={link.title || link.url}
-                                  >
-                                    <ExternalLink className="w-3.5 h-3.5" />
-                                  </a>
-                                ))}
-                                {entry.images?.map((img, iIdx) => (
-                                  <button
-                                    key={iIdx}
-                                    type="button"
-                                    onClick={() => setSelectedImage(img)}
-                                    className={`p-1 rounded-md cursor-pointer ${
-                                      isDark
-                                        ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30'
-                                        : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-                                    }`}
-                                    title="Ver print comprobatório"
-                                  >
-                                    <ImageIcon className="w-3.5 h-3.5" />
-                                  </button>
-                                ))}
-                                {!entry.links?.length && !entry.images?.length && (
-                                  <span className="text-slate-500 text-[11px]">-</span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="py-3 px-3 text-right whitespace-nowrap">
-                              {entry.reportStatus === 'approved' ? (
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                  isDark ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                                }`}>
-                                  Homologado
-                                </span>
-                              ) : entry.reportStatus === 'rejected' ? (
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                  isDark ? 'bg-rose-500/20 text-rose-400 border-rose-500/30' : 'bg-rose-100 text-rose-700 border-rose-200'
-                                }`}>
-                                  Com Ajuste
-                                </span>
-                              ) : entry.reportStatus === 'pending' ? (
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                  isDark ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-amber-100 text-amber-700 border-amber-200'
-                                }`}>
-                                  Aguardando
-                                </span>
-                              ) : (
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                  isDark ? 'bg-white/10 text-slate-300 border-white/15' : 'bg-slate-200 text-slate-700 border-slate-300'
-                                }`}>
-                                  Em Aberto
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
 
             </div>
           ))}
