@@ -374,10 +374,22 @@ function AppContent() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isSwapModalOpen, setIsSwapModalOpen] = useState(false);
   const [isJustificationModalOpen, setIsJustificationModalOpen] = useState(false);
-  const [justificationPrefill, setJustificationPrefill] = useState<{ shiftId?: string; date?: string; reason?: string } | null>(null);
+  const [justificationPrefill, setJustificationPrefill] = useState<{ 
+    shiftId?: string; 
+    date?: string; 
+    reason?: string; 
+    type?: 'absence' | 'delay';
+    delayMinutes?: number;
+  } | null>(null);
 
-  const handleOpenJustificationModal = (shiftId?: string, date?: string, reason?: string) => {
-    setJustificationPrefill({ shiftId, date, reason });
+  const handleOpenJustificationModal = (
+    shiftId?: string, 
+    date?: string, 
+    type: 'absence' | 'delay' = 'absence', 
+    delayMinutes?: number,
+    reason?: string
+  ) => {
+    setJustificationPrefill({ shiftId, date, reason, type, delayMinutes });
     setIsJustificationModalOpen(true);
   };
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
@@ -834,8 +846,9 @@ function AppContent() {
     }
   };
 
-  // Submit absence justification
-  const handleSubmitJustification = async (just: Partial<AbsenceJustification>) => {
+  // Submit absence or delay justification
+  const handleSubmitJustification = async (just: Partial<AbsenceJustification> & { justificationType?: 'absence' | 'delay' }) => {
+    const isDelayJustification = just.justificationType === 'delay';
     const tempId = `just-${Date.now()}`;
     const newJust: AbsenceJustification = {
       id: tempId,
@@ -854,10 +867,27 @@ function AppContent() {
     setJustifications(prev => [newJust, ...prev]);
     
     if (just.shiftId) {
-      setShifts(prev => prev.map(s => s.id === just.shiftId ? { ...s, attendanceStatus: 'justified' } : s));
+      setShifts(prev => prev.map(s => {
+        if (s.id === just.shiftId) {
+          const updatedNotes = isDelayJustification
+            ? (s.notes ? `${s.notes} | [Justificativa Atraso: ${just.reason}]` : `[Justificativa Atraso: ${just.reason}]`)
+            : s.notes;
+          return {
+            ...s,
+            attendanceStatus: isDelayJustification ? s.attendanceStatus : 'justified',
+            notes: updatedNotes
+          };
+        }
+        return s;
+      }));
     }
 
-    setEmployeeTab('justifications');
+    if (!isDelayJustification) {
+      setEmployeeTab('justifications');
+      showToast('Atestado Enviado', 'Seu atestado/comprovante foi enviado para o RH e Gestor.', 'success');
+    } else {
+      showToast('Justificativa Enviada', 'Sua justificativa de atraso foi registrada e enviada para o Gestor.', 'success');
+    }
 
     try {
       const saved = await createJustificativaSupabase(just, activeEmployee);
@@ -865,11 +895,16 @@ function AppContent() {
         setJustifications(prev => prev.map(j => j.id === tempId ? { ...saved, employeeName: activeEmployee.name, employeeAvatar: activeEmployee.avatar } : j));
         // Notifica gestores/RH
         const managers = employees.filter(e => e.roleType === 'gestor' || e.isMasterManager || e.isRh);
+        const notifTitle = isDelayJustification ? 'Nova Justificativa de Atraso' : 'Novo Atestado / Justificativa';
+        const notifMsg = isDelayJustification
+          ? `${activeEmployee.name} enviou justificativa para atraso no dia ${just.date || ''}: "${just.reason}".`
+          : `${activeEmployee.name} enviou atestado/comprovante para ${just.date || 'data de ausência'}.`;
+
         managers.forEach(mgr => {
           createNotificationSupabase({
             targetEmployeeId: mgr.id,
-            title: 'Novo Atestado / Justificativa',
-            message: `${activeEmployee.name} enviou atestado/comprovante para ${just.date || 'data de ausência'}.`,
+            title: notifTitle,
+            message: notifMsg,
             type: 'justification',
             actionRequired: true,
           });
@@ -878,7 +913,6 @@ function AppContent() {
     } catch (err) {
       console.warn('Erro ao salvar justificativa no Supabase:', err);
     }
-    showToast('Atestado Enviado', 'Sua justificativa/atestado foi gravado no banco de dados e enviado para o RH e Gestor.', 'success');
   };
 
   // Manager Actions
@@ -2325,6 +2359,8 @@ function AppContent() {
         initialShiftId={justificationPrefill?.shiftId}
         initialDate={justificationPrefill?.date}
         initialReason={justificationPrefill?.reason}
+        justificationType={justificationPrefill?.type || 'absence'}
+        delayMinutes={justificationPrefill?.delayMinutes}
       />
 
       <NotificationsModal

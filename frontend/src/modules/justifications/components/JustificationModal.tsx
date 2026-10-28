@@ -9,11 +9,13 @@ interface JustificationModalProps {
   onClose: () => void;
   currentEmployee: Employee;
   shifts: Shift[];
-  onSubmitJustification: (justification: Partial<AbsenceJustification>) => void;
+  onSubmitJustification: (justification: Partial<AbsenceJustification> & { justificationType?: 'absence' | 'delay' }) => void;
   isLightTheme?: boolean;
   initialShiftId?: string;
   initialDate?: string;
   initialReason?: string;
+  justificationType?: 'absence' | 'delay';
+  delayMinutes?: number;
 }
 
 export const JustificationModal: React.FC<JustificationModalProps> = ({
@@ -26,7 +28,10 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
   initialShiftId,
   initialDate,
   initialReason,
+  justificationType = 'absence',
+  delayMinutes,
 }) => {
+  const isDelay = justificationType === 'delay';
   const [selectedShiftId, setSelectedShiftId] = useState(initialShiftId || shifts[0]?.id || '');
   const [absenceDate, setAbsenceDate] = useState(initialDate || getTodayDateString());
   const [reason, setReason] = useState('');
@@ -94,10 +99,11 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
       shiftId: selectedShiftId || undefined,
       date: absenceDate || chosenShift?.date || getTodayDateString(),
       reason,
-      documentName: documentName || 'Atestado_Medico_Anexo.pdf',
-      documentType: 'application/pdf',
+      documentName: documentName || (isDelay ? '' : 'Atestado_Medico_Anexo.pdf'),
+      documentType: documentName ? 'application/pdf' : undefined,
       documentUrl: documentUrl || undefined,
       status: 'pending',
+      justificationType: isDelay ? 'delay' : 'absence'
     });
 
     onClose();
@@ -135,10 +141,12 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
             </div>
             <div>
               <h3 className={`font-bold text-base leading-tight ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
-                Enviar Atestado / Justificar Ausência
+                {isDelay ? 'Justificar Atraso de Entrada' : 'Enviar Atestado / Justificar Ausência'}
               </h3>
               <p className={`text-[11px] mt-0.5 ${isLightTheme ? 'text-slate-500' : 'text-white/50'}`}>
-                Envie comprovantes médicos ou declarações legais
+                {isDelay 
+                  ? (delayMinutes ? `Atraso registrado de +${delayMinutes} min. Informe o motivo para o gestor.` : 'Informe o motivo do atraso e anexe declaração/comprovante se aplicável.')
+                  : 'Envie comprovantes médicos ou declarações legais'}
               </p>
             </div>
           </div>
@@ -161,7 +169,7 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
             <label className={`block text-[10px] font-semibold uppercase tracking-wider mb-2 ${
               isLightTheme ? 'text-slate-600' : 'text-white/60'
             }`}>
-              Data da Ausência / Falta
+              {isDelay ? 'Data do Turno com Atraso' : 'Data da Ausência / Falta'}
             </label>
             <input
               type="date"
@@ -213,13 +221,13 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
             <label className={`block text-[10px] font-semibold uppercase tracking-wider mb-2 ${
               isLightTheme ? 'text-slate-600' : 'text-white/60'
             }`}>
-              Motivo detalhado
+              {isDelay ? 'Motivo do Atraso' : 'Motivo detalhado'}
             </label>
             <textarea
               rows={3}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="Ex: Consulta médica de emergência, exame laboratorial..."
+              placeholder={isDelay ? "Ex: Consulta médica, exame laboratorial, trânsito atípico..." : "Ex: Consulta médica de emergência, exame laboratorial..."}
               className={`w-full rounded-xl px-3 py-2.5 text-sm transition-colors focus:outline-none border ${
                 isLightTheme
                   ? 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:border-[#f89642] focus:ring-1 focus:ring-[#f89642]'
@@ -234,7 +242,9 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
             <label className={`block text-[10px] font-semibold uppercase tracking-wider mb-2 ${
               isLightTheme ? 'text-slate-600' : 'text-white/60'
             }`}>
-              Anexar Documento Comprobatório (PDF, JPG, PNG)
+              {isDelay 
+                ? 'Anexar Declaração de Comparecimento / Horas (Opcional)'
+                : 'Anexar Documento Comprobatório (PDF, JPG, PNG)'}
             </label>
             <label className={`border border-dashed rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition-colors ${
               isUploaded
@@ -259,7 +269,7 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
                     Clique para selecionar o arquivo
                   </span>
                   <span className={`text-[10px] ${isLightTheme ? 'text-slate-400' : 'text-white/40'}`}>
-                    PDF, PNG ou JPEG até 10MB
+                    {isDelay ? 'Declaração médica ou comprovante (opcional)' : 'PDF, PNG ou JPEG até 10MB'}
                   </span>
                 </div>
               )}
@@ -285,7 +295,7 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
               type="submit"
               className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#96183c] via-[#f89642] to-[#faf0ac] hover:brightness-110 active:scale-[0.98] text-white text-xs font-bold shadow-lg shadow-[#96183c]/25 transition-all flex items-center gap-2 cursor-pointer"
             >
-              Enviar Atestado
+              {isDelay ? 'Enviar Justificativa de Atraso' : 'Enviar Atestado'}
             </button>
           </div>
         </form>

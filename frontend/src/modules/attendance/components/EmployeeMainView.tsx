@@ -70,7 +70,7 @@ interface EmployeeMainViewProps {
   isLightTheme: boolean;
   employees?: Employee[];
   justifications?: AbsenceJustification[];
-  onOpenJustificationModal?: (shiftId?: string, date?: string, reason?: string) => void;
+  onOpenJustificationModal?: (shiftId?: string, date?: string, type?: 'absence' | 'delay', delayMinutes?: number, reason?: string) => void;
 }
 
 export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
@@ -1986,7 +1986,9 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                               setIsHistoryOpen(false);
                               onOpenJustificationModal(
                                 item.shiftId,
-                                item.date
+                                item.date,
+                                isFalta ? 'absence' : 'delay',
+                                item.delayInfo?.minutes
                               );
                             }}
                             className={`ml-auto px-2.5 sm:px-3 py-1 rounded-lg sm:rounded-xl font-bold text-[11px] sm:text-xs transition-all cursor-pointer shadow-xs flex items-center gap-1 shrink-0 ${
@@ -1996,11 +1998,17 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                                   ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300'
                                   : 'bg-white/10 hover:bg-white/20 text-white border border-white/15'
                             }`}
-                            title={isFalta ? 'Enviar justificativa para esta falta' : 'Enviar justificativa para este atraso'}
+                            title={isFalta ? 'Enviar justificativa/atestado para esta falta' : 'Enviar justificativa para este atraso'}
                           >
                             <FileText className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                             <span>Justificar</span>
                           </button>
+                        )}
+                        {item.delayInfo?.isJustified && (
+                          <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Justificado</span>
+                          </span>
                         )}
                       </div>
 
