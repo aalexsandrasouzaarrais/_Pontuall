@@ -34,6 +34,10 @@ export function startOfWeekSunday(d: Date): Date {
 
 export function formatTime(timeStr: string): string {
   if (!timeStr) return '';
+  const match = timeStr.match(/^(\d{1,2}):(\d{2})/);
+  if (match) {
+    return `${match[1].padStart(2, '0')}:${match[2]}`;
+  }
   return timeStr;
 }
 
@@ -229,4 +233,148 @@ export function formatFullDatePt(dateStr: string): string {
   const [y, m, d] = dateStr.split('-').map(Number);
   const date = new Date(y, m - 1, d);
   return date.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+/**
+/**
+ * Formata qualquer data (string YYYY-MM-DD, ISO, timestamp ou Date) para o padrão brasileiro DD/MM/AAAA.
+ * Não sofre com problemas de timezone UTC-3 para strings contendo apenas ano-mês-dia.
+ */
+export function formatDateBR(val?: string | Date | number | null): string {
+  if (!val && val !== 0) return '';
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return '';
+    const day = String(val.getDate()).padStart(2, '0');
+    const month = String(val.getMonth() + 1).padStart(2, '0');
+    const year = val.getFullYear();
+    return `${day}/${month}/${year}`;
+  }
+  const clean = String(val).trim();
+  if (!clean) return '';
+
+  // Se já for DD/MM/AAAA
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(clean)) {
+    return clean;
+  }
+  // Se for DD-MM-AAAA
+  if (/^\d{2}-\d{2}-\d{4}$/.test(clean)) {
+    return clean.replace(/-/g, '/');
+  }
+  // Se começar com YYYY-MM-DD ou YYYY/MM/DD (com ou sem horário posterior)
+  const ymdMatch = clean.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (ymdMatch) {
+    const y = ymdMatch[1];
+    const m = ymdMatch[2].padStart(2, '0');
+    const d = ymdMatch[3].padStart(2, '0');
+    return `${d}/${m}/${y}`;
+  }
+
+  // Se for timestamp ou string ISO com fuso
+  const d = new Date(clean);
+  if (!isNaN(d.getTime())) {
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  }
+
+  return clean;
+}
+
+/**
+ * Normaliza qualquer formato de data para YYYY-MM-DD para comparações estritas em filtros
+ * e valores de <input type="date">.
+ */
+export function normalizeDateToISO(val?: string | Date | number | null): string {
+  if (!val && val !== 0) return '';
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return '';
+    return toLocalDateString(val);
+  }
+  const clean = String(val).trim();
+  if (!clean) return '';
+
+  // Se começar com YYYY-MM-DD
+  const ymdMatch = clean.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (ymdMatch) {
+    return `${ymdMatch[1]}-${ymdMatch[2].padStart(2, '0')}-${ymdMatch[3].padStart(2, '0')}`;
+  }
+
+  // Se for DD/MM/AAAA ou DD-MM-AAAA
+  const dmyMatch = clean.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (dmyMatch) {
+    return `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
+  }
+
+  const d = new Date(clean);
+  if (!isNaN(d.getTime())) {
+    return toLocalDateString(d);
+  }
+
+  return clean;
+}
+
+/**
+ * Compara se duas datas representam o mesmo dia civil, independentemente do formato
+ * (DD/MM/AAAA, YYYY-MM-DD, Date, ISO).
+ */
+export function isSameDate(d1?: string | Date | number | null, d2?: string | Date | number | null): boolean {
+  const iso1 = normalizeDateToISO(d1);
+  const iso2 = normalizeDateToISO(d2);
+  if (!iso1 || !iso2) return false;
+  return iso1 === iso2;
+}
+
+/**
+ * Formata data e hora no padrão brasileiro: DD/MM/AAAA às HH:mm (ou DD/MM/AAAA HH:mm)
+ */
+export function formatDateTimeBR(val?: string | Date | null, withAt: boolean = false): string {
+  if (!val) return '';
+  const d = val instanceof Date ? val : new Date(val);
+  if (isNaN(d.getTime())) {
+    return formatDateBR(val);
+  }
+  const datePart = formatDateBR(d);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return withAt ? `${datePart} às ${hh}:${mm}` : `${datePart} ${hh}:${mm}`;
+}
+
+/**
+ * Verifica se um turno está sem registro de ponto após mais de 24 horas da data/horário de início.
+ */
+export function isShiftPast24hWithoutPunch(
+  shift: {
+    date: string;
+    startTime?: string;
+    checkInTime?: string;
+    attendanceStatus?: string;
+  },
+  now: Date = new Date()
+): boolean {
+  if (!shift || !shift.date) return false;
+  if (shift.checkInTime) return false;
+  if (shift.attendanceStatus === 'present' || shift.attendanceStatus === 'late') return false;
+
+  try {
+    const parts = shift.date.split(/[-/]/).map(Number);
+    let year = parts[0];
+    let month = parts[1];
+    let day = parts[2];
+    if (day > 1000) {
+      // Formato DD-MM-YYYY
+      day = parts[0];
+      month = parts[1];
+      year = parts[2];
+    }
+    const [startH, startM] = (shift.startTime || '08:00').split(':').map(Number);
+    const shiftDateTime = new Date(year, month - 1, day, startH || 8, startM || 0);
+    if (isNaN(shiftDateTime.getTime())) return false;
+
+    const diffMs = now.getTime() - shiftDateTime.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+    return diffHours >= 24;
+  } catch {
+    return false;
+  }
 }

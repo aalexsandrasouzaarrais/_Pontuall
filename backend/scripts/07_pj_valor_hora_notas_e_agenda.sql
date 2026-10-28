@@ -7,6 +7,7 @@ ALTER TABLE "TAB_Colaborador"
 ADD COLUMN IF NOT EXISTS "Vlr_Hora_Pj" NUMERIC(10, 2) DEFAULT 0.00,
 ADD COLUMN IF NOT EXISTS "Num_Cota_Horas_Mensal" INTEGER DEFAULT 160;
 
+
 -- 2. Criação da tabela de Notas Pessoais do Colaborador PJ (Bloco de Notas)
 CREATE TABLE IF NOT EXISTS "TAB_Nota_Pessoal_Pj" (
     "Idf_Nota_Pj" UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/shared/services/supabase';
-import { mapBneToEmployee, createGestorSupabase } from '../services/colaboradorService';
+import { mapBneToEmployee, createGestorSupabase, checkEmailExists } from '../services/colaboradorService';
 import { Employee } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
 import { PasswordResetPage } from './PasswordResetPage';
@@ -342,7 +342,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         companyId: employeeObj.companyId,
         isRh: isRhUser,
         roleType: isRhUser ? 'rh' : (matchedUser.Tpo_Perfil || 'gestor'),
-        Flg_Gestor_Master: isRhUser
+        Flg_Gestor_Master: isRhUser,
+        contractType: employeeObj.contractType,
+        contractStartDate: employeeObj.contractStartDate,
+        contractEndDate: employeeObj.contractEndDate,
+        pjMonthlyHoursQuota: employeeObj.monthlyHoursQuota,
+        hourlyRate: employeeObj.hourlyRate
       }));
 
       setTimeout(() => {
@@ -385,7 +390,30 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
       return;
     }
 
+    // 0. Verifica se o e-mail já existe localmente ou no Supabase antes de prosseguir
+    try {
+      const registeredUsers = JSON.parse(safeStorage.getItem('pontual_registered_users') || '[]');
+      const userExistsLocal = registeredUsers.some((u: any) => {
+        const uEmail = (u.Eml_Corporativo || u.email || '').toLowerCase().trim();
+        const uSec = (u.Eml_Secundario || '').toLowerCase().trim();
+        return uEmail === cleanEmail || uSec === cleanEmail;
+      });
+      if (userExistsLocal) {
+        showFeedback('Este e-mail corporativo já está cadastrado no sistema. Não é possível se cadastrar novamente. Faça login para acessar sua conta.', 'error');
+        return;
+      }
+    } catch {}
+
     setIsRegLoading(true);
+
+    try {
+      const existsInDb = await checkEmailExists(cleanEmail);
+      if (existsInDb) {
+        showFeedback('Este e-mail corporativo já está cadastrado no sistema. Não é possível se cadastrar novamente. Faça login para acessar sua conta.', 'error');
+        setIsRegLoading(false);
+        return;
+      }
+    } catch {}
 
     try {
       let createdEmployee: Employee;
@@ -410,9 +438,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
           dbErr?.message &&
           (dbErr.message.includes('unique') ||
             dbErr.message.includes('23505') ||
-            dbErr.message.includes('already exists'))
+            dbErr.message.includes('already exists') ||
+            dbErr.message.includes('DUPLICATE_EMAIL') ||
+            dbErr.message.includes('já está cadastrado'))
         ) {
-          showFeedback('Este e-mail corporativo já está cadastrado. Faça login para acessar sua conta.', 'warning');
+          showFeedback('Este e-mail corporativo já está cadastrado no sistema. Não é possível se cadastrar novamente. Faça login para acessar sua conta.', 'error');
           setIsRegLoading(false);
           return;
         }
@@ -600,7 +630,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         ================================================== */}
         <div className="left-panel">
           {/* Logo */}
-          <div className="logo2">
+          <div className="logo2 cursor-pointer" onClick={() => setViewMode('login')} title="Ir para o início">
             <img src={logoPontualTransparente} alt="Pontual Logo" width="160px" />
             <img src={pontualBranco} alt="" />
           </div>
@@ -836,6 +866,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
               className={`icon-login ${isDark ? 'icon-login--dark' : 'icon-login--light'}`}
               src={isDark ? logoPontualTransparente : logoPontualClaro}
               alt="Pontual Logo"
+              onClick={() => setViewMode('login')}
+              title="Ir para o início"
+              style={{ cursor: 'pointer' }}
             />
 
             {/* MENSAGEM DE FEEDBACK FLUTUANTE */}

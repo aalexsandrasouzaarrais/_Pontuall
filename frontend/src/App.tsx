@@ -1,4 +1,4 @@
-import { getTodayDateString, evaluatePunchTolerance } from '@/shared/utils/dateUtils';
+import { getTodayDateString, evaluatePunchTolerance, formatDateBR } from '@/shared/utils/dateUtils';
 import React, { useState, useEffect } from 'react';
 import { 
   EmployeeSidebar 
@@ -218,10 +218,11 @@ function AppContent() {
           roleType: parsed.roleType || (isRhParsed ? 'rh' : (parsed.Flg_Gestor_Master || parsed.perfil === 'gestor' || parsed.Tpo_Perfil === 'gestor' ? 'gestor' : 'colaborador')),
           companyCnpj: parsed.companyCnpj || undefined,
           managerIds: parsed.managerIds || [],
-          contractType: parsed.contractType || parsed.Tpo_Regime_Contrato || undefined,
+          contractType: parsed.contractType || parsed.Tpo_Regime_Contrato || parsed.Tpo_Contrato || undefined,
           contractStartDate: parsed.contractStartDate || parsed.Dta_Inicio_Contrato || undefined,
           contractEndDate: parsed.contractEndDate || parsed.Dta_Fim_Contrato || undefined,
-          pjMonthlyHoursQuota: parsed.pjMonthlyHoursQuota || undefined
+          pjMonthlyHoursQuota: parsed.pjMonthlyHoursQuota || parsed.Num_Cota_Horas_Mensal || undefined,
+          hourlyRate: parsed.hourlyRate !== undefined ? Number(parsed.hourlyRate) : (parsed.Vlr_Hora_Pj !== undefined ? Number(parsed.Vlr_Hora_Pj) : undefined)
         };
       }
     } catch {}
@@ -243,8 +244,10 @@ function AppContent() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [reminders, setReminders] = useState<ManagerReminder[]>([]);
   const [pjReports, setPjReports] = useState<PjDeliverableReport[]>([]);
+  const isRhUser = Boolean(activeEmployee?.isRh || activeEmployee?.roleType === 'rh' || activeEmployee?.isMasterManager);
   
   // Employee Tabs
+  const [managerActiveTab, setManagerActiveTab] = useState<any>('orbit');
   const [employeeTab, setEmployeeTab] = useState<'overview' | 'pj_reports' | 'calendar' | 'requests' | 'justifications' | 'chat'>('overview');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -284,11 +287,13 @@ function AppContent() {
           currentEmp = { ...currentEmp, ...meInDb };
           setActiveEmployee(prev => ({
             ...prev,
+            ...meInDb,
             managerIds: meInDb.managerIds?.length ? meInDb.managerIds : prev.managerIds,
             contractType: meInDb.contractType || prev.contractType,
             contractStartDate: meInDb.contractStartDate || prev.contractStartDate,
             contractEndDate: meInDb.contractEndDate || prev.contractEndDate,
-            pjMonthlyHoursQuota: meInDb.pjMonthlyHoursQuota || prev.pjMonthlyHoursQuota
+            pjMonthlyHoursQuota: meInDb.monthlyHoursQuota || meInDb.pjMonthlyHoursQuota || prev.pjMonthlyHoursQuota,
+            hourlyRate: meInDb.hourlyRate !== undefined ? meInDb.hourlyRate : prev.hourlyRate,
           }));
         }
 
@@ -369,6 +374,12 @@ function AppContent() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isSwapModalOpen, setIsSwapModalOpen] = useState(false);
   const [isJustificationModalOpen, setIsJustificationModalOpen] = useState(false);
+  const [justificationPrefill, setJustificationPrefill] = useState<{ shiftId?: string; date?: string; reason?: string } | null>(null);
+
+  const handleOpenJustificationModal = (shiftId?: string, date?: string, reason?: string) => {
+    setJustificationPrefill({ shiftId, date, reason });
+    setIsJustificationModalOpen(true);
+  };
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
   const [isManagerRequestsModalOpen, setIsManagerRequestsModalOpen] = useState(false);
@@ -478,7 +489,12 @@ function AppContent() {
         Idf_Empresa: emp.companyId,
         companyId: emp.companyId,
         isRh: emp.isRh,
-        roleType: emp.roleType
+        roleType: emp.roleType,
+        contractType: emp.contractType,
+        contractStartDate: emp.contractStartDate,
+        contractEndDate: emp.contractEndDate,
+        pjMonthlyHoursQuota: emp.monthlyHoursQuota,
+        hourlyRate: emp.hourlyRate
       }));
 
       setActiveEmployee(emp);
@@ -541,6 +557,18 @@ function AppContent() {
       await clearAllNotificationsSupabase(activeEmployee.id);
     }
     showToast('Notificações Apagadas', 'Todas as notificações foram removidas com sucesso.', 'info');
+  };
+
+  // Retorna à tela inicial / painel ao clicar no logotipo Pontual
+  const handleNavigateHome = () => {
+    setIsProfileModalOpen(false);
+    setIsChatModalOpen(false);
+    setIsNotificationsModalOpen(false);
+    setIsManagerRequestsModalOpen(false);
+    setIsSwapModalOpen(false);
+    setIsDetailModalOpen(false);
+    setEmployeeTab('overview');
+    setManagerActiveTab('orbit');
   };
 
   // Floating Halo Toast Notification
@@ -1179,6 +1207,12 @@ function AppContent() {
   };
 
   const handleApprovePjReport = async (id: string) => {
+    // Restrição: homologação de entregas PJ é exclusiva do perfil Gestor (RH não homologa PJ)
+    const isRh = activeEmployee?.isRh || activeEmployee?.roleType === 'rh' || activeEmployee?.isMasterManager;
+    if (isRh) {
+      showToast('Acesso Restrito', 'A homologação de entregas PJ cabe exclusivamente ao Gestor de Setor.', 'error');
+      return;
+    }
     const feedback = 'Entregas e horas homologadas pelo gestor.';
     const target = pjReports.find(p => p.id === id);
     setPjReports(prev => prev.map(p => p.id === id ? { ...p, status: 'approved', managerFeedback: feedback } : p));
@@ -1195,6 +1229,12 @@ function AppContent() {
   };
 
   const handleRejectPjReport = async (id: string, reason?: string) => {
+    // Restrição: solicitação de ajustes em entregas PJ é exclusiva do perfil Gestor (RH não homologa PJ)
+    const isRh = activeEmployee?.isRh || activeEmployee?.roleType === 'rh' || activeEmployee?.isMasterManager;
+    if (isRh) {
+      showToast('Acesso Restrito', 'A solicitação de ajustes em entregas PJ cabe exclusivamente ao Gestor de Setor.', 'error');
+      return;
+    }
     const feedback = reason || 'Ajustes solicitados pelo gestor.';
     const target = pjReports.find(p => p.id === id);
     setPjReports(prev => prev.map(p => p.id === id ? { ...p, status: 'rejected', managerFeedback: feedback } : p));
@@ -1248,12 +1288,34 @@ function AppContent() {
   };
 
   const handleAddEmployee = async (newEmp: Employee) => {
+    const cleanEmail = (newEmp.email || '').trim().toLowerCase();
+
+    // Verificação preventiva local na equipe carregada
+    if (cleanEmail && employees.some(e => (e.email || '').trim().toLowerCase() === cleanEmail)) {
+      showToast(
+        'E-mail já cadastrado',
+        `O e-mail "${newEmp.email}" já está cadastrado no sistema. Não é possível cadastrar novamente.`,
+        'error'
+      );
+      throw new Error(`O e-mail "${newEmp.email}" já está cadastrado no sistema.`);
+    }
+
     try {
       // Salva diretamente na tabela TAB_Colaborador do Supabase e vincula ao gestor ativo (M:N)
       const saved = await createColaboradorSupabase(newEmp, activeEmployee?.id);
       setEmployees(prev => [...prev, saved]);
-    } catch (err) {
-      console.warn('Fallback local ao salvar colaborador:', err);
+    } catch (err: any) {
+      console.warn('Erro ao salvar colaborador:', err);
+      // Se for erro de duplicidade de e-mail, NÃO salva localmente e propaga o erro!
+      if (err?.message?.includes('já está cadastrado') || err?.message?.includes('DUPLICATE_EMAIL')) {
+        showToast(
+          'E-mail já cadastrado',
+          `O e-mail informado já pertence a outro usuário. Cadastro não permitido.`,
+          'error'
+        );
+        throw err;
+      }
+      // Fallback offline apenas para falha de conexão com banco
       setEmployees(prev => [...prev, newEmp]);
     }
     const newNotif: NotificationItem = {
@@ -1311,8 +1373,14 @@ function AppContent() {
       <header className={`backdrop-blur-xl border-b px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3 text-xs sticky top-0 z-50 shadow-md transition-colors ${
         !isDark ? 'bg-white/95 border-slate-200 text-slate-800' : 'bg-[#0D0F15]/95 border-[#222634]/80 text-white'
       }`}>
-        {/* Left: Logo */}
-        <div className="flex items-center gap-3">
+        {/* Left: Logo (Clicável: retorna ao painel inicial) */}
+        <button
+          type="button"
+          onClick={handleNavigateHome}
+          className="flex items-center gap-3 cursor-pointer hover:opacity-80 active:scale-95 transition-all text-left bg-transparent border-0 p-0 focus:outline-none"
+          title="Ir para o Painel Inicial"
+          aria-label="Ir para o Painel Inicial"
+        >
           <img
             src={!isDark ? logoWideDark : logoWideLight}
             alt="Pontual"
@@ -1326,7 +1394,7 @@ function AppContent() {
               }
             }}
           />
-        </div>
+        </button>
 
         {/* Right: Perfil (mobile) + Tema + Sair (desktop) */}
         <div className="flex items-center gap-2 sm:gap-2.5 ml-auto">
@@ -1391,6 +1459,8 @@ function AppContent() {
         /* MANAGER VIEW (Full screen width) */
         <div className={`flex-1 w-full flex flex-col min-h-0 manager-scope ${theme}`}>
           <ManagerView
+            activeTab={managerActiveTab}
+            onTabChange={setManagerActiveTab}
             employees={visibleEmployees}
             shifts={shifts}
             activeEmployee={activeEmployee}
@@ -1500,6 +1570,7 @@ function AppContent() {
                   isLightTheme={!isDark}
                   employees={employees}
                   justifications={justifications}
+                  onOpenJustificationModal={handleOpenJustificationModal}
                 />
               );
             })()}
@@ -1662,7 +1733,7 @@ function AppContent() {
                                       </span>
                                     </p>
                                     <p className="text-[11px] opacity-80 mt-0.5">
-                                      Turno do dia <strong className="font-mono text-amber-600 dark:text-amber-300">{req.date}</strong>
+                                      Turno do dia <strong className="font-mono text-amber-600 dark:text-amber-300">{formatDateBR(req.date)}</strong>
                                       {req.shiftStartTime && req.shiftEndTime && (
                                         <span> ({req.shiftStartTime} às {req.shiftEndTime})</span>
                                       )}
@@ -1822,7 +1893,7 @@ function AppContent() {
                               <rect x="3" y="4" width="18" height="18" rx="2" />
                               <path d="M16 2v4M8 2v4M3 10h18" />
                             </svg>
-                            {req.date}
+                            {formatDateBR(req.date)}
                           </div>
                         </div>
 
@@ -2072,7 +2143,7 @@ function AppContent() {
                               <rect x="3" y="4" width="18" height="18" rx="2" />
                               <path d="M16 2v4M8 2v4M3 10h18" />
                             </svg>
-                            {just.date}
+                            {formatDateBR(just.date)}
                           </div>
                         </div>
 
@@ -2216,6 +2287,7 @@ function AppContent() {
         onRejectJustification={handleRejectJustification}
         onApprovePjReport={handleApprovePjReport}
         onRejectPjReport={handleRejectPjReport}
+        isRh={isRhUser}
       />
 
       <ShiftDetailModal
@@ -2235,17 +2307,24 @@ function AppContent() {
         currentEmployee={activeEmployee}
         employees={employees}
         myShifts={shifts.filter(s => s.employeeId === activeEmployee.id)}
+        allShifts={shifts}
         onSubmitRequest={handleSubmitRequest}
         isLightTheme={!isDark}
       />
 
       <JustificationModal
         isOpen={isJustificationModalOpen}
-        onClose={() => setIsJustificationModalOpen(false)}
+        onClose={() => {
+          setIsJustificationModalOpen(false);
+          setJustificationPrefill(null);
+        }}
         currentEmployee={activeEmployee}
         shifts={shifts.filter(s => s.employeeId === activeEmployee.id)}
         onSubmitJustification={handleSubmitJustification}
         isLightTheme={!isDark}
+        initialShiftId={justificationPrefill?.shiftId}
+        initialDate={justificationPrefill?.date}
+        initialReason={justificationPrefill?.reason}
       />
 
       <NotificationsModal

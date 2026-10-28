@@ -1,3 +1,4 @@
+import { formatDateBR, formatDateTimeBR } from '@/shared/utils/dateUtils';
 import React, { useState } from 'react';
 import { X, Check, ArrowLeftRight, FileText, CheckCircle2, Clock, Briefcase, Link as LinkIcon, ExternalLink, Eye, AlertCircle } from 'lucide-react';
 import { TimeOffRequest, AbsenceJustification, PjDeliverableReport } from '@/types';
@@ -14,6 +15,7 @@ interface ManagerRequestsModalProps {
   onRejectJustification: (id: string) => void;
   onApprovePjReport?: (id: string) => void;
   onRejectPjReport?: (id: string, reason?: string) => void;
+  isRh?: boolean;
 }
 
 export const ManagerRequestsModal: React.FC<ManagerRequestsModalProps> = ({
@@ -28,6 +30,7 @@ export const ManagerRequestsModal: React.FC<ManagerRequestsModalProps> = ({
   onRejectJustification,
   onApprovePjReport,
   onRejectPjReport,
+  isRh = false,
 }) => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [rejectionModalId, setRejectionModalId] = useState<string | null>(null);
@@ -98,7 +101,7 @@ export const ManagerRequestsModal: React.FC<ManagerRequestsModalProps> = ({
                           )}
                         </div>
                         <p className="text-xs text-slate-300 mt-1 flex items-center gap-1.5 flex-wrap">
-                          <span>Data: <strong className="font-mono text-white">{req.date}</strong></span>
+                          <span>Data: <strong className="font-mono text-white">{formatDateBR(req.date)}</strong></span>
                           {req.shiftStartTime && req.shiftEndTime && (
                             <span className="text-amber-300 font-mono font-semibold">({req.shiftStartTime} às {req.shiftEndTime})</span>
                           )}
@@ -157,7 +160,7 @@ export const ManagerRequestsModal: React.FC<ManagerRequestsModalProps> = ({
                           </span>
                         </div>
                         <p className="text-xs text-slate-300 mt-0.5">
-                          Falta em: <strong className="font-mono text-white">{just.date}</strong>
+                          Falta em: <strong className="font-mono text-white">{formatDateBR(just.date)}</strong>
                         </p>
                         <p className="text-[11px] text-slate-400 italic mt-0.5">
                           "{just.reason}"
@@ -214,31 +217,43 @@ export const ManagerRequestsModal: React.FC<ManagerRequestsModalProps> = ({
                           </span>
                         </div>
                         <p className="text-[11px] text-slate-400 mt-0.5">
-                          Período: <strong className="text-slate-200">{rep.period}</strong> • Enviado em: {new Date(rep.submittedAt).toLocaleDateString('pt-BR')}
+                          Período: <strong className="text-slate-200">{rep.period}</strong> • Enviado em: {formatDateTimeBR(rep.submittedAt)}
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0">
-                        <button
-                          onClick={() => {
-                            if (onRejectPjReport) {
-                              const reason = window.prompt('Motivo da recusa ou solicitação de ajustes:');
-                              if (reason !== null) {
-                                onRejectPjReport(rep.id, reason);
+                      {isRh ? (
+                        <div className="self-end sm:self-center shrink-0">
+                          <span
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/25"
+                            title="A homologação de entregas PJ é de alçada exclusiva do Gestor responsável"
+                          >
+                            <Clock className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Aguardando Gestor</span>
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0">
+                          <button
+                            onClick={() => {
+                              if (onRejectPjReport) {
+                                const reason = window.prompt('Motivo da recusa ou solicitação de ajustes:');
+                                if (reason !== null) {
+                                  onRejectPjReport(rep.id, reason);
+                                }
                               }
-                            }
-                          }}
-                          className="px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 transition-colors cursor-pointer"
-                        >
-                          Recusar / Ajustes
-                        </button>
-                        <button
-                          onClick={() => onApprovePjReport && onApprovePjReport(rep.id)}
-                          className="px-3 py-1 rounded-lg text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white font-bold transition-colors cursor-pointer shadow-sm"
-                        >
-                          Aprovar Entregas
-                        </button>
-                      </div>
+                            }}
+                            className="px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 transition-colors cursor-pointer"
+                          >
+                            Recusar / Ajustes
+                          </button>
+                          <button
+                            onClick={() => onApprovePjReport && onApprovePjReport(rep.id)}
+                            className="px-3 py-1 rounded-lg text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white font-bold transition-colors cursor-pointer shadow-sm"
+                          >
+                            Aprovar Entregas
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* Descrição */}

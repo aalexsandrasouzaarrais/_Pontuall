@@ -11,7 +11,7 @@ import {
   Clock
 } from 'lucide-react';
 import { Employee, Shift } from '@/types';
-import { addDaysLocal, getTodayDateString, startOfWeekSunday, toLocalDateString } from '@/shared/utils/dateUtils';
+import { addDaysLocal, getTodayDateString, startOfWeekSunday, toLocalDateString, formatDateBR } from '@/shared/utils/dateUtils';
 
 interface DeleteShiftsModalProps {
   isOpen: boolean;
@@ -272,7 +272,7 @@ export const DeleteShiftsModal: React.FC<DeleteShiftsModalProps> = ({
                   const emp = employees.find(e => e.id === s.employeeId);
                   return (
                     <div key={s.id} className="flex items-center justify-between opacity-90 py-0.5">
-                      <span>{emp?.name || 'Colaborador'} — {s.date}</span>
+                      <span>{emp?.name || 'Colaborador'} — {formatDateBR(s.date)}</span>
                       <span>{s.startTime} às {s.endTime}</span>
                     </div>
                   );

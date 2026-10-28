@@ -16,6 +16,7 @@ import {
   Check
 } from 'lucide-react';
 import { Shift, Employee, WorkplaceLocation } from '@/types';
+import { formatDateBR, normalizeDateToISO } from '@/shared/utils/dateUtils';
 import { calculateShiftDurationHours } from '@/shared/utils/dateUtils';
 import { ORBIT_COLORS } from './OrbitShiftModal';
 import { findWorkplaceByName } from '@/shared/services/workplaceService';
@@ -80,16 +81,17 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
   const formattedDate = React.useMemo(() => {
     if (!shift?.date) return { fullDate: '—', weekDay: '' };
     try {
-      const [y, m, d] = shift.date.split('-').map(Number);
+      const iso = normalizeDateToISO(shift.date);
+      const [y, m, d] = iso.split('-').map(Number);
       const dateObj = new Date(y, m - 1, d);
       const weekDay = dateObj.toLocaleDateString('pt-BR', { weekday: 'long' });
-      const fullDate = `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
+      const fullDate = formatDateBR(shift.date);
       return {
         fullDate,
-        weekDay: weekDay.charAt(0).toUpperCase() + weekDay.slice(1),
+        weekDay: weekDay ? weekDay.charAt(0).toUpperCase() + weekDay.slice(1) : '',
       };
     } catch {
-      return { fullDate: shift.date, weekDay: '' };
+      return { fullDate: formatDateBR(shift.date) || shift.date, weekDay: '' };
     }
   }, [shift?.date]);
 

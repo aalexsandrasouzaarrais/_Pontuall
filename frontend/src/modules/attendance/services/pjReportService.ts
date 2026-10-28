@@ -1,3 +1,8 @@
+function isUuid(id?: string): boolean {
+  if (!id) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
+
 import { supabase } from '@/shared/services/supabase';
 import { safeStorage } from '@/shared/utils/safeStorage';
 import { PjDeliverableReport, PjReportLink, PjTimesheetEntry, PjActiveTimerState } from '@/types';
@@ -255,10 +260,88 @@ export function saveDraftTimesheet(employeeId: string, entries: PjTimesheetEntry
   } catch {}
 }
 
+export async function syncDraftTimesheetFromSupabase(employeeId: string): Promise<PjTimesheetEntry[]> {
+  const local = getDraftTimesheet(employeeId);
+  if (!isUuid(employeeId)) return local;
+
+  try {
+    const { data, error } = await supabase
+      .from('TAB_Relatorio_Pj')
+      .select('*')
+      .eq('Idf_Colaborador', employeeId)
+      .eq('Des_Periodo_Referencia', '__DRAFT_TIMESHEET__')
+      .maybeSingle();
+
+    if (!error && data) {
+      let entries: PjTimesheetEntry[] = [];
+      const rawLinks: any[] = Array.isArray(data.Des_Links_Json) ? data.Des_Links_Json : [];
+      const meta = rawLinks.find(l => l && l.title === '__TIMESHEET_META__');
+      if (meta?.url) {
+        try {
+          entries = JSON.parse(meta.url);
+        } catch {}
+      }
+      if (Array.isArray(entries) && entries.length > 0) {
+        saveDraftTimesheet(employeeId, entries);
+        return entries;
+      }
+    }
+  } catch (err) {
+    console.warn('Aviso ao sincronizar rascunho de timesheet:', err);
+  }
+  return local;
+}
+
+export async function saveDraftTimesheetToSupabase(
+  employeeId: string,
+  entries: PjTimesheetEntry[]
+): Promise<void> {
+  saveDraftTimesheet(employeeId, entries);
+  if (!isUuid(employeeId)) return;
+
+  try {
+    const key = '__DRAFT_TIMESHEET__';
+    const totalHours = Number(
+      entries.reduce((acc, curr) => acc + (Number(curr.durationHours) || 0), 0).toFixed(2)
+    );
+    const payload = {
+      Num_Horas_Trabalhadas: totalHours,
+      Des_Atividades: `Timesheet em aberto - ${entries.length} atividade(s)`,
+      Des_Links_Json: [{ title: '__TIMESHEET_META__', url: JSON.stringify(entries) }],
+      Tpo_Status: 'draft',
+    };
+
+    const { data: existing } = await supabase
+      .from('TAB_Relatorio_Pj')
+      .select('Idf_Relatorio_Pj')
+      .eq('Idf_Colaborador', employeeId)
+      .eq('Des_Periodo_Referencia', key)
+      .maybeSingle();
+
+    if (existing?.Idf_Relatorio_Pj) {
+      await supabase
+        .from('TAB_Relatorio_Pj')
+        .update(payload)
+        .eq('Idf_Relatorio_Pj', existing.Idf_Relatorio_Pj);
+    } else {
+      await supabase
+        .from('TAB_Relatorio_Pj')
+        .insert({
+          ...payload,
+          Idf_Colaborador: employeeId,
+          Des_Periodo_Referencia: key,
+        });
+    }
+  } catch (err) {
+    console.warn('Aviso ao persistir rascunho de timesheet no Supabase:', err);
+  }
+}
+
 export function addDraftTimesheetEntry(employeeId: string, entry: PjTimesheetEntry): PjTimesheetEntry[] {
   const current = getDraftTimesheet(employeeId);
   const updated = [entry, ...current.filter(e => e.id !== entry.id)];
   saveDraftTimesheet(employeeId, updated);
+  saveDraftTimesheetToSupabase(employeeId, updated).catch(() => {});
   return updated;
 }
 
@@ -266,12 +349,25 @@ export function deleteDraftTimesheetEntry(employeeId: string, entryId: string): 
   const current = getDraftTimesheet(employeeId);
   const updated = current.filter(e => e.id !== entryId);
   saveDraftTimesheet(employeeId, updated);
+  saveDraftTimesheetToSupabase(employeeId, updated).catch(() => {});
   return updated;
+}
+
+export async function clearDraftTimesheetSupabase(employeeId: string): Promise<void> {
+  clearDraftTimesheet(employeeId);
+  if (!isUuid(employeeId)) return;
+  try {
+    await supabase
+      .from('TAB_Relatorio_Pj')
+      .delete()
+      .eq('Idf_Colaborador', employeeId)
+      .eq('Des_Periodo_Referencia', '__DRAFT_TIMESHEET__');
+  } catch {}
 }
 
 export function clearDraftTimesheet(employeeId: string): void {
   try {
-    safeStorage.removeItem(`${STORAGE_KEY_PJ_DRAFT_PREFIX}${employeeId}`);
+    safeStorage.removeItem(STORAGE_KEY_PJ_DRAFT_PREFIX + employeeId);
   } catch {}
 }
 

@@ -21,6 +21,7 @@ import {
 import { Employee } from '@/types';
 import { updateColaboradorAvatarSupabase } from '@/modules/auth/services/colaboradorService';
 import { safeStorage } from '@/shared/utils/safeStorage';
+import { formatDateBR } from '@/shared/utils/dateUtils';
 
 interface ProfileEditModalProps {
   isOpen: boolean;
@@ -297,6 +298,17 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
               <p className={`text-xs font-medium mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                 {currentUser.role} • {currentUser.department}
               </p>
+
+              {currentUser.contractType === 'PJ' && (
+                <div className="mt-2 flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-black bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-mono">
+                    💰 R$ {Number(currentUser.hourlyRate || 0).toFixed(2).replace('.', ',')} / hora
+                  </span>
+                  <span className={`text-[11px] font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    (Franquia: {currentUser.monthlyHoursQuota || 160}h/mês)
+                  </span>
+                </div>
+              )}
 
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 mt-3 text-xs">
                 <span className={`inline-flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
@@ -611,6 +623,29 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
                 </span>
               </div>
 
+              {/* Card Destaque: Valor da Hora PJ */}
+              {currentUser.contractType === 'PJ' && (
+                <>
+                  <div className={`p-3 rounded-xl border ${isDark ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200'}`}>
+                    <span className={`text-[10px] font-mono uppercase font-bold block ${isDark ? 'text-emerald-400' : 'text-emerald-800'}`}>
+                      Remuneração Contratada (R$/h)
+                    </span>
+                    <span className="text-sm font-black font-mono text-emerald-600 dark:text-emerald-400 mt-0.5 block">
+                      R$ {Number(currentUser.hourlyRate || 0).toFixed(2).replace('.', ',')} / hora
+                    </span>
+                  </div>
+
+                  <div className={`p-3 rounded-xl border ${isDark ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-emerald-50 border-emerald-200'}`}>
+                    <span className={`text-[10px] font-mono uppercase font-bold block ${isDark ? 'text-emerald-400' : 'text-emerald-800'}`}>
+                      Faturamento Total Estimado
+                    </span>
+                    <span className="text-sm font-black font-mono text-emerald-600 dark:text-emerald-400 mt-0.5 block">
+                      R$ {((Number(currentUser.hourlyRate || 0)) * (Number(currentUser.monthlyHoursQuota || 160))).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / mês
+                    </span>
+                  </div>
+                </>
+              )}
+
               {/* Bloco de Vigência de Contrato Temporário */}
               {currentUser.contractType === 'TEMPORARIO' && (
                 <div className={`p-3.5 rounded-xl border sm:col-span-2 md:col-span-3 space-y-2 ${
@@ -650,13 +685,13 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
                     <div>
                       <span className={`text-[10px] font-mono block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Início do Contrato</span>
                       <strong className={isDark ? 'text-white' : 'text-slate-800'}>
-                        {currentUser.contractStartDate ? new Date(currentUser.contractStartDate + 'T00:00:00').toLocaleDateString('pt-BR') : 'Não informado'}
+                        {formatDateBR(currentUser.contractStartDate) || 'Não informado'}
                       </strong>
                     </div>
                     <div>
                       <span className={`text-[10px] font-mono block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Término do Contrato</span>
                       <strong className={isDark ? 'text-white' : 'text-slate-800'}>
-                        {currentUser.contractEndDate ? new Date(currentUser.contractEndDate + 'T00:00:00').toLocaleDateString('pt-BR') : 'Sem data final definida'}
+                        {formatDateBR(currentUser.contractEndDate) || 'Sem data final definida'}
                       </strong>
                     </div>
                   </div>

@@ -39,6 +39,7 @@ import {
   InterjornadaResult
 } from '@/shared/utils/shiftValidation';
 import { getStoredWorkplaces, createWorkplaceFromAddress, deleteWorkplace, WorkplaceLocation } from '@/shared/services/workplaceService';
+import { getSchedulableEmployees } from '@/shared/utils/employeeUtils';
 import { 
   searchAddressSuggestions, 
   AddressSuggestion, 
@@ -290,12 +291,17 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
     color: isLight ? "#0f172a" : "#ffffff",
   };
 
+  // Filtra colaboradores excluindo gestores da lista de pessoas a serem escaladas
+  const schedulableEmployees = useMemo(() => {
+    return getSchedulableEmployees(employees, editingShift?.employeeId);
+  }, [employees, editingShift?.employeeId]);
+
   useEffect(() => {
     const list = getStoredWorkplaces();
     setWorkplacesList(list);
 
     if (editingShift) {
-      setEmployeeId(editingShift.employeeId || initialEmployeeId || employees[0]?.id || 'emp-1');
+      setEmployeeId(editingShift.employeeId || initialEmployeeId || schedulableEmployees[0]?.id || employees[0]?.id || 'emp-1');
       
       // Sincroniza o posto de trabalho do turno
       let matchedWp = list.find(w => 
@@ -361,7 +367,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
       setNotifyCollaborator(true);
       setChangeReason('');
     } else {
-      const targetEmpId = initialEmployeeId || employees[0]?.id || 'emp-1';
+      const targetEmpId = initialEmployeeId || schedulableEmployees[0]?.id || employees[0]?.id || 'emp-1';
       setEmployeeId(targetEmpId);
 
       // Local padrão do colaborador
@@ -386,7 +392,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
       setChangeReason('');
     }
     setConfirmDelete(false);
-  }, [editingShift, initialDate, initialEmployeeId, employees]);
+  }, [editingShift, initialDate, initialEmployeeId, employees, schedulableEmployees]);
 
   // Busca sugestões em tempo real (Estilo Uber) com debounce de 350ms
   useEffect(() => {
@@ -1114,7 +1120,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                 className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all cursor-pointer"
                 style={inputStyle}
               >
-                {employees.map(emp => (
+                {schedulableEmployees.map(emp => (
                   <option key={emp.id} value={emp.id} style={optionStyle}>
                     {emp.name} — {emp.role} ({emp.department})
                   </option>

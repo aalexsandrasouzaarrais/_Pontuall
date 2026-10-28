@@ -45,6 +45,8 @@ interface ManagerViewProps {
   onRejectJustification?: (id: string, customFeedback?: string) => void;
   onApprovePjReport?: (id: string) => void;
   onRejectPjReport?: (id: string, reason?: string) => void;
+  activeTab?: ManagerTabId;
+  onTabChange?: (tab: ManagerTabId) => void;
 }
 
 export const ManagerView: React.FC<ManagerViewProps> = ({
@@ -53,10 +55,17 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
   onOpenNotifications, onSwitchToEmployee, pendingRequestsCount, unreadChatCount, onResetUnreadChat, onChatViewActive, onOpenProfile,
   justifications, requests, pjReports = [], onApproveRequest, onRejectRequest, onApproveJustification, onRejectJustification,
   onApprovePjReport, onRejectPjReport,
+  activeTab: activeTabProp,
+  onTabChange: onTabChangeProp,
 }) => {
   const { theme, isDark, toggleTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(true);
-  const [activeTab, setActiveTab] = useState<ManagerTabId>('orbit');
+  const [internalTab, setInternalTab] = useState<ManagerTabId>('orbit');
+  const activeTab = activeTabProp !== undefined ? activeTabProp : internalTab;
+  const setActiveTab = (tab: ManagerTabId) => {
+    setInternalTab(tab);
+    onTabChangeProp?.(tab);
+  };
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
 
   React.useEffect(() => {
@@ -230,6 +239,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
             onApproveReport={onApprovePjReport}
             onRejectReport={onRejectPjReport}
             isDark={isDark}
+            isRh={activeEmployee?.isRh || activeEmployee?.roleType === 'rh' || activeEmployee?.isMasterManager}
           />
         ) : (
           <ErrorBoundary fallbackTitle="Painel de Gestão" fallbackMessage="Ocorreu uma instabilidade na exibição do painel. Clique abaixo para recarregar com segurança.">

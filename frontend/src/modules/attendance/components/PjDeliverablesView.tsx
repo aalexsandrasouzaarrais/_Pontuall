@@ -39,8 +39,11 @@ import {
   getPjReportsSupabase, 
   createPjReportSupabase,
   getDraftTimesheet,
+  syncDraftTimesheetFromSupabase,
+  saveDraftTimesheetToSupabase,
   deleteDraftTimesheetEntry,
   clearDraftTimesheet,
+  clearDraftTimesheetSupabase,
   exportPjTimesheetSpreadsheet
 } from '@/modules/attendance/services/pjReportService';
 import {
@@ -53,7 +56,7 @@ import {
 import { PjTimesheetTracker } from './PjTimesheetTracker';
 import { PjNotepadSection } from './PjNotepadSection';
 import { ReminderDetailModal } from './ReminderDetailModal';
-import { getTodayDateString } from '@/shared/utils/dateUtils';
+import { getTodayDateString, formatDateBR, formatDateTimeBR } from '@/shared/utils/dateUtils';
 
 interface PjDeliverablesViewProps {
   employee: Employee;
@@ -122,11 +125,13 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const data = await getPjReportsSupabase(employee.id);
+      const [data, drafts, syncedSched] = await Promise.all([
+        getPjReportsSupabase(employee.id),
+        syncDraftTimesheetFromSupabase(employee.id),
+        syncPjPrivateScheduleFromSupabase(employee.id)
+      ]);
       setReports(data);
-      const drafts = getDraftTimesheet(employee.id);
       setDraftEntries(drafts);
-      const syncedSched = await syncPjPrivateScheduleFromSupabase(employee.id);
       setPrivateSchedule(syncedSched);
     } catch (err) {
       console.warn('Erro ao carregar dados PJ:', err);
@@ -141,7 +146,9 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
 
   // Atualiza rascunhos quando uma nova entrada é adicionada via PjTimesheetTracker
   const handleEntryAdded = (newEntry: PjTimesheetEntry) => {
-    setDraftEntries(prev => [newEntry, ...prev.filter(e => e.id !== newEntry.id)]);
+    const updated = [newEntry, ...draftEntries.filter(e => e.id !== newEntry.id)];
+    setDraftEntries(updated);
+    saveDraftTimesheetToSupabase(employee.id, updated);
   };
 
   const handleDeleteDraftEntry = (id: string) => {
@@ -177,29 +184,28 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
   const contractedHourlyRate = Number(employee.hourlyRate) > 0 ? Number(employee.hourlyRate) : 85;
   const contractedMonthlyQuota = Number(employee.monthlyHoursQuota) > 0 ? Number(employee.monthlyHoursQuota) : 160;
 
-  // Estados da Calculadora de Recebimento do Colaborador PJ
+  // Estados da Calculadora de Recebimento do Colaborador PJ (Simulador independente)
   const [hasUserEditedSimHours, setHasUserEditedSimHours] = useState(false);
   const [simulatedHours, setSimulatedHours] = useState<string>(() =>
-    totalWorkedHoursCombined > 0 ? String(totalWorkedHoursCombined) : String(contractedMonthlyQuota)
+    totalWorkedHoursCombined > 0 ? String(totalWorkedHoursCombined) : '0'
   );
 
   useEffect(() => {
     if (!hasUserEditedSimHours) {
-      if (totalWorkedHoursCombined > 0) {
-        setSimulatedHours(String(totalWorkedHoursCombined));
-      } else {
-        setSimulatedHours(String(contractedMonthlyQuota));
-      }
+      setSimulatedHours(totalWorkedHoursCombined > 0 ? String(totalWorkedHoursCombined) : '0');
     }
-  }, [totalWorkedHoursCombined, contractedMonthlyQuota, hasUserEditedSimHours]);
+  }, [totalWorkedHoursCombined, hasUserEditedSimHours]);
 
   const parsedSimHours = Math.max(0, Number(String(simulatedHours).replace(',', '.')) || 0);
   const simulatedEarnings = parsedSimHours * contractedHourlyRate;
   const openTimesheetEarnings = totalDraftHours * contractedHourlyRate;
   const approvedEarnings = totalHoursApproved * contractedHourlyRate;
   const fullQuotaEarnings = contractedMonthlyQuota * contractedHourlyRate;
-  const remainingHoursToQuota = Math.max(0, Number((contractedMonthlyQuota - parsedSimHours).toFixed(2)));
-  const quotaProgressPercent = Math.min(100, Math.round((parsedSimHours / Math.max(1, contractedMonthlyQuota)) * 100));
+
+  // PROGRESSO REAL DO FATURAMENTO: Calculado estritamente pelas horas reais trabalhadas (em aberto + em aprovação + aprovadas)
+  const realHoursTotal = totalWorkedHoursCombined;
+  const realRemainingHoursToQuota = Math.max(0, Number((contractedMonthlyQuota - realHoursTotal).toFixed(2)));
+  const realQuotaProgressPercent = Math.min(100, Math.round((realHoursTotal / Math.max(1, contractedMonthlyQuota)) * 100));
 
   const formatBRL = (val: number) =>
     val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -477,7 +483,7 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
       }
 
       setExpandedReportId(created.id);
-      clearDraftTimesheet(employee.id);
+      clearDraftTimesheetSupabase(employee.id);
       setDraftEntries([]);
 
       setSubmitSuccess(true);
@@ -590,7 +596,7 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                 <p className={`text-xs sm:text-sm leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                   Acompanhe seu faturamento, organize sua rotina e fique por dentro das suas tarefas.
                 </p>
-              </div>
+                              </div>
             </div>
 
             {/* 2. MEU FATURAMENTO & CALCULADORA DE HORAS PJ */}
@@ -707,21 +713,21 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                 </div>
               </div>
 
-              {/* Barra de Progresso do Faturamento */}
+              {/* Barra de Progresso do Faturamento (Baseada estritamente nas horas reais) */}
               <div className="space-y-2 pt-1">
                 <div className="flex items-center justify-between text-xs font-bold">
                   <span className={isDark ? 'text-slate-300' : 'text-slate-800'}>
-                    Progresso do faturamento ({parsedSimHours}h de {contractedMonthlyQuota}h)
+                    Progresso do faturamento ({realHoursTotal}h de {contractedMonthlyQuota}h)
                   </span>
                   <span className={`font-mono ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                    <strong className={isDark ? 'text-white' : 'text-slate-900 font-black'}>{quotaProgressPercent}%</strong> concluído
+                    <strong className={isDark ? 'text-white' : 'text-slate-900 font-black'}>{realQuotaProgressPercent}%</strong> concluído
                   </span>
                 </div>
                 <div className={`w-full h-2 rounded-full overflow-hidden ${isDark ? 'bg-white/10' : 'bg-slate-200'}`}>
                   <div
                     className="h-full rounded-full transition-all duration-300"
                     style={{
-                      width: `${quotaProgressPercent}%`,
+                      width: `${realQuotaProgressPercent}%`,
                       background: 'linear-gradient(90deg, #96183c, #f89847)',
                     }}
                   />
@@ -730,13 +736,17 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                   <span className={isDark ? 'text-slate-400' : 'text-slate-600 font-semibold'}>
                     Meta mensal: {contractedMonthlyQuota}h
                   </span>
-                  {remainingHoursToQuota > 0 ? (
+                  {realRemainingHoursToQuota > 0 ? (
                     <span className={`font-bold ${isDark ? 'text-amber-400/80' : 'text-amber-700'}`}>
-                      Faltam {remainingHoursToQuota}h para a meta
+                      Faltam {realRemainingHoursToQuota}h para a meta
                     </span>
-                  ) : (
+                  ) : realHoursTotal >= contractedMonthlyQuota ? (
                     <span className={`font-bold ${isDark ? 'text-emerald-400' : 'text-emerald-700'}`}>
                       Meta mensal atingida! ✓
+                    </span>
+                  ) : (
+                    <span className={`font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                      Inicie suas atividades para pontuar
                     </span>
                   )}
                 </div>
@@ -1377,7 +1387,7 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                           </span>
                         </td>
                         <td className={`py-3 px-3 font-mono whitespace-nowrap ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                          {new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                          {formatDateBR(entry.date)}
                         </td>
                         <td className="py-3 px-3 whitespace-nowrap">
                           <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
@@ -1541,9 +1551,9 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                         <span className={`text-xs font-bold block truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
                           {rem.title}
                         </span>
-                        {rem.notes && (
+                        {(rem as any).notes && (
                           <span className={`text-[11px] block truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                            {rem.notes}
+                            {(rem as any).notes}
                           </span>
                         )}
                       </div>
@@ -1554,7 +1564,7 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                           ? 'bg-amber-950/40 text-amber-300 border border-amber-500/30'
                           : 'bg-amber-50 text-amber-800 border border-amber-200'
                       }`}>
-                        {rem.date} • {rem.time}
+                        {formatDateBR(rem.date)} • {rem.time}
                       </span>
                       {rem.link && (
                         <a
@@ -1828,7 +1838,7 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                               </span>
                             </h3>
                             <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                              Enviado em: {new Date(rep.submittedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              Enviado em: {formatDateTimeBR(rep.submittedAt)}
                             </span>
                           </div>
                         </div>
@@ -1926,7 +1936,7 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                                       </span>
                                     </td>
                                     <td className={`py-2.5 px-2.5 font-mono whitespace-nowrap ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>
-                                      {new Date(ts.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                                      {formatDateBR(ts.date)}
                                     </td>
                                     <td className="py-2.5 px-2.5 whitespace-nowrap">
                                       <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
