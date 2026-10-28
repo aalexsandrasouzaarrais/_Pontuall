@@ -38,7 +38,8 @@ import {
   Maximize2,
   Lock,
   Hash,
-  Briefcase
+  Briefcase,
+  MapPin
 } from 'lucide-react';
 import { Employee, Shift, TimeOffRequest, AbsenceJustification } from '@/types';
 import { supabase } from '@/shared/services/supabase';
@@ -2131,16 +2132,16 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               className="approval-table-card approvals-light-table rounded-2xl border border-[#282a33] overflow-hidden overflow-x-auto relative z-10 shadow-xl" 
               style={{ background: '#15161b' }}
             >
-              <table className="approvals-light-data w-full border-collapse text-left text-xs font-sans min-w-[1000px]">
+              <table className="approvals-light-data w-full border-collapse text-left text-xs font-sans min-w-[780px]">
                 <thead>
                   <tr className="border-b border-[#282a33] font-mono text-[10px] uppercase text-slate-400" style={{ background: '#101115' }}>
-                    <th className="p-3.5">COLABORADOR</th>
-                    <th className="p-3.5">TIPO & JUSTIFICATIVA</th>
-                    <th className="p-3.5">DATA / PERÍODO</th>
-                    <th className="p-3.5">COMPROVANTE</th>
-                    <th className="p-3.5">STATUS</th>
-                    <th className="p-3.5">OBSERVAÇÃO / FEEDBACK</th>
-                    <th className="p-3.5 text-right pr-5">AÇÕES</th>
+                    <th className="p-3">COLABORADOR</th>
+                    <th className="p-3">TIPO & JUSTIFICATIVA</th>
+                    <th className="p-3">DATA</th>
+                    <th className="p-3 text-center">COMPROVANTE</th>
+                    <th className="p-3 text-center">STATUS</th>
+                    <th className="p-3">OBSERVAÇÃO / FEEDBACK</th>
+                    <th className="p-3 text-right pr-4 sticky right-0 z-20 shadow-[-6px_0_12px_rgba(0,0,0,0.25)]" style={{ background: '#101115' }}>AÇÕES</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2158,29 +2159,29 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         style={{ color: '#e2e8f0' }}
                       >
                         {/* Colaborador */}
-                        <td className="p-3.5">
-                          <div className="flex items-center gap-3">
+                        <td className="p-3">
+                          <div className="flex items-center gap-2.5">
                             <img 
                               src={row.employeeAvatar} 
                               alt={row.employeeName} 
-                              className="w-9 h-9 rounded-full object-cover ring-2 ring-white/10 shrink-0" 
+                              className="w-8 h-8 rounded-full object-cover ring-2 ring-white/10 shrink-0" 
                             />
                             <div>
                               <span className="font-bold text-white block text-xs leading-tight">{row.employeeName}</span>
-                              <span className="block text-[11px] text-slate-400 font-normal leading-tight mt-0.5">{row.employeeRole}</span>
+                              <span className="block text-[10.5px] text-slate-400 font-normal leading-tight mt-0.5">{row.employeeRole}</span>
                             </div>
                           </div>
                         </td>
 
                         {/* Tipo & Justificativa (com expandir inline e abrir modal detalhado) */}
-                        <td className="p-3.5 align-top">
+                        <td className="p-3 align-top">
                           <div className="space-y-1">
-                            <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-bold text-white block text-xs leading-tight">{row.type}</span>
                               <button
                                 type="button"
                                 onClick={() => setSelectedDetailOccurrence(row)}
-                                className={`p-1.5 rounded-lg transition-all cursor-pointer shadow-xs ${
+                                className={`p-1 rounded-md transition-all cursor-pointer shadow-xs ${
                                   isDark 
                                     ? 'text-[#f89847] hover:text-[#faf0ac] bg-[#f89847]/10 hover:bg-[#f89847]/20 border border-[#f89847]/30' 
                                     : 'text-[#9F243C] hover:text-[#640C1E] bg-[#9F243C]/10 hover:bg-[#9F243C]/20 border border-[#9F243C]/25'
@@ -2192,7 +2193,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             </div>
 
                             <div className="group/reason">
-                              <p className={`text-[11px] font-normal leading-relaxed max-w-[280px] truncate ${
+                              <p className={`text-[11px] font-normal leading-relaxed max-w-[220px] truncate ${
                                 isDark ? 'text-slate-300' : 'text-slate-600'
                               }`} title={row.reason}>
                                 {row.reason}
@@ -2202,31 +2203,31 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         </td>
 
                         {/* Data / Período */}
-                        <td className="p-3.5">
-                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/5 text-slate-300 font-mono text-[11px]">
-                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                        <td className="p-3 whitespace-nowrap">
+                          <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 border border-white/5 text-slate-300 font-mono text-[11px]">
+                            <Calendar className="w-3 h-3 text-slate-400" />
                             <span>{formatDateBR(row.date)}</span>
                           </div>
                         </td>
 
-                        {/* Comprovante */}
-                        <td className="p-3.5">
+                        {/* Comprovante (Apenas ícone do clips clicável) */}
+                        <td className="p-3 text-center">
                           {row.documentUrl || (row.documentName && row.documentName.toLowerCase().includes('.')) ? (
                             <button
+                              type="button"
                               onClick={() => openDocumentSafe(row.documentUrl, row.documentName)}
-                              className="approvals-light-proof inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold text-[#f89847] bg-[#f89847]/10 border border-[#f89847]/25 hover:bg-[#f89847]/20 transition-all cursor-pointer"
-                              title="Clique para visualizar ou baixar o comprovante"
+                              className="approvals-light-proof p-1.5 rounded-lg text-[#f89847] bg-[#f89847]/10 border border-[#f89847]/25 hover:bg-[#f89847]/25 hover:scale-110 active:scale-95 transition-all cursor-pointer inline-flex items-center justify-center shadow-xs"
+                              title={`Abrir comprovante: ${row.documentName || 'Anexo'}`}
                             >
-                              <Paperclip className="w-3 h-3 text-[#f89847]" />
-                              <span>{row.documentName || 'Ver anexo'}</span>
+                              <Paperclip className="w-4 h-4 text-[#f89847]" />
                             </button>
                           ) : (
-                            <span className="text-slate-500 italic text-[11px]">{row.documentName || 'Sem anexo'}</span>
+                            <span className="text-slate-500 text-xs font-mono select-none" title="Sem anexo">—</span>
                           )}
                         </td>
 
-                        {/* Status (Apenas Bolinha Indicadora com Tooltip conforme solicitado) */}
-                        <td className="p-3.5 text-center">
+                        {/* Status (Apenas Bolinha Indicadora com Tooltip) */}
+                        <td className="p-3 text-center">
                           <div className="flex items-center justify-center">
                             {row.status === 'Aprovado' && (
                               <span 
@@ -2255,34 +2256,39 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           </div>
                         </td>
 
-                        {/* Observação / Feedback para o Colaborador (Coluna Adicionada conforme solicitado) */}
-                        <td className="p-3.5">
+                        {/* Observação / Feedback para o Colaborador */}
+                        <td className="p-3">
                           <input
                             type="text"
                             value={row.feedback}
                             onChange={(e) => handleUpdateFeedback(row.id, e.target.value)}
-                            placeholder="Observação ou feedback para o colaborador (opcional)..."
-                            className="approvals-light-feedback w-full min-w-[220px] max-w-[320px] px-3 py-1.5 bg-[#0e0f12] border border-[#282a33] focus:border-[#ff601f] rounded-xl text-xs text-slate-200 placeholder:text-slate-600 outline-none transition-colors"
+                            placeholder="Observação (opcional)..."
+                            className="approvals-light-feedback w-full min-w-[120px] max-w-[180px] px-2.5 py-1.5 bg-[#0e0f12] border border-[#282a33] focus:border-[#ff601f] rounded-xl text-xs text-slate-200 placeholder:text-slate-600 outline-none transition-colors"
                           />
                         </td>
 
-                        {/* Ações */}
-                        <td className="p-3.5 text-right pr-5">
+                        {/* Ações (Fixa sticky à direita para nunca sumir) */}
+                        <td 
+                          className="p-3 text-right pr-4 sticky right-0 z-10 shadow-[-6px_0_12px_rgba(0,0,0,0.25)]" 
+                          style={{ background: isDark ? '#15161b' : '#ffffff' }}
+                        >
                           {row.status === 'Pendente' ? (
-                            <div className="flex items-center justify-end gap-2">
+                            <div className="flex items-center justify-end gap-1.5">
                               <button
+                                type="button"
                                 onClick={() => handleApproveOccurrence(row.id)}
                                 title="Aprovar Solicitação"
-                                className="approvals-light-approve px-3 py-1.5 rounded-xl font-bold text-xs text-white transition-all shadow-md flex items-center gap-1 cursor-pointer hover:scale-105"
+                                className="approvals-light-approve px-2.5 py-1.5 rounded-xl font-bold text-xs text-white transition-all shadow-md flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
                                 style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
                               >
                                 <CheckCircle2 className="w-3.5 h-3.5" />
                                 <span>Aprovar</span>
                               </button>
                               <button
+                                type="button"
                                 onClick={() => handleRejectOccurrence(row.id)}
                                 title="Recusar Solicitação"
-                                className="approvals-light-reject px-2.5 py-1.5 border border-rose-500/30 text-rose-300 hover:bg-rose-500/10 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer"
+                                className="approvals-light-reject px-2 py-1.5 border border-rose-500/30 text-rose-300 hover:bg-rose-500/10 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
                               >
                                 <XCircle className="w-3.5 h-3.5" />
                                 <span>Recusar</span>
