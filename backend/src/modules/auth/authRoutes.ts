@@ -185,15 +185,16 @@ authRoutes.post('/registro-gestor', async (req: Request, res: Response): Promise
     const cleanEmail = email.trim().toLowerCase();
     const cleanCnpj = cnpj ? cnpj.replace(/\D/g, '') : null;
 
-    // 1. Verifica se já existe colaborador com o mesmo e-mail
+    // 1. Verifica se já existe colaborador com o mesmo e-mail (corporativo ou secundário)
     const { data: existente } = await supabaseAdmin
       .from('TAB_Colaborador')
       .select('Idf_Colaborador')
-      .eq('Eml_Corporativo', cleanEmail)
+      .or(`Eml_Corporativo.ilike.${cleanEmail},Eml_Secundario.ilike.${cleanEmail}`)
+      .limit(1)
       .maybeSingle();
 
     if (existente) {
-      res.status(409).json({ error: 'Este e-mail corporativo já está cadastrado.' });
+      res.status(409).json({ error: 'Este e-mail corporativo já está cadastrado no sistema. Não é possível cadastrar novamente.' });
       return;
     }
 

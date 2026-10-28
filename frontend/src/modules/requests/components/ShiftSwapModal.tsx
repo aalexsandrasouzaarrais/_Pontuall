@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, ArrowLeftRight, Calendar, User, MessageSquare } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { X, ArrowLeftRight, Calendar, User, MessageSquare, AlertTriangle } from 'lucide-react';
 import { Employee, Shift, TimeOffRequest } from '@/types';
 
 interface ShiftSwapModalProps {
@@ -8,6 +8,7 @@ interface ShiftSwapModalProps {
   currentEmployee: Employee;
   employees: Employee[];
   myShifts: Shift[];
+  allShifts?: Shift[];
   onSubmitRequest: (request: Partial<TimeOffRequest>) => void;
   isLightTheme?: boolean;
 }
@@ -18,6 +19,7 @@ export const ShiftSwapModal: React.FC<ShiftSwapModalProps> = ({
   currentEmployee,
   employees,
   myShifts,
+  allShifts = [],
   onSubmitRequest,
   isLightTheme = false,
 }) => {
@@ -27,14 +29,43 @@ export const ShiftSwapModal: React.FC<ShiftSwapModalProps> = ({
   const [targetDate, setTargetDate] = useState('');
   const [reason, setReason] = useState('');
 
+  const chosenShift = myShifts.find(s => s.id === selectedShiftId);
+  const targetEmp = employees.find(e => e.id === targetEmployeeId);
+
+  // Detectar se o colega selecionado já possui escala no mesmo dia/horário do turno a ser trocado
+  const targetConflictingShift = useMemo(() => {
+    if (!targetEmployeeId || !chosenShift || requestType !== 'swap') return null;
+
+    const targetShifts = (allShifts || []).filter(
+      s => s.employeeId === targetEmployeeId && s.date === chosenShift.date
+    );
+
+    if (targetShifts.length === 0) return null;
+
+    // Verificar se há sobreposição de horário ou se é no mesmo dia
+    const overlapping = targetShifts.find(s => {
+      if (!chosenShift.startTime || !chosenShift.endTime || !s.startTime || !s.endTime) {
+        return true;
+      }
+      return s.startTime < chosenShift.endTime && s.endTime > chosenShift.startTime;
+    });
+
+    return overlapping || targetShifts[0];
+  }, [allShifts, targetEmployeeId, chosenShift, requestType]);
+
+  // Função para checar se um colega qualquer já está escalado no dia do turno escolhido
+  const getEmployeeShiftOnDate = (empId: string) => {
+    if (!chosenShift || !allShifts) return null;
+    return allShifts.find(
+      s => s.employeeId === empId && s.date === chosenShift.date
+    );
+  };
+
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!reason.trim()) return;
-
-    const targetEmp = employees.find(e => e.id === targetEmployeeId);
-    const chosenShift = myShifts.find(s => s.id === selectedShiftId);
 
     onSubmitRequest({
       employeeId: currentEmployee.id,
@@ -243,17 +274,46 @@ export const ShiftSwapModal: React.FC<ShiftSwapModalProps> = ({
                   <option value="" className={isLightTheme ? 'bg-white text-slate-900' : 'bg-[#1a0010] text-white'}>
                     {otherEmployees.length === 0 ? 'Nenhum colega da mesma equipe/gestor disponível para troca' : 'Selecione o colega...'}
                   </option>
-                  {otherEmployees.map(emp => (
-                    <option
-                      key={emp.id}
-                      value={emp.id}
-                      className={isLightTheme ? 'bg-white text-slate-900' : 'bg-[#1a0010] text-white'}
-                    >
-                      {emp.name} — {emp.role} ({emp.department})
-                    </option>
-                  ))}
+                  {otherEmployees.map(emp => {
+                    const conflict = getEmployeeShiftOnDate(emp.id);
+                    return (
+                      <option
+                        key={emp.id}
+                        value={emp.id}
+                        className={isLightTheme ? 'bg-white text-slate-900' : 'bg-[#1a0010] text-white'}
+                      >
+                        {emp.name} — {emp.role} ({emp.department}){conflict ? ` ⚠️ (Já escalado ${conflict.startTime ? `${conflict.startTime}-${conflict.endTime}` : 'nesse dia'})` : ''}
+                      </option>
+                    );
+                  })}
                 </select>
-                <p className={`text-[11px] mt-1.5 leading-relaxed flex items-start gap-1.5 ${
+
+                {/* Alerta claro de Colega já escalado nesse dia/horário */}
+                {targetConflictingShift && (
+                  <div className={`p-3 rounded-xl border flex items-start gap-2.5 mt-2.5 animate-in fade-in duration-200 ${
+                    isLightTheme
+                      ? 'bg-amber-50 border-amber-300 text-amber-900 shadow-xs'
+                      : 'bg-amber-500/15 border-amber-500/30 text-amber-200 shadow-xs'
+                  }`}>
+                    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                    <div className="text-xs leading-relaxed">
+                      <p className="font-bold flex items-center gap-1.5">
+                        Colega já escalado nesse dia/horário
+                      </p>
+                      <p className="mt-0.5 opacity-90">
+                        Aviso: <strong>{targetEmp?.name}</strong> já possui escala no dia <strong>{chosenShift?.date}</strong>
+                        {targetConflictingShift.startTime && targetConflictingShift.endTime && (
+                          <span> das <strong>{targetConflictingShift.startTime} às {targetConflictingShift.endTime}</strong></span>
+                        )}
+                        {targetConflictingShift.title && (
+                          <span> ({targetConflictingShift.title})</span>
+                        )}.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <p className={`text-[11px] mt-2 leading-relaxed flex items-start gap-1.5 ${
                   isLightTheme ? 'text-slate-500' : 'text-slate-400'
                 }`}>
                   <span>ℹ️</span>

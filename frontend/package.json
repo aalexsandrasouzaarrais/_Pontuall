@@ -7,7 +7,7 @@
     "dev": "vite --port=3000 --host=0.0.0.0",
     "server": "node server.js",
     "build": "vite build",
-    "build:singlefile": "vite build -c vite.singlefile.config.ts && copy dist-singlefile\\index.html CLIQUE_AQUI_PARA_ABRIR.html",
+    "build:singlefile": "vite build -c vite.singlefile.config.ts && node -e \"const fs = require('fs'); fs.copyFileSync('dist-singlefile/index.html', '../CLIQUE_AQUI_PARA_ABRIR.html');\"",
     "preview": "vite preview",
     "lint": "tsc --noEmit"
   },

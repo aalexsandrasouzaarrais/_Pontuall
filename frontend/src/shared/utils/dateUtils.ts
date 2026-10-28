@@ -232,6 +232,7 @@ export function formatFullDatePt(dateStr: string): string {
 }
 
 /**
+/**
  * Formata qualquer data (string YYYY-MM-DD, ISO, timestamp ou Date) para o padrão brasileiro DD/MM/AAAA.
  * Não sofre com problemas de timezone UTC-3 para strings contendo apenas ano-mês-dia.
  */
@@ -333,4 +334,43 @@ export function formatDateTimeBR(val?: string | Date | null, withAt: boolean = f
   const hh = String(d.getHours()).padStart(2, '0');
   const mm = String(d.getMinutes()).padStart(2, '0');
   return withAt ? `${datePart} às ${hh}:${mm}` : `${datePart} ${hh}:${mm}`;
+}
+
+/**
+ * Verifica se um turno está sem registro de ponto após mais de 24 horas da data/horário de início.
+ */
+export function isShiftPast24hWithoutPunch(
+  shift: {
+    date: string;
+    startTime?: string;
+    checkInTime?: string;
+    attendanceStatus?: string;
+  },
+  now: Date = new Date()
+): boolean {
+  if (!shift || !shift.date) return false;
+  if (shift.checkInTime) return false;
+  if (shift.attendanceStatus === 'present' || shift.attendanceStatus === 'late') return false;
+
+  try {
+    const parts = shift.date.split(/[-/]/).map(Number);
+    let year = parts[0];
+    let month = parts[1];
+    let day = parts[2];
+    if (day > 1000) {
+      // Formato DD-MM-YYYY
+      day = parts[0];
+      month = parts[1];
+      year = parts[2];
+    }
+    const [startH, startM] = (shift.startTime || '08:00').split(':').map(Number);
+    const shiftDateTime = new Date(year, month - 1, day, startH || 8, startM || 0);
+    if (isNaN(shiftDateTime.getTime())) return false;
+
+    const diffMs = now.getTime() - shiftDateTime.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+    return diffHours >= 24;
+  } catch {
+    return false;
+  }
 }

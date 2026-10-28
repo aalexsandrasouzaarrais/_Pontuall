@@ -56,7 +56,7 @@ import {
 import { EmployeesManagementView } from '@/modules/manager/components/EmployeesManagementView';
 import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
 import { DeleteShiftsModal } from './DeleteShiftsModal';
-import { addDaysLocal, startOfWeekMonday, toLocalDateString, getTodayDateString, formatDateBR, normalizeDateToISO } from '@/shared/utils/dateUtils';
+import { addDaysLocal, startOfWeekMonday, toLocalDateString, getTodayDateString, formatDateBR, normalizeDateToISO, isShiftPast24hWithoutPunch } from '@/shared/utils/dateUtils';
 import { showPolishedToast } from '@/components/ui/halo-toast';
 import {
   ReminderItem,
@@ -114,10 +114,10 @@ export interface BancoHorasItem {
   punchTime: string;
   diffMinutes: number;
   diffBadge: string;
-  type: 'hora_extra' | 'atraso' | 'esquecimento';
+  type: 'hora_extra' | 'atraso' | 'esquecimento' | 'ausencia';
   typeLabel: string;
   reason: string;
-  status: 'Pendente' | 'Homologado' | 'Ajustado';
+  status: 'Pendente' | 'Homologado' | 'Ajustado' | 'Justificado';
   feedback: string;
 }
 
@@ -315,19 +315,30 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       const hasHe = s.notes && s.notes.includes('[HE');
       const hasLate = (s.notes && s.notes.includes('[Atraso')) || s.attendanceStatus === 'late';
       const hasAdjustment = s.notes && (s.notes.includes('Esquecimento') || s.notes.includes('AJUSTE') || s.notes.includes('HOMOLOGADO'));
-      return hasHe || hasLate || hasAdjustment;
+      const isAbsentOver24h = isShiftPast24hWithoutPunch(s) || s.attendanceStatus === 'absent' || s.attendanceStatus === 'justified';
+      return hasHe || hasLate || hasAdjustment || isAbsentOver24h;
     }).map(s => {
       const emp = employees.find(e => e.id === s.employeeId) || emp1;
       const isHe = s.notes?.includes('[HE');
       const isForget = s.notes?.includes('Esquecimento');
       const isLate = (s.notes?.includes('[Atraso') || s.attendanceStatus === 'late') && !isHe;
+      const isAbsent = isShiftPast24hWithoutPunch(s) || s.attendanceStatus === 'absent' || s.attendanceStatus === 'justified';
 
-      let type: 'hora_extra' | 'atraso' | 'esquecimento' = 'hora_extra';
+      const just = (justifications || []).find(j => 
+        (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)
+      );
+
+      let type: 'hora_extra' | 'atraso' | 'esquecimento' | 'ausencia' = 'hora_extra';
       let typeLabel = '⏰ Hora Extra';
       let diffMinutes = 39;
       let diffBadge = '+39 min';
 
-      if (isForget) {
+      if (isAbsent && !isHe && !isLate && !isForget) {
+        type = 'ausencia';
+        typeLabel = s.attendanceStatus === 'justified' || just?.status === 'approved' ? '📋 Ausência Justificada' : '❌ Falta / Ausência';
+        diffMinutes = -480;
+        diffBadge = s.attendanceStatus === 'justified' || just?.status === 'approved' ? '0 min (Abonado)' : '-8h (Falta)';
+      } else if (isForget) {
         type = 'esquecimento';
         typeLabel = 'ℹ️ Esquecimento de Saída';
         diffMinutes = 0;
@@ -346,8 +357,29 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         diffBadge = `+${diffMinutes} min`;
       }
 
-      const isHomologated = s.notes?.includes('HOMOLOGADO');
+      const isHomologated = s.notes?.includes('HOMOLOGADO') || just?.status === 'approved' || s.attendanceStatus === 'justified';
       const isAdjusted = s.notes?.includes('AJUSTE GESTOR');
+
+      let defaultReason = 'Ocorrência de jornada';
+      if (type === 'ausencia') {
+        if (just) {
+          defaultReason = `Justificativa: "${just.reason}" (${just.status === 'approved' ? 'Homologada' : 'Pendente de homologação'})`;
+        } else {
+          defaultReason = 'Colaborador não registrou ponto após 24h da escala (Pendente de justificativa)';
+        }
+      } else if (isLate) {
+        defaultReason = 'Entrada com atraso superior à tolerância CLT';
+      }
+
+      let statusVal: 'Pendente' | 'Homologado' | 'Ajustado' = isHomologated ? 'Homologado' : isAdjusted ? 'Ajustado' : 'Pendente';
+      let feedbackVal = '';
+      if (type === 'ausencia') {
+        feedbackVal = isHomologated ? 'Ausência justificada e abonada pelo gestor' : 'Aguardando justificativa ou homologação do gestor';
+      } else if (isAdjusted) {
+        feedbackVal = 'Ponto mantido com ajuste para jornada contratual (sem HE indevida)';
+      } else if (isHomologated) {
+        feedbackVal = 'Aprovado para Banco de Horas / Folha';
+      }
 
       return {
         id: `bh-shift-${s.id}`,
@@ -359,17 +391,16 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         employeeAvatar: emp.avatar || '',
         date: s.date,
         scheduledTime: `${s.startTime} às ${s.endTime}`,
-        punchTime: `${s.checkInTime || '--:--'} às ${s.checkOutTime || '--:--'}`,
+        punchTime: s.checkInTime ? `${s.checkInTime} às ${s.checkOutTime || '--:--'}` : 'Sem batida de ponto',
         diffMinutes,
         diffBadge,
         type,
         typeLabel,
-        reason: s.notes || (isLate ? 'Entrada com atraso superior à tolerância CLT' : 'Ocorrência de jornada'),
-        status: isHomologated ? 'Homologado' : isAdjusted ? 'Ajustado' : 'Pendente',
-        feedback: isAdjusted ? 'Ponto mantido com ajuste para jornada contratual (sem HE indevida)' : isHomologated ? 'Aprovado para Banco de Horas / Folha' : '',
+        reason: s.notes || defaultReason,
+        status: statusVal,
+        feedback: feedbackVal,
       };
     });
-
     if (mappedFromShifts.length > 0) {
       setBancoHorasData(mappedFromShifts);
     } else {
@@ -488,6 +519,29 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   };
 
   // Ações do Gestor para Banco de Horas e Ajustes CLT (Aba Relatório de Presenças)
+  const handleHomologarAusencia = async (shiftId?: string, rowId?: string) => {
+    if (shiftId) {
+      const targetShift = shifts.find(s => s.id === shiftId);
+      if (targetShift) {
+        onOpenEditShift?.({
+          ...targetShift,
+          attendanceStatus: 'justified',
+          notes: `${targetShift.notes || ''} [HOMOLOGADO GESTOR: Ausência Justificada / Abonada]`
+        });
+      }
+    }
+    if (rowId) {
+      setBancoHorasData(prev => prev.map(i => i.id === rowId ? { ...i, status: 'Homologado', feedback: 'Ausência justificada e homologada pelo gestor (Abonada)' } : i));
+    }
+    showPolishedToast({
+      id: 'ausencia-homologada',
+      title: 'Ausência Homologada e Justificada!',
+      description: 'A ausência do colaborador foi justificada e abonada no espelho com sucesso.',
+      rimVariant: 'success',
+      duration: 4000,
+    });
+  };
+
   const handleHomologarBanco = (id: string) => {
     const item = bancoHorasData.find(i => i.id === id);
     if (item?.shiftId) {
@@ -727,6 +781,43 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           obsText = obsText ? `${obsText} | ${outStatus}` : outStatus;
         }
 
+        const isPast24h = isShiftPast24hWithoutPunch(s);
+        const just = (justifications || []).find(j => 
+          (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)
+        );
+
+        let finalReportStatus = statusMap[s.attendanceStatus || 'pending'] || 'Pendente';
+        let isDecisionPending = false;
+
+        if (just) {
+          if (just.status === 'approved' || s.attendanceStatus === 'justified') {
+            finalReportStatus = 'Justificado';
+          } else if (just.status === 'rejected') {
+            finalReportStatus = 'Ausente';
+          } else {
+            // Justificativa pendente
+            finalReportStatus = (isPast24h || s.attendanceStatus === 'absent') ? 'Ausente' : 'Pendente';
+            isDecisionPending = true;
+          }
+        } else if (s.attendanceStatus === 'justified') {
+          finalReportStatus = 'Justificado';
+        } else if (s.attendanceStatus === 'present' || Boolean(s.checkInTime)) {
+          finalReportStatus = s.attendanceStatus === 'late' ? 'Atrasado' : 'Presente';
+        } else if (isPast24h || s.attendanceStatus === 'absent') {
+          finalReportStatus = 'Ausente';
+          isDecisionPending = true;
+        }
+
+        if (finalReportStatus === 'Justificado') {
+          obsText = obsText ? `${obsText} | Ausência justificada e homologada (Abonada)` : 'Ausência justificada e homologada pelo gestor (Abonada)';
+        } else if (finalReportStatus === 'Ausente') {
+          if (just && just.status === 'pending') {
+            obsText = obsText ? `${obsText} | Justificativa do colaborador pendente de homologação` : `Justificativa pendente: "${just.reason || 'Em análise'}"`;
+          } else {
+            obsText = obsText ? `${obsText} | Não bateu ponto após 24h (Pendente de justificativa)` : 'Não bateu ponto após 24h da escala (Pendente de justificativa)';
+          }
+        }
+
         return {
           date: s.date,
           avatar: emp?.avatar || '',
@@ -737,7 +828,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             ? `${s.checkInTime}${s.checkOutTime ? ` → ${s.checkOutTime}` : ' (Entrada)'}` 
             : `${s.startTime} – ${s.endTime}`,
           hours: calculatedHours,
-          status: statusMap[s.attendanceStatus || 'pending'] || 'Pendente',
+          status: finalReportStatus,
+          isDecisionPending,
           type: s.type === 'regular' ? 'Regular' : 'Extra',
           checkInLocation: s.checkInLocation,
           checkOutLocation: s.checkOutLocation,
@@ -747,7 +839,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     }
 
     return [];
-  }, [shifts, employees]);
+  }, [shifts, employees, justifications]);
 
   // Tab 4 (Tarefas) State - Orbit Visual Identity
   const allAssignablePeople = useMemo(() => {
@@ -2795,6 +2887,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     <option value="late">Atrasado</option>
                     <option value="absent">Ausente</option>
                     <option value="justified">Justificado</option>
+                    <option value="pending">Pendente</option>
                   </select>
 
                   <select
@@ -2863,7 +2956,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         (relatorioStatus === 'present' && row.status === 'Presente') ||
                         (relatorioStatus === 'late' && row.status === 'Atrasado') ||
                         (relatorioStatus === 'absent' && row.status === 'Ausente') ||
-                        (relatorioStatus === 'justified' && row.status === 'Justificado');
+                        (relatorioStatus === 'justified' && row.status === 'Justificado') ||
+                        (relatorioStatus === 'pending' && row.status === 'Pendente');
                       return matchDept && matchStatus;
                     }).map((row, idx) => (
                       <tr 
@@ -3354,40 +3448,71 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             <td className="p-3.5 text-right pr-5 whitespace-nowrap align-middle">
                               {row.status === 'Pendente' ? (
                                 <div className="flex items-center justify-end gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleHomologarBanco(row.id)}
-                                    title="Homologar Banco: Aprova as horas extras além da tolerância (Art. 58 CLT) e credita o saldo no Banco de Horas / folha."
-                                    className="h-7 px-2.5 rounded-lg font-bold text-[11px] text-white transition-all shadow-sm flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95"
-                                    style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
-                                  >
-                                    <CheckCircle2 className="w-3 h-3" />
-                                    <span>Homologar Banco</span>
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAjustarHorarioNormal(row.id)}
-                                    title="Ajustar Horário Normal: Nos casos de esquecimento de batida na saída sem trabalho efetivo, ajusta para a jornada contratual sem gerar hora extra indevida (CLT Art. 4º § 2º)."
-                                    className={`h-7 px-2 border font-bold text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 ${
-                                      isDark 
-                                        ? 'border-white/20 text-slate-300 hover:bg-white/10' 
-                                        : 'border-slate-300 text-slate-700 hover:bg-slate-100 bg-white shadow-2xs'
-                                    }`}
-                                  >
-                                    <Clock className="w-3 h-3" />
-                                    <span>Ajustar Horário Normal</span>
-                                  </button>
+                                  {row.type === 'ausencia' ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleHomologarAusencia(row.shiftId, row.id)}
+                                        title="Homologar Ausência: Justifica a falta e abona a jornada prevista."
+                                        className="h-7 px-2.5 rounded-lg font-bold text-[11px] text-white transition-all shadow-sm flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95"
+                                        style={{ background: 'linear-gradient(135deg, #0284c7, #38bdf8)' }}
+                                      >
+                                        <CheckCircle2 className="w-3 h-3" />
+                                        <span>Homologar (Justificar)</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAjustarHorarioNormal(row.id)}
+                                        title="Confirmar Falta: Mantém a falta registrada sem abono salarial."
+                                        className={`h-7 px-2 border font-bold text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 ${
+                                          isDark 
+                                            ? 'border-rose-500/30 text-rose-300 hover:bg-rose-500/10' 
+                                            : 'border-rose-300 text-rose-700 hover:bg-rose-50 bg-white shadow-2xs'
+                                        }`}
+                                      >
+                                        <XCircle className="w-3 h-3 text-rose-500" />
+                                        <span>Confirmar Falta</span>
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleHomologarBanco(row.id)}
+                                        title="Homologar Banco: Aprova as horas extras além da tolerância (Art. 58 CLT) e credita o saldo no Banco de Horas / folha."
+                                        className="h-7 px-2.5 rounded-lg font-bold text-[11px] text-white transition-all shadow-sm flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95"
+                                        style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
+                                      >
+                                        <CheckCircle2 className="w-3 h-3" />
+                                        <span>Homologar Banco</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAjustarHorarioNormal(row.id)}
+                                        title="Ajustar Horário Normal: Nos casos de esquecimento de batida na saída sem trabalho efetivo, ajusta para a jornada contratual sem gerar hora extra indevida (CLT Art. 4º § 2º)."
+                                        className={`h-7 px-2 border font-bold text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 ${
+                                          isDark 
+                                            ? 'border-white/20 text-slate-300 hover:bg-white/10' 
+                                            : 'border-slate-300 text-slate-700 hover:bg-slate-100 bg-white shadow-2xs'
+                                        }`}
+                                      >
+                                        <Clock className="w-3 h-3" />
+                                        <span>Ajustar Horário Normal</span>
+                                      </button>
+                                    </>
+                                  )}
                                 </div>
                               ) : row.status === 'Homologado' ? (
-                                <span className="h-7 inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-500 font-mono text-[11px] font-semibold">
-                                  <CheckCircle2 className="w-3 h-3" /> Creditado no Banco
+                                <span className={`h-7 inline-flex items-center gap-1 font-mono text-[11px] font-semibold ${
+                                  row.type === 'ausencia' ? 'text-sky-500' : 'text-emerald-600 dark:text-emerald-500'
+                                }`}>
+                                  <CheckCircle2 className="w-3 h-3" /> {row.type === 'ausencia' ? 'Ausência Justificada' : 'Creditado no Banco'}
                                 </span>
                               ) : (
                                 <span className={`h-7 inline-flex items-center gap-1 font-mono text-[11px] font-medium italic ${
                                   isDark ? 'text-slate-400' : 'text-slate-600'
                                 }`}>
-                                  <Clock className="w-3 h-3 text-[#F59242]" /> Tratado no horário previsto
+                                  <Clock className="w-3 h-3 text-[#F59242]" /> {row.type === 'ausencia' ? 'Falta Confirmada' : 'Tratado no horário previsto'}
                                 </span>
                               )}
                             </td>

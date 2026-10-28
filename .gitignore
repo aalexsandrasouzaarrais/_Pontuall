@@ -5,14 +5,19 @@ node_modules/
 # Production builds
 dist/
 dist-ssr/
+dist-singlefile/
 frontend/dist/
+frontend/dist-singlefile/
+*.local
 
-# Logs & cache
+# Logs & caches
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+lerna-debug.log*
 .npm-cache/
 .cache/
 
@@ -20,6 +25,12 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 .vscode/
+!.vscode/extensions.json
 .idea/
 *.swp
 *.swo
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
