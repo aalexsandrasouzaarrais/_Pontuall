@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Layers, 
   Copy, 
@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Employee, Shift, ShiftTemplate, ShiftType } from '@/types';
 import { getStoredWorkplaces, WorkplaceLocation } from '@/shared/services/workplaceService';
+import { getSchedulableEmployees } from '@/shared/utils/employeeUtils';
 
 export interface ShiftTemplatesModalProps {
   isOpen: boolean;
@@ -137,9 +138,14 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
     return list[0]?.id || '';
   });
 
-  // Selected collaborators (defaults to all employees selected)
+  // Filtra colaboradores excluindo gestores da alocação de escalas em lote
+  const schedulableEmployees = useMemo(() => {
+    return getSchedulableEmployees(employees);
+  }, [employees]);
+
+  // Selected collaborators (defaults to all schedulable employees selected)
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>(() => 
-    employees.map(e => e.id)
+    getSchedulableEmployees(employees).map(e => e.id)
   );
 
   // New Template Form States
@@ -161,10 +167,10 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
 
   // Toggle all employees
   const handleToggleAllEmployees = () => {
-    if (selectedEmployeeIds.length === employees.length) {
+    if (selectedEmployeeIds.length === schedulableEmployees.length) {
       setSelectedEmployeeIds([]);
     } else {
-      setSelectedEmployeeIds(employees.map(e => e.id));
+      setSelectedEmployeeIds(schedulableEmployees.map(e => e.id));
     }
   };
 
@@ -537,7 +543,7 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
                 <label className={`text-[11px] font-bold font-mono tracking-wider block uppercase ${
                   isDark ? 'text-[#F9DE97]/90' : 'text-[#640C1E]/80'
                 }`}>
-                  3. SELECIONAR COLABORADORES ({selectedEmployeeIds.length}/{employees.length})
+                  3. SELECIONAR COLABORADORES ({selectedEmployeeIds.length}/{schedulableEmployees.length})
                 </label>
 
                 <button
@@ -547,13 +553,13 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
                     isDark ? 'text-[#F59242] hover:text-[#F9DE97]' : 'text-[#9F243C] hover:text-[#640C1E]'
                   }`}
                 >
-                  {selectedEmployeeIds.length === employees.length ? 'Desmarcar Todos' : 'Marcar Todos'}
+                  {selectedEmployeeIds.length === schedulableEmployees.length ? 'Desmarcar Todos' : 'Marcar Todos'}
                 </button>
               </div>
 
               {/* Grid 2 Colunas de Colaboradores */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {employees.map((emp) => {
+                {schedulableEmployees.map((emp) => {
                   const isChecked = selectedEmployeeIds.includes(emp.id);
 
                   return (
