@@ -28,7 +28,8 @@ import {
   formatMinutesToHoursString,
   hoursToMinutes,
   calculatePunchDurationMinutes,
-  evaluatePunchTolerance
+  evaluatePunchTolerance,
+  isShiftPast24hWithoutPunch
 } from '@/shared/utils/dateUtils';
 import { ReminderDetailModal } from './ReminderDetailModal';
 import { getCurrentCoordinates, reverseGeocode, validateGeofence, calculateHaversineDistance } from '@/shared/utils/geolocation';
@@ -71,6 +72,7 @@ interface EmployeeMainViewProps {
   isLightTheme: boolean;
   employees?: Employee[];
   justifications?: AbsenceJustification[];
+  onOpenJustificationModal?: (shiftId?: string, date?: string, reason?: string) => void;
 }
 
 export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
@@ -86,6 +88,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
   isLightTheme,
   employees = [],
   justifications = [],
+  onOpenJustificationModal,
 }) => {
   const [selectedReminder, setSelectedReminder] = useState<ManagerReminder | null>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -95,6 +98,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
   const [checkInSuccess, setCheckInSuccess] = useState(false);
   const [isResettingPunch, setIsResettingPunch] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'presencas' | 'faltas' | 'atrasos' | 'justificados'>('all');
   const [dbPunches, setDbPunches] = useState<any[]>([]);
   const [isLoadingPunches, setIsLoadingPunches] = useState(false);
 
@@ -172,28 +176,236 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
     return s.attendanceStatus === 'present' || s.attendanceStatus === 'late' || Boolean(s.checkInTime);
   });
 
-  // 3. Faltas: turnos explicitamente ausentes OU turnos anteriores sem registro e sem atestado
+  // 3. Faltas da semana: turnos ausentes (>24h sem ponto e sem atestado) OU com status 'absent'
   const absentShifts = weeklyShifts.filter(s => {
     if (s.attendanceStatus === 'absent') return true;
     const isJustified = justifiedShifts.some(js => js.id === s.id);
     if (isJustified) return false;
     const isPresent = presentShifts.some(ps => ps.id === s.id);
     if (isPresent) return false;
-
-    // Se a data do turno já passou em relação a hoje
-    if (s.date < todayStr) return true;
-
-    // Se o turno é de hoje, mas já encerrou há mais de 30 minutos sem nenhuma marcação
-    if (s.date === todayStr && s.endTime) {
-      const [endH, endM] = s.endTime.split(':').map(Number);
-      const shiftEndMin = endH * 60 + endM;
-      const currentMin = currentTime.getHours() * 60 + currentTime.getMinutes();
-      if (currentMin > shiftEndMin + 30) {
-        return true;
-      }
-    }
-    return false;
+    return isShiftPast24hWithoutPunch(s);
   });
+
+  // Histórico e Ocorrências consolidado (Presenças, Faltas >24h, Atrasos e Atestados)
+  const occurrences = React.useMemo(() => {
+    type OccurrenceItem = {
+      id: string;
+      date: string;
+      dateFormatted: string;
+      type: 'presenca' | 'falta' | 'atraso' | 'justificado';
+      title: string;
+      subtitle: string;
+      timeDisplay: string;
+      badgeText: string;
+      badgeClass: string;
+      address?: string;
+      shiftId?: string;
+      canJustify: boolean;
+      justificationReasonDefault?: string;
+      isGpsOk?: boolean;
+      delayInfo?: {
+        minutes: number;
+        isJustified: boolean;
+        justificationReason?: string;
+      };
+    };
+
+    const items: OccurrenceItem[] = [];
+
+    // Mapeamento auxiliar dos turnos por data e por id
+    const shiftByDate = new Map<string, Shift>();
+    empShifts.forEach(s => {
+      shiftByDate.set(s.date, s);
+    });
+
+    // A) Batidas reais do banco de dados (dbPunches)
+    if (dbPunches && dbPunches.length > 0) {
+      dbPunches.forEach((punch: any, idx: number) => {
+        const dt = punch.Dta_Hora_Registro ? new Date(punch.Dta_Hora_Registro) : new Date();
+        const dateStr = !isNaN(dt.getTime()) ? dt.toISOString().slice(0, 10) : todayStr;
+        const dateFormatted = !isNaN(dt.getTime()) ? dt.toLocaleDateString('pt-BR') : todayStr;
+        const timeFormatted = !isNaN(dt.getTime()) ? dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '--:--';
+        const isEntrada = punch.Tpo_Registro?.toLowerCase() === 'entrada';
+        const isValid = punch.Flg_Gps_Validado !== false;
+
+        // Verifica se essa batida de entrada teve atraso em relação ao turno
+        const matchingShift = punch.Idf_Turno 
+          ? empShifts.find(s => s.id === punch.Idf_Turno) 
+          : shiftByDate.get(dateStr);
+
+        let delayInfo: OccurrenceItem['delayInfo'] = undefined;
+        let isAtraso = false;
+
+        if (isEntrada && matchingShift && matchingShift.startTime) {
+          const [inH, inM] = timeFormatted.split(':').map(Number);
+          const [startH, startM] = matchingShift.startTime.split(':').map(Number);
+          const diffMin = (inH * 60 + inM) - (startH * 60 + startM);
+
+          if (diffMin > 10) { // Tolerância CLT (Art. 58 § 1º)
+            isAtraso = true;
+            const notes = matchingShift.notes || '';
+            const matchAtrasoNote = notes.match(/\[Atraso \d+m:\s*([^\]]+)\]/i);
+            const noteReason = matchAtrasoNote ? matchAtrasoNote[1].trim() : '';
+            const hasValidNoteReason = noteReason && !noteReason.toLowerCase().includes('sem justificativa');
+
+            const hasJustificationRecord = (justifications || []).some(j => {
+              const jDate = (j.date || (j as any).Dta_Ausencia || '').slice(0, 10);
+              return (j.shiftId === matchingShift.id || jDate === dateStr);
+            });
+
+            const isJustified = Boolean(hasValidNoteReason || hasJustificationRecord || matchingShift.attendanceStatus === 'justified');
+
+            delayInfo = {
+              minutes: diffMin,
+              isJustified,
+              justificationReason: hasValidNoteReason ? noteReason : hasJustificationRecord ? 'Justificativa registrada' : undefined,
+            };
+          }
+        }
+
+        // Subtítulo descritivo
+        let subtitle = punch.Des_Endereco || 'Localização Registrada';
+        if (delayInfo) {
+          if (delayInfo.isJustified) {
+            subtitle = `${subtitle} • Justificado na batida: "${delayInfo.justificationReason || 'Informada'}"`;
+          } else {
+            subtitle = `${subtitle} • Horário previsto: ${matchingShift?.startTime || '08:00'}`;
+          }
+        }
+
+        items.push({
+          id: punch.Idf_Registro_Ponto ? `punch-${punch.Idf_Registro_Ponto}` : `punch-${idx}`,
+          date: dateStr,
+          dateFormatted,
+          type: isAtraso ? 'atraso' : 'presenca',
+          title: isEntrada ? `Entrada: ${timeFormatted}` : `Saída: ${timeFormatted}`,
+          subtitle,
+          timeDisplay: timeFormatted,
+          badgeText: isValid ? 'GPS OK' : 'Fora do Raio',
+          badgeClass: isValid 
+            ? (isLightTheme ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-white/10 text-slate-300 border-white/10')
+            : (isLightTheme ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-amber-500/10 text-amber-300 border-amber-500/20'),
+          address: punch.Des_Endereco,
+          shiftId: matchingShift?.id,
+          canJustify: Boolean(isAtraso && delayInfo && !delayInfo.isJustified),
+          justificationReasonDefault: `Justificativa de atraso de ${delayInfo?.minutes || ''} minutos no dia ${dateFormatted}`,
+          isGpsOk: isValid,
+          delayInfo
+        });
+      });
+    }
+
+    // B) Turnos do colaborador (empShifts) para detectar Faltas (>24h sem ponto), ou se não há dbPunches
+    empShifts.forEach(shift => {
+      const isJustified = (justifications || []).some(j => {
+        const isApproved = j.status === 'approved' || (j as any).Tpo_Status === 'approved';
+        const jDate = (j.date || (j as any).Dta_Ausencia || '').slice(0, 10);
+        return isApproved && (j.shiftId === shift.id || ((!j.employeeId || j.employeeId === employee.id) && jDate === shift.date));
+      }) || shift.attendanceStatus === 'justified';
+
+      const hasPunchIn = Boolean(shift.checkInTime);
+      const isPast24h = isShiftPast24hWithoutPunch(shift);
+      const dateParts = shift.date.split('-');
+      const dateFormatted = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : shift.date;
+
+      // 1. Falta (>24h sem ponto e sem atestado) OU status 'absent'
+      if (!isJustified && !hasPunchIn && (isPast24h || shift.attendanceStatus === 'absent')) {
+        items.push({
+          id: `falta-${shift.id}`,
+          date: shift.date,
+          dateFormatted,
+          type: 'falta',
+          title: `Falta não registrada (${shift.startTime} – ${shift.endTime})`,
+          subtitle: `Turno agendado em ${shift.workplace || 'Posto Presencial'} sem batida após 24h`,
+          timeDisplay: `${shift.startTime} – ${shift.endTime}`,
+          badgeText: 'Ausente',
+          badgeClass: isLightTheme ? 'bg-rose-50 text-[#96183c] border-rose-200 font-semibold' : 'bg-rose-500/15 text-rose-300 border-rose-500/30 font-semibold',
+          shiftId: shift.id,
+          canJustify: true,
+          justificationReasonDefault: `Justificativa de ausência no turno do dia ${dateFormatted} (${shift.startTime} - ${shift.endTime})`,
+        });
+      }
+
+      // 2. Justificado / Atestado (apenas se não houver punch para este turno)
+      if (isJustified && !hasPunchIn) {
+        items.push({
+          id: `justificado-${shift.id}`,
+          date: shift.date,
+          dateFormatted,
+          type: 'justificado',
+          title: `Ausência abonada (${shift.startTime} – ${shift.endTime})`,
+          subtitle: `Atestado ou justificativa homologada pelo gestor para ${shift.workplace || 'Posto'}`,
+          timeDisplay: `${shift.startTime} – ${shift.endTime}`,
+          badgeText: 'Justificado',
+          badgeClass: isLightTheme ? 'bg-slate-100 text-slate-700 border-slate-200 font-semibold' : 'bg-white/10 text-slate-300 border-white/15 font-semibold',
+          shiftId: shift.id,
+          canJustify: false
+        });
+      }
+
+      // 3. Fallback se dbPunches estiver vazio mas houver turnos com checkInTime
+      if ((!dbPunches || dbPunches.length === 0) && hasPunchIn && !items.some(it => it.shiftId === shift.id)) {
+        const isGpsOk = shift.checkInLocation?.gpsValidated !== false;
+        let isAtraso = false;
+        let delayInfo: OccurrenceItem['delayInfo'] = undefined;
+
+        if (shift.startTime && shift.checkInTime) {
+          const [inH, inM] = shift.checkInTime.split(':').map(Number);
+          const [startH, startM] = shift.startTime.split(':').map(Number);
+          const diffMin = (inH * 60 + inM) - (startH * 60 + startM);
+          if (diffMin > 10) {
+            isAtraso = true;
+            const notes = shift.notes || '';
+            const matchAtrasoNote = notes.match(/\[Atraso \d+m:\s*([^\]]+)\]/i);
+            const noteReason = matchAtrasoNote ? matchAtrasoNote[1].trim() : '';
+            const hasValidNoteReason = noteReason && !noteReason.toLowerCase().includes('sem justificativa');
+            const isDelayJustified = Boolean(hasValidNoteReason || isJustified);
+            delayInfo = {
+              minutes: diffMin,
+              isJustified: isDelayJustified,
+              justificationReason: hasValidNoteReason ? noteReason : undefined
+            };
+          }
+        }
+
+        items.push({
+          id: `shift-punch-${shift.id}`,
+          date: shift.date,
+          dateFormatted,
+          type: isAtraso ? 'atraso' : 'presenca',
+          title: `Entrada: ${shift.checkInTime}${shift.checkOutTime ? ` • Saída: ${shift.checkOutTime}` : ''}`,
+          subtitle: shift.checkInLocation?.address || shift.workplace || 'Posto Presencial',
+          timeDisplay: shift.checkInTime,
+          badgeText: isGpsOk ? 'GPS OK' : 'Fora do Raio',
+          badgeClass: isGpsOk
+            ? (isLightTheme ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-white/10 text-slate-300 border-white/10')
+            : (isLightTheme ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-amber-500/10 text-amber-300 border-amber-500/20'),
+          shiftId: shift.id,
+          canJustify: Boolean(isAtraso && delayInfo && !delayInfo.isJustified),
+          justificationReasonDefault: `Justificativa de atraso de ${delayInfo?.minutes || ''} minutos no dia ${dateFormatted}`,
+          isGpsOk,
+          delayInfo
+        });
+      }
+    });
+
+    // Ordenar itens por data decrescente
+    return items.sort((a, b) => b.date.localeCompare(a.date));
+  }, [dbPunches, empShifts, justifications, employee.id, isLightTheme, todayStr]);
+
+  const presencasCount = occurrences.filter(o => o.type === 'presenca' || o.type === 'atraso').length;
+  const faltasCount = occurrences.filter(o => o.type === 'falta').length;
+  const atrasosCount = occurrences.filter(o => Boolean(o.delayInfo)).length;
+  const justificadosCount = occurrences.filter(o => o.type === 'justificado' || (o.delayInfo && o.delayInfo.isJustified)).length;
+
+  const filteredOccurrences = React.useMemo(() => {
+    if (historyFilter === 'all') return occurrences;
+    if (historyFilter === 'presencas') return occurrences.filter(o => o.type === 'presenca' || o.type === 'atraso');
+    if (historyFilter === 'faltas') return occurrences.filter(o => o.type === 'falta');
+    if (historyFilter === 'atrasos') return occurrences.filter(o => Boolean(o.delayInfo));
+    if (historyFilter === 'justificados') return occurrences.filter(o => o.type === 'justificado' || (o.delayInfo && o.delayInfo.isJustified));
+    return occurrences;
+  }, [occurrences, historyFilter]);
 
   // 4. Carga Horária: minutos reais das batidas + abono integral de atestados homologados
   let totalWorkedMinutes = weeklyShifts.reduce((acc, s) => {
@@ -857,10 +1069,13 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                 </button>
               )}
 
-              {/* Botão Secundário: Meus Registros */}
+              {/* Botão Secundário: Meus Registros & Ocorrências */}
               <button
                 type="button"
-                onClick={() => setIsHistoryOpen(true)}
+                onClick={() => {
+                  setHistoryFilter('all');
+                  setIsHistoryOpen(true);
+                }}
                 className={`w-full sm:flex-1 py-3.5 px-6 rounded-2xl border font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs ${
                   isLightTheme
                     ? 'bg-white hover:bg-slate-50 border-slate-300 text-slate-800'
@@ -868,7 +1083,10 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                 }`}
               >
                 <History className="w-4 h-4 text-[#F89847]" />
-                <span>Meus Registros</span>
+                <span>Meus Registros & Ocorrências</span>
+                {faltasCount > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" title={`${faltasCount} falta(s) pendente(s)`} />
+                )}
               </button>
             </div>
 
@@ -985,11 +1203,17 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
 
             <div className="grid grid-cols-3 gap-2.5 text-center">
               {/* Presenças (Bordô) */}
-              <div
-                className={`py-3 px-2 rounded-2xl border flex flex-col items-center justify-center ${
+              <button
+                type="button"
+                onClick={() => {
+                  setHistoryFilter('presencas');
+                  setIsHistoryOpen(true);
+                }}
+                title="Clique para ver registros de presença"
+                className={`py-3 px-2 rounded-2xl border flex flex-col items-center justify-center transition-all duration-150 cursor-pointer hover:scale-[1.03] active:scale-95 text-left ${
                   isLightTheme
-                    ? 'bg-[#96183c]/10 border-[#96183c]/30'
-                    : 'bg-[#96183c]/30 border-[#96183c]/50'
+                    ? 'bg-[#96183c]/10 hover:bg-[#96183c]/15 border-[#96183c]/30'
+                    : 'bg-[#96183c]/30 hover:bg-[#96183c]/40 border-[#96183c]/50'
                 }`}
               >
                 <div
@@ -1006,14 +1230,22 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                 >
                   PRESENÇAS
                 </div>
-              </div>
+              </button>
 
               {/* Faltas (Laranja) */}
-              <div
-                className={`py-3 px-2 rounded-2xl border flex flex-col items-center justify-center ${
+              <button
+                type="button"
+                onClick={() => {
+                  setHistoryFilter('faltas');
+                  setIsHistoryOpen(true);
+                }}
+                title="Clique para ver e justificar faltas"
+                className={`py-3 px-2 rounded-2xl border flex flex-col items-center justify-center transition-all duration-150 cursor-pointer hover:scale-[1.03] active:scale-95 ${
+                  absentShifts.length > 0 ? 'ring-2 ring-orange-500/40' : ''
+                } ${
                   isLightTheme
-                    ? 'bg-[#f89642]/15 border-[#f89642]/40'
-                    : 'bg-orange-500/10 border-orange-500/30'
+                    ? 'bg-[#f89642]/15 hover:bg-[#f89642]/25 border-[#f89642]/40'
+                    : 'bg-orange-500/10 hover:bg-orange-500/20 border-orange-500/30'
                 }`}
               >
                 <div
@@ -1030,14 +1262,20 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                 >
                   FALTAS
                 </div>
-              </div>
+              </button>
 
               {/* Atestados (Amarelo) */}
-              <div
-                className={`py-3 px-2 rounded-2xl border flex flex-col items-center justify-center ${
+              <button
+                type="button"
+                onClick={() => {
+                  setHistoryFilter('justificados');
+                  setIsHistoryOpen(true);
+                }}
+                title="Clique para ver atestados e justificativas"
+                className={`py-3 px-2 rounded-2xl border flex flex-col items-center justify-center transition-all duration-150 cursor-pointer hover:scale-[1.03] active:scale-95 ${
                   isLightTheme
-                    ? 'bg-[#faf0ac]/60 border-[#f89642]/40'
-                    : 'bg-amber-500/10 border-amber-500/30'
+                    ? 'bg-[#faf0ac]/60 hover:bg-[#faf0ac]/80 border-[#f89642]/40'
+                    : 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30'
                 }`}
               >
                 <div
@@ -1054,7 +1292,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                 >
                   ATESTADOS
                 </div>
-              </div>
+              </button>
             </div>
           </div>
 
@@ -1282,17 +1520,39 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                       isLightTheme ? 'border-slate-200' : 'border-white/10'
                     }`}
                   >
-                    <span
-                      className={`text-[9px] font-black px-2.5 py-0.5 rounded-full ${
-                        dayShift.attendanceStatus === 'present'
-                          ? 'bg-[#96183c] text-white shadow-2xs'
-                          : isLightTheme
-                          ? 'bg-slate-200 text-slate-800 border border-slate-300'
-                          : 'bg-white/10 text-white/70'
-                      }`}
-                    >
-                      {dayShift.attendanceStatus === 'present' ? 'Presente' : 'Pendente'}
-                    </span>
+                    {(() => {
+                      const isPast24h = isShiftPast24hWithoutPunch(dayShift);
+                      const isJustified = dayShift.attendanceStatus === 'justified' || (justifications || []).some(j => (j.shiftId === dayShift.id || j.date === dayShift.date) && j.status === 'approved');
+
+                      if (dayShift.attendanceStatus === 'present' || dayShift.attendanceStatus === 'late') {
+                        return (
+                          <span className="text-[9px] font-black px-2.5 py-0.5 rounded-full bg-[#96183c] text-white shadow-2xs">
+                            Presente
+                          </span>
+                        );
+                      }
+                      if (isJustified) {
+                        return (
+                          <span className="text-[9px] font-black px-2.5 py-0.5 rounded-full bg-sky-500/20 text-sky-400 border border-sky-500/30">
+                            Justificado
+                          </span>
+                        );
+                      }
+                      if (isPast24h || dayShift.attendanceStatus === 'absent') {
+                        return (
+                          <span className="text-[9px] font-black px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                            Ausente
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className={`text-[9px] font-black px-2.5 py-0.5 rounded-full ${
+                          isLightTheme ? 'bg-slate-200 text-slate-800 border border-slate-300' : 'bg-white/10 text-white/70'
+                        }`}>
+                          Pendente
+                        </span>
+                      );
+                    })()}
 
                     {dayShift.meetingLink && (
                       <a
@@ -1432,219 +1692,379 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
       />
 
       {/* MODAL DE HISTÓRICO DE BATIDAS / FOLHA DE PONTO DO COLABORADOR */}
+      {/* MODAL DE HISTÓRICO DE BATIDAS / FOLHA DE PONTO DO COLABORADOR */}
       {isHistoryOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
           <div
-            className={`w-full max-w-2xl rounded-3xl border shadow-2xl overflow-hidden flex flex-col max-h-[85vh] ${
+            className={`w-full max-w-2xl rounded-2xl sm:rounded-3xl border shadow-2xl overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[85vh] ${
               isLightTheme ? 'bg-[#F8FAFC] border-slate-200 text-slate-900' : 'bg-[#12141c] border-white/10 text-white'
             }`}
           >
-            {/* Header */}
-            <div className={`px-6 py-4.5 border-b flex items-center justify-between ${
+            {/* Header (Responsivo Mobile) */}
+            <div className={`px-4 sm:px-6 py-3.5 sm:py-4.5 border-b flex items-center justify-between gap-3 ${
               isLightTheme ? 'bg-white border-slate-200' : 'bg-white/[0.03] border-white/10'
             }`}>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#96183c] to-[#f89642] text-white flex items-center justify-center shadow-xs">
-                  <History className="w-5 h-5 stroke-[2.2]" />
+              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl border flex items-center justify-center shrink-0 ${
+                  isLightTheme ? 'border-slate-200 text-slate-600 bg-slate-100/60' : 'border-white/10 text-slate-300 bg-white/5'
+                }`}>
+                  <History className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2]" />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-black tracking-tight">Meus Registros de Presenças</h3>
-                    {dbPunches && dbPunches.length > 0 && (
-                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                        isLightTheme ? 'bg-slate-100 text-slate-700' : 'bg-white/10 text-slate-300'
-                      }`}>
-                        {dbPunches.length} {dbPunches.length === 1 ? 'registro' : 'registros'}
-                      </span>
-                    )}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                    <h3 className="text-sm sm:text-base font-black tracking-tight truncate">Meus Registros & Ocorrências</h3>
+                    <span className={`text-[10px] sm:text-[11px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full shrink-0 ${
+                      isLightTheme ? 'bg-slate-100 text-slate-700' : 'bg-white/10 text-slate-300'
+                    }`}>
+                      {occurrences.length} {occurrences.length === 1 ? 'evento' : 'eventos'}
+                    </span>
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Extrato auditável de presenças e jornadas registradas com geolocalização</p>
+                  <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium truncate hidden sm:block">
+                    Extrato consolidado de presenças, faltas, atrasos e justificativas com 1 clique
+                  </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsHistoryOpen(false)}
-                className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:text-white dark:hover:bg-white/10 transition-all cursor-pointer"
+                className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:text-white dark:hover:bg-white/10 transition-all cursor-pointer shrink-0"
                 title="Fechar"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
+            {/* Filter Tabs Bar (Responsivo com Scroll Suave no Mobile) */}
+            {/* Filter Tabs Bar (Sem corte ou barra de rolagem no Mobile) */}
+            <div className={`px-3 sm:px-5 py-2 sm:py-2.5 border-b flex items-center gap-1.5 flex-wrap text-xs font-bold ${
+              isLightTheme ? 'bg-slate-50/80 border-slate-200' : 'bg-black/20 border-white/5'
+            }`}>
+              <button
+                type="button"
+                onClick={() => setHistoryFilter('all')}
+                className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs transition-all cursor-pointer flex items-center gap-1 ${
+                  historyFilter === 'all'
+                    ? isLightTheme
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-white/20 text-white'
+                    : isLightTheme
+                      ? 'text-slate-600 hover:bg-slate-200/60'
+                      : 'text-slate-400 hover:bg-white/10'
+                }`}
+              >
+                <span>Todos</span>
+                <span className="text-[10px] opacity-75 font-mono font-normal">({occurrences.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHistoryFilter('presencas')}
+                className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs transition-all cursor-pointer flex items-center gap-1 ${
+                  historyFilter === 'presencas'
+                    ? isLightTheme
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-white/20 text-white'
+                    : isLightTheme
+                      ? 'text-slate-600 hover:bg-slate-200/60'
+                      : 'text-slate-400 hover:bg-white/10'
+                }`}
+              >
+                <span>Presenças</span>
+                <span className="text-[10px] opacity-75 font-mono font-normal">({presencasCount})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHistoryFilter('faltas')}
+                className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs transition-all cursor-pointer flex items-center gap-1 ${
+                  historyFilter === 'faltas'
+                    ? 'bg-[#96183c] text-white shadow-xs'
+                    : isLightTheme
+                      ? 'text-slate-600 hover:bg-rose-50'
+                      : 'text-slate-400 hover:bg-white/10'
+                }`}
+              >
+                <span>Faltas</span>
+                {faltasCount > 0 ? (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white text-[#96183c] font-black font-mono">
+                    {faltasCount}
+                  </span>
+                ) : (
+                  <span className="text-[10px] opacity-75 font-mono font-normal">(0)</span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHistoryFilter('atrasos')}
+                className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs transition-all cursor-pointer flex items-center gap-1 ${
+                  historyFilter === 'atrasos'
+                    ? isLightTheme
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-white/20 text-white'
+                    : isLightTheme
+                      ? 'text-slate-600 hover:bg-slate-200/60'
+                      : 'text-slate-400 hover:bg-white/10'
+                }`}
+              >
+                <span>Atrasos</span>
+                <span className="text-[10px] opacity-75 font-mono font-normal">({atrasosCount})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHistoryFilter('justificados')}
+                className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs transition-all cursor-pointer flex items-center gap-1 ${
+                  historyFilter === 'justificados'
+                    ? isLightTheme
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-white/20 text-white'
+                    : isLightTheme
+                      ? 'text-slate-600 hover:bg-slate-200/60'
+                      : 'text-slate-400 hover:bg-white/10'
+                }`}
+              >
+                <span>Justificados</span>
+                <span className="text-[10px] opacity-75 font-mono font-normal">({justificadosCount})</span>
+              </button>
+            </div>
+
             {/* Content List */}
-            <div className="p-5 overflow-y-auto space-y-2.5 flex-1 custom-scrollbar">
+            <div className="p-3 sm:p-5 overflow-y-auto overflow-x-hidden space-y-2 sm:space-y-2.5 flex-1 custom-scrollbar">
+              {/* Banner discreto se houver faltas sem justificativa */}
+              {faltasCount > 0 && historyFilter !== 'presencas' && (
+                <div className={`p-3 sm:p-3.5 rounded-xl sm:rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 text-xs ${
+                  isLightTheme
+                    ? 'bg-rose-50/70 border-rose-200 text-rose-900'
+                    : 'bg-rose-500/10 border-rose-500/25 text-rose-200'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-[#96183c] shrink-0" />
+                    <div>
+                      <p className="font-bold text-[11px] sm:text-xs">
+                        Você possui {faltasCount} {faltasCount === 1 ? 'ausência não justificada' : 'ausências não justificadas'}.
+                      </p>
+                      <p className="text-[10px] sm:text-[11px] opacity-80">
+                        Envie sua justificativa no cartão abaixo ou acesse a aba de solicitações.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsHistoryOpen(false);
+                      onNavigateToRequests();
+                    }}
+                    className={`w-full sm:w-auto px-3 py-1.5 rounded-xl border text-[11px] sm:text-xs font-bold transition-all cursor-pointer shrink-0 text-center ${
+                      isLightTheme
+                        ? 'border-rose-300 bg-white hover:bg-rose-100 text-rose-800'
+                        : 'border-rose-500/40 bg-rose-500/15 hover:bg-rose-500/25 text-rose-200'
+                    }`}
+                  >
+                    Abrir em Folgas & Trocas →
+                  </button>
+                </div>
+              )}
+
               {isLoadingPunches ? (
                 <div className="text-center py-12 text-xs text-slate-400 font-medium space-y-2">
                   <div className="w-6 h-6 border-2 border-[#96183c] border-t-transparent rounded-full animate-spin mx-auto" />
                   <p>Carregando registros de ponto do banco de dados...</p>
                 </div>
-              ) : dbPunches && dbPunches.length > 0 ? (
-                dbPunches.map((punch: any, idx: number) => {
-                  const dt = punch.Dta_Hora_Registro ? new Date(punch.Dta_Hora_Registro) : new Date();
-                  const dateFormatted = !isNaN(dt.getTime()) ? dt.toLocaleDateString('pt-BR') : todayStr;
-                  const timeFormatted = !isNaN(dt.getTime()) ? dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '--:--';
-                  const isEntrada = punch.Tpo_Registro?.toLowerCase() === 'entrada';
-                  const isValid = punch.Flg_Gps_Validado !== false;
+              ) : filteredOccurrences && filteredOccurrences.length > 0 ? (
+                filteredOccurrences.map((item) => {
+                  const isEntrada = item.title.toLowerCase().startsWith('entrada');
+                  const isSaida = item.title.toLowerCase().startsWith('saída') || item.title.toLowerCase().startsWith('saida');
+                  const isFalta = item.type === 'falta';
+                  const isAtraso = Boolean(item.delayInfo);
+                  const isDelayJustified = item.delayInfo?.isJustified;
 
                   return (
                     <div
-                      key={punch.Idf_Registro_Ponto || idx}
-                      className={`p-3.5 rounded-2xl border transition-all duration-200 ${
-                        isLightTheme
-                          ? 'bg-white border-slate-200 hover:border-slate-300 shadow-xs'
-                          : 'bg-white/[0.04] border-white/10 hover:border-white/15 shadow-sm'
+                      key={item.id}
+                      className={`p-3 sm:p-3.5 rounded-xl sm:rounded-2xl border transition-all duration-200 ${
+                        isFalta
+                          ? isLightTheme
+                            ? 'bg-rose-50/30 border-rose-200/80 hover:border-rose-300 shadow-xs'
+                            : 'bg-rose-500/5 border-rose-500/20 hover:border-rose-500/30 shadow-sm'
+                          : isLightTheme
+                            ? 'bg-white border-slate-200 hover:border-slate-300 shadow-xs'
+                            : 'bg-white/[0.04] border-white/10 hover:border-white/15 shadow-sm'
                       }`}
                     >
-                      {/* Top Row: ● Entrada: 14:24 (or Saída: 16:29), Date and GPS badge */}
-                      <div className="flex items-center justify-between gap-2 font-black text-xs">
-                        <div className="flex items-center gap-2">
+                      {/* Linha 1: ● Entrada/Saída/Falta e Data */}
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className="flex items-center gap-1.5 text-xs sm:text-sm font-black truncate"
+                          style={{
+                            color: isFalta
+                              ? (isLightTheme ? '#881337' : '#fda4af')
+                              : isEntrada
+                                ? (isLightTheme ? '#064e3b' : '#6ee7b7')
+                                : (isLightTheme ? '#881337' : '#fda4af')
+                          }}
+                        >
                           <span
-                            className="flex items-center gap-1.5 text-xs font-black"
-                            style={{ color: isEntrada ? (isLightTheme ? '#064e3b' : '#6ee7b7') : (isLightTheme ? '#881337' : '#fda4af') }}
-                          >
-                            <span
-                              className="w-2.5 h-2.5 rounded-full shrink-0"
-                              style={{ backgroundColor: isEntrada ? '#10b981' : '#f43f5e' }}
-                            />
-                            {isEntrada ? 'Entrada:' : 'Saída:'} {timeFormatted}
-                          </span>
-
-                          <span
-                            className="text-[11px] font-semibold px-2 py-0.5 rounded-md font-mono"
+                            className="w-2.5 h-2.5 rounded-full shrink-0"
                             style={{
-                              backgroundColor: isLightTheme ? '#f1f5f9' : 'rgba(255,255,255,0.08)',
-                              color: isLightTheme ? '#475569' : '#cbd5e1',
+                              backgroundColor: isFalta
+                                ? '#e11d48'
+                                : isEntrada
+                                  ? '#10b981'
+                                  : '#f43f5e'
                             }}
-                          >
-                            {dateFormatted}
-                          </span>
-                        </div>
+                          />
+                          {item.title}
+                        </span>
 
                         <span
-                          className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs shrink-0"
-                          style={
-                            isValid
-                              ? isLightTheme
-                                ? { backgroundColor: '#dcfce7', color: '#064e3b', borderColor: '#86efac' }
-                                : { backgroundColor: 'rgba(16, 185, 129, 0.25)', color: '#a7f3d0', borderColor: 'rgba(16, 185, 129, 0.4)' }
-                              : isLightTheme
-                                ? { backgroundColor: '#fef3c7', color: '#78350f', borderColor: '#fcd34d' }
-                                : { backgroundColor: 'rgba(245, 158, 11, 0.25)', color: '#fde68a', borderColor: 'rgba(245, 158, 11, 0.4)' }
-                          }
+                          className="text-[10px] sm:text-[11px] font-semibold px-2 py-0.5 rounded-md font-mono shrink-0"
+                          style={{
+                            backgroundColor: isLightTheme ? '#f1f5f9' : 'rgba(255,255,255,0.08)',
+                            color: isLightTheme ? '#475569' : '#cbd5e1',
+                          }}
                         >
-                          {isValid ? 'GPS OK' : 'Fora do Raio'}
+                          {item.dateFormatted}
                         </span>
                       </div>
 
-                      {/* Bottom Row: Address without emoji */}
-                      <p
-                        className="text-xs font-medium truncate mt-1.5 pl-4"
-                        style={{ color: isLightTheme ? '#475569' : '#94a3b8' }}
-                      >
-                        {punch.Des_Endereco || 'Localização Registrada'}
-                        {punch.Num_Latitude && punch.Num_Longitude && (
-                          <span className="font-mono text-[10px] opacity-70 ml-2">
-                            ({Number(punch.Num_Latitude).toFixed(4)}, {Number(punch.Num_Longitude).toFixed(4)})
+                      {/* Linha 2: Badges de Status (Atraso, GPS, Justificativa) e Botão Justificar */}
+                      <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                        {/* Badge de Atraso se aplicável */}
+                        {isAtraso && (
+                          <span
+                            className="text-[10px] sm:text-[11px] px-2 py-0.5 rounded-full font-black border shadow-xs shrink-0"
+                            style={
+                              isDelayJustified
+                                ? isLightTheme
+                                  ? { backgroundColor: '#f1f5f9', color: '#475569', borderColor: '#cbd5e1' }
+                                  : { backgroundColor: 'rgba(255, 255, 255, 0.08)', color: '#cbd5e1', borderColor: 'rgba(255, 255, 255, 0.15)' }
+                                : isLightTheme
+                                  ? { backgroundColor: '#fef3c7', color: '#78350f', borderColor: '#fcd34d' }
+                                  : { backgroundColor: 'rgba(245, 158, 11, 0.25)', color: '#fde68a', borderColor: 'rgba(245, 158, 11, 0.4)' }
+                            }
+                          >
+                            {isDelayJustified
+                              ? `Atraso justificado (+${item.delayInfo?.minutes}m)`
+                              : `Atraso (+${item.delayInfo?.minutes}m)`
+                            }
                           </span>
                         )}
-                      </p>
-                    </div>
-                  );
-                })
-              ) : empShifts.length > 0 ? (
-                empShifts.map((shift) => {
-                  const hasIn = Boolean(shift.checkInTime);
-                  const hasOut = Boolean(shift.checkOutTime);
-                  const isGpsOk = shift.checkInLocation?.gpsValidated !== false;
-                  return (
-                    <div
-                      key={shift.id}
-                      className={`p-3.5 rounded-2xl border transition-all duration-200 ${
-                        isLightTheme
-                          ? 'bg-white border-slate-200 hover:border-slate-300 shadow-xs'
-                          : 'bg-white/[0.04] border-white/10 hover:border-white/15 shadow-sm'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2 font-black text-xs">
-                        <div className="flex items-center gap-3">
-                          {hasIn && (
-                            <span
-                              className="flex items-center gap-1.5 text-xs font-black"
-                              style={{ color: isLightTheme ? '#064e3b' : '#6ee7b7' }}
-                            >
-                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: '#10b981' }} />
-                              Entrada: {shift.checkInTime}
-                            </span>
-                          )}
-                          {hasOut && (
-                            <span
-                              className="flex items-center gap-1.5 text-xs font-black"
-                              style={{ color: isLightTheme ? '#881337' : '#fda4af' }}
-                            >
-                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: '#f43f5e' }} />
-                              Saída: {shift.checkOutTime}
-                            </span>
-                          )}
-                          {!hasIn && !hasOut && (
-                            <span className="text-xs font-semibold text-slate-500">
-                              Turno: {shift.startTime} – {shift.endTime}
-                            </span>
-                          )}
-                          <span
-                            className="text-[11px] font-semibold px-2 py-0.5 rounded-md font-mono"
-                            style={{
-                              backgroundColor: isLightTheme ? '#f1f5f9' : 'rgba(255,255,255,0.08)',
-                              color: isLightTheme ? '#475569' : '#cbd5e1',
-                            }}
-                          >
-                            {shift.date.split('-').reverse().join('/')}
-                          </span>
-                        </div>
 
+                        {/* Badge de GPS / Ausente / Justificado */}
                         <span
-                          className="text-[11px] px-2.5 py-0.5 rounded-full font-black border shadow-xs shrink-0"
+                          className="text-[10px] sm:text-[11px] px-2 py-0.5 rounded-full font-black border shadow-xs shrink-0"
                           style={
-                            isGpsOk
+                            isFalta
                               ? isLightTheme
-                                ? { backgroundColor: '#dcfce7', color: '#064e3b', borderColor: '#86efac' }
-                                : { backgroundColor: 'rgba(16, 185, 129, 0.25)', color: '#a7f3d0', borderColor: 'rgba(16, 185, 129, 0.4)' }
-                              : isLightTheme
-                                ? { backgroundColor: '#fef3c7', color: '#78350f', borderColor: '#fcd34d' }
-                                : { backgroundColor: 'rgba(245, 158, 11, 0.25)', color: '#fde68a', borderColor: 'rgba(245, 158, 11, 0.4)' }
+                                ? { backgroundColor: '#ffe4e6', color: '#9f1239', borderColor: '#fecdd3' }
+                                : { backgroundColor: 'rgba(225, 29, 72, 0.25)', color: '#fda4af', borderColor: 'rgba(225, 29, 72, 0.4)' }
+                              : item.type === 'justificado'
+                                ? isLightTheme
+                                  ? { backgroundColor: '#e0f2fe', color: '#0369a1', borderColor: '#bae6fd' }
+                                  : { backgroundColor: 'rgba(14, 165, 233, 0.25)', color: '#7dd3fc', borderColor: 'rgba(14, 165, 233, 0.4)' }
+                                : item.isGpsOk
+                                  ? isLightTheme
+                                    ? { backgroundColor: '#dcfce7', color: '#064e3b', borderColor: '#86efac' }
+                                    : { backgroundColor: 'rgba(16, 185, 129, 0.25)', color: '#a7f3d0', borderColor: 'rgba(16, 185, 129, 0.4)' }
+                                  : isLightTheme
+                                    ? { backgroundColor: '#fef3c7', color: '#78350f', borderColor: '#fcd34d' }
+                                    : { backgroundColor: 'rgba(245, 158, 11, 0.25)', color: '#fde68a', borderColor: 'rgba(245, 158, 11, 0.4)' }
                           }
                         >
-                          {hasIn ? (isGpsOk ? 'GPS OK' : 'Fora do Raio') : 'Agendado'}
+                          {isFalta
+                            ? 'Ausente'
+                            : item.type === 'justificado'
+                              ? 'Justificado'
+                              : (item.isGpsOk ? 'GPS OK' : 'Fora do Raio')
+                          }
                         </span>
+
+                        {/* Ação de Justificar (Apenas se a falta ou o atraso não foi justificado) */}
+                        {item.canJustify && onOpenJustificationModal && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsHistoryOpen(false);
+                              onOpenJustificationModal(
+                                item.shiftId,
+                                item.date
+                              );
+                            }}
+                            className={`ml-auto px-2.5 sm:px-3 py-1 rounded-lg sm:rounded-xl font-bold text-[11px] sm:text-xs transition-all cursor-pointer shadow-xs flex items-center gap-1 shrink-0 ${
+                              isFalta
+                                ? 'bg-[#96183c] hover:bg-[#b32047] text-white'
+                                : isLightTheme
+                                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300'
+                                  : 'bg-white/10 hover:bg-white/20 text-white border border-white/15'
+                            }`}
+                            title={isFalta ? 'Enviar justificativa para esta falta' : 'Enviar justificativa para este atraso'}
+                          >
+                            <FileText className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                            <span>Justificar</span>
+                          </button>
+                        )}
                       </div>
 
-                      <p
-                        className="text-xs font-medium truncate mt-1.5 pl-4"
-                        style={{ color: isLightTheme ? '#475569' : '#94a3b8' }}
-                      >
-                        {shift.checkInLocation?.address || shift.workplace || 'Posto Presencial'}
-                      </p>
+                      {/* Linha 3: Endereço e observação */}
+                      {item.subtitle && (
+                        <p
+                          className="text-[11px] sm:text-xs font-medium mt-1.5 break-words line-clamp-2"
+                          style={{ color: isLightTheme ? '#475569' : '#94a3b8' }}
+                        >
+                          {item.subtitle}
+                        </p>
+                      )}
                     </div>
                   );
                 })
               ) : (
-                <div className="text-center py-12 text-xs text-slate-400 font-medium">
-                  Nenhum registro de ponto localizado ainda. Registre sua entrada para visualizar seu histórico.
+                <div className="text-center py-12 sm:py-14 text-xs text-slate-400 font-medium space-y-1">
+                  <FileCheck className="w-8 h-8 text-slate-400/50 mx-auto mb-2 stroke-[1.5]" />
+                  <p className="font-bold text-slate-600 dark:text-slate-300 text-xs sm:text-sm">
+                    Nenhum registro encontrado para este filtro.
+                  </p>
+                  <p className="text-[10px] sm:text-[11px] text-slate-400">
+                    {historyFilter === 'faltas'
+                      ? 'Você não possui faltas pendentes.'
+                      : historyFilter === 'atrasos'
+                        ? 'Nenhum atraso registrado.'
+                        : 'Nenhum registro para exibir no momento.'}
+                  </p>
                 </div>
               )}
             </div>
 
-            {/* Footer */}
-            <div className={`px-6 py-3.5 border-t flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 ${
+            {/* Footer (Responsivo Mobile) */}
+            <div className={`px-4 sm:px-6 py-3 sm:py-3.5 border-t flex flex-col sm:flex-row items-center justify-between gap-2.5 text-xs text-slate-500 dark:text-slate-400 ${
               isLightTheme ? 'bg-white border-slate-200' : 'bg-white/[0.03] border-white/10'
             }`}>
-              <span className="text-[11.5px] font-medium">Conforme Portaria MTP 671/2021 • Registro Digital Seguro</span>
-              <button
-                type="button"
-                onClick={() => setIsHistoryOpen(false)}
-                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white dark:bg-white/15 dark:hover:bg-white/25 font-bold text-xs transition-all cursor-pointer shadow-xs"
-              >
-                Fechar
-              </button>
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <span className="text-[10.5px] sm:text-[11.5px] font-medium">
+                  Conforme Portaria MTP 671/2021 • Registro Digital Seguro
+                </span>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                {onOpenJustificationModal && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsHistoryOpen(false);
+                      onOpenJustificationModal();
+                    }}
+                    className="flex-1 sm:flex-initial text-center justify-center px-3 py-2 rounded-xl border border-slate-300 dark:border-white/20 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/10 font-bold text-xs transition-all cursor-pointer"
+                  >
+                    + Nova Justificativa
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsHistoryOpen(false)}
+                  className="flex-1 sm:flex-initial text-center justify-center px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white dark:bg-white/15 dark:hover:bg-white/25 font-bold text-xs transition-all cursor-pointer shadow-xs"
+                >
+                  Fechar
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1811,26 +2231,45 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
               </div>
             )}
 
-            <div className="flex items-center gap-2.5">
-              <button
-                type="button"
-                onClick={() => tolerancePrompt.action(punchReasonInput.trim(), exitReasonType === 'forgot')}
-                className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-[#96183c] to-[#b32047] hover:brightness-110 active:scale-[0.99] text-white font-black text-xs shadow-md shadow-[#96183c]/30 flex items-center justify-center gap-1.5 cursor-pointer transition-all"
-              >
-                <Check className="w-4 h-4" />
-                <span>Confirmar e Registrar Ponto</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setTolerancePrompt(null)}
-                className={`py-3 px-3.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                  isLightTheme
-                    ? 'border-slate-200 hover:bg-slate-100 text-slate-600'
-                    : 'border-white/10 hover:bg-white/5 text-slate-400'
-                }`}
-              >
-                Cancelar
-              </button>
+            <div className="flex flex-col gap-2 pt-1">
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => tolerancePrompt.action(punchReasonInput.trim(), exitReasonType === 'forgot')}
+                  className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-[#96183c] to-[#b32047] hover:brightness-110 active:scale-[0.99] text-white font-black text-xs shadow-md shadow-[#96183c]/30 flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Confirmar com Justificativa</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTolerancePrompt(null)}
+                  className={`py-3 px-3.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                    isLightTheme
+                      ? 'border-slate-200 hover:bg-slate-100 text-slate-600'
+                      : 'border-white/10 hover:bg-white/5 text-slate-400'
+                  }`}
+                >
+                  Cancelar
+                </button>
+              </div>
+
+              {/* Opção para bater ponto imediatamente e justificar depois */}
+              {tolerancePrompt.type === 'entrada' && (
+                <button
+                  type="button"
+                  onClick={() => tolerancePrompt.action('', false)}
+                  className={`w-full py-2.5 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                    isLightTheme
+                      ? 'border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      : 'border-white/15 bg-white/5 hover:bg-white/10 text-slate-300'
+                  }`}
+                  title="Registra a batida agora sem bloquear o início do trabalho e permite justificar o atraso mais tarde"
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Registrar entrada agora e justificar depois</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

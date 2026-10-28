@@ -23,6 +23,7 @@ import { OrbitShiftModal, ORBIT_COLORS } from './OrbitShiftModal';
 import { ShiftTemplatesModal } from './ShiftTemplatesModal';
 import { DeleteShiftsModal } from './DeleteShiftsModal';
 import { findShiftOverlapConflict, checkTimeOffConflict } from '@/shared/utils/shiftValidation';
+import { getSchedulableEmployees } from '@/shared/utils/employeeUtils';
 
 interface OrbitCalendarViewProps {
   employees: Employee[];
@@ -221,6 +222,11 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
     return Array.from(set);
   }, [employees]);
 
+  // Colaboradores aptos a serem escalados (exclui perfil gestor)
+  const schedulableEmployees = useMemo(() => {
+    return getSchedulableEmployees(employees);
+  }, [employees]);
+
   // Drafts count
   const draftShifts = useMemo(() => {
     return shifts.filter(s => s.status === 'draft');
@@ -333,7 +339,7 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
     if (initialStatus === 'draft') {
       setEditingShift({
         id: '',
-        employeeId: selectedCollaboratorId || employees[0]?.id || 'emp-1',
+        employeeId: selectedCollaboratorId || schedulableEmployees[0]?.id || employees[0]?.id || 'emp-1',
         date: dateStr || todayStr,
         startTime: timeStr || '09:00',
         endTime: '18:00',
@@ -531,7 +537,7 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
             ALL
           </button>
 
-          {employees.map((emp) => {
+          {schedulableEmployees.map((emp) => {
             const isSelected = selectedCollaboratorId === emp.id;
             return (
               <button
@@ -816,7 +822,7 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
         {/* Bottom Team Footer */}
         <div className={`mt-auto pt-3 border-t flex items-center justify-between ${isDark ? 'border-white/5' : 'border-slate-200'}`}>
           <div className="flex -space-x-1.5 overflow-hidden items-center">
-            {employees.slice(0, 5).map((emp) => {
+            {schedulableEmployees.slice(0, 5).map((emp) => {
               const isSel = selectedCollaboratorId === emp.id;
               return (
                 <button

@@ -373,3 +373,18 @@ html.light .manager-scope [style*="0 20px 50px rgba(0,0,0"],
   background-color: #000000;
   min-height: 100vh;
 }
+
+/* Utilitário para ocultar barra de rolagem horizontal mantendo funcionalidade de scroll */
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.no-scrollbar,
+.scrollbar-none {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+

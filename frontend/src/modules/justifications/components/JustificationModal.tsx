@@ -1,5 +1,5 @@
 import { getTodayDateString } from '@/shared/utils/dateUtils';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, FileText, Upload, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Employee, Shift, AbsenceJustification } from '@/types';
 import { uploadDocumentSupabase } from '@/shared/services/storageService';
@@ -11,6 +11,9 @@ interface JustificationModalProps {
   shifts: Shift[];
   onSubmitJustification: (justification: Partial<AbsenceJustification>) => void;
   isLightTheme?: boolean;
+  initialShiftId?: string;
+  initialDate?: string;
+  initialReason?: string;
 }
 
 export const JustificationModal: React.FC<JustificationModalProps> = ({
@@ -20,14 +23,25 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
   shifts,
   onSubmitJustification,
   isLightTheme = false,
+  initialShiftId,
+  initialDate,
+  initialReason,
 }) => {
-  const [selectedShiftId, setSelectedShiftId] = useState(shifts[0]?.id || '');
-  const [absenceDate, setAbsenceDate] = useState(getTodayDateString());
+  const [selectedShiftId, setSelectedShiftId] = useState(initialShiftId || shifts[0]?.id || '');
+  const [absenceDate, setAbsenceDate] = useState(initialDate || getTodayDateString());
   const [reason, setReason] = useState('');
   const [documentName, setDocumentName] = useState('');
   const [documentUrl, setDocumentUrl] = useState('');
   const [isUploaded, setIsUploaded] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (initialShiftId) setSelectedShiftId(initialShiftId);
+      if (initialDate) setAbsenceDate(initialDate);
+      setReason(''); // Campo motivo detalhado sempre começa vazio para o colaborador preencher
+    }
+  }, [isOpen, initialShiftId, initialDate]);
 
   if (!isOpen) return null;
 

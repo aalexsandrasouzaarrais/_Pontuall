@@ -369,6 +369,12 @@ function AppContent() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isSwapModalOpen, setIsSwapModalOpen] = useState(false);
   const [isJustificationModalOpen, setIsJustificationModalOpen] = useState(false);
+  const [justificationPrefill, setJustificationPrefill] = useState<{ shiftId?: string; date?: string; reason?: string } | null>(null);
+
+  const handleOpenJustificationModal = (shiftId?: string, date?: string, reason?: string) => {
+    setJustificationPrefill({ shiftId, date, reason });
+    setIsJustificationModalOpen(true);
+  };
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
   const [isChatModalOpen, setIsChatModalOpen] = useState(false);
   const [isManagerRequestsModalOpen, setIsManagerRequestsModalOpen] = useState(false);
@@ -1522,6 +1528,7 @@ function AppContent() {
                   isLightTheme={!isDark}
                   employees={employees}
                   justifications={justifications}
+                  onOpenJustificationModal={handleOpenJustificationModal}
                 />
               );
             })()}
@@ -2257,17 +2264,24 @@ function AppContent() {
         currentEmployee={activeEmployee}
         employees={employees}
         myShifts={shifts.filter(s => s.employeeId === activeEmployee.id)}
+        allShifts={shifts}
         onSubmitRequest={handleSubmitRequest}
         isLightTheme={!isDark}
       />
 
       <JustificationModal
         isOpen={isJustificationModalOpen}
-        onClose={() => setIsJustificationModalOpen(false)}
+        onClose={() => {
+          setIsJustificationModalOpen(false);
+          setJustificationPrefill(null);
+        }}
         currentEmployee={activeEmployee}
         shifts={shifts.filter(s => s.employeeId === activeEmployee.id)}
         onSubmitJustification={handleSubmitJustification}
         isLightTheme={!isDark}
+        initialShiftId={justificationPrefill?.shiftId}
+        initialDate={justificationPrefill?.date}
+        initialReason={justificationPrefill?.reason}
       />
 
       <NotificationsModal
