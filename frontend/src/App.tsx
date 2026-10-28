@@ -369,6 +369,43 @@ function AppContent() {
       return () => unsubscribe();
     }, [activeEmployee?.id]);
 
+    // Lembrete de Fechamento da Folha Mensal no Sino de Notificações para Gestores e RH
+    useEffect(() => {
+      if (!isAuthenticated || !activeEmployee) return;
+      const isManagerOrRh = currentRole === 'manager' || activeEmployee.roleType === 'gestor' || activeEmployee.isRh || activeEmployee.role === 'Gestor' || activeEmployee.isMasterManager;
+      if (!isManagerOrRh) return;
+
+      const now = new Date();
+      const currentDay = now.getDate();
+      // Ativa na janela de fechamento (dia 25 em diante até o fim do mês, ou primeiros 3 dias do mês seguinte)
+      if (currentDay < 25 && currentDay > 3) return;
+
+      const monthNames = [
+        'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+      ];
+      const targetClosingDate = currentDay <= 3 ? new Date(now.getFullYear(), now.getMonth() - 1, 1) : now;
+      const monthName = monthNames[targetClosingDate.getMonth()];
+      const targetYear = targetClosingDate.getFullYear();
+      const closingNotifId = `monthly-closing-${targetYear}-${String(targetClosingDate.getMonth() + 1).padStart(2, '0')}`;
+
+      setNotifications(prev => {
+        if (prev.some(n => n.id === closingNotifId || n.title?.includes('Fechamento da Folha'))) {
+          return prev;
+        }
+        const closingNotif: NotificationItem = {
+          id: closingNotifId,
+          title: `🗓️ Fechamento da Folha (${monthName}/${targetYear})`,
+          message: `O mês de ${monthName} está no período de fechamento contábil. Acesse a aba de Relatórios no Painel de Gestão para exportar a planilha mensal consolidada em CSV.`,
+          type: 'system',
+          timestamp: 'Agora',
+          read: false,
+          actionRequired: true,
+        };
+        return [closingNotif, ...prev];
+      });
+    }, [currentRole, activeEmployee?.id, isAuthenticated]);
+
   // Modals state
   const [selectedShiftForDetail, setSelectedShiftForDetail] = useState<Shift | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
