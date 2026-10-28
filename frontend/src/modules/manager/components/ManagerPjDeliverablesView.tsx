@@ -37,6 +37,7 @@ interface ManagerPjDeliverablesViewProps {
   onApproveReport?: (id: string) => void;
   onRejectReport?: (id: string, reason?: string) => void;
   isDark?: boolean;
+  isRh?: boolean;
 }
 
 export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps> = ({
@@ -45,6 +46,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
   onApproveReport,
   onRejectReport,
   isDark = true,
+  isRh = false,
 }) => {
   const [localReports, setLocalReports] = useState<PjDeliverableReport[]>(pjReports);
   const [searchQuery, setSearchQuery] = useState('');
@@ -359,6 +361,18 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
         </div>
       </div>
 
+      {/* Banner Informativo para Perfil RH (Modo Consulta - RH não homologa PJ) */}
+      {isRh && (
+        <div className={`p-4 rounded-2xl border flex items-center gap-3 text-xs ${
+          isDark ? 'bg-amber-500/10 border-amber-500/25 text-amber-200' : 'bg-amber-50 border-amber-200 text-amber-900'
+        }`}>
+          <AlertCircle className="w-5 h-5 text-amber-500 shrink-0" />
+          <p className="leading-relaxed">
+            <strong>Perfil RH (Modo Consulta):</strong> A homologação e aprovação de entregas PJ cabem exclusivamente ao <strong>Gestor de Setor</strong> responsável. O RH pode acompanhar as atividades, evidências e exportar relatórios para faturamento.
+          </p>
+        </div>
+      )}
+
       {/* Barra de Filtros: Busca, Seleção de Prestador PJ e Status */}
       <div className={`p-4 rounded-2xl border flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 ${
         isDark ? 'bg-[#151822] border-[#252A3A]' : 'bg-white border-slate-200 shadow-sm'
@@ -511,12 +525,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                               </span>
                             </td>
                             <td className={`py-3 px-3 font-mono whitespace-nowrap ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                              {entry.date
-                                ? new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR', {
-                                    day: '2-digit',
-                                    month: '2-digit',
-                                  })
-                                : '-'}
+                              {entry.date ? formatDateBR(entry.date) : '-'}
                             </td>
                             <td className="py-3 px-3 whitespace-nowrap">
                               <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
@@ -752,12 +761,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                                 </span>
                                 <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                   • Enviado em{' '}
-                                  {new Date(rep.submittedAt).toLocaleDateString('pt-BR', {
-                                    day: '2-digit',
-                                    month: '2-digit',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  })}
+                                  {formatDateTimeBR(rep.submittedAt)}
                                 </span>
                               </div>
                               <p className={`text-xs mt-1 line-clamp-1 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
@@ -803,7 +807,19 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                                 <AlertCircle className="w-3.5 h-3.5" />
                                 Ajustes Solicitados
                               </span>
+                            ) : isRh ? (
+                              /* Restrição RH: Apenas Gestor homologa entregas PJ */
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border ${
+                                  isDark ? 'bg-amber-500/10 text-amber-300 border-amber-500/25' : 'bg-amber-50 text-amber-800 border-amber-200'
+                                }`}
+                                title="A homologação de entregas PJ cabe exclusivamente ao Gestor responsável"
+                              >
+                                <Clock className="w-3.5 h-3.5 text-amber-500" />
+                                <span>Aguardando Gestor</span>
+                              </span>
                             ) : (
+                              /* Perfil Gestor: Botões de homologação e pedido de ajuste */
                               <>
                                 <button
                                   type="button"

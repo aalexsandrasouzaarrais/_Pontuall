@@ -239,6 +239,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
             onApproveReport={onApprovePjReport}
             onRejectReport={onRejectPjReport}
             isDark={isDark}
+            isRh={activeEmployee?.isRh || activeEmployee?.roleType === 'rh' || activeEmployee?.isMasterManager}
           />
         ) : (
           <ErrorBoundary fallbackTitle="Painel de Gestão" fallbackMessage="Ocorreu uma instabilidade na exibição do painel. Clique abaixo para recarregar com segurança.">

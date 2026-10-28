@@ -56,7 +56,7 @@ import {
 import { PjTimesheetTracker } from './PjTimesheetTracker';
 import { PjNotepadSection } from './PjNotepadSection';
 import { ReminderDetailModal } from './ReminderDetailModal';
-import { getTodayDateString } from '@/shared/utils/dateUtils';
+import { getTodayDateString, formatDateBR, formatDateTimeBR } from '@/shared/utils/dateUtils';
 
 interface PjDeliverablesViewProps {
   employee: Employee;
@@ -1387,7 +1387,7 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                           </span>
                         </td>
                         <td className={`py-3 px-3 font-mono whitespace-nowrap ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                          {new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                          {formatDateBR(entry.date)}
                         </td>
                         <td className="py-3 px-3 whitespace-nowrap">
                           <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
@@ -1838,7 +1838,7 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                               </span>
                             </h3>
                             <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                              Enviado em: {new Date(rep.submittedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              Enviado em: {formatDateTimeBR(rep.submittedAt)}
                             </span>
                           </div>
                         </div>
@@ -1936,7 +1936,7 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                                       </span>
                                     </td>
                                     <td className={`py-2.5 px-2.5 font-mono whitespace-nowrap ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>
-                                      {new Date(ts.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                                      {formatDateBR(ts.date)}
                                     </td>
                                     <td className="py-2.5 px-2.5 whitespace-nowrap">
                                       <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${

@@ -21,6 +21,7 @@ import {
 import { Employee } from '@/types';
 import { updateColaboradorAvatarSupabase } from '@/modules/auth/services/colaboradorService';
 import { safeStorage } from '@/shared/utils/safeStorage';
+import { formatDateBR } from '@/shared/utils/dateUtils';
 
 interface ProfileEditModalProps {
   isOpen: boolean;
@@ -684,13 +685,13 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
                     <div>
                       <span className={`text-[10px] font-mono block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Início do Contrato</span>
                       <strong className={isDark ? 'text-white' : 'text-slate-800'}>
-                        {currentUser.contractStartDate ? new Date(currentUser.contractStartDate + 'T00:00:00').toLocaleDateString('pt-BR') : 'Não informado'}
+                        {formatDateBR(currentUser.contractStartDate) || 'Não informado'}
                       </strong>
                     </div>
                     <div>
                       <span className={`text-[10px] font-mono block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Término do Contrato</span>
                       <strong className={isDark ? 'text-white' : 'text-slate-800'}>
-                        {currentUser.contractEndDate ? new Date(currentUser.contractEndDate + 'T00:00:00').toLocaleDateString('pt-BR') : 'Sem data final definida'}
+                        {formatDateBR(currentUser.contractEndDate) || 'Sem data final definida'}
                       </strong>
                     </div>
                   </div>
