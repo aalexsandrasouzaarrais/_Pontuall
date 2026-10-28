@@ -39,7 +39,6 @@ import {
   Lock,
   Hash,
   Briefcase,
-  FileSpreadsheet
 } from 'lucide-react';
 import { Employee, Shift, TimeOffRequest, AbsenceJustification } from '@/types';
 import { supabase } from '@/shared/services/supabase';
@@ -242,6 +241,28 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
   const toggleExpandBancoReason = (id: string) => {
     setExpandedBancoReasons(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  // Estado para dismiss do aviso sutil de retenção de presenças
+  const [isRetentionNoticeDismissed, setIsRetentionNoticeDismissed] = useState<boolean>(() => {
+    try {
+      const dismissedUntil = localStorage.getItem('pontuall_retention_dismissed_until');
+      if (dismissedUntil && Number(dismissedUntil) > Date.now()) {
+        return true;
+      }
+    } catch {
+      // Ignora erro de acesso a localStorage
+    }
+    return false;
+  });
+
+  const handleDismissRetentionNotice = () => {
+    setIsRetentionNoticeDismissed(true);
+    try {
+      localStorage.setItem('pontuall_retention_dismissed_until', String(Date.now() + 7 * 24 * 60 * 60 * 1000));
+    } catch {
+      // Ignora erro de acesso a localStorage
+    }
   };
 
   useEffect(() => {
@@ -732,6 +753,41 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   const [relatorioDate, setRelatorioDate] = useState('');
   const [relatorioStatus, setRelatorioStatus] = useState('all');
   const [relatorioDept, setRelatorioDept] = useState('all');
+
+  // Calcula se existem presenças próximas do limite de 60 dias (idade entre 50 e 60 dias)
+  const expiringAttendanceInfo = useMemo(() => {
+    if (!shifts || shifts.length === 0) return null;
+    const now = new Date();
+    const cutoff60 = toLocalDateString(addDaysLocal(now, -60));
+    const cutoff50 = toLocalDateString(addDaysLocal(now, -50));
+
+    let minDaysRemaining = 60;
+    let countExpiringSoon = 0;
+
+    for (const s of shifts) {
+      if (!s.date) continue;
+      const iso = normalizeDateToISO(s.date);
+      if (iso < cutoff60) continue;
+      if (iso <= cutoff50) {
+        countExpiringSoon++;
+        const parts = iso.split('-');
+        if (parts.length === 3) {
+          const shiftDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+          const ageDays = Math.floor((now.getTime() - shiftDate.getTime()) / (1000 * 60 * 60 * 24));
+          const daysLeft = Math.max(1, 60 - ageDays);
+          if (daysLeft < minDaysRemaining) {
+            minDaysRemaining = daysLeft;
+          }
+        }
+      }
+    }
+
+    if (countExpiringSoon === 0) return null;
+    return {
+      count: countExpiringSoon,
+      daysLeft: minDaysRemaining
+    };
+  }, [shifts]);
 
   const reportRows = useMemo(() => {
     if (shifts && shifts.length > 0) {
@@ -2747,44 +2803,40 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             </div>
           </div>
 
-                    {/* Banner de Aviso em Destaque: Retenção de Presenças de 60 Dias & Exportação Mensal */}
-          <div className={`p-4 sm:p-5 rounded-2xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative z-10 transition-colors ${
-            isDark 
-              ? 'bg-gradient-to-r from-amber-950/40 via-[#15161b] to-[#15161b] border-amber-500/30' 
-              : 'bg-gradient-to-r from-amber-50 via-white to-white border-amber-300 shadow-sm'
-          }`}>
-            <div className="flex items-start gap-3.5">
-              <div className={`p-2.5 rounded-xl shrink-0 ${isDark ? 'bg-amber-500/20 text-amber-400' : 'bg-amber-100 text-amber-800'}`}>
-                <AlertCircle className="w-5 h-5 text-amber-500" />
+                    {/* Micro-aviso Sutil e Condicional: Retenção de Presenças de 60 Dias (exibido apenas perto da exclusão) */}
+          {expiringAttendanceInfo && !isRetentionNoticeDismissed && (
+            <div className={`px-3.5 py-2 rounded-xl border flex items-center justify-between gap-3 text-xs relative z-10 transition-colors ${
+              isDark 
+                ? 'bg-amber-950/25 border-amber-500/25 text-amber-200/90' 
+                : 'bg-amber-50/90 border-amber-200 text-amber-900 shadow-xs'
+            }`}>
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span className="truncate">
+                  <strong className="font-semibold">Aviso de Retenção:</strong> Registros mais antigos expiram em cerca de {expiringAttendanceInfo.daysLeft} {expiringAttendanceInfo.daysLeft === 1 ? 'dia' : 'dias'}. Lembre-se de exportar a folha mensal.
+                </span>
+                <button
+                  type="button"
+                  onClick={onExportCsv}
+                  className="font-bold underline hover:no-underline text-amber-600 dark:text-amber-400 shrink-0 cursor-pointer text-xs"
+                >
+                  Exportar CSV
+                </button>
               </div>
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h4 className={`text-xs sm:text-sm font-bold uppercase tracking-wider ${isDark ? 'text-amber-300' : 'text-amber-900'}`}>
-                    Aviso de Conformidade: Retenção de Presenças de 60 Dias
-                  </h4>
-                  <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
-                    isDark ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-amber-100 text-amber-800 border border-amber-300'
-                  }`}>
-                    Expurgo Automático
-                  </span>
-                </div>
-                <p className={`text-xs leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                  Os registros de presença anteriores a <strong>60 dias são automaticamente expurgados</strong> do sistema para conformidade e performance. Recomendamos que o gestor <strong>exporte mensalmente a folha/planilha</strong> para o arquivo definitivo da empresa.
-                </p>
-              </div>
-            </div>
 
-            <button
-              type="button"
-              onClick={onExportCsv}
-              className="px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 whitespace-nowrap shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer text-white shrink-0 self-stretch md:self-auto justify-center"
-              style={{ background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 50%, #F59242 100%)' }}
-              title="Exportar planilha completa de presenças em formato CSV/Excel"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-[#F9DE97]" />
-              <span>Exportar Planilha Mensal (CSV)</span>
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={handleDismissRetentionNotice}
+                className={`p-1 rounded-md transition-colors shrink-0 cursor-pointer ${
+                  isDark ? 'text-amber-400/60 hover:text-amber-200 hover:bg-white/5' : 'text-amber-800/60 hover:text-amber-950 hover:bg-amber-100'
+                }`}
+                title="Dispensar aviso por 7 dias"
+                aria-label="Dispensar aviso de retenção"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
           {/* Sub-Navegação: Visão Geral de Presenças vs. Banco de Horas & Extras */}
           <div className="flex flex-wrap items-center justify-between gap-3 relative z-10">
