@@ -7,10 +7,6 @@ ALTER TABLE "TAB_Colaborador"
 ADD COLUMN IF NOT EXISTS "Vlr_Hora_Pj" NUMERIC(10, 2) DEFAULT 0.00,
 ADD COLUMN IF NOT EXISTS "Num_Cota_Horas_Mensal" INTEGER DEFAULT 160;
 
--- Atualiza Alexsandra Arrais imediatamente para R$ 9,35 caso exista no banco
-UPDATE "TAB_Colaborador"
-SET "Vlr_Hora_Pj" = 9.35
-WHERE "Eml_Corporativo" ILIKE '%a.alexsandrasouzaarrais@gmail.com%';
 
 -- 2. Criação da tabela de Notas Pessoais do Colaborador PJ (Bloco de Notas)
 CREATE TABLE IF NOT EXISTS "TAB_Nota_Pessoal_Pj" (
