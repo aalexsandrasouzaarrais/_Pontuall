@@ -280,7 +280,7 @@ export async function clearAllNotificationsSupabase(employeeId: string): Promise
     }
     return true;
   } catch (err: any) {
-    console.error('Erro ao limpar todas as notificações no Supabase:', err.message);
+    console.error('Erro ao limpar todas as notificações:', err.message);
     return false;
   }
 }

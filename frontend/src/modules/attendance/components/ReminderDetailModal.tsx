@@ -2,6 +2,7 @@ import { formatDateBR } from '@/shared/utils/dateUtils';
 import React, { useState, useEffect } from 'react';
 import {
   X,
+  Trash2,
   Calendar,
   Clock,
   Video,
@@ -26,6 +27,7 @@ interface ReminderDetailModalProps {
   employees?: Employee[];
   currentEmployee?: Employee;
   isLightTheme?: boolean;
+  onDeleteReminder?: (id: string) => void;
 }
 
 export const ReminderDetailModal: React.FC<ReminderDetailModalProps> = ({
@@ -35,6 +37,7 @@ export const ReminderDetailModal: React.FC<ReminderDetailModalProps> = ({
   employees = [],
   currentEmployee,
   isLightTheme = false,
+  onDeleteReminder,
 }) => {
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -520,7 +523,23 @@ export const ReminderDetailModal: React.FC<ReminderDetailModalProps> = ({
             isLightTheme ? 'border-slate-100 bg-slate-50/70' : 'border-white/5 bg-white/[0.02]'
           }`}
         >
+          {reminder && onDeleteReminder && (
           <button
+            type="button"
+            onClick={() => {
+              if (window.confirm(`Deseja realmente excluir o lembrete "${reminder.title}"? Esta ação não pode ser desfeita.`)) {
+                onDeleteReminder(reminder.id);
+                onClose();
+              }
+            }}
+            className="px-3.5 py-2 rounded-xl text-xs font-bold text-rose-500 hover:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-all cursor-pointer flex items-center gap-1.5 mr-auto"
+            title="Excluir este lembrete individualmente"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Excluir Lembrete</span>
+          </button>
+        )}
+        <button
             type="button"
             onClick={onClose}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer border ${

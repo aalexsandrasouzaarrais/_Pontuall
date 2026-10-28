@@ -56,7 +56,7 @@ import {
 import { PjTimesheetTracker } from './PjTimesheetTracker';
 import { PjNotepadSection } from './PjNotepadSection';
 import { ReminderDetailModal } from './ReminderDetailModal';
-import { getTodayDateString, formatDateBR, formatDateTimeBR } from '@/shared/utils/dateUtils';
+import { getTodayDateString, formatDateBR, formatDateTimeBR, addDaysLocal, toLocalDateString, normalizeDateToISO } from '@/shared/utils/dateUtils';
 
 interface PjDeliverablesViewProps {
   employee: Employee;
@@ -299,7 +299,8 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
   }, [privateSchedule, selectedCalendarDate]);
 
   const selectedDayReminderItems = useMemo(() => {
-    return reminders.filter(r => r.date === selectedCalendarDate);
+    const cutoff60 = toLocalDateString(addDaysLocal(new Date(), -60));
+    return reminders.filter(r => (!r.date || normalizeDateToISO(r.date) >= cutoff60) && r.date === selectedCalendarDate);
   }, [reminders, selectedCalendarDate]);
 
   // Lista unificada e ordenada de itens da escala e lembretes para a timeline do dia
