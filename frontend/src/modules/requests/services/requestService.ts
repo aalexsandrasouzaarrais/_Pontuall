@@ -211,6 +211,58 @@ export async function updateJustificativaStatusSupabase(
   }
 }
 
+export async function deleteJustificativaSupabase(id: string): Promise<boolean> {
+  try {
+    if (!isValidUuid(id)) return true;
+
+    const { error } = await supabase
+      .from('TAB_Justificativa_Ausencia')
+      .delete()
+      .eq('Idf_Justificativa', id);
+
+    if (error) {
+      console.error('Erro ao deletar em TAB_Justificativa_Ausencia:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.error('Erro ao excluir justificativa:', err.message);
+    return false;
+  }
+}
+
+export async function updateJustificativaSupabase(
+  id: string,
+  updates: Partial<AbsenceJustification>
+): Promise<boolean> {
+  try {
+    if (!isValidUuid(id)) return true;
+
+    const payload: any = {
+      Dta_Atualizacao: new Date().toISOString()
+    };
+    if (updates.date) payload.Dta_Ausencia = updates.date;
+    if (updates.reason) payload.Des_Motivo = updates.reason;
+    if (updates.documentName) payload.Nme_Documento = updates.documentName;
+    if (updates.documentUrl) payload.Des_Url_Documento = updates.documentUrl;
+    if (updates.documentType) payload.Tpo_Documento = updates.documentType;
+
+    const { error } = await supabase
+      .from('TAB_Justificativa_Ausencia')
+      .update(payload)
+      .eq('Idf_Justificativa', id);
+
+    if (error) {
+      console.error('Erro ao atualizar dados em TAB_Justificativa_Ausencia:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.error('Erro ao atualizar justificativa:', err.message);
+    return false;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. SOLICITAÇÕES DE FOLGA / TROCA (TAB_Solicitacao_Colaborador)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -400,3 +452,55 @@ export async function updateSolicitacaoPeerStatusSupabase(
   }
 }
 
+export async function deleteSolicitacaoSupabase(id: string): Promise<boolean> {
+  try {
+    if (!isValidUuid(id)) return true;
+
+    const { error } = await supabase
+      .from('TAB_Solicitacao_Colaborador')
+      .delete()
+      .eq('Idf_Solicitacao', id);
+
+    if (error) {
+      console.error('Erro ao deletar em TAB_Solicitacao_Colaborador:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.error('Erro ao excluir solicitação:', err.message);
+    return false;
+  }
+}
+
+export async function updateSolicitacaoSupabase(
+  id: string,
+  updates: Partial<TimeOffRequest>
+): Promise<boolean> {
+  try {
+    if (!isValidUuid(id)) return true;
+
+    const payload: any = {
+      Dta_Atualizacao: new Date().toISOString()
+    };
+    if (updates.date) payload.Dta_Solicitada = updates.date;
+    if (updates.reason) payload.Des_Motivo = updates.reason;
+    if (updates.type) payload.Tpo_Solicitacao = updates.type === 'swap' ? 'troca' : 'folga';
+    if (updates.targetEmployeeId && isValidUuid(updates.targetEmployeeId)) {
+      payload.Idf_Colaborador_Destino = updates.targetEmployeeId;
+    }
+
+    const { error } = await supabase
+      .from('TAB_Solicitacao_Colaborador')
+      .update(payload)
+      .eq('Idf_Solicitacao', id);
+
+    if (error) {
+      console.error('Erro ao atualizar dados em TAB_Solicitacao_Colaborador:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.error('Erro ao atualizar solicitação:', err.message);
+    return false;
+  }
+}

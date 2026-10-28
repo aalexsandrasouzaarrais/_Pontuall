@@ -1,5 +1,5 @@
 import { formatDateBR } from '@/shared/utils/dateUtils';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { X, ArrowLeftRight, Calendar, User, MessageSquare, AlertTriangle } from 'lucide-react';
 import { Employee, Shift, TimeOffRequest } from '@/types';
 
@@ -11,6 +11,8 @@ interface ShiftSwapModalProps {
   myShifts: Shift[];
   allShifts?: Shift[];
   onSubmitRequest: (request: Partial<TimeOffRequest>) => void;
+  onUpdateRequest?: (id: string, updates: Partial<TimeOffRequest>) => void;
+  editingRequest?: TimeOffRequest | null;
   isLightTheme?: boolean;
 }
 
@@ -22,13 +24,44 @@ export const ShiftSwapModal: React.FC<ShiftSwapModalProps> = ({
   myShifts,
   allShifts = [],
   onSubmitRequest,
+  onUpdateRequest,
+  editingRequest,
   isLightTheme = false,
 }) => {
-  const [requestType, setRequestType] = useState<'swap' | 'time_off'>('swap');
-  const [selectedShiftId, setSelectedShiftId] = useState(myShifts[0]?.id || '');
+  const [requestType, setRequestType] = useState<'swap' | 'time_off'>('time_off');
+  const [selectedShiftId, setSelectedShiftId] = useState('');
   const [targetEmployeeId, setTargetEmployeeId] = useState('');
   const [targetDate, setTargetDate] = useState('');
   const [reason, setReason] = useState('');
+
+  // Limpa rigorosamente os campos ao abrir para nova solicitação ou preenche ao editar
+  useEffect(() => {
+    if (isOpen) {
+      if (editingRequest) {
+        setRequestType(editingRequest.type || 'time_off');
+        setSelectedShiftId(editingRequest.shiftId || myShifts[0]?.id || '');
+        setTargetEmployeeId(editingRequest.targetEmployeeId || '');
+        setTargetDate(editingRequest.date || '');
+        setReason(editingRequest.reason || '');
+      } else {
+        // Nova solicitação: 100% limpa!
+        setRequestType('time_off');
+        setSelectedShiftId(myShifts[0]?.id || '');
+        setTargetEmployeeId('');
+        setTargetDate('');
+        setReason('');
+      }
+    }
+  }, [isOpen, editingRequest, myShifts]);
+
+  const handleClose = () => {
+    setRequestType('time_off');
+    setSelectedShiftId('');
+    setTargetEmployeeId('');
+    setTargetDate('');
+    setReason('');
+    onClose();
+  };
 
   const chosenShift = myShifts.find(s => s.id === selectedShiftId);
   const targetEmp = employees.find(e => e.id === targetEmployeeId);
@@ -68,24 +101,38 @@ export const ShiftSwapModal: React.FC<ShiftSwapModalProps> = ({
     e.preventDefault();
     if (!reason.trim()) return;
 
-    onSubmitRequest({
-      employeeId: currentEmployee.id,
-      employeeName: currentEmployee.name,
-      employeeAvatar: currentEmployee.avatar,
-      type: requestType,
-      shiftId: requestType === 'swap' ? selectedShiftId : undefined,
-      shiftStartTime: requestType === 'swap' ? chosenShift?.startTime : undefined,
-      shiftEndTime: requestType === 'swap' ? chosenShift?.endTime : undefined,
-      shiftTitle: requestType === 'swap' ? chosenShift?.title : undefined,
-      targetEmployeeId: requestType === 'swap' ? targetEmployeeId : undefined,
-      targetEmployeeName: requestType === 'swap' ? targetEmp?.name : undefined,
-      date: requestType === 'time_off' ? targetDate : (chosenShift?.date || targetDate),
-      reason,
-      status: 'pending',
-      peerStatus: requestType === 'swap' ? 'pending' : undefined,
-    });
+    if (editingRequest && onUpdateRequest) {
+      onUpdateRequest(editingRequest.id, {
+        type: requestType,
+        shiftId: requestType === 'swap' ? selectedShiftId : undefined,
+        shiftStartTime: requestType === 'swap' ? chosenShift?.startTime : undefined,
+        shiftEndTime: requestType === 'swap' ? chosenShift?.endTime : undefined,
+        shiftTitle: requestType === 'swap' ? chosenShift?.title : undefined,
+        targetEmployeeId: requestType === 'swap' ? targetEmployeeId : undefined,
+        targetEmployeeName: requestType === 'swap' ? targetEmp?.name : undefined,
+        date: requestType === 'time_off' ? targetDate : (chosenShift?.date || targetDate),
+        reason,
+      });
+    } else {
+      onSubmitRequest({
+        employeeId: currentEmployee.id,
+        employeeName: currentEmployee.name,
+        employeeAvatar: currentEmployee.avatar,
+        type: requestType,
+        shiftId: requestType === 'swap' ? selectedShiftId : undefined,
+        shiftStartTime: requestType === 'swap' ? chosenShift?.startTime : undefined,
+        shiftEndTime: requestType === 'swap' ? chosenShift?.endTime : undefined,
+        shiftTitle: requestType === 'swap' ? chosenShift?.title : undefined,
+        targetEmployeeId: requestType === 'swap' ? targetEmployeeId : undefined,
+        targetEmployeeName: requestType === 'swap' ? targetEmp?.name : undefined,
+        date: requestType === 'time_off' ? targetDate : (chosenShift?.date || targetDate),
+        reason,
+        status: 'pending',
+        peerStatus: requestType === 'swap' ? 'pending' : undefined,
+      });
+    }
 
-    onClose();
+    handleClose();
   };
 
   const otherEmployees = employees.filter(e => {
@@ -158,7 +205,7 @@ export const ShiftSwapModal: React.FC<ShiftSwapModalProps> = ({
             </div>
             <div>
               <h3 className={`font-bold text-base leading-tight ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
-                Solicitação de Folga ou Troca
+                {editingRequest ? 'Editar Solicitação' : 'Solicitação de Folga ou Troca'}
               </h3>
               <p className={`text-[11px] mt-0.5 ${isLightTheme ? 'text-slate-500' : 'text-white/50'}`}>
                 Envie seu pedido para aprovação do gestor
@@ -166,7 +213,7 @@ export const ShiftSwapModal: React.FC<ShiftSwapModalProps> = ({
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
               isLightTheme
                 ? 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
@@ -371,7 +418,7 @@ export const ShiftSwapModal: React.FC<ShiftSwapModalProps> = ({
           }`}>
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer border ${
                 isLightTheme
                   ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 border-slate-200'
@@ -384,7 +431,7 @@ export const ShiftSwapModal: React.FC<ShiftSwapModalProps> = ({
               type="submit"
               className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#96183C] via-[#F89847] to-[#FCEABB] hover:brightness-110 active:scale-[0.98] text-white text-xs font-bold shadow-lg shadow-[#96183C]/25 transition-all flex items-center gap-2 cursor-pointer"
             >
-              Confirmar Solicitação
+              {editingRequest ? 'Salvar Alterações' : 'Confirmar Solicitação'}
             </button>
           </div>
         </form>
