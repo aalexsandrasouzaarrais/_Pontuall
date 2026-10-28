@@ -5622,12 +5622,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           }`}>
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-xl bg-gradient-to-br from-[#9F243C] to-[#F59242] text-white">
-                    <Download className="w-4 h-4" />
-                  </div>
-                  <h3 className="text-base font-bold">Exportar Folha Mensal</h3>
-                </div>
+                <h3 className="text-base font-bold">Exportar Folha Mensal</h3>
                 <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                   Selecione o mês de competência para gerar a planilha consolidada de presenças.
                 </p>
@@ -5663,17 +5658,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 ))}
               </select>
 
-              <div className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+              <div className={`p-3 rounded-xl border text-xs ${
                 isDark ? 'bg-black/20 border-white/5 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'
               }`}>
-                <div className="flex items-center justify-between font-medium">
-                  <span>Formato de saída:</span>
-                  <span className="font-mono font-bold text-emerald-500">CSV / Excel UTF-8</span>
-                </div>
-                <div className="flex items-center justify-between font-medium">
-                  <span>Datas padronizadas:</span>
-                  <span className="font-bold">DD/MM/AAAA</span>
-                </div>
                 <div className="flex items-center justify-between font-medium">
                   <span>Registros a exportar:</span>
                   <span className="font-bold text-amber-500">
