@@ -37,6 +37,7 @@ interface ManagerPjDeliverablesViewProps {
   onApproveReport?: (id: string) => void;
   onRejectReport?: (id: string, reason?: string) => void;
   isDark?: boolean;
+  isRh?: boolean;
 }
 
 export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps> = ({
@@ -45,6 +46,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
   onApproveReport,
   onRejectReport,
   isDark = true,
+  isRh = false,
 }) => {
   const [localReports, setLocalReports] = useState<PjDeliverableReport[]>(pjReports);
   const [searchQuery, setSearchQuery] = useState('');
@@ -358,6 +360,18 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
           </div>
         </div>
       </div>
+
+      {/* Banner Informativo para Perfil RH (Modo Consulta - RH não homologa PJ) */}
+      {isRh && (
+        <div className={`p-4 rounded-2xl border flex items-center gap-3 text-xs ${
+          isDark ? 'bg-amber-500/10 border-amber-500/25 text-amber-200' : 'bg-amber-50 border-amber-200 text-amber-900'
+        }`}>
+          <AlertCircle className="w-5 h-5 text-amber-500 shrink-0" />
+          <p className="leading-relaxed">
+            <strong>Perfil RH (Modo Consulta):</strong> A homologação e aprovação de entregas PJ cabem exclusivamente ao <strong>Gestor de Setor</strong> responsável. O RH pode acompanhar as atividades, evidências e exportar relatórios para faturamento.
+          </p>
+        </div>
+      )}
 
       {/* Barra de Filtros: Busca, Seleção de Prestador PJ e Status */}
       <div className={`p-4 rounded-2xl border flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 ${
@@ -803,7 +817,19 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                                 <AlertCircle className="w-3.5 h-3.5" />
                                 Ajustes Solicitados
                               </span>
+                            ) : isRh ? (
+                              /* Restrição RH: Apenas Gestor homologa entregas PJ */
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border ${
+                                  isDark ? 'bg-amber-500/10 text-amber-300 border-amber-500/25' : 'bg-amber-50 text-amber-800 border-amber-200'
+                                }`}
+                                title="A homologação de entregas PJ cabe exclusivamente ao Gestor responsável"
+                              >
+                                <Clock className="w-3.5 h-3.5 text-amber-500" />
+                                <span>Aguardando Gestor</span>
+                              </span>
                             ) : (
+                              /* Perfil Gestor: Botões de homologação e pedido de ajuste */
                               <>
                                 <button
                                   type="button"

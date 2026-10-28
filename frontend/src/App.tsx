@@ -1200,6 +1200,12 @@ function AppContent() {
   };
 
   const handleApprovePjReport = async (id: string) => {
+    // Restrição: homologação de entregas PJ é exclusiva do perfil Gestor (RH não homologa PJ)
+    const isRh = activeEmployee?.isRh || activeEmployee?.roleType === 'rh' || activeEmployee?.isMasterManager;
+    if (isRh) {
+      showToast('Acesso Restrito', 'A homologação de entregas PJ cabe exclusivamente ao Gestor de Setor.', 'error');
+      return;
+    }
     const feedback = 'Entregas e horas homologadas pelo gestor.';
     const target = pjReports.find(p => p.id === id);
     setPjReports(prev => prev.map(p => p.id === id ? { ...p, status: 'approved', managerFeedback: feedback } : p));
@@ -1216,6 +1222,12 @@ function AppContent() {
   };
 
   const handleRejectPjReport = async (id: string, reason?: string) => {
+    // Restrição: solicitação de ajustes em entregas PJ é exclusiva do perfil Gestor (RH não homologa PJ)
+    const isRh = activeEmployee?.isRh || activeEmployee?.roleType === 'rh' || activeEmployee?.isMasterManager;
+    if (isRh) {
+      showToast('Acesso Restrito', 'A solicitação de ajustes em entregas PJ cabe exclusivamente ao Gestor de Setor.', 'error');
+      return;
+    }
     const feedback = reason || 'Ajustes solicitados pelo gestor.';
     const target = pjReports.find(p => p.id === id);
     setPjReports(prev => prev.map(p => p.id === id ? { ...p, status: 'rejected', managerFeedback: feedback } : p));
@@ -2245,6 +2257,7 @@ function AppContent() {
         onRejectJustification={handleRejectJustification}
         onApprovePjReport={handleApprovePjReport}
         onRejectPjReport={handleRejectPjReport}
+        isRh={isRhUser}
       />
 
       <ShiftDetailModal
