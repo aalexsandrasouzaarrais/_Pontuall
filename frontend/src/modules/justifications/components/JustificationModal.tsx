@@ -1,4 +1,4 @@
-import { getTodayDateString } from '@/shared/utils/dateUtils';
+import { getTodayDateString, formatDateBR } from '@/shared/utils/dateUtils';
 import React, { useState, useEffect } from 'react';
 import { X, FileText, Upload, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Employee, Shift, AbsenceJustification } from '@/types';
@@ -202,7 +202,7 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
                   value={s.id}
                   className={isLightTheme ? 'bg-white text-slate-900' : 'bg-[#1a0010] text-white'}
                 >
-                  {s.date} — {s.startTime} às {s.endTime} ({s.title || 'Turno Regular'})
+                  {formatDateBR(s.date)} — {s.startTime} às {s.endTime} ({s.title || 'Turno Regular'})
                 </option>
               ))}
             </select>
