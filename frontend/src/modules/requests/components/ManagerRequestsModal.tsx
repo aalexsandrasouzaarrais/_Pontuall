@@ -1,3 +1,4 @@
+import { formatDateBR, formatDateTimeBR } from '@/shared/utils/dateUtils';
 import React, { useState } from 'react';
 import { X, Check, ArrowLeftRight, FileText, CheckCircle2, Clock, Briefcase, Link as LinkIcon, ExternalLink, Eye, AlertCircle } from 'lucide-react';
 import { TimeOffRequest, AbsenceJustification, PjDeliverableReport } from '@/types';

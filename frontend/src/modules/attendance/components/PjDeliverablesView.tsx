@@ -1551,9 +1551,9 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                         <span className={`text-xs font-bold block truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
                           {rem.title}
                         </span>
-                        {rem.notes && (
+                        {(rem as any).notes && (
                           <span className={`text-[11px] block truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                            {rem.notes}
+                            {(rem as any).notes}
                           </span>
                         )}
                       </div>

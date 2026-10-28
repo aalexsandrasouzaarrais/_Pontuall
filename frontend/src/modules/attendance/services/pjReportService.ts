@@ -1,3 +1,8 @@
+function isUuid(id?: string): boolean {
+  if (!id) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
+
 import { supabase } from '@/shared/services/supabase';
 import { safeStorage } from '@/shared/utils/safeStorage';
 import { PjDeliverableReport, PjReportLink, PjTimesheetEntry, PjActiveTimerState } from '@/types';
