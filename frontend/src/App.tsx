@@ -244,6 +244,7 @@ function AppContent() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [reminders, setReminders] = useState<ManagerReminder[]>([]);
   const [pjReports, setPjReports] = useState<PjDeliverableReport[]>([]);
+  const isRhUser = Boolean(activeEmployee?.isRh || activeEmployee?.roleType === 'rh' || activeEmployee?.isMasterManager);
   
   // Employee Tabs
   const [managerActiveTab, setManagerActiveTab] = useState<any>('orbit');
