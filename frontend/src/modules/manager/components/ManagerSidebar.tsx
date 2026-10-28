@@ -249,9 +249,12 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
         />
       </button>
 
-      {/* Header: Logo */}
-      <div
-        className={`h-[70px] flex items-center border-b relative overflow-hidden flex-shrink-0 transition-colors duration-300 ${
+      {/* Header: Logo (Clicável: retorna ao painel inicial) */}
+      <button
+        type="button"
+        onClick={() => onTabChange('orbit')}
+        title="Ir para o Painel Inicial"
+        className={`h-[70px] w-full flex items-center border-b relative overflow-hidden flex-shrink-0 transition-all text-left cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 active:scale-[0.99] ${
           isLightTheme ? 'border-slate-200' : 'border-[#222634]'
         }`}
       >
@@ -284,7 +287,7 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
             {currentUser?.isRh || currentUser?.roleType === 'rh' ? 'RH & ADMINISTRAÇÃO GERAL' : 'VISÃO DO GESTOR'}
           </span>
         </div>
-      </div>
+      </button>
 
       {/* Nav Items */}
       <nav className="flex-1 py-4 px-2.5 flex flex-col gap-1.5 overflow-y-auto overflow-x-hidden">

@@ -256,9 +256,12 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
         />
       </button>
 
-      {/* Header: Logo */}
-<div
-  className={`h-[70px] flex items-center border-b relative overflow-hidden flex-shrink-0 transition-colors duration-300 ${
+      {/* Header: Logo (Clicável: retorna ao painel inicial) */}
+<button
+  type="button"
+  onClick={() => onTabChange('overview')}
+  title="Ir para o Painel Inicial"
+  className={`h-[70px] w-full flex items-center border-b relative overflow-hidden flex-shrink-0 transition-all text-left cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 active:scale-[0.99] ${
     isLightTheme ? "border-slate-200" : "border-[#222634]"
   }`}
 >
@@ -304,7 +307,7 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
       Portal Colaborador
     </span>
   </div>
-</div>
+</button>
 
       {/* Nav Items */}
       <nav className="flex-1 py-4 px-2.5 flex flex-col gap-1.5 overflow-y-auto overflow-x-hidden">
@@ -575,6 +578,11 @@ export const EmployeeSidebar: React.FC<EmployeeSidebarProps> = ({
                   <span>{activeEmployee.role || 'Colaborador'}</span>
                   {activeEmployee.registrationId && (
                     <span className="opacity-75 font-mono ml-1">#{activeEmployee.registrationId}</span>
+                  )}
+                  {activeEmployee.contractType === 'PJ' && (
+                    <span className="ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                      R$ {Number(activeEmployee.hourlyRate || 0).toFixed(2).replace('.', ',')}/h
+                    </span>
                   )}
                 </div>
               </div>

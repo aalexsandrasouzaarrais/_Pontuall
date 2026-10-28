@@ -38,6 +38,86 @@ export function savePjContractParamsLocal(emp: {
   } catch {}
 }
 
+/**
+ * Salva parâmetros contratuais de contingência em TAB_Relatorio_Pj
+ * para garantir sincronização entre diferentes computadores mesmo se
+ * a coluna Vlr_Hora_Pj não tiver sido criada ainda em TAB_Colaborador.
+ */
+export async function savePjContractParamsSupabaseBackup(
+  employeeId: string,
+  hourlyRate?: number,
+  monthlyHoursQuota?: number
+): Promise<void> {
+  if (!isUuid(employeeId)) return;
+  try {
+    const key = '__PJ_CONTRACT_PARAMS__';
+    const payload = {
+      Num_Horas_Trabalhadas: 0,
+      Des_Atividades: 'Parâmetros Contratuais PJ',
+      Des_Links_Json: [{ title: '__PJ_CONTRACT_PARAMS__', url: JSON.stringify({ hourlyRate, monthlyHoursQuota }) }],
+      Tpo_Status: 'draft'
+    };
+    const { data: existing } = await supabase
+      .from('TAB_Relatorio_Pj')
+      .select('Idf_Relatorio_Pj')
+      .eq('Idf_Colaborador', employeeId)
+      .eq('Des_Periodo_Referencia', key)
+      .maybeSingle();
+
+    if (existing?.Idf_Relatorio_Pj) {
+      await supabase
+        .from('TAB_Relatorio_Pj')
+        .update(payload)
+        .eq('Idf_Relatorio_Pj', existing.Idf_Relatorio_Pj);
+    } else {
+      await supabase
+        .from('TAB_Relatorio_Pj')
+        .insert({ ...payload, Idf_Colaborador: employeeId, Des_Periodo_Referencia: key });
+    }
+  } catch (err) {
+    console.warn('Aviso ao sincronizar parâmetros PJ de contingência no Supabase:', err);
+  }
+}
+
+/**
+ * Carrega parâmetros de contingência do Supabase para o cache local
+ */
+export async function loadPjContractParamsFromSupabase(
+  employeeIds: string[]
+): Promise<Record<string, PjContractParams>> {
+  const validIds = employeeIds.filter(id => isUuid(id));
+  if (validIds.length === 0) return {};
+  try {
+    const { data, error } = await supabase
+      .from('TAB_Relatorio_Pj')
+      .select('Idf_Colaborador, Des_Links_Json')
+      .in('Idf_Colaborador', validIds)
+      .eq('Des_Periodo_Referencia', '__PJ_CONTRACT_PARAMS__');
+
+    if (!error && data) {
+      const result: Record<string, PjContractParams> = {};
+      for (const row of data) {
+        const links = Array.isArray(row.Des_Links_Json) ? row.Des_Links_Json : [];
+        const meta = links.find((l: any) => l?.title === '__PJ_CONTRACT_PARAMS__');
+        if (meta?.url) {
+          try {
+            const parsed = JSON.parse(meta.url);
+            result[row.Idf_Colaborador] = parsed;
+            savePjContractParamsLocal({
+              id: row.Idf_Colaborador,
+              hourlyRate: parsed.hourlyRate,
+              monthlyHoursQuota: parsed.monthlyHoursQuota
+            });
+          } catch {}
+        }
+      }
+      return result;
+    }
+  } catch {}
+  return {};
+}
+
+
 function resolvePjContractParams(row: any): PjContractParams {
   const map = getPjContractParamsMap();
   const idKey = row.Idf_Colaborador || row.id || '';
@@ -178,6 +258,7 @@ export async function getColaboradorByIdSupabase(colaboradorId: string): Promise
       .maybeSingle();
     if (error || !data) return null;
     const links = await getManagerLinksMap([colaboradorId]);
+    await loadPjContractParamsFromSupabase([colaboradorId]);
     const emp = mapBneToEmployee(data);
     emp.managerIds = links.get(colaboradorId) || [];
     if (!emp.companyId && emp.managerIds.length > 0) {
@@ -253,6 +334,11 @@ export async function getColaboradoresSupabase(filter?: { companyId?: string; ge
     }
 
     if (rows.length === 0) return [];
+
+    const pjIds = rows.filter(r => r.Tpo_Contrato === 'PJ' || r.contractType === 'PJ').map(r => r.Idf_Colaborador);
+    if (pjIds.length > 0) {
+      await loadPjContractParamsFromSupabase(pjIds);
+    }
 
     const managerMap = await getManagerLinksMap(rows.map(r => r.Idf_Colaborador));
     let result = rows.map(row => {
@@ -403,6 +489,10 @@ export async function createColaboradorSupabase(emp: Employee, creatorGestorId?:
     hourlyRate: emp.hourlyRate,
     monthlyHoursQuota: emp.monthlyHoursQuota,
   });
+
+  if (emp.contractType === 'PJ') {
+    savePjContractParamsSupabaseBackup(novoColaborador.Idf_Colaborador, emp.hourlyRate, emp.monthlyHoursQuota);
+  }
 
   // Estabelece os vínculos de gestores (M:N) na tabela TAB_Gestor_Colaborador
   const gestoresParaVincular: string[] = [];
@@ -724,6 +814,10 @@ export async function updateColaboradorSupabase(emp: Partial<Employee> & { id: s
       hourlyRate: emp.hourlyRate,
       monthlyHoursQuota: emp.monthlyHoursQuota,
     });
+
+    if (emp.contractType === 'PJ') {
+      savePjContractParamsSupabaseBackup(emp.id, emp.hourlyRate, emp.monthlyHoursQuota);
+    }
 
     if (!isUuid(emp.id)) return true;
 
