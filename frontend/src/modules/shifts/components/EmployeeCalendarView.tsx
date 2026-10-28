@@ -158,6 +158,7 @@ export const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
       title: `🔒 ${b.title}`,
       notes: b.notes || 'Escala pessoal privada (visível apenas para você)',
       workplace: 'Escala Pessoal Privada (PJ)',
+      breakMinutes: 0,
     }));
 
     return [...official, ...privateAsShifts].sort((a, b) => a.startTime.localeCompare(b.startTime));

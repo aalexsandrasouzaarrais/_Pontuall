@@ -34,6 +34,10 @@ export function startOfWeekSunday(d: Date): Date {
 
 export function formatTime(timeStr: string): string {
   if (!timeStr) return '';
+  const match = timeStr.match(/^(\d{1,2}):(\d{2})/);
+  if (match) {
+    return `${match[1].padStart(2, '0')}:${match[2]}`;
+  }
   return timeStr;
 }
 

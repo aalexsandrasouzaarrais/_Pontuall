@@ -566,7 +566,7 @@ function AppContent() {
     setIsNotificationsModalOpen(false);
     setIsManagerRequestsModalOpen(false);
     setIsSwapModalOpen(false);
-    setIsShiftDetailsOpen(false);
+    setIsDetailModalOpen(false);
     setEmployeeTab('overview');
     setManagerActiveTab('orbit');
   };
