@@ -1,4 +1,4 @@
-import { getTodayDateString, evaluatePunchTolerance } from '@/shared/utils/dateUtils';
+import { getTodayDateString, evaluatePunchTolerance, formatDateBR } from '@/shared/utils/dateUtils';
 import React, { useState, useEffect } from 'react';
 import { 
   EmployeeSidebar 
@@ -1733,7 +1733,7 @@ function AppContent() {
                                       </span>
                                     </p>
                                     <p className="text-[11px] opacity-80 mt-0.5">
-                                      Turno do dia <strong className="font-mono text-amber-600 dark:text-amber-300">{req.date}</strong>
+                                      Turno do dia <strong className="font-mono text-amber-600 dark:text-amber-300">{formatDateBR(req.date)}</strong>
                                       {req.shiftStartTime && req.shiftEndTime && (
                                         <span> ({req.shiftStartTime} às {req.shiftEndTime})</span>
                                       )}
@@ -1893,7 +1893,7 @@ function AppContent() {
                               <rect x="3" y="4" width="18" height="18" rx="2" />
                               <path d="M16 2v4M8 2v4M3 10h18" />
                             </svg>
-                            {req.date}
+                            {formatDateBR(req.date)}
                           </div>
                         </div>
 
@@ -2143,7 +2143,7 @@ function AppContent() {
                               <rect x="3" y="4" width="18" height="18" rx="2" />
                               <path d="M16 2v4M8 2v4M3 10h18" />
                             </svg>
-                            {just.date}
+                            {formatDateBR(just.date)}
                           </div>
                         </div>
 

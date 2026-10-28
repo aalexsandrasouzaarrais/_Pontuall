@@ -2189,7 +2189,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         <td className="p-3.5">
                           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/5 text-slate-300 font-mono text-[11px]">
                             <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                            <span>{row.date}</span>
+                            <span>{formatDateBR(row.date)}</span>
                           </div>
                         </td>
 
@@ -2424,7 +2424,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         <div className="flex items-center gap-1.5">
                           <Calendar className="w-3.5 h-3.5 text-[#f89847]" />
                           <span className={`text-xs font-bold font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                            {selectedDetailOccurrence.date}
+                            {formatDateBR(selectedDetailOccurrence.date)}
                           </span>
                         </div>
                       </div>
@@ -4174,7 +4174,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             isDark ? 'bg-[#0e0f12] border-[#282a33] text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'
                           }`}>
                             <Calendar className={`reminder-meta-icon w-3.5 h-3.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
-                            <span>{rem.date}</span>
+                            <span>{formatDateBR(rem.date)}</span>
                           </div>
                           <div className={`reminder-meta-pill inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${
                             isDark ? 'bg-[#0e0f12] border-[#282a33] text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'

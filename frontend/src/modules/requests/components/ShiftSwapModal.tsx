@@ -1,3 +1,4 @@
+import { formatDateBR } from '@/shared/utils/dateUtils';
 import React, { useState, useMemo } from 'react';
 import { X, ArrowLeftRight, Calendar, User, MessageSquare, AlertTriangle } from 'lucide-react';
 import { Employee, Shift, TimeOffRequest } from '@/types';
@@ -248,7 +249,7 @@ export const ShiftSwapModal: React.FC<ShiftSwapModalProps> = ({
                       value={s.id}
                       className={isLightTheme ? 'bg-white text-slate-900' : 'bg-[#1a0010] text-white'}
                     >
-                      {s.date} — {s.startTime} às {s.endTime} ({s.title || 'Turno Regular'})
+                      {formatDateBR(s.date)} — {s.startTime} às {s.endTime} ({s.title || 'Turno Regular'})
                     </option>
                   ))}
                 </select>

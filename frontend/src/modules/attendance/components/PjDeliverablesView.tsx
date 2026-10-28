@@ -1564,7 +1564,7 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                           ? 'bg-amber-950/40 text-amber-300 border border-amber-500/30'
                           : 'bg-amber-50 text-amber-800 border border-amber-200'
                       }`}>
-                        {rem.date} • {rem.time}
+                        {formatDateBR(rem.date)} • {rem.time}
                       </span>
                       {rem.link && (
                         <a

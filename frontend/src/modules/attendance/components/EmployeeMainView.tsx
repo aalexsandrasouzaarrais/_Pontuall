@@ -21,16 +21,14 @@ import {
   Briefcase
 } from 'lucide-react';
 import { Employee, Shift, ManagerReminder, AbsenceJustification } from '@/types';
-import { 
-  getWeekDates, 
+import { getWeekDates, 
   calculateShiftDurationHours, 
   getTodayDateString,
   formatMinutesToHoursString,
   hoursToMinutes,
   calculatePunchDurationMinutes,
   evaluatePunchTolerance,
-  isShiftPast24hWithoutPunch
-} from '@/shared/utils/dateUtils';
+  isShiftPast24hWithoutPunch, formatDateBR } from '@/shared/utils/dateUtils';
 import { ReminderDetailModal } from './ReminderDetailModal';
 import { getCurrentCoordinates, reverseGeocode, validateGeofence, calculateHaversineDistance } from '@/shared/utils/geolocation';
 import { findWorkplaceByName, getStoredWorkplaces } from '@/shared/services/workplaceService';
@@ -1648,7 +1646,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                         : 'bg-rose-950/40 text-rose-300 border border-rose-500/30'
                     }`}
                   >
-                    {rem.date} {rem.time}
+                    {formatDateBR(rem.date)} {rem.time}
                   </span>
                 </div>
 
