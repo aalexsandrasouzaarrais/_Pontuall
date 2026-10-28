@@ -180,7 +180,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   const [approvalsFilterTab, setApprovalsFilterTab] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [approvalsSearch, setApprovalsSearch] = useState('');
   const [approvalsDept, setApprovalsDept] = useState('all');
-  const [approvalsTypeFilter, setApprovalsTypeFilter] = useState<'all' | 'swap' | 'medical' | 'time_off'>('all');
+  const [approvalsTypeFilter, setApprovalsTypeFilter] = useState<'all' | 'swap' | 'medical' | 'delay' | 'time_off'>('all');
   const [isNewOccurrenceModalOpen, setIsNewOccurrenceModalOpen] = useState(false);
   const [expandedReasons, setExpandedReasons] = useState<Record<string, boolean>>({});
   const [selectedDetailOccurrence, setSelectedDetailOccurrence] = useState<{
@@ -246,8 +246,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   };
 
   useEffect(() => {
+    const today = getTodayDateString();
+    const emp1 = employees[0] || {
+      id: 'emp-1',
+      name: 'Alexsandra Arrais',
+      role: 'Analista de Operações',
+      department: 'Operações',
+      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
+    };
+    const emp2 = employees[1] || emp1;
+    const emp3 = employees[2] || emp1;
+
     const mappedJustifications = (justifications || []).map(j => {
       const emp = employees.find(e => e.id === j.employeeId);
+      const isDelayJust = j.reason?.toLowerCase().includes('atraso') || (j as any).justificationType === 'delay';
       return {
         id: j.id,
         employeeId: j.employeeId,
@@ -255,10 +267,10 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         employeeRole: emp?.role || 'Colaborador',
         employeeDept: emp?.department || 'Geral',
         employeeAvatar: emp?.avatar || j.employeeAvatar || '',
-        type: 'Atestado Médico',
+        type: isDelayJust ? 'Justificativa de Atraso' : 'Atestado Médico',
         reason: j.reason,
         date: j.date,
-        documentName: j.documentName || 'atestado.pdf',
+        documentName: j.documentName || (isDelayJust ? 'Declaracao_Comparecimento_Horas.pdf' : 'atestado.pdf'),
         documentUrl: j.documentUrl,
         status: (j.status === 'approved' ? 'Aprovado' : j.status === 'rejected' ? 'Recusado / Falta' : 'Pendente') as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
         actionText: j.status === 'approved' ? 'Homologado' : j.status === 'rejected' ? 'Não homologado' : undefined,
@@ -298,21 +310,28 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       };
     });
 
-    // Aba Aprovações & Faltas contém estritamente Atestados Médicos, Trocas de Turno e Folgas
-    setApprovalsData([...mappedJustifications, ...mappedRequests]);
+    // Demonstração clara de Justificativa de Atraso (com declaração de comparecimento anexada)
+    const hasDelayInApprovals = mappedJustifications.some(j => j.type === 'Justificativa de Atraso');
+    const demoDelayJustification = hasDelayInApprovals ? [] : [{
+      id: 'demo-just-delay-1',
+      employeeId: emp1.id,
+      employeeName: emp1.name,
+      employeeRole: emp1.role || 'Analista de Operações',
+      employeeDept: emp1.department || 'Operações',
+      employeeAvatar: emp1.avatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
+      type: 'Justificativa de Atraso',
+      reason: 'Atraso de 35 min: Consulta médica matinal e exame laboratorial com declaração de comparecimento anexada.',
+      date: today,
+      documentName: 'Declaracao_Comparecimento_Horas.pdf',
+      documentUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+      status: 'Pendente' as const,
+      feedback: '',
+    }];
+
+    // Aba Aprovações & Faltas contém Atestados Médicos, Justificativas de Atraso, Trocas de Turno e Folgas
+    setApprovalsData([...demoDelayJustification, ...mappedJustifications, ...mappedRequests]);
 
     // Ocorrências de Banco de Horas & Registro de Ponto (Exibidas na Aba de Relatório de Presenças)
-    const today = getTodayDateString();
-    const emp1 = employees[0] || {
-      id: 'emp-1',
-      name: 'Alexsandra Arrais',
-      role: 'Analista de Operações',
-      department: 'Operações',
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
-    };
-    const emp2 = employees[1] || emp1;
-    const emp3 = employees[2] || emp1;
-
     const mappedFromShifts: BancoHorasItem[] = (shifts || []).filter(s => {
       const hasHe = s.notes && s.notes.includes('[HE');
       const hasLate = (s.notes && s.notes.includes('[Atraso')) || s.attendanceStatus === 'late';
@@ -403,66 +422,74 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         feedback: feedbackVal,
       };
     });
-    if (mappedFromShifts.length > 0) {
-      setBancoHorasData(mappedFromShifts);
-    } else {
-      setBancoHorasData([
-        {
-          id: 'bh-sim-1',
-          employeeId: emp1.id,
-          employeeName: emp1.name,
-          employeeRole: emp1.role || 'Analista de Operações',
-          employeeDept: emp1.department || 'Operações',
-          employeeAvatar: emp1.avatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
-          date: today,
-          scheduledTime: '08:00 às 15:20',
-          punchTime: '08:00 às 15:59',
-          diffMinutes: 39,
-          diffBadge: '+39 min',
-          type: 'hora_extra',
-          typeLabel: '⏰ Hora Extra',
-          reason: 'Atendimento urgente e suporte estendido a cliente corporativo',
-          status: 'Pendente',
-          feedback: '',
-        },
-        {
-          id: 'bh-sim-2',
-          employeeId: emp2.id,
-          employeeName: emp2.name || 'Carlos Silveira',
-          employeeRole: emp2.role || 'Supervisor',
-          employeeDept: emp2.department || 'Logística',
-          employeeAvatar: emp2.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
-          date: today,
-          scheduledTime: '08:00 às 17:00',
-          punchTime: '08:35 às 17:00',
-          diffMinutes: -35,
-          diffBadge: '-35 min',
-          type: 'atraso',
-          typeLabel: '⚠️ Atraso de Entrada',
-          reason: 'Paralisação inesperada e atraso no transporte público na linha 9',
-          status: 'Pendente',
-          feedback: '',
-        },
-        {
-          id: 'bh-sim-3',
-          employeeId: emp3.id,
-          employeeName: emp3.name || 'Mariana Rios',
-          employeeRole: emp3.role || 'Atendente',
-          employeeDept: emp3.department || 'Atendimento',
-          employeeAvatar: emp3.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-          date: today,
-          scheduledTime: '08:00 às 15:20',
-          punchTime: '08:00 às 15:59',
-          diffMinutes: 0,
-          diffBadge: '0 min (Esquecimento)',
-          type: 'esquecimento',
-          typeLabel: 'ℹ️ Esquecimento de Saída',
-          reason: 'Esquecimento de Saída: Saída real no horário previsto (15:20) - Batida às 15:59',
-          status: 'Pendente',
-          feedback: '',
-        },
-      ]);
+    const demoHoraExtra: BancoHorasItem = {
+      id: 'bh-sim-1',
+      employeeId: emp1.id,
+      employeeName: emp1.name,
+      employeeRole: emp1.role || 'Analista de Operações',
+      employeeDept: emp1.department || 'Operações',
+      employeeAvatar: emp1.avatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
+      date: today,
+      scheduledTime: '08:00 às 15:20',
+      punchTime: '08:00 às 15:59',
+      diffMinutes: 39,
+      diffBadge: '+39 min',
+      type: 'hora_extra',
+      typeLabel: '⏰ Hora Extra',
+      reason: 'Atendimento urgente e suporte estendido a cliente corporativo',
+      status: 'Pendente',
+      feedback: '',
+    };
+
+    const demoAtraso: BancoHorasItem = {
+      id: 'bh-sim-2',
+      employeeId: emp2.id,
+      employeeName: emp2.name || 'Carlos Silveira',
+      employeeRole: emp2.role || 'Supervisor',
+      employeeDept: emp2.department || 'Logística',
+      employeeAvatar: emp2.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+      date: today,
+      scheduledTime: '08:00 às 17:00',
+      punchTime: '08:35 às 17:00',
+      diffMinutes: -35,
+      diffBadge: '-35 min',
+      type: 'atraso',
+      typeLabel: '⚠️ Atraso de Entrada',
+      reason: 'Atraso de 35 min: Consulta médica matinal com declaração de comparecimento anexada',
+      status: 'Pendente',
+      feedback: '',
+    };
+
+    const demoEsquecimento: BancoHorasItem = {
+      id: 'bh-sim-3',
+      employeeId: emp3.id,
+      employeeName: emp3.name || 'Mariana Rios',
+      employeeRole: emp3.role || 'Atendente',
+      employeeDept: emp3.department || 'Atendimento',
+      employeeAvatar: emp3.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+      date: today,
+      scheduledTime: '08:00 às 15:20',
+      punchTime: '08:00 às 15:59',
+      diffMinutes: 0,
+      diffBadge: '0 min (Esquecimento)',
+      type: 'esquecimento',
+      typeLabel: 'ℹ️ Esquecimento de Saída',
+      reason: 'Esquecimento de Saída: Saída real no horário previsto (15:20) - Batida às 15:59',
+      status: 'Pendente',
+      feedback: '',
+    };
+
+    const finalBancoHoras: BancoHorasItem[] = [...mappedFromShifts];
+    if (!finalBancoHoras.some(b => b.type === 'hora_extra')) {
+      finalBancoHoras.unshift(demoHoraExtra);
     }
+    if (!finalBancoHoras.some(b => b.type === 'atraso')) {
+      finalBancoHoras.splice(1, 0, demoAtraso);
+    }
+    if (!finalBancoHoras.some(b => b.type === 'esquecimento')) {
+      finalBancoHoras.push(demoEsquecimento);
+    }
+    setBancoHorasData(finalBancoHoras);
   }, [employees, justifications, requests, shifts]);
 
   // Ações de Aprovação / Recusa para Atestados e Trocas (Aba Aprovações)
@@ -471,18 +498,22 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     const customFeedback = targetItem?.feedback?.trim() || undefined;
 
     setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, status: 'Aprovado', actionText: 'Homologado agora' } : item));
-    const isRequest = requests.some(r => r.id === id);
-
-    if (isRequest) {
-      if (onApproveRequest) {
-        onApproveRequest(id, customFeedback);
-      } else {
-        await updateSolicitacaoStatusSupabase(id, 'approved', customFeedback || 'Aprovado pelo gestor');
-      }
-    } else if (onApproveJustification) {
-      onApproveJustification(id, customFeedback);
+    
+    if (id.startsWith('demo-')) {
+      // Item demonstrativo atualizado localmente
     } else {
-      await updateJustificativaStatusSupabase(id, 'approved', customFeedback || 'Homologado pelo gestor');
+      const isRequest = requests.some(r => r.id === id);
+      if (isRequest) {
+        if (onApproveRequest) {
+          onApproveRequest(id, customFeedback);
+        } else {
+          await updateSolicitacaoStatusSupabase(id, 'approved', customFeedback || 'Aprovado pelo gestor');
+        }
+      } else if (onApproveJustification) {
+        onApproveJustification(id, customFeedback);
+      } else {
+        await updateJustificativaStatusSupabase(id, 'approved', customFeedback || 'Homologado pelo gestor');
+      }
     }
     showPolishedToast({
       id: 'approval-success',
@@ -498,18 +529,22 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     const customFeedback = targetItem?.feedback?.trim() || undefined;
 
     setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, status: 'Recusado / Falta', actionText: 'Recusado agora' } : item));
-    const isRequest = requests.some(r => r.id === id);
-
-    if (isRequest) {
-      if (onRejectRequest) {
-        onRejectRequest(id, customFeedback);
-      } else {
-        await updateSolicitacaoStatusSupabase(id, 'rejected', customFeedback || 'Recusado pelo gestor');
-      }
-    } else if (onRejectJustification) {
-      onRejectJustification(id, customFeedback);
+    
+    if (id.startsWith('demo-')) {
+      // Item demonstrativo atualizado localmente
     } else {
-      await updateJustificativaStatusSupabase(id, 'rejected', customFeedback || 'Recusado pelo gestor');
+      const isRequest = requests.some(r => r.id === id);
+      if (isRequest) {
+        if (onRejectRequest) {
+          onRejectRequest(id, customFeedback);
+        } else {
+          await updateSolicitacaoStatusSupabase(id, 'rejected', customFeedback || 'Recusado pelo gestor');
+        }
+      } else if (onRejectJustification) {
+        onRejectJustification(id, customFeedback);
+      } else {
+        await updateJustificativaStatusSupabase(id, 'rejected', customFeedback || 'Recusado pelo gestor');
+      }
     }
     showPolishedToast({
       id: 'approval-rejected',
@@ -555,11 +590,16 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         });
       }
     }
-    setBancoHorasData(prev => prev.map(i => i.id === id ? { ...i, status: 'Homologado', feedback: i.feedback || 'Horas extras aprovadas para crédito no Banco de Horas / folha' } : i));
+    const isLate = item?.type === 'atraso';
+    const defaultFeedback = isLate
+      ? 'Atraso abonado pelo gestor com base na justificativa / comprovante (sem débito)'
+      : (item?.feedback || 'Horas extras aprovadas para crédito no Banco de Horas / folha');
+
+    setBancoHorasData(prev => prev.map(i => i.id === id ? { ...i, status: 'Homologado', feedback: defaultFeedback } : i));
     showPolishedToast({
       id: 'bh-homologado',
-      title: 'Hora Extra Homologada!',
-      description: 'Saldo aprovado e creditado no Banco de Horas do colaborador com sucesso.',
+      title: isLate ? 'Atraso Abonado com Sucesso!' : 'Hora Extra Homologada!',
+      description: isLate ? 'O atraso foi abonado com base no comprovante e não gerará débito no Banco de Horas.' : 'Saldo aprovado e creditado no Banco de Horas do colaborador com sucesso.',
       rimVariant: 'success',
       duration: 4000,
     });
@@ -572,15 +612,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       if (targetShift) {
         onOpenEditShift?.({
           ...targetShift,
-          notes: `${targetShift.notes || ''} [AJUSTE GESTOR: Saída considerada no horário contratual (${targetShift.endTime}) - Sem HE]`
+          notes: `${targetShift.notes || ''} [AJUSTE GESTOR: Ajuste aplicado]`
         });
       }
     }
-    setBancoHorasData(prev => prev.map(i => i.id === id ? { ...i, status: 'Ajustado', feedback: i.feedback || 'Tratado para horário previsto contratual (CLT Art. 4º § 2º - Sem HE indevida)' } : i));
+    const isLate = item?.type === 'atraso';
+    const defaultFeedback = isLate
+      ? 'Débito de minutos de atraso confirmado para compensação no Banco de Horas'
+      : (item?.feedback || 'Tratado para horário previsto contratual (CLT Art. 4º § 2º - Sem HE indevida)');
+
+    setBancoHorasData(prev => prev.map(i => i.id === id ? { ...i, status: 'Ajustado', feedback: defaultFeedback } : i));
     showPolishedToast({
       id: 'bh-ajustado',
-      title: 'Ponto Ajustado p/ Horário Normal',
-      description: 'Registro técnico preservado (Portaria 671). Ajuste de tratamento aplicado sem gerar HE indevida (Art. 4º CLT).',
+      title: isLate ? 'Débito de Atraso Confirmado' : 'Ponto Ajustado p/ Horário Normal',
+      description: isLate ? 'O atraso foi lançado para compensação no saldo do Banco de Horas.' : 'Registro técnico preservado (Portaria 671). Ajuste de tratamento aplicado sem gerar HE indevida (Art. 4º CLT).',
       rimVariant: 'default',
       duration: 5000,
     });
@@ -1867,11 +1912,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             return false;
           }
 
-          // Type filter (Todos, Trocas, Atestados, Folgas)
+          // Type filter (Todos, Trocas, Atestados, Justificativas de Atraso, Folgas)
           if (approvalsTypeFilter === 'swap') {
             if (!row.type.toLowerCase().includes('troca')) return false;
           } else if (approvalsTypeFilter === 'medical') {
             if (!row.type.toLowerCase().includes('atestado') && !row.type.toLowerCase().includes('médico') && !row.type.toLowerCase().includes('ausência')) return false;
+          } else if (approvalsTypeFilter === 'delay') {
+            if (!row.type.toLowerCase().includes('atraso')) return false;
           } else if (approvalsTypeFilter === 'time_off') {
             if (!row.type.toLowerCase().includes('folga') && !row.type.toLowerCase().includes('dispensa')) return false;
           }
@@ -2058,6 +2105,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   <option value="all">Todos os Tipos</option>
                   <option value="swap">Trocas de Turno</option>
                   <option value="medical">Atestados Médicos</option>
+                  <option value="delay">Justificativas de Atraso</option>
                   <option value="time_off">Folgas / Dispensas</option>
                 </select>
               </div>
@@ -3532,6 +3580,32 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                         <span>Descontar Falta</span>
                                       </button>
                                     </>
+                                  ) : row.type === 'atraso' ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleHomologarBanco(row.id)}
+                                        title="Abonar Atraso: Justifica o atraso com base na declaração de comparecimento/consulta médica e abona o tempo sem descontar do banco."
+                                        className="h-7 px-2.5 rounded-lg font-bold text-[11px] text-white transition-all shadow-sm flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95"
+                                        style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
+                                      >
+                                        <CheckCircle2 className="w-3 h-3" />
+                                        <span>Abonar Atraso</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAjustarHorarioNormal(row.id)}
+                                        title="Debitar do Banco: Mantém o registro do atraso para débito e compensação de jornada no Banco de Horas."
+                                        className={`h-7 px-2 border font-bold text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 ${
+                                          isDark 
+                                            ? 'border-rose-500/30 text-rose-300 hover:bg-rose-500/10' 
+                                            : 'border-rose-300 text-rose-700 hover:bg-rose-50 bg-white shadow-2xs'
+                                        }`}
+                                      >
+                                        <Clock className="w-3 h-3 text-rose-500" />
+                                        <span>Debitar do Banco</span>
+                                      </button>
+                                    </>
                                   ) : (
                                     <>
                                       <button
@@ -3562,15 +3636,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                 </div>
                               ) : row.status === 'Homologado' ? (
                                 <span className={`h-7 inline-flex items-center gap-1 font-mono text-[11px] font-semibold ${
-                                  row.type === 'ausencia' ? 'text-sky-500' : 'text-emerald-600 dark:text-emerald-500'
+                                  row.type === 'ausencia' ? 'text-sky-500' : row.type === 'atraso' ? 'text-emerald-500' : 'text-emerald-600 dark:text-emerald-500'
                                 }`}>
-                                  <CheckCircle2 className="w-3 h-3" /> {row.type === 'ausencia' ? 'Ausência Justificada' : 'Creditado no Banco'}
+                                  <CheckCircle2 className="w-3 h-3" /> {row.type === 'ausencia' ? 'Ausência Justificada' : row.type === 'atraso' ? 'Atraso Abonado' : 'Creditado no Banco'}
                                 </span>
                               ) : (
                                 <span className={`h-7 inline-flex items-center gap-1 font-mono text-[11px] font-medium italic ${
                                   isDark ? 'text-slate-400' : 'text-slate-600'
                                 }`}>
-                                  <Clock className="w-3 h-3 text-[#F59242]" /> {row.type === 'ausencia' ? 'Falta Confirmada' : 'Tratado no horário previsto'}
+                                  <Clock className="w-3 h-3 text-[#F59242]" /> {row.type === 'ausencia' ? 'Falta Confirmada' : row.type === 'atraso' ? 'Débito no Banco' : 'Tratado no horário previsto'}
                                 </span>
                               )}
                             </td>
