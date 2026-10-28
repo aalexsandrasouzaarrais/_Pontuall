@@ -525,12 +525,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                               </span>
                             </td>
                             <td className={`py-3 px-3 font-mono whitespace-nowrap ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                              {entry.date
-                                ? new Date(entry.date + 'T12:00:00').toLocaleDateString('pt-BR', {
-                                    day: '2-digit',
-                                    month: '2-digit',
-                                  })
-                                : '-'}
+                              {entry.date ? formatDateBR(entry.date) : '-'}
                             </td>
                             <td className="py-3 px-3 whitespace-nowrap">
                               <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
@@ -766,12 +761,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                                 </span>
                                 <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                   • Enviado em{' '}
-                                  {new Date(rep.submittedAt).toLocaleDateString('pt-BR', {
-                                    day: '2-digit',
-                                    month: '2-digit',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  })}
+                                  {formatDateTimeBR(rep.submittedAt)}
                                 </span>
                               </div>
                               <p className={`text-xs mt-1 line-clamp-1 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>

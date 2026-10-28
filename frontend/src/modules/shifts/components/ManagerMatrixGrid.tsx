@@ -56,7 +56,7 @@ import {
 import { EmployeesManagementView } from '@/modules/manager/components/EmployeesManagementView';
 import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
 import { DeleteShiftsModal } from './DeleteShiftsModal';
-import { addDaysLocal, startOfWeekMonday, toLocalDateString, getTodayDateString } from '@/shared/utils/dateUtils';
+import { addDaysLocal, startOfWeekMonday, toLocalDateString, getTodayDateString, formatDateBR, normalizeDateToISO } from '@/shared/utils/dateUtils';
 import { showPolishedToast } from '@/components/ui/halo-toast';
 import {
   ReminderItem,
@@ -122,17 +122,7 @@ export interface BancoHorasItem {
 }
 
 export const formatDateToDDMMAAAA = (val?: string): string => {
-  if (!val) return '';
-  const clean = val.trim();
-  if (/^\d{2}-\d{2}-\d{4}$/.test(clean)) return clean;
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(clean)) return clean.replace(/\//g, '-');
-  if (/^\d{4}[-/]\d{2}[-/]\d{2}/.test(clean)) {
-    const parts = clean.split(/[-/T ]/);
-    if (parts.length >= 3 && parts[0].length === 4) {
-      return `${parts[2]}-${parts[1]}-${parts[0]}`;
-    }
-  }
-  return clean;
+  return formatDateBR(val);
 };
 
 export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
@@ -2850,8 +2840,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       const formattedRowDate = formatDateToDDMMAAAA(row.date);
                       
                       if (relatorioDate) {
-                        const formattedFilterDate = formatDateToDDMMAAAA(relatorioDate);
-                        if (row.date !== relatorioDate && formattedRowDate !== formattedFilterDate) {
+                        if (normalizeDateToISO(row.date) !== normalizeDateToISO(relatorioDate)) {
                           return false;
                         }
                       }
@@ -2970,8 +2959,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               const formattedItemDate = formatDateToDDMMAAAA(item.date);
 
               if (bancoHorasDate) {
-                const formattedFilterDate = formatDateToDDMMAAAA(bancoHorasDate);
-                if (item.date !== bancoHorasDate && formattedItemDate !== formattedFilterDate) {
+                if (normalizeDateToISO(item.date) !== normalizeDateToISO(bancoHorasDate)) {
                   return false;
                 }
               }
@@ -3047,7 +3035,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         type="text"
                         value={bancoHorasSearch}
                         onChange={(e) => setBancoHorasSearch(e.target.value)}
-                        placeholder="Buscar por colaborador, justificativa ou data (ex: 26-10-2026)..."
+                        placeholder="Buscar por colaborador, justificativa ou data (ex: 28/10/2026)..."
                         className={`w-full pl-9 pr-3 py-2 text-xs rounded-full outline-none transition-colors ${
                           isDark 
                             ? 'bg-[#0e0f12] text-white placeholder:text-slate-500 border border-[#282a33] focus:border-[#F59242]' 
@@ -3221,7 +3209,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                               </div>
                             </td>
 
-                            {/* Data no formato DD-MM-AAAA (h-7 alinhado) */}
+                            {/* Data no formato DD/MM/AAAA (h-7 alinhado) */}
                             <td className="p-3.5 whitespace-nowrap align-middle">
                               <div className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg font-mono text-[11px] border ${
                                 isDark ? 'bg-white/5 border border-white/5 text-slate-300' : 'bg-slate-100 border border-slate-200 text-slate-700'

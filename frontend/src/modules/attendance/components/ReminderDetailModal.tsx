@@ -114,16 +114,7 @@ export const ReminderDetailModal: React.FC<ReminderDetailModalProps> = ({
     .filter(Boolean) as Employee[];
 
   // Format date DD/MM/YYYY if formatted as YYYY-MM-DD
-  const formattedDate = (() => {
-    if (!reminder.date) return 'Data não informada';
-    if (reminder.date.includes('-')) {
-      const parts = reminder.date.split('-');
-      if (parts.length === 3) {
-        return `${parts[2]}/${parts[1]}/${parts[0]}`;
-      }
-    }
-    return reminder.date;
-  })();
+  const formattedDate = formatDateBR(reminder.date) || 'Data não informada';
 
   const currentTag = reminder.tag || reminder.projectTag;
 

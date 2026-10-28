@@ -100,7 +100,7 @@ export const ManagerRequestsModal: React.FC<ManagerRequestsModalProps> = ({
                           )}
                         </div>
                         <p className="text-xs text-slate-300 mt-1 flex items-center gap-1.5 flex-wrap">
-                          <span>Data: <strong className="font-mono text-white">{req.date}</strong></span>
+                          <span>Data: <strong className="font-mono text-white">{formatDateBR(req.date)}</strong></span>
                           {req.shiftStartTime && req.shiftEndTime && (
                             <span className="text-amber-300 font-mono font-semibold">({req.shiftStartTime} às {req.shiftEndTime})</span>
                           )}
@@ -159,7 +159,7 @@ export const ManagerRequestsModal: React.FC<ManagerRequestsModalProps> = ({
                           </span>
                         </div>
                         <p className="text-xs text-slate-300 mt-0.5">
-                          Falta em: <strong className="font-mono text-white">{just.date}</strong>
+                          Falta em: <strong className="font-mono text-white">{formatDateBR(just.date)}</strong>
                         </p>
                         <p className="text-[11px] text-slate-400 italic mt-0.5">
                           "{just.reason}"
@@ -216,7 +216,7 @@ export const ManagerRequestsModal: React.FC<ManagerRequestsModalProps> = ({
                           </span>
                         </div>
                         <p className="text-[11px] text-slate-400 mt-0.5">
-                          Período: <strong className="text-slate-200">{rep.period}</strong> • Enviado em: {new Date(rep.submittedAt).toLocaleDateString('pt-BR')}
+                          Período: <strong className="text-slate-200">{rep.period}</strong> • Enviado em: {formatDateTimeBR(rep.submittedAt)}
                         </p>
                       </div>
 

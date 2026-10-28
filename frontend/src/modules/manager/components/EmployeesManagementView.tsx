@@ -474,7 +474,7 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                           <span>Vigência:</span>
                         </span>
                         <span className="font-mono font-bold">
-                          {emp.contractStartDate ? new Date(emp.contractStartDate + 'T00:00:00').toLocaleDateString('pt-BR') : '—'} até {emp.contractEndDate ? new Date(emp.contractEndDate + 'T00:00:00').toLocaleDateString('pt-BR') : '—'}
+                          {formatDateBR(emp.contractStartDate) || '—'} até {formatDateBR(emp.contractEndDate) || '—'}
                         </span>
                       </div>
                     )}
@@ -636,7 +636,7 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                         ) : emp.contractType === 'TEMPORARIO' ? (
                           <span className={`px-1.5 py-0.2 rounded text-[9.5px] font-bold border ${
                             isDark ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-amber-100 text-amber-800 border-amber-300'
-                          }`} title={emp.contractEndDate ? `Até ${new Date(emp.contractEndDate + 'T00:00:00').toLocaleDateString('pt-BR')}` : undefined}>
+                          }`} title={emp.contractEndDate ? `Até ${formatDateBR(emp.contractEndDate)}` : undefined}>
                             Temporário
                           </span>
                         ) : null}
