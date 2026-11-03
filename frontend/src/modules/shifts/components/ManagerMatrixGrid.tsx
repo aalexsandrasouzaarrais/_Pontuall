@@ -2261,16 +2261,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 </button>
               </div>
 
-              <button
-                onClick={() => setIsNewOccurrenceModalOpen(true)}
-                className="approvals-light-new-request px-5 py-2.5 font-bold text-xs rounded-full text-white flex items-center justify-center gap-2 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer shrink-0"
-                style={{ 
-                  background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)',
-                  boxShadow: '0 4px 18px rgba(100, 12, 30, 0.30)'
-                }}
-              >
-                <Plus className="w-4 h-4" /> Nova Solicitação / Lançar Falta
-              </button>
+
             </div>
 
             {/* Data Table igual à Imagem 2 + Coluna Adicional de Observação / Feedback para o Colaborador */}
