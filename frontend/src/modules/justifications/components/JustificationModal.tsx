@@ -165,22 +165,20 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
                 boxShadow: '0 25px 50px -12px rgba(0,0,0,0.15)'
               }
             : {
-                background: 'linear-gradient(160deg, #1a0010 0%, #0d0008 60%, #0a0308 100%)',
-                border: '1px solid rgba(150,24,60,0.4)',
-                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)'
+                background: 'linear-gradient(160deg, #181920 0%, #111217 60%, #0d0e12 100%)',
+                border: '1px solid rgba(150, 24, 60, 0.35)',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)'
               }
         }
       >
-        <div className="h-1.5 w-full bg-gradient-to-r from-[#96183c] via-[#f89642] to-[#faf0ac]"></div>
+        <div className="h-1.5 w-full bg-gradient-to-r from-[#96183C] via-[#F89847] to-[#FCEABB] shrink-0"></div>
 
         {/* Header */}
         <div className={`px-5 py-4 flex items-center justify-between border-b ${
           isLightTheme ? 'border-slate-100 bg-slate-50/60' : 'border-white/5 bg-transparent'
         }`}>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#96183c] to-[#f89642] flex items-center justify-center shadow-lg shadow-[#96183c]/20">
-              <FileText className="w-5 h-5 text-white" />
-            </div>
+            
             <div>
               <h3 className={`font-bold text-base leading-tight ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
                 {editingJustification 
