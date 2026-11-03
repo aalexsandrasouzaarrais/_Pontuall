@@ -3363,8 +3363,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         <th className="p-3.5">ESCALA PREVISTA</th>
                         <th className="p-3.5">BATIDA REGISTRADA</th>
                         <th className="p-3.5">VARIAÇÃO / SALDO</th>
-                        <th className="p-3.5">JUSTIFICATIVA DO COLABORADOR</th>
-                        <th className="p-3.5">STATUS</th>
+                        <th className="p-3.5 text-center">JUSTIFICATIVA</th>
+                        <th className="p-3.5 text-center">STATUS</th>
                         <th className="p-3.5">OBSERVAÇÃO DO GESTOR</th>
                         <th className="p-3.5 text-right pr-5">AÇÕES DO GESTOR</th>
                       </tr>
@@ -3484,55 +3484,44 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                               )}
                             </td>
 
-                            {/* Justificativa do Colaborador (h-7 alinhado e com alto contraste) */}
-                            <td className="p-3.5 whitespace-nowrap align-middle">
+                            {/* Justificativa do Colaborador (Apenas ícone do olhinho com tooltip) */}
+                            <td className="p-3.5 text-center whitespace-nowrap align-middle">
                               <button
                                 type="button"
                                 onClick={() => setSelectedDetailBancoItem(row)}
-                                className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg text-[11px] font-bold border transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-xs whitespace-nowrap ${
+                                className={`h-7 w-7 rounded-lg inline-flex items-center justify-center border transition-all cursor-pointer hover:scale-110 active:scale-95 shadow-xs ${
                                   isDark 
                                     ? 'bg-[#F59242]/10 hover:bg-[#F59242]/20 text-[#F59242] border-[#F59242]/30' 
-                                    : 'bg-orange-100/80 hover:bg-orange-100 text-[#c2410c] border-orange-300 font-extrabold'
+                                    : 'bg-orange-100/80 hover:bg-orange-100 text-[#c2410c] border-orange-300'
                                 }`}
-                                title="Clique para abrir a justificativa completa e histórico"
+                                title={`Visualizar justificativa de ${row.employeeName}`}
                               >
-                                <Eye className="w-3 h-3 text-[#c2410c] dark:text-[#F59242]" />
-                                <span>Ver justificativa</span>
+                                <Eye className="w-3.5 h-3.5 text-[#c2410c] dark:text-[#F59242]" />
                               </button>
                             </td>
 
-                            {/* Status (h-7 alinhado e com alto contraste) */}
-                            <td className="p-3.5 whitespace-nowrap align-middle">
-                              {row.status === 'Pendente' && (
-                                <span className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg text-[11px] font-bold font-mono border whitespace-nowrap ${
-                                  isDark 
-                                    ? 'bg-amber-500/10 text-amber-300 border-amber-500/25' 
-                                    : 'bg-amber-100/90 text-amber-950 border-amber-300 font-bold'
-                                }`}>
-                                  <span className={`w-1.5 h-1.5 rounded-full ${isDark ? 'bg-amber-400 shadow-[0_0_6px_#fbbf24]' : 'bg-amber-600'} animate-pulse`} />
-                                  <span>Pendente</span>
-                                </span>
-                              )}
-                              {row.status === 'Homologado' && (
-                                <span className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg text-[11px] font-bold font-mono border whitespace-nowrap ${
-                                  isDark 
-                                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25' 
-                                    : 'bg-emerald-100/90 text-emerald-900 border-emerald-300 font-bold'
-                                }`}>
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                                  <span>Homologado Banco</span>
-                                </span>
-                              )}
-                              {row.status === 'Ajustado' && (
-                                <span className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg text-[11px] font-bold font-mono border whitespace-nowrap ${
-                                  isDark 
-                                    ? 'bg-white/10 text-[#F9DE97] border-white/20' 
-                                    : 'bg-slate-100 text-slate-800 border-slate-300 font-bold'
-                                }`}>
-                                  <Check className="w-3 h-3" />
-                                  <span>Horário Normal</span>
-                                </span>
-                              )}
+                            {/* Status (Apenas Bolinha Indicadora com Tooltip) */}
+                            <td className="p-3.5 text-center whitespace-nowrap align-middle">
+                              <div className="flex items-center justify-center">
+                                {row.status === 'Pendente' && (
+                                  <span 
+                                    className="w-3 h-3 rounded-full bg-amber-400 shadow-[0_0_8px_#fbbf24] inline-block animate-pulse cursor-help transition-transform hover:scale-125"
+                                    title="Pendente de homologação"
+                                  />
+                                )}
+                                {row.status === 'Homologado' && (
+                                  <span 
+                                    className="w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399] inline-block cursor-help transition-transform hover:scale-125"
+                                    title="Homologado no Banco de Horas"
+                                  />
+                                )}
+                                {row.status === 'Ajustado' && (
+                                  <span 
+                                    className="w-3 h-3 rounded-full bg-sky-400 shadow-[0_0_8px_#38bdf8] inline-block cursor-help transition-transform hover:scale-125"
+                                    title="Ajustado p/ Horário Contratual"
+                                  />
+                                )}
+                              </div>
                             </td>
 
                             {/* Observação do Gestor (h-7 alinhado) */}
@@ -3550,34 +3539,34 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                               />
                             </td>
 
-                            {/* Ações do Gestor com Tooltips Claros ao Passar o Mouse (h-7 alinhado) */}
+                            {/* Ações do Gestor ("menos coisa": botões limpos, compactos e tooltips detalhados) */}
                             <td className="p-3.5 text-right pr-5 whitespace-nowrap align-middle">
                               {row.status === 'Pendente' ? (
-                                <div className="flex items-center justify-end gap-2">
+                                <div className="flex items-center justify-end gap-1.5">
                                   {row.type === 'ausencia' ? (
                                     <>
                                       <button
                                         type="button"
                                         onClick={() => handleHomologarAusencia(row.shiftId, row.id)}
-                                        title="Abonar Falta: Justifica a falta e abona as horas, zerando o débito no banco de horas sem prejuízo salarial."
-                                        className="h-7 px-2.5 rounded-lg font-bold text-[11px] text-white transition-all shadow-sm flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95"
+                                        title="Abonar Falta: Justifica a falta e abona as horas com base no atestado, zerando o débito sem prejuízo salarial."
+                                        className="h-7 px-2.5 rounded-lg font-semibold text-[11px] text-white transition-all shadow-xs flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95"
                                         style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
                                       >
-                                        <CheckCircle2 className="w-3 h-3" />
-                                        <span>Abonar Falta</span>
+                                        <Check className="w-3 h-3" />
+                                        <span>Abonar</span>
                                       </button>
                                       <button
                                         type="button"
                                         onClick={() => handleAjustarHorarioNormal(row.id)}
-                                        title="Descontar Falta: Confirma a ausência sem abono, mantendo o desconto de -8h no banco de horas / folha."
-                                        className={`h-7 px-2 border font-bold text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 ${
+                                        title="Descontar Falta: Confirma a ausência injustificada, mantendo o desconto de -8h no banco de horas / folha."
+                                        className={`h-7 px-2.5 border font-semibold text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 ${
                                           isDark 
                                             ? 'border-rose-500/30 text-rose-300 hover:bg-rose-500/10' 
                                             : 'border-rose-300 text-rose-700 hover:bg-rose-50 bg-white shadow-2xs'
                                         }`}
                                       >
-                                        <XCircle className="w-3 h-3 text-rose-500" />
-                                        <span>Descontar Falta</span>
+                                        <X className="w-3 h-3 text-rose-500" />
+                                        <span>Descontar</span>
                                       </button>
                                     </>
                                   ) : row.type === 'atraso' ? (
@@ -3585,25 +3574,25 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                       <button
                                         type="button"
                                         onClick={() => handleHomologarBanco(row.id)}
-                                        title="Abonar Atraso: Justifica o atraso com base na declaração de comparecimento/consulta médica e abona o tempo sem descontar do banco."
-                                        className="h-7 px-2.5 rounded-lg font-bold text-[11px] text-white transition-all shadow-sm flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95"
+                                        title="Abonar Atraso: Perdoa/justifica o atraso com base no comprovante de comparecimento/consulta médica (sem desconto nem débito no banco)."
+                                        className="h-7 px-2.5 rounded-lg font-semibold text-[11px] text-white transition-all shadow-xs flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95"
                                         style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
                                       >
-                                        <CheckCircle2 className="w-3 h-3" />
-                                        <span>Abonar Atraso</span>
+                                        <Check className="w-3 h-3" />
+                                        <span>Abonar</span>
                                       </button>
                                       <button
                                         type="button"
                                         onClick={() => handleAjustarHorarioNormal(row.id)}
-                                        title="Debitar do Banco: Mantém o registro do atraso para débito e compensação de jornada no Banco de Horas."
-                                        className={`h-7 px-2 border font-bold text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 ${
+                                        title="Debitar do Banco: Lança os minutos de atraso para débito e compensação de jornada no Banco de Horas."
+                                        className={`h-7 px-2.5 border font-semibold text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 ${
                                           isDark 
                                             ? 'border-rose-500/30 text-rose-300 hover:bg-rose-500/10' 
                                             : 'border-rose-300 text-rose-700 hover:bg-rose-50 bg-white shadow-2xs'
                                         }`}
                                       >
                                         <Clock className="w-3 h-3 text-rose-500" />
-                                        <span>Debitar do Banco</span>
+                                        <span>Debitar</span>
                                       </button>
                                     </>
                                   ) : (
@@ -3611,25 +3600,25 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                       <button
                                         type="button"
                                         onClick={() => handleHomologarBanco(row.id)}
-                                        title="Homologar Banco: Aprova as horas extras além da tolerância (Art. 58 CLT) e credita o saldo no Banco de Horas / folha."
-                                        className="h-7 px-2.5 rounded-lg font-bold text-[11px] text-white transition-all shadow-sm flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95"
+                                        title="Homologar Horas Extras: Aprova as horas extras trabalhadas e credita o saldo positivo no Banco de Horas / folha."
+                                        className="h-7 px-2.5 rounded-lg font-semibold text-[11px] text-white transition-all shadow-xs flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95"
                                         style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
                                       >
-                                        <CheckCircle2 className="w-3 h-3" />
-                                        <span>Homologar Banco</span>
+                                        <Check className="w-3 h-3" />
+                                        <span>Homologar</span>
                                       </button>
                                       <button
                                         type="button"
                                         onClick={() => handleAjustarHorarioNormal(row.id)}
-                                        title="Ajustar Horário Normal: Nos casos de esquecimento de batida na saída sem trabalho efetivo, ajusta para a jornada contratual sem gerar hora extra indevida (CLT Art. 4º § 2º)."
-                                        className={`h-7 px-2 border font-bold text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 ${
+                                        title="Ajustar Horário Normal: Ajusta o registro para o horário contratual (CLT Art. 4º § 2º) nos casos de esquecimento de batida ou permanência sem trabalho efetivo."
+                                        className={`h-7 px-2.5 border font-semibold text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 ${
                                           isDark 
                                             ? 'border-white/20 text-slate-300 hover:bg-white/10' 
                                             : 'border-slate-300 text-slate-700 hover:bg-slate-100 bg-white shadow-2xs'
                                         }`}
                                       >
                                         <Clock className="w-3 h-3" />
-                                        <span>Ajustar Horário Normal</span>
+                                        <span>Ajustar</span>
                                       </button>
                                     </>
                                   )}
@@ -3638,13 +3627,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                 <span className={`h-7 inline-flex items-center gap-1 font-mono text-[11px] font-semibold ${
                                   row.type === 'ausencia' ? 'text-sky-500' : row.type === 'atraso' ? 'text-emerald-500' : 'text-emerald-600 dark:text-emerald-500'
                                 }`}>
-                                  <CheckCircle2 className="w-3 h-3" /> {row.type === 'ausencia' ? 'Ausência Justificada' : row.type === 'atraso' ? 'Atraso Abonado' : 'Creditado no Banco'}
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>{row.type === 'ausencia' || row.type === 'atraso' ? 'Abonado' : 'Homologado'}</span>
                                 </span>
                               ) : (
-                                <span className={`h-7 inline-flex items-center gap-1 font-mono text-[11px] font-medium italic ${
+                                <span className={`h-7 inline-flex items-center gap-1 font-mono text-[11px] font-medium ${
                                   isDark ? 'text-slate-400' : 'text-slate-600'
                                 }`}>
-                                  <Clock className="w-3 h-3 text-[#F59242]" /> {row.type === 'ausencia' ? 'Falta Confirmada' : row.type === 'atraso' ? 'Débito no Banco' : 'Tratado no horário previsto'}
+                                  <Clock className="w-3.5 h-3.5 text-[#F59242]" />
+                                  <span>{row.type === 'ausencia' ? 'Descontado' : row.type === 'atraso' ? 'Debitado' : 'Ajustado'}</span>
                                 </span>
                               )}
                             </td>
