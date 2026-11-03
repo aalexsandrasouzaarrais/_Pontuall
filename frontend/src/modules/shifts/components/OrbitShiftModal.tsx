@@ -900,20 +900,10 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                   <span className={`text-xs sm:text-sm font-bold truncate block ${
                     isLight ? 'text-slate-900' : 'text-white'
                   }`}>
-                    {selectedColor.category || selectedColor.label || 'Operacional / Presencial'}
+                    {selectedColor.category || ORBIT_COLORS.find(c => c.label === selectedColor.label || c.bg === selectedColor.bg)?.category || shiftType || 'Operacional / Presencial'}
                   </span>
                 </div>
               </div>
-
-              {selectedColor.label && (
-                <span className={`text-[11px] font-mono font-semibold px-2.5 py-1 rounded-lg border shrink-0 ${
-                  isLight 
-                    ? 'bg-white text-slate-700 border-slate-200 shadow-2xs' 
-                    : 'bg-white/5 text-zinc-300 border-white/10'
-                }`}>
-                  {selectedColor.label}
-                </span>
-              )}
             </div>
 
           </div>
@@ -1194,12 +1184,6 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                   <label className="text-xs font-semibold" style={labelStyle}>
                     TIPO DE TURNO
                   </label>
-                  <span className={`text-[11px] font-semibold flex items-center gap-1.5 px-2 py-0.5 rounded-full ${
-                    isLight ? 'bg-white border border-slate-200 text-slate-700' : 'bg-black/30 border border-white/10 text-white/80'
-                  }`}>
-                    <span className="w-2 h-2 rounded-full inline-block shadow-xs" style={{ background: selectedColor.bg }} />
-                    <span className="font-mono">{selectedColor.label}</span>
-                  </span>
                 </div>
                 <select
                   value={shiftType}
@@ -1392,13 +1376,6 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                 }`}>
                   Categoria da Escala
                 </label>
-                <span className={`text-[11px] font-mono font-semibold px-2.5 py-0.5 rounded-lg border ${
-                  isLight 
-                    ? 'bg-white text-slate-700 border-slate-200 shadow-2xs' 
-                    : 'bg-white/5 text-zinc-300 border-white/10'
-                }`}>
-                  {selectedColor.label}
-                </span>
               </div>
 
               {/* Grid simples e intuitivo de botões de categoria */}

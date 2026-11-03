@@ -611,16 +611,6 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                 </span>
               </div>
             </div>
-
-            {scaleInfo.label && (
-              <span className={`text-[11px] font-mono font-semibold px-2.5 py-1 rounded-lg border shrink-0 ${
-                isLightTheme 
-                  ? 'bg-white text-slate-700 border-slate-200 shadow-2xs' 
-                  : 'bg-white/5 text-zinc-300 border-white/10'
-              }`}>
-                {scaleInfo.label}
-              </span>
-            )}
           </div>
 
         </div>
