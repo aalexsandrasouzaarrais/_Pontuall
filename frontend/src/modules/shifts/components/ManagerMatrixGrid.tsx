@@ -470,24 +470,24 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       const isLate = (s.notes?.includes('[Atraso') || s.attendanceStatus === 'late') && !isHe;
 
       let type: 'hora_extra' | 'atraso' | 'esquecimento' = 'hora_extra';
-      let typeLabel = '⏰ Hora Extra';
+      let typeLabel = 'Hora Extra';
       let diffMinutes = 39;
       let diffBadge = '+39 min';
 
       if (isForget) {
         type = 'esquecimento';
-        typeLabel = 'ℹ️ Esquecimento de Saída';
+        typeLabel = 'Esquecimento de Saída';
         diffMinutes = 0;
         diffBadge = '0 min (Esquecimento)';
       } else if (isLate) {
         type = 'atraso';
-        typeLabel = '⚠️ Atraso de Entrada';
+        typeLabel = 'Atraso de Entrada';
         const lateMatch = s.notes?.match(/\[Atraso (\d+)m/);
         diffMinutes = lateMatch ? -Number(lateMatch[1]) : -35;
         diffBadge = `${diffMinutes} min`;
       } else if (isHe) {
         type = 'hora_extra';
-        typeLabel = '⏰ Hora Extra';
+        typeLabel = 'Hora Extra';
         const heMatch = s.notes?.match(/\[HE \+(\d+)m/);
         diffMinutes = heMatch ? Number(heMatch[1]) : 39;
         diffBadge = `+${diffMinutes} min`;
@@ -548,7 +548,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       diffMinutes: 39,
       diffBadge: '+39 min',
       type: 'hora_extra',
-      typeLabel: '⏰ Hora Extra',
+      typeLabel: 'Hora Extra',
       reason: 'Atendimento urgente e suporte estendido a cliente corporativo',
       status: 'Pendente',
       feedback: '',
@@ -567,7 +567,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       diffMinutes: -35,
       diffBadge: '-35 min',
       type: 'atraso',
-      typeLabel: '⚠️ Atraso de Entrada',
+      typeLabel: 'Atraso de Entrada',
       reason: 'Atraso de 35 min: Consulta médica matinal com declaração de comparecimento anexada',
       documentName: 'Declaracao_Comparecimento_Horas.pdf',
       documentUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
@@ -588,7 +588,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       diffMinutes: 0,
       diffBadge: '0 min (Esquecimento)',
       type: 'esquecimento',
-      typeLabel: 'ℹ️ Esquecimento de Saída',
+      typeLabel: 'Esquecimento de Saída',
       reason: 'Esquecimento de Saída: Saída real no horário previsto (15:20) - Batida às 15:59',
       status: 'Pendente',
       feedback: '',
@@ -1009,7 +1009,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         diffMinutes: 39,
         diffBadge: '+39 min',
         type: 'hora_extra',
-        typeLabel: '⏰ Hora Extra',
+        typeLabel: 'Hora Extra',
         reason: 'Atendimento urgente e suporte estendido a cliente corporativo',
         status: 'Pendente',
         feedback: '',
@@ -1034,7 +1034,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         diffMinutes: -35,
         diffBadge: '-35 min',
         type: 'atraso',
-        typeLabel: '⚠️ Atraso de Entrada',
+        typeLabel: 'Atraso de Entrada',
         reason: 'Paralisação inesperada e atraso no transporte público na linha 9',
         status: 'Pendente',
         feedback: '',
@@ -1059,7 +1059,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         diffMinutes: 0,
         diffBadge: '0 min (Esquecimento)',
         type: 'esquecimento',
-        typeLabel: 'ℹ️ Esquecimento de Saída',
+        typeLabel: 'Esquecimento de Saída',
         reason: 'Esquecimento de Saída: Saída real no horário previsto (15:20) - Batida às 15:59',
         status: 'Pendente',
         feedback: '',
@@ -2354,12 +2354,19 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
                 <div className="relative z-10 flex flex-wrap items-center gap-3 shrink-0">
                   <button
-                    onClick={onExportCsv}
+                    onClick={() => handleExportBancoHorasCsv(bancoHorasData)}
                     className="approvals-light-export px-5 py-2.5 font-bold text-xs rounded-full text-white flex items-center gap-2 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer"
                     style={{ 
                       background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)',
                       boxShadow: '0 4px 18px rgba(100, 12, 30, 0.30)'
                     }}
+                    title="Exportar fechamento para a folha do RH com horas decimais"
+                  >
+                    <Download className="w-4 h-4" /> Exportar Fechamento p/ Folha (RH)
+                  </button>
+                  <button
+                    onClick={onExportCsv}
+                    className="approvals-light-secondary px-4 py-2.5 font-bold text-xs rounded-full text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-all flex items-center gap-1.5 cursor-pointer"
                   >
                     <Download className="w-4 h-4" /> Exportar Relatório CSV
                   </button>
@@ -2541,6 +2548,55 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               </button>
             </div>
 
+            {/* Pílulas de Categoria Rápida (Sem Emojis, Padrão Organizacional da Tabela) */}
+            <div className="flex flex-wrap items-center gap-2 relative z-10">
+              {[
+                { id: 'all', label: 'Todos' },
+                { id: 'delay', label: 'Atrasos de Entrada' },
+                { id: 'overtime', label: 'Horas Extras' },
+                { id: 'medical', label: 'Atestados Médicos' },
+                { id: 'absent', label: 'Faltas Não Justificadas' },
+                { id: 'swap', label: 'Trocas de Turno' },
+                { id: 'time_off', label: 'Folgas / Dispensas' },
+              ].map(cat => {
+                const isActive = approvalsTypeFilter === cat.id;
+                const count = approvalsData.filter(row => {
+                  if (cat.id === 'all') return true;
+                  if (cat.id === 'delay') return row.type.toLowerCase().includes('atraso');
+                  if (cat.id === 'overtime') return row.type.toLowerCase().includes('hora extra') || row.type.toLowerCase().includes('extra');
+                  if (cat.id === 'medical') return row.type.toLowerCase().includes('atestado') || row.type.toLowerCase().includes('médico');
+                  if (cat.id === 'absent') return row.type.toLowerCase().includes('falta');
+                  if (cat.id === 'swap') return row.type.toLowerCase().includes('troca');
+                  if (cat.id === 'time_off') return row.type.toLowerCase().includes('folga') || row.type.toLowerCase().includes('dispensa');
+                  return true;
+                }).length;
+
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setApprovalsTypeFilter(cat.id as any)}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                      isActive
+                        ? 'bg-white/15 text-white border-white/25 shadow-xs font-black'
+                        : isDark
+                        ? 'bg-[#15161b] text-slate-400 hover:text-white border-[#282a33] hover:border-[#3b3e4c]'
+                        : 'bg-white text-slate-600 hover:text-slate-900 border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <span>{cat.label}</span>
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                      isActive
+                        ? 'bg-white/20 text-white'
+                        : isDark ? 'bg-white/5 text-slate-400' : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
             {/* Data Table igual à Imagem 2 + Coluna Adicional de Observação / Feedback para o Colaborador */}
             <div 
               className="approval-table-card approvals-light-table rounded-2xl border border-[#282a33] overflow-hidden overflow-x-auto relative z-10 shadow-xl" 
@@ -2592,6 +2648,16 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           <div className="space-y-1">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-bold text-white block text-xs leading-tight">{row.type}</span>
+                              {row.type === 'Atraso de Entrada' && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                  -35 min
+                                </span>
+                              )}
+                              {row.type === 'Hora Extra' && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                                  +39 min
+                                </span>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => setSelectedDetailOccurrence(row)}
@@ -3323,49 +3389,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             </div>
           </div>
 
-          {/* Sub-Navegação: Visão Geral de Presenças vs. Banco de Horas & Extras */}
-          <div className="flex flex-wrap items-center justify-between gap-3 relative z-10">
-            <div className={`flex items-center gap-2 p-1.5 rounded-2xl border transition-colors ${
-              isDark ? 'bg-[#15161b] border-[#282a33]' : 'bg-white border-slate-200 shadow-xs'
-            }`}>
-              <button
-                type="button"
-                onClick={() => setRelatorioSubTab('geral')}
-                data-active={relatorioSubTab === 'geral' ? 'true' : 'false'}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                  relatorioSubTab === 'geral'
-                    ? 'bg-gradient-to-r from-[#640C1E] to-[#9F243C] text-[#F9DE97] shadow-md'
-                    : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>Visão Geral de Presenças</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setRelatorioSubTab('banco_horas')}
-                data-active={relatorioSubTab === 'banco_horas' ? 'true' : 'false'}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                  relatorioSubTab === 'banco_horas'
-                    ? 'bg-gradient-to-r from-[#640C1E] to-[#9F243C] text-[#F9DE97] font-black border border-[#F59242]/40 shadow-md'
-                    : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Clock className="w-3.5 h-3.5" />
-                <span>Banco de Horas & Extras</span>
-                {bancoHorasData.filter(i => i.status === 'Pendente').length > 0 && (
-                  <span className="w-5 h-5 rounded-full text-[10px] font-mono bg-[#F59242] text-[#640C1E] flex items-center justify-center font-bold">
-                    {bancoHorasData.filter(i => i.status === 'Pendente').length}
-                  </span>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* SUB-VIEW 1: VISÃO GERAL DE PRESENÇAS */}
-          {relatorioSubTab === 'geral' && (
-            <div className="space-y-6 animate-in fade-in duration-200">
+{/* Relatório de Presenças da Equipe */}
+          <div className="space-y-6 animate-in fade-in duration-200">
               {/* KPI Cards Estilo Widget da LP */}
               <div className="attendance-report-kpis grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
                 {[
@@ -3617,762 +3642,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 </table>
               </div>
             </div>
-          )}
-
-          {/* SUB-VIEW 2: BANCO DE HORAS & OCORRÊNCIAS DE JORNADA (ESPECÍFICO E DESCONGESTIONADO) */}
-          {relatorioSubTab === 'banco_horas' && (() => {
-            const bhPendingCount = bancoHorasData.filter(i => i.status === 'Pendente').length;
-            const bhHomologatedCount = bancoHorasData.filter(i => i.status === 'Homologado').length;
-            const bhAdjustedCount = bancoHorasData.filter(i => i.status === 'Ajustado').length;
-            const bhTotalExtraMin = bancoHorasData
-              .filter(i => i.status === 'Homologado' && i.diffMinutes > 0)
-              .reduce((acc, curr) => acc + curr.diffMinutes, 0);
-            const bhExtraHoursFormatted = bhTotalExtraMin > 0 ? `+${Math.floor(bhTotalExtraMin / 60)}h ${bhTotalExtraMin % 60}m` : '+39 min';
-
-            const filteredBancoHoras = bancoHorasData.filter(item => {
-              const formattedItemDate = formatDateToDDMMAAAA(item.date);
-
-              if (bancoHorasDate) {
-                if (normalizeDateToISO(item.date) !== normalizeDateToISO(bancoHorasDate)) {
-                  return false;
-                }
-              }
-
-              if (bancoHorasSearch.trim()) {
-                const q = bancoHorasSearch.toLowerCase().trim();
-                const matchName = item.employeeName.toLowerCase().includes(q);
-                const matchRole = item.employeeRole.toLowerCase().includes(q);
-                const matchDept = item.employeeDept.toLowerCase().includes(q);
-                const matchReason = item.reason.toLowerCase().includes(q);
-                const matchDateRaw = item.date.toLowerCase().includes(q);
-                const matchDateFormatted = formattedItemDate.toLowerCase().includes(q);
-                const matchDateSlash = formattedItemDate.replace(/-/g, '/').toLowerCase().includes(q);
-                if (!matchName && !matchRole && !matchDept && !matchReason && !matchDateRaw && !matchDateFormatted && !matchDateSlash) {
-                  return false;
-                }
-              }
-              if (bancoHorasDept !== 'all' && item.employeeDept !== bancoHorasDept) {
-                return false;
-              }
-              if (bancoHorasStatus === 'pending') return item.status === 'Pendente';
-              if (bancoHorasStatus === 'homologated') return item.status === 'Homologado';
-              if (bancoHorasStatus === 'adjusted') return item.status === 'Ajustado';
-              return true;
-            });
-
-            return (
-              <div className="space-y-6 animate-in fade-in duration-200">
-                {/* KPI Cards de Banco de Horas */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
-                  {[
-                    { label: 'Pendentes de Decisão', value: String(bhPendingCount).padStart(2, '0'), sub: 'Aguardando validação do gestor', dotColor: '#F59242', dotGlow: '#F59242' },
-                    { label: 'Horas Extras Homologadas', value: String(bhHomologatedCount).padStart(2, '0'), sub: 'Saldo creditado no Banco de Horas', dotColor: '#49d982', dotGlow: '#49d982' },
-                    { label: 'Ajustados p/ Horário Normal', value: String(bhAdjustedCount).padStart(2, '0'), sub: 'Sem passivo de HE indevida (Art. 4º)', dotColor: '#9F243C', dotGlow: '#9F243C' },
-                    { label: 'Saldo Extra em Folha', value: bhExtraHoursFormatted, sub: 'Total consolidado em Banco de Horas', dotColor: '#F9DE97', dotGlow: '#F9DE97' },
-                  ].map((kpi, i) => (
-                    <div 
-                      key={i} 
-                      className={`p-5 rounded-2xl border space-y-2 transition-transform hover:-translate-y-1 ${
-                        isDark 
-                          ? 'bg-[#15161b] border-[#282a33] hover:border-[#3b3e4c]' 
-                          : 'bg-white border-slate-200 shadow-sm hover:border-slate-300'
-                      }`}
-                      style={{ boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.4)' : '0 4px 16px rgba(0,0,0,0.04)' }}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className={`text-[11px] font-semibold uppercase tracking-wider block ${
-                          isDark ? 'text-slate-400' : 'text-slate-500'
-                        }`}>{kpi.label}</span>
-                        <span 
-                          className="w-2.5 h-2.5 rounded-full" 
-                          style={{ background: kpi.dotColor, boxShadow: `0 0 8px ${kpi.dotGlow}` }}
-                        />
-                      </div>
-                      <div className={`text-3xl font-extrabold font-sans ${isDark ? 'text-white' : 'text-slate-900'}`}>{kpi.value}</div>
-                      <span className={`text-[11px] font-medium block ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>{kpi.sub}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Filter Bar do Banco de Horas */}
-                <div 
-                  className={`p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-3 relative z-10 transition-colors ${
-                    isDark ? 'bg-[#15161b] border-[#282a33]' : 'bg-white border-slate-200 shadow-xs'
-                  }`}
-                >
-                  <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[260px]">
-                    <div className="relative flex-1 min-w-[200px]">
-                      <Search className={`w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 ${
-                        isDark ? 'text-slate-500' : 'text-slate-400'
-                      }`} />
-                      <input
-                        type="text"
-                        value={bancoHorasSearch}
-                        onChange={(e) => setBancoHorasSearch(e.target.value)}
-                        placeholder="Buscar por colaborador, justificativa ou data (ex: 28/10/2026)..."
-                        className={`w-full pl-9 pr-3 py-2 text-xs rounded-full outline-none transition-colors ${
-                          isDark 
-                            ? 'bg-[#0e0f12] text-white placeholder:text-slate-500 border border-[#282a33] focus:border-[#F59242]' 
-                            : 'bg-slate-50 text-slate-900 placeholder:text-slate-400 border border-slate-200 focus:border-[#9F243C]'
-                        }`}
-                      />
-                    </div>
-
-                    {/* Filtro específico por data no Banco de Horas */}
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="date"
-                        value={bancoHorasDate}
-                        onChange={(e) => setBancoHorasDate(e.target.value)}
-                        className={`py-2 px-3 text-xs font-semibold rounded-full outline-none cursor-pointer transition-colors ${
-                          isDark 
-                            ? 'bg-[#0e0f12] text-white border border-[#282a33]' 
-                            : 'bg-slate-50 text-slate-900 border border-slate-200'
-                        }`}
-                        title="Filtrar por data específica"
-                      />
-                      {bancoHorasDate && (
-                        <button
-                          type="button"
-                          onClick={() => setBancoHorasDate('')}
-                          className={`px-2 py-1 text-[10px] font-bold rounded-full transition-colors cursor-pointer ${
-                            isDark ? 'text-slate-400 hover:text-white bg-white/5' : 'text-slate-500 hover:text-slate-900 bg-slate-100'
-                          }`}
-                          title="Limpar filtro de data"
-                        >
-                          ✕ Limpar data
-                        </button>
-                      )}
-                    </div>
-
-                    <select
-                      value={bancoHorasDept}
-                      onChange={(e) => setBancoHorasDept(e.target.value)}
-                      className={`py-2 px-4 text-xs font-semibold rounded-full outline-none cursor-pointer ${
-                        isDark 
-                          ? 'bg-[#0e0f12] text-white border border-[#282a33]' 
-                          : 'bg-slate-50 text-slate-900 border border-slate-200'
-                      }`}
-                    >
-                      <option value="all">Todos os Departamentos</option>
-                      {departments.map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
-                  </div>
-
-                  {/* Status Filter Pills com Badge Laranja Padronizado */}
-                  <div className={`flex items-center gap-1.5 p-1 rounded-full border transition-colors ${
-                    isDark ? 'bg-[#0e0f12] border-[#282a33]' : 'bg-slate-100 border-slate-200'
-                  }`}>
-                    <button
-                      type="button"
-                      onClick={() => setBancoHorasStatus('all')}
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                        bancoHorasStatus === 'all'
-                          ? 'bg-gradient-to-r from-[#640C1E] to-[#9F243C] text-[#F9DE97] shadow-md'
-                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      Todos
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setBancoHorasStatus('pending')}
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                        bancoHorasStatus === 'pending'
-                          ? isDark 
-                            ? 'bg-white/15 text-white font-black border border-white/20' 
-                            : 'bg-white text-slate-900 font-bold border border-slate-300 shadow-xs'
-                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      <span>Pendentes</span>
-                      {bhPendingCount > 0 && (
-                        <span className="w-4 h-4 rounded-full text-[9px] font-mono bg-[#F59242] text-[#640C1E] flex items-center justify-center font-bold">
-                          {bhPendingCount}
-                        </span>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setBancoHorasStatus('homologated')}
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                        bancoHorasStatus === 'homologated'
-                          ? isDark 
-                            ? 'bg-white/15 text-white font-black border border-white/20' 
-                            : 'bg-white text-slate-900 font-bold border border-slate-300 shadow-xs'
-                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      Homologados (Banco)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setBancoHorasStatus('adjusted')}
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                        bancoHorasStatus === 'adjusted'
-                          ? isDark 
-                            ? 'bg-white/15 text-white font-black border border-white/20' 
-                            : 'bg-white text-slate-900 font-bold border border-slate-300 shadow-xs'
-                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      Ajustados (Normal)
-                    </button>
-                  </div>
-
-                  {/* Botão de Exportação para o RH (Padrão Folha / Holerite com Horas Decimais) */}
-                  <button
-                    type="button"
-                    onClick={() => handleExportBancoHorasCsv(filteredBancoHoras)}
-                    title="Exportar Fechamento de Folha & Banco de Horas em CSV formatado em horas decimais para a contabilidade/RH"
-                    className="px-3.5 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shrink-0"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Exportar Fechamento p/ Folha (RH)</span>
-                  </button>
-                </div>
-
-                {/* Tabela Espaçosa e Organizada de Banco de Horas */}
-                <div 
-                  className={`rounded-2xl border overflow-hidden overflow-x-auto relative z-10 shadow-xl transition-colors ${
-                    isDark ? 'bg-[#15161b] border-[#282a33]' : 'bg-white border-[#9F243C] shadow-sm'
-                  }`}
-                >
-                  <table className="w-full border-collapse text-left text-xs font-sans min-w-[1100px]">
-                    <thead>
-                      <tr className={`border-b font-mono text-[10px] uppercase transition-colors ${
-                        isDark ? 'border-[#282a33] bg-[#101115] text-slate-400' : 'border-[#9F243C]/20 bg-[#9F243C]/[0.03] text-slate-700'
-                      }`}>
-                        <th className="p-3.5">COLABORADOR</th>
-                        <th className="p-3.5">DATA</th>
-                        <th className="p-3.5">ESCALA PREVISTA</th>
-                        <th className="p-3.5">BATIDA REGISTRADA</th>
-                        <th className="p-3.5">VARIAÇÃO / SALDO</th>
-                        <th className="p-3.5 text-center">JUSTIFICATIVA</th>
-                        <th className="p-3.5 text-center">STATUS</th>
-                        <th className="p-3.5">OBSERVAÇÃO DO GESTOR</th>
-                        <th className="p-3.5 text-right pr-5">AÇÕES DO GESTOR</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredBancoHoras.length === 0 ? (
-                        <tr>
-                          <td colSpan={9} className="p-8 text-center text-slate-500 text-xs">
-                            Nenhuma ocorrência de Banco de Horas encontrada para os filtros selecionados.
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredBancoHoras.map((row) => (
-                          <tr 
-                            key={row.id} 
-                            className={`border-b transition-colors ${
-                              isDark 
-                                ? 'border-white/5 hover:bg-white/[0.03] text-slate-200' 
-                                : 'border-slate-100 hover:bg-slate-50 text-slate-800'
-                            }`}
-                          >
-                            {/* Colaborador */}
-                            <td className="p-3.5 align-middle">
-                              <div className="flex items-center gap-3">
-                                <img 
-                                  src={row.employeeAvatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150'} 
-                                  alt={row.employeeName} 
-                                  className={`w-9 h-9 rounded-full object-cover ring-2 shrink-0 ${
-                                    isDark ? 'ring-white/10' : 'ring-slate-200'
-                                  }`} 
-                                />
-                                <div>
-                                  <span className={`font-bold block text-xs leading-tight ${
-                                    isDark ? 'text-white' : 'text-slate-900'
-                                  }`}>{row.employeeName}</span>
-                                  <span className={`block text-[11px] font-normal leading-tight mt-0.5 ${
-                                    isDark ? 'text-slate-400' : 'text-slate-500'
-                                  }`}>
-                                    {row.employeeRole} • {row.employeeDept}
-                                  </span>
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Data no formato DD/MM/AAAA (h-7 alinhado) */}
-                            <td className="p-3.5 whitespace-nowrap align-middle">
-                              <div className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg font-mono text-[11px] border ${
-                                isDark ? 'bg-white/5 border border-white/5 text-slate-300' : 'bg-slate-100 border border-slate-200 text-slate-700'
-                              }`}>
-                                <Calendar className={`w-3 h-3 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
-                                <span>{formatDateToDDMMAAAA(row.date)}</span>
-                              </div>
-                            </td>
-
-                            {/* Escala Prevista (h-7 alinhado) */}
-                            <td className="p-3.5 whitespace-nowrap align-middle">
-                              <div className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg font-mono text-[11px] border ${
-                                isDark ? 'bg-white/5 border border-white/5 text-slate-300' : 'bg-slate-100 border border-slate-200 text-slate-700'
-                              }`}>
-                                <Clock className={`w-3 h-3 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
-                                <span>{row.scheduledTime}</span>
-                              </div>
-                            </td>
-
-                            {/* Batida Registrada (h-7 alinhado) */}
-                            <td className="p-3.5 whitespace-nowrap align-middle">
-                              <span className={`h-7 px-2.5 rounded-lg font-mono text-[11px] font-bold inline-flex items-center gap-1.5 border ${
-                                isDark ? 'bg-[#0e0f12] text-white border-white/10' : 'bg-slate-100 text-slate-900 border-slate-200'
-                              }`}>
-                                <Clock className="w-3 h-3 text-[#F59242]" />
-                                <span>{row.punchTime}</span>
-                              </span>
-                            </td>
-
-                            {/* Variação / Saldo (h-7 alinhado e com alto contraste no claro e escuro) */}
-                            <td className="p-3.5 whitespace-nowrap align-middle">
-                              {row.type === 'hora_extra' && (
-                                <span 
-                                  className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg font-mono text-[11px] font-bold border whitespace-nowrap shadow-xs ${
-                                    isDark 
-                                      ? 'bg-[#F59242]/15 text-[#F9DE97] border-[#F59242]/40' 
-                                      : 'bg-amber-100/90 text-[#9a3412] border-amber-300 font-extrabold'
-                                  }`} 
-                                  title="Hora Extra além da tolerância CLT"
-                                >
-                                  <Sparkles className="w-3 h-3 text-[#ea580c] dark:text-[#F59242]" />
-                                  <span>{row.diffBadge}</span>
-                                  <span className="text-[9px] font-sans font-semibold opacity-90">• Extra</span>
-                                </span>
-                              )}
-                              {row.type === 'atraso' && (
-                                <span 
-                                  className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg font-mono text-[11px] font-bold border whitespace-nowrap shadow-xs ${
-                                    isDark 
-                                      ? 'bg-[#9F243C]/25 text-[#fca5a5] border-[#9F243C]/50' 
-                                      : 'bg-rose-100/90 text-[#9F243C] border-rose-300 font-extrabold'
-                                  }`} 
-                                  title="Atraso na Entrada (tolerância excedida)"
-                                >
-                                  <AlertCircle className="w-3 h-3 text-[#e90045]" />
-                                  <span>{row.diffBadge}</span>
-                                  <span className="text-[9px] font-sans font-semibold opacity-90">• Atraso</span>
-                                </span>
-                              )}
-                              {row.type === 'esquecimento' && (
-                                <span 
-                                  className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg font-mono text-[11px] font-bold border whitespace-nowrap shadow-xs ${
-                                    isDark 
-                                      ? 'bg-white/10 text-[#F9DE97] border-white/15' 
-                                      : 'bg-slate-100 text-slate-800 border-slate-300 font-bold'
-                                  }`} 
-                                  title="Esquecimento (CLT Art. 4º)"
-                                >
-                                  <Clock className="w-3 h-3 text-[#ea580c] dark:text-[#F9DE97]" />
-                                  <span>{row.diffBadge}</span>
-                                </span>
-                              )}
-                            </td>
-
-                            {/* Justificativa do Colaborador (Olhinho + Clipe se houver comprovante) */}
-                            <td className="p-3.5 text-center whitespace-nowrap align-middle">
-                              <div className="inline-flex items-center justify-center gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedDetailBancoItem(row)}
-                                  className={`h-7 w-7 rounded-lg inline-flex items-center justify-center border transition-all cursor-pointer hover:scale-110 active:scale-95 shadow-xs ${
-                                    isDark 
-                                      ? 'bg-[#F59242]/10 hover:bg-[#F59242]/20 text-[#F59242] border-[#F59242]/30' 
-                                      : 'bg-orange-100/80 hover:bg-orange-100 text-[#c2410c] border-orange-300'
-                                  }`}
-                                  title={`Visualizar justificativa de ${row.employeeName}`}
-                                >
-                                  <Eye className="w-3.5 h-3.5 text-[#c2410c] dark:text-[#F59242]" />
-                                </button>
-                                {row.documentName && row.documentName.toLowerCase().includes('.pdf') && (
-                                  <button
-                                    type="button"
-                                    onClick={() => openDocumentSafe(row.documentUrl, row.documentName)}
-                                    className="h-7 w-7 rounded-lg inline-flex items-center justify-center border border-amber-500/30 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 transition-all cursor-pointer hover:scale-110 active:scale-95 shadow-xs"
-                                    title={`Abrir anexo: ${row.documentName}`}
-                                  >
-                                    <Paperclip className="w-3.5 h-3.5 text-amber-500" />
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-
-                            {/* Status (Apenas Bolinha Indicadora com Tooltip) */}
-                            <td className="p-3.5 text-center whitespace-nowrap align-middle">
-                              <div className="flex items-center justify-center">
-                                {row.status === 'Pendente' && (
-                                  <span 
-                                    className="w-3 h-3 rounded-full bg-amber-400 shadow-[0_0_8px_#fbbf24] inline-block animate-pulse cursor-help transition-transform hover:scale-125"
-                                    title="Pendente de homologação"
-                                  />
-                                )}
-                                {row.status === 'Homologado' && (
-                                  <span 
-                                    className="w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399] inline-block cursor-help transition-transform hover:scale-125"
-                                    title="Homologado no Banco de Horas"
-                                  />
-                                )}
-                                {row.status === 'Ajustado' && (
-                                  <span 
-                                    className="w-3 h-3 rounded-full bg-sky-400 shadow-[0_0_8px_#38bdf8] inline-block cursor-help transition-transform hover:scale-125"
-                                    title="Ajustado p/ Horário Contratual"
-                                  />
-                                )}
-                              </div>
-                            </td>
-
-                            {/* Observação do Gestor (h-7 alinhado) */}
-                            <td className="p-3.5 align-middle">
-                              <input
-                                type="text"
-                                value={row.feedback || ''}
-                                onChange={(e) => handleUpdateBancoHorasFeedback(row.id, e.target.value)}
-                                placeholder="Observação do gestor (opcional)..."
-                                className={`h-7 w-full min-w-[170px] max-w-[220px] px-2.5 rounded-lg text-[11px] outline-none transition-colors border ${
-                                  isDark 
-                                    ? 'bg-[#0e0f12] border-[#282a33] text-slate-200 placeholder:text-slate-600 focus:border-[#F59242]' 
-                                    : 'bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-[#9F243C]'
-                                }`}
-                              />
-                            </td>
-
-                            {/* Ações do Gestor ("menos coisa": botões limpos, compactos e tooltips detalhados) */}
-                            <td className="p-3.5 text-right pr-5 whitespace-nowrap align-middle">
-                              {row.status === 'Pendente' ? (
-                                <div className="flex items-center justify-end gap-1.5">
-                                  {row.type === 'atraso' ? (
-                                    <>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleHomologarBanco(row.id)}
-                                        title="Abonar Atraso: Perdoa/justifica o atraso com base no comprovante de comparecimento/consulta médica (sem desconto nem débito no banco)."
-                                        className="h-7 px-2.5 rounded-lg font-semibold text-[11px] text-white transition-all shadow-xs flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95"
-                                        style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
-                                      >
-                                        <Check className="w-3 h-3" />
-                                        <span>Abonar</span>
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleAjustarHorarioNormal(row.id)}
-                                        title="Debitar do Banco: Lança os minutos de atraso para débito e compensação de jornada no Banco de Horas."
-                                        className={`h-7 px-2.5 border font-semibold text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 ${
-                                          isDark 
-                                            ? 'border-rose-500/30 text-rose-300 hover:bg-rose-500/10' 
-                                            : 'border-rose-300 text-rose-700 hover:bg-rose-50 bg-white shadow-2xs'
-                                        }`}
-                                      >
-                                        <Clock className="w-3 h-3 text-rose-500" />
-                                        <span>Debitar</span>
-                                      </button>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleHomologarBanco(row.id)}
-                                        title="Homologar Horas Extras: Aprova as horas extras trabalhadas e credita o saldo positivo no Banco de Horas / folha."
-                                        className="h-7 px-2.5 rounded-lg font-semibold text-[11px] text-white transition-all shadow-xs flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95"
-                                        style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
-                                      >
-                                        <Check className="w-3 h-3" />
-                                        <span>Homologar</span>
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleAjustarHorarioNormal(row.id)}
-                                        title="Ajustar Horário Normal: Ajusta o registro para o horário contratual (CLT Art. 4º § 2º) nos casos de esquecimento de batida ou permanência sem trabalho efetivo."
-                                        className={`h-7 px-2.5 border font-semibold text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 ${
-                                          isDark 
-                                            ? 'border-white/20 text-slate-300 hover:bg-white/10' 
-                                            : 'border-slate-300 text-slate-700 hover:bg-slate-100 bg-white shadow-2xs'
-                                        }`}
-                                      >
-                                        <Clock className="w-3 h-3" />
-                                        <span>Ajustar</span>
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              ) : row.status === 'Homologado' ? (
-                                <span className={`h-7 inline-flex items-center gap-1 font-mono text-[11px] font-semibold ${
-                                  row.type === 'ausencia' ? 'text-sky-500' : row.type === 'atraso' ? 'text-emerald-500' : 'text-emerald-600 dark:text-emerald-500'
-                                }`}>
-                                  <CheckCircle2 className="w-3.5 h-3.5" />
-                                  <span>{row.type === 'atraso' ? 'Abonado' : 'Homologado'}</span>
-                                </span>
-                              ) : (
-                                <span className={`h-7 inline-flex items-center gap-1 font-mono text-[11px] font-medium ${
-                                  isDark ? 'text-slate-400' : 'text-slate-600'
-                                }`}>
-                                  <Clock className="w-3.5 h-3.5 text-[#F59242]" />
-                                  <span>{row.type === 'atraso' ? 'Debitado' : 'Ajustado'}</span>
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Modal de Detalhes da Justificativa do Banco de Horas com Suporte a Light Mode */}
-                {selectedDetailBancoItem && (
-                  <div 
-                    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-200"
-                    onClick={() => setSelectedDetailBancoItem(null)}
-                  >
-                    <div 
-                      className={`w-full max-w-lg rounded-3xl border p-6 space-y-5 shadow-2xl relative my-auto animate-in zoom-in-95 transition-colors ${
-                        isDark 
-                          ? 'border-white/10 bg-[#15161b] text-white shadow-black/80' 
-                          : 'border-slate-200 bg-white text-slate-900 shadow-2xl'
-                      }`}
-                      style={{
-                        boxShadow: isDark 
-                          ? '0 25px 60px rgba(0, 0, 0, 0.85), 0 0 40px rgba(100, 12, 30, 0.25)' 
-                          : '0 20px 50px rgba(0, 0, 0, 0.15), 0 0 30px rgba(159, 36, 60, 0.08)'
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {/* Cabeçalho */}
-                      <div className={`flex items-center justify-between pb-4 border-b ${
-                        isDark ? 'border-white/10' : 'border-slate-200'
-                      }`}>
-                        <div className="flex items-center gap-3">
-                          <img 
-                            src={selectedDetailBancoItem.employeeAvatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150'} 
-                            alt={selectedDetailBancoItem.employeeName} 
-                            className="w-10 h-10 rounded-full object-cover ring-2 ring-[#F59242]/40" 
-                          />
-                          <div>
-                            <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{selectedDetailBancoItem.employeeName}</h3>
-                            <p className={`text-xs font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                              {selectedDetailBancoItem.employeeRole} • {selectedDetailBancoItem.employeeDept}
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedDetailBancoItem(null)}
-                          className={`p-1.5 rounded-xl transition-colors cursor-pointer ${
-                            isDark ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
-                          }`}
-                        >
-                          <X className="w-5 h-5" />
-                        </button>
-                      </div>
-
-                      {/* Informações da Jornada */}
-                      <div className="grid grid-cols-2 gap-3 text-xs">
-                        <div className={`p-3 rounded-xl border ${
-                          isDark ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-200'
-                        }`}>
-                          <span className={`text-[10px] uppercase font-mono block mb-1 ${
-                            isDark ? 'text-slate-400' : 'text-slate-500'
-                          }`}>Data</span>
-                          <span className={`font-bold font-mono ${
-                            isDark ? 'text-white' : 'text-slate-900'
-                          }`}>{formatDateToDDMMAAAA(selectedDetailBancoItem.date)}</span>
-                        </div>
-
-                        <div className={`p-3 rounded-xl border ${
-                          isDark ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-200'
-                        }`}>
-                          <span className={`text-[10px] uppercase font-mono block mb-1 ${
-                            isDark ? 'text-slate-400' : 'text-slate-500'
-                          }`}>Variação / Saldo</span>
-                          <span className="font-bold font-mono text-[#F9DE97]">{selectedDetailBancoItem.diffBadge} ({selectedDetailBancoItem.typeLabel})</span>
-                        </div>
-
-                        <div className={`p-3 rounded-xl border ${
-                          isDark ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-200'
-                        }`}>
-                          <span className={`text-[10px] uppercase font-mono block mb-1 ${
-                            isDark ? 'text-slate-400' : 'text-slate-500'
-                          }`}>Escala Prevista</span>
-                          <span className={`font-semibold font-mono ${
-                            isDark ? 'text-slate-300' : 'text-slate-700'
-                          }`}>{selectedDetailBancoItem.scheduledTime}</span>
-                        </div>
-
-                        <div className={`p-3 rounded-xl border ${
-                          isDark ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-200'
-                        }`}>
-                          <span className={`text-[10px] uppercase font-mono block mb-1 ${
-                            isDark ? 'text-slate-400' : 'text-slate-500'
-                          }`}>Batida Registrada</span>
-                          <span className="font-bold text-[#F59242] font-mono">{selectedDetailBancoItem.punchTime}</span>
-                        </div>
-                      </div>
-
-                      {/* Justificativa Completa */}
-                      <div className="space-y-1.5">
-                        <label className={`text-[11px] font-bold uppercase tracking-wider block font-mono ${
-                          isDark ? 'text-slate-400' : 'text-slate-600'
-                        }`}>
-                          Justificativa do Colaborador
-                        </label>
-                        <div className={`p-3.5 rounded-xl border text-xs leading-relaxed font-sans ${
-                          isDark ? 'bg-[#0e0f12] border-[#282a33] text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-800'
-                        }`}>
-                          {selectedDetailBancoItem.reason}
-                        </div>
-                      </div>
-
-                      {/* Documento / Comprovante Anexo (se houver) */}
-                      {selectedDetailBancoItem.documentName && selectedDetailBancoItem.documentName.toLowerCase().includes('.pdf') && (
-                        <div className="space-y-1.5">
-                          <label className={`text-[10px] font-bold uppercase tracking-wider block font-mono ${
-                            isDark ? 'text-slate-400' : 'text-slate-600'
-                          }`}>
-                            Comprovante / Declaração Anexa
-                          </label>
-                          <div className="flex items-center justify-between p-3 rounded-xl border border-amber-500/30 bg-amber-500/10">
-                            <div className="flex items-center gap-2">
-                              <Paperclip className="w-4 h-4 text-amber-500" />
-                              <span className="text-xs font-mono font-bold text-amber-400">
-                                {selectedDetailBancoItem.documentName}
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => openDocumentSafe(selectedDetailBancoItem.documentUrl, selectedDetailBancoItem.documentName)}
-                              className="text-xs font-bold text-white bg-amber-600 hover:bg-amber-500 px-3 py-1 rounded-lg transition-all cursor-pointer shadow-xs"
-                            >
-                              Abrir Comprovante
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Observação / Feedback do Gestor */}
-                      <div className="space-y-1.5">
-                        <label className={`text-[11px] font-bold uppercase tracking-wider block font-mono ${
-                          isDark ? 'text-slate-400' : 'text-slate-600'
-                        }`}>
-                          Observação do Gestor
-                        </label>
-                        <input
-                          type="text"
-                          value={selectedDetailBancoItem.feedback || ''}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            handleUpdateBancoHorasFeedback(selectedDetailBancoItem.id, val);
-                            setSelectedDetailBancoItem(prev => prev ? { ...prev, feedback: val } : null);
-                          }}
-                          placeholder="Feedback ou anotação para o colaborador (opcional)..."
-                          className={`w-full px-3 py-2 border rounded-xl text-xs outline-none transition-colors ${
-                            isDark 
-                              ? 'bg-[#0e0f12] border-[#282a33] text-white placeholder:text-slate-600 focus:border-[#F59242]' 
-                              : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-[#9F243C]'
-                          }`}
-                        />
-                      </div>
-
-                      {/* Ações no Modal */}
-                      <div className={`flex items-center justify-between pt-3 border-t ${
-                        isDark ? 'border-white/10' : 'border-slate-200'
-                      }`}>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedDetailBancoItem(null)}
-                          className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
-                            isDark ? 'text-slate-400 hover:text-white hover:bg-white/5' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                          }`}
-                        >
-                          Fechar
-                        </button>
-
-                        {selectedDetailBancoItem.status === 'Pendente' ? (
-                          <div className="flex items-center gap-2">
-                            {selectedDetailBancoItem.type === 'atraso' ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    handleAjustarHorarioNormal(selectedDetailBancoItem.id);
-                                    setSelectedDetailBancoItem(prev => prev ? { ...prev, status: 'Ajustado' } : null);
-                                  }}
-                                  className={`px-3 py-2 rounded-xl border font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
-                                    isDark 
-                                      ? 'border-rose-500/30 text-rose-300 hover:bg-rose-500/10' 
-                                      : 'border-rose-300 text-rose-700 hover:bg-rose-50 bg-white shadow-2xs'
-                                  }`}
-                                  title="Debitar do Banco: Lança os minutos de atraso para compensação no Banco de Horas"
-                                >
-                                  <Clock className="w-3.5 h-3.5 text-rose-500" />
-                                  <span>Debitar do Banco</span>
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    handleHomologarBanco(selectedDetailBancoItem.id);
-                                    setSelectedDetailBancoItem(prev => prev ? { ...prev, status: 'Homologado' } : null);
-                                  }}
-                                  className="px-4 py-2 rounded-xl font-bold text-xs text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:scale-105 active:scale-95"
-                                  style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
-                                  title="Abonar Atraso: Perdoa/abona os minutos com base no comprovante médico (sem débito nem desconto)"
-                                >
-                                  <CheckCircle2 className="w-4 h-4" />
-                                  <span>Abonar Atraso</span>
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    handleAjustarHorarioNormal(selectedDetailBancoItem.id);
-                                    setSelectedDetailBancoItem(prev => prev ? { ...prev, status: 'Ajustado' } : null);
-                                  }}
-                                  className={`px-3 py-2 rounded-xl border font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
-                                    isDark 
-                                      ? 'border-white/20 text-slate-300 hover:bg-white/10' 
-                                      : 'border-slate-300 text-slate-700 hover:bg-slate-100 bg-white shadow-2xs'
-                                  }`}
-                                  title="Ajusta para o horário normal previsto sem hora extra (CLT Art. 4º § 2º)"
-                                >
-                                  <Clock className="w-3.5 h-3.5" />
-                                  <span>Ajustar Horário Normal</span>
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    handleHomologarBanco(selectedDetailBancoItem.id);
-                                    setSelectedDetailBancoItem(prev => prev ? { ...prev, status: 'Homologado' } : null);
-                                  }}
-                                  className="px-4 py-2 rounded-xl font-bold text-xs text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:scale-105 active:scale-95"
-                                  style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
-                                  title="Aprova e credita hora extra no Banco de Horas (Art. 58 CLT)"
-                                >
-                                  <CheckCircle2 className="w-4 h-4" />
-                                  <span>Homologar Banco</span>
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        ) : selectedDetailBancoItem.status === 'Homologado' ? (
-                          <span className="text-xs font-mono text-emerald-500 font-semibold inline-flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Homologado no Banco de Horas
-                          </span>
-                        ) : (
-                          <span className={`text-xs font-mono inline-flex items-center gap-1 italic ${
-                            isDark ? 'text-slate-400' : 'text-slate-600'
-                          }`}>
-                            <Clock className="w-3.5 h-3.5 text-[#F59242]" /> Ajustado para Horário Normal
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
         </div>
       )}
 

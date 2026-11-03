@@ -1832,18 +1832,28 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                     <span className="w-2 h-2 rounded-full bg-[#96183c] shrink-0" />
                     <div>
                       <p className="font-bold text-[11px] sm:text-xs">
-                        Você possui {faltasCount} {faltasCount === 1 ? 'ausência não justificada' : 'ausências não justificadas'}.
+                        Você possui {faltasCount} {faltasCount === 1 ? 'ausência pendente de justificativa' : 'ausências pendentes de justificativa'}.
                       </p>
                       <p className="text-[10px] sm:text-[11px] opacity-80">
-                        Envie sua justificativa no cartão abaixo ou acesse a aba de solicitações.
+                        Envie seu atestado médico ou declaração para análise e homologação do gestor.
                       </p>
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => {
-                      setIsHistoryOpen(false);
-                      onNavigateToRequests();
+                      const firstPending = occurrences.find(o => o.canJustify);
+                      if (firstPending && onOpenJustificationModal) {
+                        setIsHistoryOpen(false);
+                        onOpenJustificationModal(
+                          firstPending.shiftId,
+                          firstPending.date,
+                          firstPending.type === 'falta' ? 'absence' : 'delay',
+                          firstPending.delayInfo?.minutes
+                        );
+                      } else {
+                        setHistoryFilter('faltas');
+                      }
                     }}
                     className={`w-full sm:w-auto px-3 py-1.5 rounded-xl border text-[11px] sm:text-xs font-bold transition-all cursor-pointer shrink-0 text-center ${
                       isLightTheme
@@ -1851,7 +1861,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                         : 'border-rose-500/40 bg-rose-500/15 hover:bg-rose-500/25 text-rose-200'
                     }`}
                   >
-                    Abrir em Folgas & Trocas →
+                    Justificar Agora →
                   </button>
                 </div>
               )}
