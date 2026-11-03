@@ -13,7 +13,7 @@ import {
   MapPin,
   Sparkles,
 } from 'lucide-react';
-import { Shift, Employee, WorkplaceLocation } from '@/types';
+import { Shift, Employee, WorkplaceLocation, ShiftColor } from '@/types';
 import { formatDateBR, normalizeDateToISO } from '@/shared/utils/dateUtils';
 import { calculateShiftDurationHours } from '@/shared/utils/dateUtils';
 import { findWorkplaceByName } from '@/shared/services/workplaceService';
@@ -25,6 +25,15 @@ interface ShiftDetailModalProps {
   onClose: () => void;
   isLightTheme?: boolean;
 }
+
+const FALLBACK_ORBIT_COLORS: ShiftColor[] = [
+  { label: "Coral / Vinho", bg: "#63172a", border: "#8f253f", text: "#ffffff", category: "Operacional / Presencial" },
+  { label: "Âmbar / Laranja", bg: "#543015", border: "#7c471f", text: "#ffffff", category: "Plantão / Sobreaviso" },
+  { label: "Esmeralda", bg: "#163a2a", border: "#235840", text: "#ffffff", category: "Home Office / Remoto" },
+  { label: "Azul Oceano", bg: "#18324a", border: "#284e72", text: "#ffffff", category: "Treinamento / Onboarding" },
+  { label: "Violeta / Roxo", bg: "#3a2250", border: "#563476", text: "#ffffff", category: "Reunião / Alinhamento" },
+  { label: "Rosa Magenta", bg: "#501d33", border: "#732c4b", text: "#ffffff", category: "Evento / Extraordinário" },
+];
 
 export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
   shift,
@@ -175,6 +184,67 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
     }
   }, [safeShift]);
 
+  // Identificador da Escala limpo e simplificado
+  const scaleInfo = useMemo(() => {
+    if (!safeShift) {
+      return {
+        category: 'Operacional / Presencial',
+        label: 'Coral / Vinho',
+        bg: '#63172a',
+        border: '#8f253f',
+      };
+    }
+
+    try {
+      const shiftColor = safeShift.color;
+      if (typeof shiftColor === 'object' && shiftColor !== null) {
+        const targetBg = typeof shiftColor.bg === 'string' ? shiftColor.bg.toLowerCase() : '';
+        const targetLabel = typeof shiftColor.label === 'string' ? shiftColor.label.toLowerCase() : '';
+
+        const match = FALLBACK_ORBIT_COLORS.find(
+          c =>
+            (targetBg && c.bg.toLowerCase() === targetBg) ||
+            (targetLabel && c.label.toLowerCase() === targetLabel)
+        );
+
+        if (match) {
+          return {
+            category: shiftColor.category || match.category || 'Operacional / Presencial',
+            label: shiftColor.label || match.label,
+            bg: match.bg,
+            border: match.border,
+          };
+        }
+
+        if (shiftColor.category || shiftColor.label) {
+          return {
+            category: shiftColor.category || shiftColor.label || 'Personalizado',
+            label: shiftColor.label || shiftColor.category || '',
+            bg: typeof shiftColor.bg === 'string' ? shiftColor.bg : '#63172a',
+            border: typeof shiftColor.border === 'string' ? shiftColor.border : '#8f253f',
+          };
+        }
+      }
+
+      if (safeShift.type === 'meeting' || safeShift.meetingLink) {
+        return FALLBACK_ORBIT_COLORS[4];
+      }
+      if (safeShift.type === 'on_call') {
+        return FALLBACK_ORBIT_COLORS[1];
+      }
+      if (safeShift.type === 'training') {
+        return FALLBACK_ORBIT_COLORS[3];
+      }
+      if (isRemote) {
+        return FALLBACK_ORBIT_COLORS[2];
+      }
+    } catch (e) {
+      console.warn('Erro ao calcular scaleInfo:', e);
+    }
+
+    return FALLBACK_ORBIT_COLORS[0];
+  }, [safeShift, isRemote]);
+
   const isMeeting = Boolean(safeShift?.type === 'meeting' || safeShift?.meetingLink);
 
   if (!isOpen || !safeShift) return null;
@@ -204,7 +274,7 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
         {/* Barra superior de destaque em degradê */}
         <div className="h-1.5 w-full bg-gradient-to-r from-[#96183C] via-[#F89847] to-[#FCEABB]" />
 
-        {/* Cabeçalho - Sem o ícone no topo à esquerda conforme solicitado */}
+        {/* Cabeçalho */}
         <div className={`px-5 py-4 flex items-center justify-between flex-shrink-0 border-b ${
           isLightTheme ? 'border-slate-100 bg-slate-50/70' : 'border-white/5 bg-white/[0.02]'
         }`}>
@@ -515,6 +585,43 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
               )}
             </div>
           )}
+
+          {/* Identificador de Escala Simples e Discreto */}
+          <div className={`p-3 rounded-2xl border flex items-center justify-between gap-3 ${
+            isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'
+          }`}>
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span
+                className="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs"
+                style={{
+                  background: scaleInfo.bg,
+                  border: `2px solid ${scaleInfo.border}`,
+                }}
+              />
+              <div className="min-w-0">
+                <span className={`text-[10px] uppercase font-bold font-mono tracking-wider block ${
+                  isLightTheme ? 'text-slate-500' : 'text-zinc-400'
+                }`}>
+                  Categoria da Escala
+                </span>
+                <span className={`text-xs sm:text-sm font-bold truncate block ${
+                  isLightTheme ? 'text-slate-900' : 'text-white'
+                }`}>
+                  {scaleInfo.category}
+                </span>
+              </div>
+            </div>
+
+            {scaleInfo.label && (
+              <span className={`text-[11px] font-mono font-semibold px-2.5 py-1 rounded-lg border shrink-0 ${
+                isLightTheme 
+                  ? 'bg-white text-slate-700 border-slate-200 shadow-2xs' 
+                  : 'bg-white/5 text-zinc-300 border-white/10'
+              }`}>
+                {scaleInfo.label}
+              </span>
+            )}
+          </div>
 
         </div>
 
