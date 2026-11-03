@@ -39,6 +39,7 @@ import {
   Lock,
   Hash,
   Briefcase,
+  MapPin
 } from 'lucide-react';
 import { Employee, Shift, TimeOffRequest, AbsenceJustification } from '@/types';
 import { supabase } from '@/shared/services/supabase';
@@ -179,6 +180,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   const [approvalsFilterTab, setApprovalsFilterTab] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [approvalsSearch, setApprovalsSearch] = useState('');
   const [approvalsDept, setApprovalsDept] = useState('all');
+  const [approvalsTypeFilter, setApprovalsTypeFilter] = useState<'all' | 'swap' | 'medical' | 'time_off'>('all');
   const [isNewOccurrenceModalOpen, setIsNewOccurrenceModalOpen] = useState(false);
   const [expandedReasons, setExpandedReasons] = useState<Record<string, boolean>>({});
   const [selectedDetailOccurrence, setSelectedDetailOccurrence] = useState<{
@@ -375,7 +377,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     const mappedRequests = (requests || []).map(r => {
       const emp = employees.find(e => e.id === r.employeeId);
       const targetEmp = employees.find(e => e.id === r.targetEmployeeId);
-      const peerBadge = r.peerStatus === 'accepted' ? '✅ Acordo aceito pelo colega' : r.peerStatus === 'rejected' ? '❌ Recusado pelo colega' : '⏳ Aguardando aceite do colega';
+      const peerBadge = r.peerStatus === 'accepted' ? 'Acordo aceito pelo colega' : r.peerStatus === 'rejected' ? 'Recusado pelo colega' : 'Aguardando aceite do colega';
       const formattedReason = r.type === 'swap' && (r.targetEmployeeName || targetEmp?.name)
         ? `${r.reason} (Com: ${r.targetEmployeeName || targetEmp?.name} • ${peerBadge})`
         : r.reason;
@@ -900,30 +902,36 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               : `${Math.round(s.checkOutLocation.distanceMeters)} m`)
           : '';
 
-        let calculatedHours = '8h';
-        if (s.checkInTime && s.checkOutTime) {
+        const hasRealExit = Boolean(s.checkOutTime) && s.checkOutTime !== s.checkInTime;
+
+        let calculatedHours = '—';
+        if (s.checkInTime && hasRealExit) {
           const [inH, inM] = s.checkInTime.split(':').map(Number);
-          const [outH, outM] = s.checkOutTime.split(':').map(Number);
+          const [outH, outM] = s.checkOutTime!.split(':').map(Number);
           let diffMin = (outH * 60 + outM) - (inH * 60 + inM);
           if (diffMin < 0) diffMin += 24 * 60;
           const h = Math.floor(diffMin / 60);
           const m = diffMin % 60;
           calculatedHours = `${h}h${m > 0 ? ` ${m}m` : ''}`;
+        } else if (s.checkInTime && !hasRealExit) {
+          calculatedHours = 'Em andamento';
+        } else if (!s.checkInTime) {
+          calculatedHours = '0h';
         }
 
         let obsText = s.notes || '';
         if (s.checkInLocation?.address) {
           const inStatus = s.checkInLocation.reportedWorkplace
-            ? `📌 ${s.checkInLocation.reportedWorkplace}`
+            ? `Posto: ${s.checkInLocation.reportedWorkplace}`
             : s.checkInLocation.gpsValidated
-            ? `🟢 Entrada OK ${distInText ? `(${distInText})` : ''}`
-            : `🟡 Entrada Fora (${distInText})`;
+            ? `Entrada no Posto ${distInText ? `(${distInText})` : ''}`
+            : `Entrada Fora do Posto (${distInText})`;
           obsText = obsText ? `${obsText} | ${inStatus}` : inStatus;
         }
-        if (s.checkOutLocation?.address) {
+        if (s.checkOutLocation?.address && hasRealExit) {
           const outStatus = s.checkOutLocation.gpsValidated
-            ? `🟢 Saída OK ${distOutText ? `(${distOutText})` : ''}`
-            : `🟡 Saída Fora (${distOutText})`;
+            ? `Saída no Posto ${distOutText ? `(${distOutText})` : ''}`
+            : `Saída Fora do Posto (${distOutText})`;
           obsText = obsText ? `${obsText} | ${outStatus}` : outStatus;
         }
 
@@ -971,7 +979,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           role: emp?.role || 'Colaborador',
           dept: emp?.department || 'Geral',
           time: s.checkInTime 
-            ? `${s.checkInTime}${s.checkOutTime ? ` → ${s.checkOutTime}` : ' (Entrada)'}` 
+            ? `${s.checkInTime}${hasRealExit ? ` → ${s.checkOutTime}` : ' (Entrada)'}` 
             : `${s.startTime} – ${s.endTime}`,
           hours: calculatedHours,
           status: finalReportStatus,
@@ -2005,6 +2013,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             return false;
           }
 
+          // Type filter (Todos, Trocas, Atestados, Folgas)
+          if (approvalsTypeFilter === 'swap') {
+            if (!row.type.toLowerCase().includes('troca')) return false;
+          } else if (approvalsTypeFilter === 'medical') {
+            if (!row.type.toLowerCase().includes('atestado') && !row.type.toLowerCase().includes('médico') && !row.type.toLowerCase().includes('ausência')) return false;
+          } else if (approvalsTypeFilter === 'time_off') {
+            if (!row.type.toLowerCase().includes('folga') && !row.type.toLowerCase().includes('dispensa')) return false;
+          }
+
           // Tab filter (Todos, Pendentes, Aprovados, Faltas / Recusados)
           if (approvalsFilterTab === 'pending') {
             return row.status === 'Pendente';
@@ -2177,6 +2194,18 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   <option value="all">Todos os Departamentos</option>
                   {departments.map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
+                <select
+                  value={approvalsTypeFilter}
+                  onChange={(e) => setApprovalsTypeFilter(e.target.value as any)}
+                  className="approvals-light-department py-2 px-4 text-xs font-semibold rounded-full text-white outline-none cursor-pointer"
+                  style={{ background: '#0e0f12', border: '1px solid #282a33', colorScheme: 'dark' }}
+                  title="Filtrar por tipo de solicitação"
+                >
+                  <option value="all">Todos os Tipos</option>
+                  <option value="swap">Trocas de Turno</option>
+                  <option value="medical">Atestados Médicos</option>
+                  <option value="time_off">Folgas / Dispensas</option>
+                </select>
               </div>
 
               {/* Status Filter Pills da Imagem 2 */}
@@ -2249,16 +2278,16 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               className="approval-table-card approvals-light-table rounded-2xl border border-[#282a33] overflow-hidden overflow-x-auto relative z-10 shadow-xl" 
               style={{ background: '#15161b' }}
             >
-              <table className="approvals-light-data w-full border-collapse text-left text-xs font-sans min-w-[1000px]">
+              <table className="approvals-light-data w-full border-collapse text-left text-xs font-sans min-w-[780px]">
                 <thead>
                   <tr className="border-b border-[#282a33] font-mono text-[10px] uppercase text-slate-400" style={{ background: '#101115' }}>
-                    <th className="p-3.5">COLABORADOR</th>
-                    <th className="p-3.5">TIPO & JUSTIFICATIVA</th>
-                    <th className="p-3.5">DATA / PERÍODO</th>
-                    <th className="p-3.5">COMPROVANTE</th>
-                    <th className="p-3.5">STATUS</th>
-                    <th className="p-3.5">OBSERVAÇÃO / FEEDBACK</th>
-                    <th className="p-3.5 text-right pr-5">AÇÕES</th>
+                    <th className="p-3">COLABORADOR</th>
+                    <th className="p-3">TIPO & JUSTIFICATIVA</th>
+                    <th className="p-3">DATA</th>
+                    <th className="p-3 text-center">COMPROVANTE</th>
+                    <th className="p-3 text-center">STATUS</th>
+                    <th className="p-3">OBSERVAÇÃO / FEEDBACK</th>
+                    <th className="p-3 text-right pr-4 sticky right-0 z-20 shadow-[-6px_0_12px_rgba(0,0,0,0.25)]" style={{ background: '#101115' }}>AÇÕES</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2276,141 +2305,136 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         style={{ color: '#e2e8f0' }}
                       >
                         {/* Colaborador */}
-                        <td className="p-3.5">
-                          <div className="flex items-center gap-3">
+                        <td className="p-3">
+                          <div className="flex items-center gap-2.5">
                             <img 
                               src={row.employeeAvatar} 
                               alt={row.employeeName} 
-                              className="w-9 h-9 rounded-full object-cover ring-2 ring-white/10 shrink-0" 
+                              className="w-8 h-8 rounded-full object-cover ring-2 ring-white/10 shrink-0" 
                             />
                             <div>
                               <span className="font-bold text-white block text-xs leading-tight">{row.employeeName}</span>
-                              <span className="block text-[11px] text-slate-400 font-normal leading-tight mt-0.5">{row.employeeRole}</span>
+                              <span className="block text-[10.5px] text-slate-400 font-normal leading-tight mt-0.5">{row.employeeRole}</span>
                             </div>
                           </div>
                         </td>
 
                         {/* Tipo & Justificativa (com expandir inline e abrir modal detalhado) */}
-                        <td className="p-3.5 align-top">
+                        <td className="p-3 align-top">
                           <div className="space-y-1">
-                            <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-bold text-white block text-xs leading-tight">{row.type}</span>
                               <button
                                 type="button"
                                 onClick={() => setSelectedDetailOccurrence(row)}
-                                className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-md transition-all cursor-pointer shadow-2xs ${
+                                className={`p-1 rounded-md transition-all cursor-pointer shadow-xs ${
                                   isDark 
                                     ? 'text-[#f89847] hover:text-[#faf0ac] bg-[#f89847]/10 hover:bg-[#f89847]/20 border border-[#f89847]/30' 
                                     : 'text-[#9F243C] hover:text-[#640C1E] bg-[#9F243C]/10 hover:bg-[#9F243C]/20 border border-[#9F243C]/25'
                                 }`}
-                                title="Abrir justificativa detalhada e histórico completo"
+                                title="Visualizar justificativa e histórico completo"
                               >
-                                <Eye className="w-3 h-3" />
-                                <span>Ver completa</span>
+                                <Eye className="w-3.5 h-3.5" />
                               </button>
                             </div>
 
-                            <div 
-                              onClick={() => toggleExpandReason(row.id)}
-                              className="cursor-pointer group/reason"
-                              title="Clique para expandir/recolher o texto aqui na tabela"
-                            >
-                              <p className={`text-[11px] font-normal leading-relaxed transition-all ${
+                            <div className="group/reason">
+                              <p className={`text-[11px] font-normal leading-relaxed max-w-[220px] truncate ${
                                 isDark ? 'text-slate-300' : 'text-slate-600'
-                              } ${
-                                expandedReasons[row.id] ? 'whitespace-normal max-w-[380px]' : 'max-w-[260px] truncate'
-                              }`}>
+                              }`} title={row.reason}>
                                 {row.reason}
                               </p>
-                              {row.reason.length > 35 && (
-                                <span className="text-[10px] text-[#f89847] hover:underline font-semibold block mt-0.5 select-none">
-                                  {expandedReasons[row.id] ? '▲ Recolher texto' : '▼ Ler tudo...'}
-                                </span>
-                              )}
                             </div>
                           </div>
                         </td>
 
                         {/* Data / Período */}
-                        <td className="p-3.5">
-                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/5 text-slate-300 font-mono text-[11px]">
-                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                        <td className="p-3 whitespace-nowrap">
+                          <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 border border-white/5 text-slate-300 font-mono text-[11px]">
+                            <Calendar className="w-3 h-3 text-slate-400" />
                             <span>{formatDateBR(row.date)}</span>
                           </div>
                         </td>
 
-                        {/* Comprovante */}
-                        <td className="p-3.5">
+                        {/* Comprovante (Apenas ícone do clips clicável) */}
+                        <td className="p-3 text-center">
                           {row.documentUrl || (row.documentName && row.documentName.toLowerCase().includes('.')) ? (
                             <button
+                              type="button"
                               onClick={() => openDocumentSafe(row.documentUrl, row.documentName)}
-                              className="approvals-light-proof inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold text-[#f89847] bg-[#f89847]/10 border border-[#f89847]/25 hover:bg-[#f89847]/20 transition-all cursor-pointer"
-                              title="Clique para visualizar ou baixar o comprovante"
+                              className="approvals-light-proof p-1.5 rounded-lg text-[#f89847] bg-[#f89847]/10 border border-[#f89847]/25 hover:bg-[#f89847]/25 hover:scale-110 active:scale-95 transition-all cursor-pointer inline-flex items-center justify-center shadow-xs"
+                              title={`Abrir comprovante: ${row.documentName || 'Anexo'}`}
                             >
-                              <Paperclip className="w-3 h-3 text-[#f89847]" />
-                              <span>{row.documentName || 'Ver anexo'}</span>
+                              <Paperclip className="w-4 h-4 text-[#f89847]" />
                             </button>
                           ) : (
-                            <span className="text-slate-500 italic text-[11px]">{row.documentName || 'Sem anexo'}</span>
+                            <span className="text-slate-500 text-xs font-mono select-none" title="Sem anexo">—</span>
                           )}
                         </td>
 
-                        {/* Status */}
-                        <td className="p-3.5">
-                          {row.status === 'Aprovado' && (
-                            <span className="approvals-light-status-badge approvals-light-status-approved inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" />
-                              Aprovado
-                            </span>
-                          )}
-                          {row.status === 'Recusado / Falta' && (
-                            <span className="approvals-light-status-badge approvals-light-status-rejected inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold font-mono bg-rose-500/10 text-rose-400 border border-rose-500/25">
-                              <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shadow-[0_0_6px_#f87171]" />
-                              Recusado / Falta
-                            </span>
-                          )}
-                          {row.status === 'Falta Lançada' && (
-                            <span className="approvals-light-status-badge approvals-light-status-rejected inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold font-mono bg-rose-500/10 text-rose-400 border border-rose-500/25">
-                              <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shadow-[0_0_6px_#f87171]" />
-                              Falta Lançada
-                            </span>
-                          )}
-                          {row.status === 'Pendente' && (
-                            <span className="approvals-light-status-badge approvals-light-status-pending inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold font-mono bg-amber-500/10 text-amber-300 border border-amber-500/25">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_6px_#fbbf24] animate-pulse" />
-                              Pendente
-                            </span>
-                          )}
+                        {/* Status (Apenas Bolinha Indicadora com Tooltip) */}
+                        <td className="p-3 text-center">
+                          <div className="flex items-center justify-center">
+                            {row.status === 'Aprovado' && (
+                              <span 
+                                className="w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399] inline-block cursor-help transition-transform hover:scale-125"
+                                title="Aprovado"
+                              />
+                            )}
+                            {row.status === 'Recusado / Falta' && (
+                              <span 
+                                className="w-3 h-3 rounded-full bg-rose-500 shadow-[0_0_8px_#f43f5e] inline-block cursor-help transition-transform hover:scale-125"
+                                title="Recusado / Falta"
+                              />
+                            )}
+                            {row.status === 'Falta Lançada' && (
+                              <span 
+                                className="w-3 h-3 rounded-full bg-rose-600 shadow-[0_0_8px_#e11d48] inline-block cursor-help transition-transform hover:scale-125"
+                                title="Falta Lançada"
+                              />
+                            )}
+                            {row.status === 'Pendente' && (
+                              <span 
+                                className="w-3 h-3 rounded-full bg-amber-400 shadow-[0_0_8px_#fbbf24] animate-pulse inline-block cursor-help transition-transform hover:scale-125"
+                                title="Pendente de Homologação"
+                              />
+                            )}
+                          </div>
                         </td>
 
-                        {/* Observação / Feedback para o Colaborador (Coluna Adicionada conforme solicitado) */}
-                        <td className="p-3.5">
+                        {/* Observação / Feedback para o Colaborador */}
+                        <td className="p-3">
                           <input
                             type="text"
                             value={row.feedback}
                             onChange={(e) => handleUpdateFeedback(row.id, e.target.value)}
-                            placeholder="Observação ou feedback para o colaborador (opcional)..."
-                            className="approvals-light-feedback w-full min-w-[220px] max-w-[320px] px-3 py-1.5 bg-[#0e0f12] border border-[#282a33] focus:border-[#ff601f] rounded-xl text-xs text-slate-200 placeholder:text-slate-600 outline-none transition-colors"
+                            placeholder="Observação (opcional)..."
+                            className="approvals-light-feedback w-full min-w-[120px] max-w-[180px] px-2.5 py-1.5 bg-[#0e0f12] border border-[#282a33] focus:border-[#ff601f] rounded-xl text-xs text-slate-200 placeholder:text-slate-600 outline-none transition-colors"
                           />
                         </td>
 
-                        {/* Ações */}
-                        <td className="p-3.5 text-right pr-5">
+                        {/* Ações (Fixa sticky à direita para nunca sumir) */}
+                        <td 
+                          className="p-3 text-right pr-4 sticky right-0 z-10 shadow-[-6px_0_12px_rgba(0,0,0,0.25)]" 
+                          style={{ background: isDark ? '#15161b' : '#ffffff' }}
+                        >
                           {row.status === 'Pendente' ? (
-                            <div className="flex items-center justify-end gap-2">
+                            <div className="flex items-center justify-end gap-1.5">
                               <button
+                                type="button"
                                 onClick={() => handleApproveOccurrence(row.id)}
                                 title="Aprovar Solicitação"
-                                className="approvals-light-approve px-3 py-1.5 rounded-xl font-bold text-xs text-white transition-all shadow-md flex items-center gap-1 cursor-pointer hover:scale-105"
+                                className="approvals-light-approve px-2.5 py-1.5 rounded-xl font-bold text-xs text-white transition-all shadow-md flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
                                 style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
                               >
                                 <CheckCircle2 className="w-3.5 h-3.5" />
                                 <span>Aprovar</span>
                               </button>
                               <button
+                                type="button"
                                 onClick={() => handleRejectOccurrence(row.id)}
                                 title="Recusar Solicitação"
-                                className="approvals-light-reject px-2.5 py-1.5 border border-rose-500/30 text-rose-300 hover:bg-rose-500/10 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer"
+                                className="approvals-light-reject px-2 py-1.5 border border-rose-500/30 text-rose-300 hover:bg-rose-500/10 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
                               >
                                 <XCircle className="w-3.5 h-3.5" />
                                 <span>Recusar</span>
@@ -3232,7 +3256,41 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           </span>
                         </td>
                         <td className={`p-3.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{row.type}</td>
-                        <td className={`p-3.5 italic text-[11px] max-w-[260px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{row.obs}</td>
+                        <td className={`p-3.5 text-[11px] max-w-[340px] ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {row.obs.split(' | ').map((part, pIdx) => {
+                              const isGpsFora = part.includes('Fora do Posto') || part.includes('Entrada Fora') || part.includes('Saída Fora') || part.includes('Fora do Raio');
+                              const isGpsOk = part.includes('no Posto') || part.includes('Entrada OK') || part.includes('Saída OK') || part.includes('GPS OK');
+                              const isEsquecimento = part.includes('Esquecimento');
+                              
+                              if (isGpsFora) {
+                                return (
+                                  <span key={pIdx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25">
+                                    <MapPin className="w-2.5 h-2.5 text-amber-500 shrink-0" />
+                                    <span>{part.replace(/^[🟢🟡]\s*/, '')}</span>
+                                  </span>
+                                );
+                              }
+                              if (isGpsOk) {
+                                return (
+                                  <span key={pIdx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
+                                    <MapPin className="w-2.5 h-2.5 text-emerald-500 shrink-0" />
+                                    <span>{part.replace(/^[🟢🟡]\s*/, '')}</span>
+                                  </span>
+                                );
+                              }
+                              if (isEsquecimento) {
+                                return (
+                                  <span key={pIdx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25">
+                                    <Clock className="w-2.5 h-2.5 text-sky-500 shrink-0" />
+                                    <span>{part}</span>
+                                  </span>
+                                );
+                              }
+                              return <span key={pIdx} className="text-slate-400 italic text-[11px] truncate">{part}</span>;
+                            })}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -3655,17 +3713,17 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                       <button
                                         type="button"
                                         onClick={() => handleHomologarAusencia(row.shiftId, row.id)}
-                                        title="Homologar Ausência: Justifica a falta e abona a jornada prevista."
+                                        title="Abonar Falta: Justifica a falta e abona as horas, zerando o débito no banco de horas sem prejuízo salarial."
                                         className="h-7 px-2.5 rounded-lg font-bold text-[11px] text-white transition-all shadow-sm flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95"
-                                        style={{ background: 'linear-gradient(135deg, #0284c7, #38bdf8)' }}
+                                        style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
                                       >
                                         <CheckCircle2 className="w-3 h-3" />
-                                        <span>Homologar (Justificar)</span>
+                                        <span>Abonar Falta</span>
                                       </button>
                                       <button
                                         type="button"
                                         onClick={() => handleAjustarHorarioNormal(row.id)}
-                                        title="Confirmar Falta: Mantém a falta registrada sem abono salarial."
+                                        title="Descontar Falta: Confirma a ausência sem abono, mantendo o desconto de -8h no banco de horas / folha."
                                         className={`h-7 px-2 border font-bold text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 ${
                                           isDark 
                                             ? 'border-rose-500/30 text-rose-300 hover:bg-rose-500/10' 
@@ -3673,7 +3731,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                         }`}
                                       >
                                         <XCircle className="w-3 h-3 text-rose-500" />
-                                        <span>Confirmar Falta</span>
+                                        <span>Descontar Falta</span>
                                       </button>
                                     </>
                                   ) : (
