@@ -287,7 +287,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
     color: isLight ? "#475569" : "rgba(255,255,255,0.55)",
   };
   const optionStyle: React.CSSProperties = {
-    background: isLight ? "#ffffff" : "#1a0010",
+    background: isLight ? "#ffffff" : "#181920",
     color: isLight ? "#0f172a" : "#ffffff",
   };
 
@@ -566,8 +566,8 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
             isLight ? 'bg-white text-slate-800' : 'text-slate-100'
           }`}
           style={{
-            background: isLight ? "#ffffff" : "linear-gradient(160deg, #1a0010 0%, #0d0008 60%, #0a0308 100%)",
-            border: isLight ? "1px solid #e2e8f0" : "1px solid rgba(150,24,60,0.4)",
+            background: isLight ? "#ffffff" : "linear-gradient(160deg, #181920 0%, #111217 60%, #0d0e12 100%)",
+            border: isLight ? "1px solid #e2e8f0" : "1px solid rgba(150, 24, 60, 0.35)",
             boxShadow: isLight
               ? "0 25px 60px rgba(0,0,0,0.12), 0 0 0 1px rgba(248,152,71,0.15)"
               : "0 25px 60px rgba(0,0,0,0.85), 0 0 0 1px rgba(248,152,71,0.15), inset 0 1px 0 rgba(255,255,255,0.06)",
@@ -575,7 +575,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
           }}
         >
           {/* Top gradient accent bar (Orbit signature) */}
-          <div className="h-1 w-full" style={{ background: "linear-gradient(90deg, #96183c, #f89847, #faf0ac)" }} />
+          <div className="h-1.5 w-full bg-gradient-to-r from-[#96183C] via-[#F89847] to-[#FCEABB] shrink-0" />
 
           {/* Header */}
           <div
@@ -584,12 +584,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
             }`}
           >
             <div className="flex items-center gap-3.5">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center shadow-md flex-shrink-0"
-                style={{ background: "linear-gradient(135deg, #96183c, #f89847)" }}
-              >
-                <Calendar className="w-5 h-5 text-white" />
-              </div>
+              
               <div>
                 <h2 className={`text-base sm:text-lg font-bold tracking-wide flex items-center gap-2 ${
                   isLight ? 'text-slate-900' : 'text-white'
@@ -928,8 +923,8 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
           isLight ? 'text-slate-800' : 'text-slate-100'
         }`}
         style={{
-          background: isLight ? "#ffffff" : "linear-gradient(160deg, #1a0010 0%, #0d0008 60%, #0a0308 100%)",
-          border: isLight ? "1px solid #e2e8f0" : "1px solid rgba(150,24,60,0.4)",
+          background: isLight ? "#ffffff" : "linear-gradient(160deg, #181920 0%, #111217 60%, #0d0e12 100%)",
+          border: isLight ? "1px solid #e2e8f0" : "1px solid rgba(150, 24, 60, 0.35)",
           boxShadow: isLight
             ? "0 25px 60px rgba(0,0,0,0.12), 0 0 0 1px rgba(248,152,71,0.15)"
             : "0 25px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(248,152,71,0.15), inset 0 1px 0 rgba(255,255,255,0.06)",
@@ -937,7 +932,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
         }}
       >
         {/* Top gradient accent bar (Orbit signature) */}
-        <div className="h-1 w-full" style={{ background: "linear-gradient(90deg, #96183c, #f89847, #faf0ac)" }} />
+        <div className="h-1.5 w-full bg-gradient-to-r from-[#96183C] via-[#F89847] to-[#FCEABB] shrink-0" />
 
         {/* Header */}
         <div
@@ -946,14 +941,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
           }`}
         >
           <div className="flex items-center gap-3.5">
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center shadow-md flex-shrink-0"
-              style={{ background: "linear-gradient(135deg, #96183c, #f89847)" }}
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="white">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
+            
             <div>
               <h2 className={`text-base sm:text-lg font-bold tracking-wide ${isLight ? 'text-slate-900' : 'text-white'}`}>
                 {isAlreadyPublished ? "Editar Escala Publicada" : isEdit ? "Detalhes do Turno & Atividades" : "Novo Turno & Atividades"}
@@ -1358,7 +1346,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                         isSelected 
                           ? isLight
                             ? 'scale-110 ring-2 ring-[#640C1E] ring-offset-2 ring-offset-white shadow-md'
-                            : 'scale-110 ring-2 ring-white ring-offset-2 ring-offset-[#1a0010] shadow-md shadow-black/50'
+                            : 'scale-110 ring-2 ring-white ring-offset-2 ring-offset-[#181920] shadow-md shadow-black/50'
                           : 'opacity-85 hover:opacity-100 hover:scale-105'
                       }`}
                       style={{

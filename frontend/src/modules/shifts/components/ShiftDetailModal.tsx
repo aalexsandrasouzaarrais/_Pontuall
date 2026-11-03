@@ -2,20 +2,20 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, 
   Clock, 
+  Clock3,
   Users, 
   Video, 
   ExternalLink,
   Calendar,
+  CheckCircle2,
+  XCircle,
+  FileCheck,
   MapPin,
-  FileText,
-  Tag,
-  Copy,
-  Check,
+  Sparkles,
 } from 'lucide-react';
-import { Shift, Employee, WorkplaceLocation, ShiftColor } from '@/types';
+import { Shift, Employee, WorkplaceLocation } from '@/types';
 import { formatDateBR, normalizeDateToISO } from '@/shared/utils/dateUtils';
 import { calculateShiftDurationHours } from '@/shared/utils/dateUtils';
-import { ORBIT_COLORS } from './OrbitShiftModal';
 import { findWorkplaceByName } from '@/shared/services/workplaceService';
 
 interface ShiftDetailModalProps {
@@ -26,15 +26,6 @@ interface ShiftDetailModalProps {
   isLightTheme?: boolean;
 }
 
-const FALLBACK_ORBIT_COLORS: ShiftColor[] = [
-  { label: "Coral / Vinho", bg: "#63172a", border: "#8f253f", text: "#ffffff", category: "Operacional / Presencial" },
-  { label: "Âmbar / Laranja", bg: "#543015", border: "#7c471f", text: "#ffffff", category: "Plantão / Sobreaviso" },
-  { label: "Esmeralda", bg: "#163a2a", border: "#235840", text: "#ffffff", category: "Home Office / Remoto" },
-  { label: "Azul Oceano", bg: "#18324a", border: "#284e72", text: "#ffffff", category: "Treinamento / Onboarding" },
-  { label: "Violeta / Roxo", bg: "#3a2250", border: "#563476", text: "#ffffff", category: "Reunião / Alinhamento" },
-  { label: "Rosa Magenta", bg: "#501d33", border: "#732c4b", text: "#ffffff", category: "Evento / Extraordinário" },
-];
-
 export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
   shift,
   employees = [],
@@ -42,8 +33,6 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
   onClose,
   isLightTheme = false,
 }) => {
-  const [copiedLink, setCopiedLink] = useState(false);
-
   // Fecha o modal ao pressionar tecla Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -186,432 +175,301 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
     }
   }, [safeShift]);
 
-  const colorsList = useMemo(() => {
-    return (Array.isArray(ORBIT_COLORS) && ORBIT_COLORS.length > 0) ? ORBIT_COLORS : FALLBACK_ORBIT_COLORS;
-  }, []);
-
-  const initialColor = useMemo(() => {
-    if (!safeShift) return colorsList[0];
-    try {
-      const shiftColor = safeShift.color;
-      if (typeof shiftColor === 'object' && shiftColor !== null) {
-        const targetBg = typeof shiftColor.bg === 'string' ? shiftColor.bg.toLowerCase() : '';
-        const targetLabel = typeof shiftColor.label === 'string' ? shiftColor.label.toLowerCase() : '';
-
-        if (targetBg || targetLabel) {
-          const match = colorsList.find(
-            (c) =>
-              (targetBg && typeof c.bg === 'string' && c.bg.toLowerCase() === targetBg) ||
-              (targetLabel && typeof c.label === 'string' && c.label.toLowerCase() === targetLabel)
-          );
-          if (match) return match;
-        }
-
-        if (shiftColor.category || shiftColor.description) {
-          return shiftColor as ShiftColor;
-        }
-      }
-      if (safeShift.type === 'meeting') return colorsList[4] || colorsList[0];
-      if (safeShift.type === 'on_call') return colorsList[1] || colorsList[0];
-      if (safeShift.type === 'training') return colorsList[3] || colorsList[0];
-    } catch (e) {
-      console.warn('Erro ao resolver initialColor:', e);
-    }
-    return colorsList[0];
-  }, [safeShift, colorsList]);
-
   const isMeeting = Boolean(safeShift?.type === 'meeting' || safeShift?.meetingLink);
-
-  const handleCopyLink = () => {
-    if (!safeShift?.meetingLink) return;
-    navigator.clipboard.writeText(safeShift.meetingLink).then(() => {
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2000);
-    });
-  };
-
-  // Categoria de escala simplificada (exibida de forma sutil no cabeçalho)
-  const categoryConfig = useMemo(() => {
-    if (!safeShift) {
-      return {
-        label: 'Operacional',
-        badgeBg: isLightTheme ? 'bg-rose-100 text-rose-800 border-rose-200' : 'bg-rose-950/50 text-rose-300 border-rose-500/30',
-      };
-    }
-    try {
-      const rawType = typeof safeShift.type === 'string' ? safeShift.type.toLowerCase() : '';
-      const shiftCategory = typeof safeShift?.color?.category === 'string' ? safeShift.color.category.toLowerCase() : '';
-      const initialCat = typeof initialColor?.category === 'string' ? initialColor.category.toLowerCase() : '';
-      const rawCategory = shiftCategory || initialCat;
-
-      const baseLabel = typeof initialColor?.category === 'string' && initialColor.category.trim().length > 0
-        ? initialColor.category.split('/')[0].trim()
-        : null;
-
-      if (rawType.includes('meeting') || rawType.includes('reuniao') || rawCategory.includes('reunião') || isMeeting) {
-        return {
-          label: baseLabel || 'Reunião',
-          badgeBg: isLightTheme ? 'bg-purple-100 text-purple-800 border-purple-200' : 'bg-purple-950/50 text-purple-300 border-purple-500/30',
-        };
-      }
-      if (rawType.includes('plantao') || rawType.includes('on_call') || rawCategory.includes('plantão')) {
-        return {
-          label: baseLabel || 'Plantão',
-          badgeBg: isLightTheme ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-amber-950/50 text-amber-300 border-amber-500/30',
-        };
-      }
-      if (rawType.includes('training') || rawType.includes('treinamento') || rawCategory.includes('treinamento')) {
-        return {
-          label: baseLabel || 'Treinamento',
-          badgeBg: isLightTheme ? 'bg-cyan-100 text-cyan-800 border-cyan-200' : 'bg-cyan-950/50 text-cyan-300 border-cyan-500/30',
-        };
-      }
-      if (isRemote || rawCategory.includes('home office') || rawCategory.includes('remoto')) {
-        return {
-          label: baseLabel || 'Home Office',
-          badgeBg: isLightTheme ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-emerald-950/50 text-emerald-300 border-emerald-500/30',
-        };
-      }
-      if (rawCategory.includes('evento') || rawCategory.includes('extraordinário')) {
-        return {
-          label: baseLabel || 'Evento',
-          badgeBg: isLightTheme ? 'bg-pink-100 text-pink-800 border-pink-200' : 'bg-pink-950/50 text-pink-300 border-pink-500/30',
-        };
-      }
-      return {
-        label: baseLabel || 'Operacional',
-        badgeBg: isLightTheme ? 'bg-rose-100 text-rose-800 border-rose-200' : 'bg-rose-950/50 text-rose-300 border-rose-500/30',
-      };
-    } catch (e) {
-      console.warn('Erro ao calcular categoryConfig:', e);
-      return {
-        label: 'Operacional',
-        badgeBg: isLightTheme ? 'bg-rose-100 text-rose-800 border-rose-200' : 'bg-rose-950/50 text-rose-300 border-rose-500/30',
-      };
-    }
-  }, [safeShift, initialColor, isMeeting, isRemote, isLightTheme]);
-
-  const departmentTag = useMemo(() => {
-    if (selectedEmployee && typeof selectedEmployee.department === 'string' && selectedEmployee.department) {
-      return selectedEmployee.department;
-    }
-    if (safeShift && typeof (safeShift as { department?: unknown }).department === 'string' && (safeShift as { department?: string }).department) {
-      return (safeShift as { department?: string }).department;
-    }
-    return 'Geral';
-  }, [selectedEmployee, safeShift]);
-
-  const projectTag = safeShift?.projectTag;
-
-  const employeeName = typeof selectedEmployee?.name === 'string' ? selectedEmployee.name : 'Colaborador';
-  const employeeInitials = employeeName.trim().length > 0 ? employeeName.slice(0, 2).toUpperCase() : 'CL';
-  const employeeRole = typeof selectedEmployee?.role === 'string' ? selectedEmployee.role : 'Colaborador';
-  const employeeDept = typeof selectedEmployee?.department === 'string' ? selectedEmployee.department : 'Operacional';
 
   if (!isOpen || !safeShift) return null;
 
   return (
-    <div
-      className={`fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 ${
-        isLightTheme ? 'bg-slate-900/40 backdrop-blur-xs' : 'bg-black/75 backdrop-blur-md'
-      } animate-in fade-in duration-200`}
-      onClick={onClose}
-    >
+    <div className={`fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 ${
+      isLightTheme ? 'bg-slate-900/50 backdrop-blur-xs' : 'bg-black/75 backdrop-blur-md'
+    } animate-in fade-in duration-200`}>
       <div
-        className={`relative rounded-3xl shadow-2xl max-w-xl w-full overflow-hidden flex flex-col max-h-[90vh] transition-all duration-200 animate-in zoom-in-95 duration-200 ${
-          isLightTheme ? 'bg-white border border-slate-200 text-slate-900' : 'text-white border border-white/10'
+        className={`relative rounded-3xl shadow-2xl max-w-xl w-full overflow-hidden flex flex-col max-h-[92vh] transition-colors ${
+          isLightTheme ? 'bg-white border border-slate-200 text-slate-800' : 'text-white'
         }`}
         style={
           isLightTheme
             ? {
                 background: '#ffffff',
-                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.2)',
+                border: '1px solid #e2e8f0',
+                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.18)'
               }
             : {
                 background: 'linear-gradient(160deg, #181920 0%, #111217 60%, #0d0e12 100%)',
-                borderColor: 'rgba(150, 24, 60, 0.35)',
-                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)',
+                border: '1px solid rgba(150, 24, 60, 0.35)',
+                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.8)'
               }
         }
-        onClick={e => e.stopPropagation()}
       >
-        {/* Top Decorative Gradient */}
-        <div className="h-1.5 w-full bg-gradient-to-r from-[#96183C] via-[#F89847] to-[#FCEABB] shrink-0" />
+        {/* Barra superior de destaque em degradê */}
+        <div className="h-1.5 w-full bg-gradient-to-r from-[#96183C] via-[#F89847] to-[#FCEABB]" />
 
-        {/* Modal Header */}
-        <div
-          className={`px-5 py-4.5 flex items-start justify-between gap-3 border-b shrink-0 ${
-            isLightTheme ? 'border-slate-100 bg-slate-50/70' : 'border-white/5 bg-white/[0.02]'
-          }`}
-        >
-          <div className="flex items-start gap-3 min-w-0">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2 mb-1">
-                {/* Badge da Categoria de Escala - Limpa e sutil */}
-                <span
-                  className={`text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border ${categoryConfig.badgeBg}`}
-                >
-                  {categoryConfig.label}
-                </span>
-
-                {/* Badge de Departamento / Setor */}
-                <span
-                  className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md border flex items-center gap-1 ${
-                    isLightTheme
-                      ? 'bg-slate-100 text-slate-700 border-slate-200'
-                      : 'bg-white/5 text-slate-300 border-white/10'
-                  }`}
-                >
-                  <Tag className="w-3 h-3 opacity-60" />
-                  {departmentTag}
-                </span>
-
-                {/* Tag de Projeto se houver */}
-                {projectTag && (
-                  <span
-                    className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md border flex items-center gap-1 ${
-                      isLightTheme
-                        ? 'bg-rose-50 text-rose-700 border-rose-200'
-                        : 'bg-rose-950/40 text-rose-300 border-rose-500/30'
-                    }`}
-                  >
-                    {projectTag}
-                  </span>
-                )}
-              </div>
-
-              <h2
-                className={`font-black text-lg leading-tight break-words ${
-                  isLightTheme ? 'text-slate-900' : 'text-white'
-                }`}
-              >
-                {safeShift.title || 'Turno de Trabalho'}
-              </h2>
-            </div>
+        {/* Cabeçalho - Sem o ícone no topo à esquerda conforme solicitado */}
+        <div className={`px-5 py-4 flex items-center justify-between flex-shrink-0 border-b ${
+          isLightTheme ? 'border-slate-100 bg-slate-50/70' : 'border-white/5 bg-white/[0.02]'
+        }`}>
+          <div className="min-w-0 pr-2">
+            <h3 className={`font-black text-base sm:text-lg leading-tight truncate ${
+              isLightTheme ? 'text-slate-900' : 'text-white'
+            }`}>
+              {safeShift.title || 'Turno de Trabalho'}
+            </h3>
+            <p className={`text-xs mt-0.5 truncate ${isLightTheme ? 'text-slate-500' : 'text-white/60'}`}>
+              {formattedDate.weekDay ? `${formattedDate.weekDay}, ${formattedDate.fullDate}` : 'Detalhes da escala'}
+            </p>
           </div>
-
           <button
             onClick={onClose}
-            className={`p-2 rounded-xl transition-colors shrink-0 cursor-pointer ${
-              isLightTheme
-                ? 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
-                : 'text-white/40 hover:text-white hover:bg-white/10'
-            }`}
-            title="Fechar"
             aria-label="Fechar"
+            className={`p-2 rounded-xl transition-colors cursor-pointer shrink-0 ${
+              isLightTheme
+                ? 'text-slate-400 hover:text-slate-800 hover:bg-slate-100'
+                : 'text-white/50 hover:text-white hover:bg-white/10'
+            }`}
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Modal Scrollable Content */}
-        <div className="p-5 overflow-y-auto space-y-4.5 flex-1 text-sm custom-scrollbar">
-          {/* Date & Time Highlights */}
-          <div
-            className={`p-3.5 rounded-2xl border flex flex-wrap items-center justify-between gap-3 ${
-              isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'
-            }`}
-          >
-            <div className="flex items-center gap-4 flex-wrap">
-              <div className="flex items-center gap-2">
-                <div
-                  className={`w-7 h-7 rounded-lg flex items-center justify-center ${
-                    isLightTheme ? 'bg-white border border-slate-200 text-[#96183c]' : 'bg-white/10 text-[#f89642]'
-                  }`}
-                >
-                  <Calendar className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className={`text-[10px] uppercase font-bold block font-mono ${isLightTheme ? 'text-slate-500' : 'text-white/50'}`}>
-                    Data
-                  </span>
-                  <span className={`text-xs font-bold font-mono ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
-                    {formattedDate.fullDate}
-                  </span>
-                </div>
-              </div>
+        {/* Conteúdo com rolagem suave */}
+        <div className={`p-4 sm:p-5 overflow-y-auto space-y-3.5 flex-1 ${
+          isLightTheme ? 'text-slate-800' : 'text-white'
+        }`}>
 
-              <div className={`h-8 w-px ${isLightTheme ? 'bg-slate-200' : 'bg-white/10'} hidden sm:block`} />
+          {/* Card de Colaborador e Presença */}
+          <div className={`p-3.5 rounded-2xl border space-y-2.5 ${
+            isLightTheme ? 'bg-slate-50/80 border-slate-200' : 'bg-white/5 border-white/10'
+          }`}>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className={`text-[10px] font-mono font-bold uppercase tracking-wider ${
+                isLightTheme ? 'text-slate-400' : 'text-zinc-400'
+              }`}>
+                Colaborador(a) Atribuído(a)
+              </span>
 
-              <div className="flex items-center gap-2">
-                <div
-                  className={`w-7 h-7 rounded-lg flex items-center justify-center ${
-                    isLightTheme ? 'bg-white border border-slate-200 text-[#96183c]' : 'bg-white/10 text-[#f89642]'
-                  }`}
-                >
-                  <Clock className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className={`text-[10px] uppercase font-bold block font-mono ${isLightTheme ? 'text-slate-500' : 'text-white/50'}`}>
-                    Horário
-                  </span>
-                  <span className={`text-xs font-bold font-mono ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
-                    {safeShift.startTime || '08:00'} às {safeShift.endTime || '17:00'}
-                    <span className={`ml-1.5 font-normal text-[11px] ${isLightTheme ? 'text-slate-500' : 'text-white/60'}`}>
-                      ({duration}h{safeShift.breakMinutes && Number(safeShift.breakMinutes) > 0 ? ` • ${breakText}` : ''})
-                    </span>
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="shrink-0">
-              <span
-                className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-full border ${
+              {/* Badge de Presença */}
+              <div className="flex items-center gap-1.5">
+                <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-extrabold flex items-center gap-1 border ${
                   safeShift.attendanceStatus === 'present'
                     ? isLightTheme
                       ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
                       : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
                     : safeShift.attendanceStatus === 'absent'
-                    ? isLightTheme
-                      ? 'bg-rose-50 text-rose-700 border-rose-200'
-                      : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
-                    : safeShift.attendanceStatus === 'justified'
-                    ? isLightTheme
-                      ? 'bg-amber-50 text-amber-800 border-amber-300'
-                      : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                    : isLightTheme
-                    ? 'bg-[#faf0ac] text-[#96183c] border-[#f89642]/40'
-                    : 'bg-[#96183c]/30 text-[#f89642] border-[#f89642]/30'
-                }`}
-              >
-                {safeShift.attendanceStatus === 'present'
-                  ? 'PRESENTE'
-                  : safeShift.attendanceStatus === 'absent'
-                  ? 'FALTA'
-                  : safeShift.attendanceStatus === 'justified'
-                  ? 'JUSTIFICADO'
-                  : 'EM ABERTO / AGENDADO'}
-              </span>
+                      ? isLightTheme
+                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                        : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                      : safeShift.attendanceStatus === 'justified'
+                        ? isLightTheme
+                          ? 'bg-amber-50 text-amber-800 border-amber-300'
+                          : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                        : isLightTheme
+                          ? 'bg-slate-200/80 text-slate-700 border-slate-300'
+                          : 'bg-white/10 text-white/70 border-white/15'
+                }`}>
+                  {safeShift.attendanceStatus === 'present' && <CheckCircle2 className="w-3 h-3 text-emerald-500" />}
+                  {safeShift.attendanceStatus === 'absent' && <XCircle className="w-3 h-3 text-rose-500" />}
+                  {safeShift.attendanceStatus === 'justified' && <FileCheck className="w-3 h-3 text-amber-500" />}
+                  {(!safeShift.attendanceStatus || safeShift.attendanceStatus === 'pending') && <Clock className="w-3 h-3 text-amber-400" />}
+                  {safeShift.attendanceStatus === 'present'
+                    ? 'PRESENTE'
+                    : safeShift.attendanceStatus === 'absent'
+                      ? 'FALTA'
+                      : safeShift.attendanceStatus === 'justified'
+                        ? 'JUSTIFICADO'
+                        : 'PENDENTE'}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className={`w-9 h-9 rounded-full overflow-hidden flex items-center justify-center shrink-0 border ${
+                isLightTheme ? 'bg-slate-200 border-slate-300 text-slate-700' : 'bg-white/15 border-white/20 text-white'
+              }`}>
+                {selectedEmployee?.avatar ? (
+                  <img src={selectedEmployee.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-xs font-black uppercase">
+                    {selectedEmployee?.name ? selectedEmployee.name.charAt(0) : <Users className="w-4 h-4" />}
+                  </span>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className={`text-sm font-extrabold truncate ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
+                  {selectedEmployee?.name || 'Colaborador não especificado'}
+                </div>
+                <div className={`text-xs truncate ${isLightTheme ? 'text-slate-500' : 'text-zinc-400'}`}>
+                  {selectedEmployee ? `${selectedEmployee.role || 'Colaborador'} • ${selectedEmployee.department || 'Geral'}` : 'Equipe Geral'}
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Meeting / External Link Section (se reunião online) */}
-          {isMeeting && safeShift.meetingLink && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Video className={`w-4 h-4 ${isLightTheme ? 'text-[#96183c]' : 'text-[#f89642]'}`} />
-                  <h3 className={`text-xs font-bold uppercase tracking-wider font-mono ${isLightTheme ? 'text-slate-700' : 'text-slate-300'}`}>
-                    Link & Acesso à Reunião
-                  </h3>
-                </div>
+          {/* Grid de Informações de Horário: Data, Horário e Carga */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
+            {/* Card Data */}
+            <div className={`p-3 rounded-2xl border flex sm:flex-col items-center sm:items-start justify-between sm:justify-center gap-1 ${
+              isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'
+            }`}>
+              <div className={`text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 font-mono ${
+                isLightTheme ? 'text-slate-500' : 'text-zinc-400'
+              }`}>
+                <Calendar className="w-3.5 h-3.5 text-[#de7647]" /> Data
               </div>
-
-              <div
-                className={`p-3.5 rounded-2xl border flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 ${
-                  isLightTheme
-                    ? 'bg-emerald-50/60 border-emerald-200/80'
-                    : 'bg-emerald-950/20 border-emerald-500/20'
-                }`}
-              >
-                <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                  <div
-                    className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                      isLightTheme ? 'bg-emerald-100 text-emerald-800' : 'bg-emerald-900/50 text-emerald-300'
-                    }`}
-                  >
-                    <Video className="w-4 h-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <span className={`text-[10px] font-bold block uppercase font-mono ${isLightTheme ? 'text-emerald-800' : 'text-emerald-400'}`}>
-                      Sala Virtual
-                    </span>
-                    <a
-                      href={safeShift.meetingLink}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs font-medium text-emerald-600 dark:text-emerald-300 hover:underline truncate block"
-                      title={safeShift.meetingLink}
-                    >
-                      {safeShift.meetingLink}
-                    </a>
-                  </div>
+              <div className="text-right sm:text-left">
+                <div className={`text-sm font-black font-mono ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
+                  {formattedDate.fullDate}
                 </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={handleCopyLink}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-all cursor-pointer ${
-                      copiedLink
-                        ? 'bg-emerald-600 text-white border-emerald-600'
-                        : isLightTheme
-                        ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                        : 'bg-white/10 border-white/15 text-slate-200 hover:bg-white/20'
-                    }`}
-                    title="Copiar link"
-                  >
-                    {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copiedLink ? 'Copiado!' : 'Copiar'}</span>
-                  </button>
-
-                  <a
-                    href={safeShift.meetingLink}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-4 py-1.5 bg-gradient-to-r from-[#96183c] to-[#b32047] hover:opacity-95 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    <span>Acessar</span>
-                  </a>
-                </div>
+                {formattedDate.weekDay && (
+                  <span className={`text-[11px] font-semibold block ${isLightTheme ? 'text-slate-500' : 'text-zinc-400'}`}>
+                    {formattedDate.weekDay}
+                  </span>
+                )}
               </div>
             </div>
-          )}
 
-          {/* Local de Atuação (presencial ou remoto quando não é reunião online) */}
-          {(!isMeeting || !safeShift.meetingLink) && (
-            <div
-              className={`p-3.5 rounded-2xl border flex items-start justify-between gap-3 ${
-                isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'
-              }`}
-            >
-              <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                <div
-                  className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
-                    isLightTheme ? 'bg-white border border-slate-200 text-[#96183c]' : 'bg-white/10 text-[#f89642]'
-                  }`}
-                >
-                  <MapPin className="w-4 h-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <span className={`text-[10px] uppercase font-bold block font-mono ${isLightTheme ? 'text-slate-500' : 'text-white/50'}`}>
-                    Local de Atuação
-                  </span>
-                  <p className={`text-xs font-bold ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
-                    {workplaceName}
-                  </p>
-                  <p className={`text-[11px] mt-0.5 ${isLightTheme ? 'text-slate-500' : 'text-white/60'}`}>
-                    {workplaceAddress}
-                  </p>
-                </div>
+            {/* Card Horário */}
+            <div className={`p-3 rounded-2xl border flex sm:flex-col items-center sm:items-start justify-between sm:justify-center gap-1 ${
+              isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'
+            }`}>
+              <div className={`text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 font-mono ${
+                isLightTheme ? 'text-slate-500' : 'text-zinc-400'
+              }`}>
+                <Clock className="w-3.5 h-3.5 text-[#de7647]" /> Horário
               </div>
+              <div className="text-right sm:text-left">
+                <div className={`text-sm font-black font-mono ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
+                  {safeShift.startTime || '08:00'} às {safeShift.endTime || '17:00'}
+                </div>
+                <span className={`text-[11px] font-semibold block ${isLightTheme ? 'text-slate-500' : 'text-zinc-400'}`}>
+                  Jornada prevista
+                </span>
+              </div>
+            </div>
 
-              {workplaceMapsUrl && (
+            {/* Card Carga & Pausa */}
+            <div className={`p-3 rounded-2xl border flex sm:flex-col items-center sm:items-start justify-between sm:justify-center gap-1 ${
+              isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'
+            }`}>
+              <div className={`text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 font-mono ${
+                isLightTheme ? 'text-slate-500' : 'text-zinc-400'
+              }`}>
+                <Clock3 className="w-3.5 h-3.5 text-[#de7647]" /> Carga / Pausa
+              </div>
+              <div className="text-right sm:text-left">
+                <div className={`text-sm font-black font-mono ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
+                  {duration}h totais
+                </div>
+                <span className={`text-[11px] font-semibold block ${isLightTheme ? 'text-slate-500' : 'text-zinc-400'}`}>
+                  {breakText}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Cards de Local de Atuação e Orientações do Gestor */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+            {/* Local de Atuação */}
+            {isMeeting && safeShift.meetingLink ? (
+              <div className={`p-4 rounded-2xl border space-y-2 flex flex-col justify-between ${
+                isLightTheme ? 'bg-rose-50/70 border-rose-200' : 'bg-[#96183c]/15 border-[#96183c]/40'
+              }`}>
+                <div>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <Video className={`w-4 h-4 ${isLightTheme ? 'text-[#96183c]' : 'text-[#F89847]'}`} />
+                    <div className={`text-xs font-bold uppercase tracking-wider font-mono ${
+                      isLightTheme ? 'text-[#96183c]' : 'text-[#F89847]'
+                    }`}>
+                      Reunião Online
+                    </div>
+                  </div>
+                  <div className={`text-xs font-medium break-all ${isLightTheme ? 'text-slate-600' : 'text-[#FCEABB]/90'}`}>
+                    {safeShift.meetingLink}
+                  </div>
+                </div>
                 <a
-                  href={workplaceMapsUrl}
+                  href={safeShift.meetingLink}
                   target="_blank"
                   rel="noreferrer"
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-all shrink-0 ${
+                  className={`mt-2 w-full px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all border ${
                     isLightTheme
-                      ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                      : 'bg-white/10 border-white/15 text-slate-200 hover:bg-white/20'
+                      ? 'bg-white hover:bg-rose-50 border-rose-200 text-[#96183c] shadow-2xs'
+                      : 'bg-white/10 hover:bg-white/20 border-white/10 text-white'
                   }`}
-                  title="Abrir no Google Maps"
                 >
-                  <ExternalLink className="w-3 h-3 text-sky-400" />
-                  <span>Ver Maps</span>
+                  Abrir Reunião <ExternalLink className="w-3.5 h-3.5" />
                 </a>
+              </div>
+            ) : (
+              <div className={`p-4 rounded-2xl border space-y-1.5 flex flex-col justify-between ${
+                isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'
+              }`}>
+                <div>
+                  <div className="flex items-center justify-between gap-1 mb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-[#de7647]" />
+                      <div className={`text-xs font-bold uppercase tracking-wider font-mono ${
+                        isLightTheme ? 'text-slate-600' : 'text-zinc-300'
+                      }`}>
+                        Local de Atuação
+                      </div>
+                    </div>
+                    {workplaceMapsUrl && (
+                      <a
+                        href={workplaceMapsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-[10px] font-bold text-sky-400 hover:text-sky-300 transition-colors"
+                        title="Abrir no Google Maps"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span>Ver Maps</span>
+                      </a>
+                    )}
+                  </div>
+                  <div className={`text-sm font-extrabold ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
+                    {workplaceName}
+                  </div>
+                </div>
+                <p className={`text-xs mt-2 ${isLightTheme ? 'text-slate-500' : 'text-zinc-400'}`}>
+                  {workplaceAddress}
+                </p>
+              </div>
+            )}
+
+            {/* Orientações do Gestor */}
+            <div className={`p-4 rounded-2xl border space-y-2.5 flex flex-col justify-between ${
+              isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'
+            }`}>
+              <div>
+                <div className={`text-[10px] font-bold uppercase font-mono flex items-center gap-1.5 tracking-wider mb-1.5 ${
+                  isLightTheme ? 'text-slate-500' : 'text-zinc-400'
+                }`}>
+                  <Sparkles className={`w-3.5 h-3.5 ${isLightTheme ? 'text-slate-400' : 'text-zinc-400'}`} /> Orientações do Gestor
+                </div>
+                <p className={`text-xs sm:text-sm leading-relaxed font-medium ${
+                  isLightTheme ? 'text-slate-700' : 'text-zinc-200'
+                }`}>
+                  {cleanNotes || 'Sem orientações adicionais cadastradas para este turno.'}
+                </p>
+              </div>
+
+              {safeShift.projectTag && (
+                <div className={`border-t pt-2 ${isLightTheme ? 'border-slate-200' : 'border-white/10'}`}>
+                  <span className={`inline-block px-2.5 py-0.5 rounded-md border text-[11px] font-semibold ${
+                    isLightTheme ? 'border-slate-200 bg-white text-slate-700' : 'border-white/10 bg-white/5 text-zinc-300'
+                  }`}>
+                    Tag: {safeShift.projectTag}
+                  </span>
+                </div>
               )}
             </div>
-          )}
+          </div>
 
           {/* Registros de Ponto Real via GPS (Entrada e Saída) */}
           {(safeShift.checkInTime || safeShift.checkOutTime) && (
             <div className="space-y-2">
               {safeShift.checkInTime && (
-                <div className={`p-3 rounded-2xl border flex items-start gap-2.5 ${
+                <div className={`p-3.5 rounded-2xl border flex items-start gap-3 ${
                   isLightTheme
                     ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                     : 'bg-emerald-950/30 border-emerald-500/30 text-emerald-200'
@@ -619,14 +477,14 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                   <MapPin className={`w-4 h-4 shrink-0 mt-0.5 ${isLightTheme ? 'text-emerald-600' : 'text-emerald-400'}`} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <span className={`font-bold text-xs ${isLightTheme ? 'text-emerald-900' : 'text-emerald-300'}`}>
+                      <span className={`font-bold text-xs sm:text-sm ${isLightTheme ? 'text-emerald-900' : 'text-emerald-300'}`}>
                         Entrada Registrada às {safeShift.checkInTime}
                       </span>
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
                         {safeShift.checkInLocation?.reportedWorkplace || 'GPS Validado'}
                       </span>
                     </div>
-                    <p className={`text-[11px] mt-0.5 truncate ${isLightTheme ? 'text-emerald-700' : 'text-emerald-300/80'}`}>
+                    <p className={`text-xs mt-0.5 truncate ${isLightTheme ? 'text-emerald-700' : 'text-emerald-300/80'}`}>
                       {safeShift.checkInLocation?.address || workplaceAddress}
                     </p>
                   </div>
@@ -634,7 +492,7 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
               )}
 
               {safeShift.checkOutTime && (
-                <div className={`p-3 rounded-2xl border flex items-start gap-2.5 ${
+                <div className={`p-3.5 rounded-2xl border flex items-start gap-3 ${
                   isLightTheme
                     ? 'bg-rose-50 border-rose-200 text-rose-800'
                     : 'bg-rose-950/30 border-rose-500/30 text-rose-200'
@@ -642,14 +500,14 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                   <Clock className={`w-4 h-4 shrink-0 mt-0.5 ${isLightTheme ? 'text-rose-600' : 'text-rose-400'}`} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <span className={`font-bold text-xs ${isLightTheme ? 'text-rose-900' : 'text-rose-300'}`}>
+                      <span className={`font-bold text-xs sm:text-sm ${isLightTheme ? 'text-rose-900' : 'text-rose-300'}`}>
                         Saída Registrada às {safeShift.checkOutTime}
                       </span>
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30">
                         Ponto Fechado
                       </span>
                     </div>
-                    <p className={`text-[11px] mt-0.5 truncate ${isLightTheme ? 'text-rose-700' : 'text-rose-300/80'}`}>
+                    <p className={`text-xs mt-0.5 truncate ${isLightTheme ? 'text-rose-700' : 'text-rose-300/80'}`}>
                       {safeShift.checkOutLocation?.address || 'Saída confirmada pelo colaborador'}
                     </p>
                   </div>
@@ -658,116 +516,18 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
             </div>
           )}
 
-          {/* Description Section */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <FileText className={`w-4 h-4 ${isLightTheme ? 'text-[#96183c]' : 'text-[#f89642]'}`} />
-              <h3 className={`text-xs font-bold uppercase tracking-wider font-mono ${isLightTheme ? 'text-slate-700' : 'text-slate-300'}`}>
-                Descrição Completa
-              </h3>
-            </div>
-
-            <div
-              className={`p-4 rounded-2xl border leading-relaxed text-xs sm:text-sm whitespace-pre-line ${
-                isLightTheme
-                  ? 'bg-slate-50/80 border-slate-200 text-slate-800'
-                  : 'bg-white/[0.04] border-white/10 text-slate-200'
-              }`}
-            >
-              {cleanNotes && cleanNotes.trim().length > 0 ? (
-                cleanNotes
-              ) : (
-                <span className={`italic text-xs ${isLightTheme ? 'text-slate-400' : 'text-white/40'}`}>
-                  Nenhuma descrição adicional foi informada pela gestão para este turno.
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Participants / Allocated Team Members */}
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Users className={`w-4 h-4 ${isLightTheme ? 'text-[#96183c]' : 'text-[#f89642]'}`} />
-                <h3 className={`text-xs font-bold uppercase tracking-wider font-mono ${isLightTheme ? 'text-slate-700' : 'text-slate-300'}`}>
-                  Participantes & Destinatários
-                </h3>
-              </div>
-
-              <span
-                className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
-                  isLightTheme ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-white/5 text-slate-300 border-white/10'
-                }`}
-              >
-                {selectedEmployee ? '1 participante(s)' : 'Equipe Geral'}
-              </span>
-            </div>
-
-            {selectedEmployee ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div
-                  className={`p-2.5 rounded-2xl border flex items-center gap-3 transition-colors ${
-                    isLightTheme
-                      ? 'bg-slate-50 border-slate-200'
-                      : 'bg-white/5 border-white/10'
-                  }`}
-                >
-                  <div className="relative shrink-0">
-                    {selectedEmployee.avatar ? (
-                      <img
-                        src={selectedEmployee.avatar}
-                        alt={employeeName}
-                        className="w-8 h-8 rounded-full object-cover ring-1 ring-white/20"
-                      />
-                    ) : (
-                      <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs uppercase ${
-                          isLightTheme ? 'bg-[#96183c] text-white' : 'bg-[#f89642] text-slate-950'
-                        }`}
-                      >
-                        {employeeInitials}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <p className={`text-xs font-bold truncate ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
-                      {employeeName}
-                    </p>
-                    <p className={`text-[11px] truncate ${isLightTheme ? 'text-slate-500' : 'text-zinc-400'}`}>
-                      {employeeRole} • {employeeDept}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div
-                className={`p-3 rounded-2xl border text-center text-xs ${
-                  isLightTheme ? 'bg-slate-50 border-slate-200 text-slate-500' : 'bg-white/5 border-white/10 text-white/50'
-                }`}
-              >
-                Nenhum colaborador atribuído individualmente (escala aberta ou geral).
-              </div>
-            )}
-          </div>
         </div>
 
-        {/* Modal Footer */}
-        <div
-          className={`p-4 flex items-center justify-end border-t shrink-0 ${
-            isLightTheme ? 'border-slate-100 bg-slate-50/50' : 'border-white/5 bg-white/[0.02]'
-          }`}
-        >
+        {/* Rodapé com botão de fechar */}
+        <div className={`p-4 flex items-center justify-end border-t shrink-0 ${
+          isLightTheme ? 'border-slate-100 bg-slate-50/50' : 'border-white/5 bg-white/[0.02]'
+        }`}>
           <button
             type="button"
             onClick={onClose}
-            className={`px-5 py-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
-              isLightTheme
-                ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                : 'bg-white/5 border-white/10 text-white hover:bg-white/10'
-            }`}
+            className="w-full sm:w-auto px-6 py-2.5 font-bold text-xs rounded-xl transition-all cursor-pointer shadow-md shadow-[#96183C]/25 active:scale-98 bg-[#96183C] hover:bg-[#7e1231] text-white border border-[#96183C]/30"
           >
-            Fechar
+            Fechar Detalhes
           </button>
         </div>
       </div>
