@@ -118,6 +118,8 @@ export interface BancoHorasItem {
   type: 'hora_extra' | 'atraso' | 'esquecimento' | 'ausencia';
   typeLabel: string;
   reason: string;
+  documentName?: string;
+  documentUrl?: string;
   status: 'Pendente' | 'Homologado' | 'Ajustado' | 'Justificado';
   feedback: string;
 }
@@ -310,24 +312,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       };
     });
 
-    // Demonstração clara de Justificativa de Atraso (com declaração de comparecimento anexada)
-    const hasDelayInApprovals = mappedJustifications.some(j => j.type === 'Justificativa de Atraso');
-    const demoDelayJustification = hasDelayInApprovals ? [] : [{
-      id: 'demo-just-delay-1',
-      employeeId: emp1.id,
-      employeeName: emp1.name,
-      employeeRole: emp1.role || 'Analista de Operações',
-      employeeDept: emp1.department || 'Operações',
-      employeeAvatar: emp1.avatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
-      type: 'Justificativa de Atraso',
-      reason: 'Atraso de 35 min: Consulta médica matinal e exame laboratorial com declaração de comparecimento anexada.',
-      date: today,
-      documentName: 'Declaracao_Comparecimento_Horas.pdf',
-      documentUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
-      status: 'Pendente' as const,
-      feedback: '',
-    }];
-
     // Mapeamento de Faltas Não Justificadas (sem batida e sem atestado após 24h)
     const mappedAbsences = (shifts || []).filter(s => {
       const isPast24h = isShiftPast24hWithoutPunch(s) || s.attendanceStatus === 'absent';
@@ -347,13 +331,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         employeeDept: emp?.department || 'Geral',
         employeeAvatar: emp?.avatar || '',
         type: 'Falta Não Justificada',
-        reason: 'Escala finalizada há mais de 24h sem registro de ponto e sem justificativa anexada.',
+        reason: 'Colaborador escalado não registrou ponto de entrada/saída após 24h e não apresentou atestado/justificativa.',
         date: s.date,
         documentName: 'Sem anexo',
         documentUrl: undefined,
         status: (isJustified ? 'Aprovado' : 'Pendente') as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
         actionText: isJustified ? 'Abonada' : undefined,
-        feedback: s.notes || '',
+        feedback: isJustified ? 'Ausência abonada pelo gestor' : '',
       };
     });
 
@@ -365,7 +349,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       employeeDept: emp2.department || 'Logística',
       employeeAvatar: emp2.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
       type: 'Falta Não Justificada',
-      reason: 'Colaborador não registrou ponto na escala e não enviou justificativa (Pendente de decisão do gestor).',
+      reason: 'Colaborador escalado não registrou ponto na escala e não apresentou atestado médico.',
       date: today,
       documentName: 'Sem anexo',
       documentUrl: undefined,
@@ -373,12 +357,14 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       feedback: '',
     }];
 
-    // Aba Aprovações & Faltas contém Atestados Médicos, Justificativas de Atraso, Faltas Não Justificadas, Trocas e Folgas
+    // Aba Aprovações & Faltas: exclusiva para Atestados Médicos (ausência integral), Faltas Não Justificadas, Trocas e Folgas
+    // (Atrasos e variações de minutos ficam 100% no Banco de Horas, eliminando redundância)
+    const medicalJustificationsOnly = mappedJustifications.filter(j => j.type !== 'Justificativa de Atraso');
+
     setApprovalsData([
-      ...demoDelayJustification,
       ...demoAbsenceItem,
       ...mappedAbsences,
-      ...mappedJustifications,
+      ...medicalJustificationsOnly,
       ...mappedRequests
     ]);
 
@@ -422,12 +408,19 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       const isAdjusted = s.notes?.includes('AJUSTE GESTOR');
       const defaultReason = isLate ? 'Entrada com atraso superior à tolerância CLT' : 'Ocorrência de jornada';
 
+      const shiftJust = (justifications || []).find(j => 
+        (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)
+      );
+
       let statusVal: 'Pendente' | 'Homologado' | 'Ajustado' = isHomologated ? 'Homologado' : isAdjusted ? 'Ajustado' : 'Pendente';
       let feedbackVal = '';
       if (isAdjusted) {
         feedbackVal = 'Ponto mantido com ajuste para jornada contratual (sem HE indevida)';
       } else if (isHomologated) {
         feedbackVal = 'Aprovado para Banco de Horas / Folha';
+      } else if (shiftJust && shiftJust.status === 'approved') {
+        statusVal = 'Homologado';
+        feedbackVal = 'Atraso abonado com base em atestado/comprovante';
       }
 
       return {
@@ -445,7 +438,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         diffBadge,
         type,
         typeLabel,
-        reason: s.notes || defaultReason,
+        reason: shiftJust?.reason || s.notes || defaultReason,
+        documentName: shiftJust?.documentName,
+        documentUrl: shiftJust?.documentUrl,
         status: statusVal,
         feedback: feedbackVal,
       };
@@ -485,6 +480,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       type: 'atraso',
       typeLabel: '⚠️ Atraso de Entrada',
       reason: 'Atraso de 35 min: Consulta médica matinal com declaração de comparecimento anexada',
+      documentName: 'Declaracao_Comparecimento_Horas.pdf',
+      documentUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
       status: 'Pendente',
       feedback: '',
     };
@@ -521,13 +518,38 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     setBancoHorasData(finalBancoHoras);
   }, [employees, justifications, requests, shifts]);
 
-  // Ações de Aprovação / Recusa para Atestados e Trocas (Aba Aprovações)
+  // Ações de Aprovação / Recusa para Atestados, Trocas e Faltas (Aba Aprovações)
   const handleApproveOccurrence = async (id: string) => {
     const targetItem = approvalsData.find(i => i.id === id);
+    const isFalta = targetItem?.type === 'Falta Não Justificada' || id.startsWith('absence-');
     const customFeedback = targetItem?.feedback?.trim() || undefined;
 
-    setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, status: 'Aprovado', actionText: 'Homologado agora' } : item));
+    setApprovalsData(prev => prev.map(item => item.id === id ? { 
+      ...item, 
+      status: 'Aprovado', 
+      actionText: isFalta ? 'Abonada' : 'Homologado agora' 
+    } : item));
     
+    if (isFalta) {
+      const shiftId = (targetItem as any)?.shiftId || id.replace('absence-', '');
+      const targetShift = shifts.find(s => s.id === shiftId);
+      if (targetShift) {
+        onOpenEditShift?.({
+          ...targetShift,
+          attendanceStatus: 'justified',
+          notes: `${targetShift.notes || ''} [ABONO GESTOR: Ausência Justificada / Abonada em Folha]`
+        });
+      }
+      showPolishedToast({
+        id: 'abono-falta-success',
+        title: 'Falta Abonada com Sucesso!',
+        description: 'A ausência foi abonada pelo gestor e não gerará desconto na folha de pagamento.',
+        rimVariant: 'success',
+        duration: 4000,
+      });
+      return;
+    }
+
     if (id.startsWith('demo-')) {
       // Item demonstrativo atualizado localmente
     } else {
@@ -555,10 +577,35 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
   const handleRejectOccurrence = async (id: string) => {
     const targetItem = approvalsData.find(i => i.id === id);
+    const isFalta = targetItem?.type === 'Falta Não Justificada' || id.startsWith('absence-');
     const customFeedback = targetItem?.feedback?.trim() || undefined;
 
-    setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, status: 'Recusado / Falta', actionText: 'Recusado agora' } : item));
+    setApprovalsData(prev => prev.map(item => item.id === id ? { 
+      ...item, 
+      status: 'Recusado / Falta', 
+      actionText: isFalta ? 'Desconto em Folha' : 'Recusado agora' 
+    } : item));
     
+    if (isFalta) {
+      const shiftId = (targetItem as any)?.shiftId || id.replace('absence-', '');
+      const targetShift = shifts.find(s => s.id === shiftId);
+      if (targetShift) {
+        onOpenEditShift?.({
+          ...targetShift,
+          attendanceStatus: 'absent',
+          notes: `${targetShift.notes || ''} [CONFIRMADA FALTA: Lançado desconto de 1 dia + DSR]`
+        });
+      }
+      showPolishedToast({
+        id: 'desconto-falta-confirm',
+        title: 'Desconto de Falta Confirmado',
+        description: 'A ausência não justificada foi confirmada para desconto na folha (1 dia + DSR semanal).',
+        rimVariant: 'danger',
+        duration: 4000,
+      });
+      return;
+    }
+
     if (id.startsWith('demo-')) {
       // Item demonstrativo atualizado localmente
     } else {
@@ -1954,13 +2001,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             return false;
           }
 
-          // Type filter (Todos, Trocas, Atestados, Justificativas de Atraso, Folgas)
+          // Type filter (Todos, Trocas, Atestados Médicos, Faltas Não Justificadas, Folgas)
           if (approvalsTypeFilter === 'swap') {
             if (!row.type.toLowerCase().includes('troca')) return false;
           } else if (approvalsTypeFilter === 'medical') {
             if (!row.type.toLowerCase().includes('atestado') && !row.type.toLowerCase().includes('médico') && !row.type.toLowerCase().includes('ausência')) return false;
-          } else if (approvalsTypeFilter === 'delay') {
-            if (!row.type.toLowerCase().includes('atraso')) return false;
+          } else if (approvalsTypeFilter === 'absent') {
+            if (!row.type.toLowerCase().includes('falta')) return false;
           } else if (approvalsTypeFilter === 'time_off') {
             if (!row.type.toLowerCase().includes('folga') && !row.type.toLowerCase().includes('dispensa')) return false;
           }
@@ -2147,7 +2194,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   <option value="all">Todos os Tipos</option>
                   <option value="swap">Trocas de Turno</option>
                   <option value="medical">Atestados Médicos</option>
-                  <option value="delay">Justificativas de Atraso</option>
+                  <option value="absent">Faltas Não Justificadas</option>
                   <option value="time_off">Folgas / Dispensas</option>
                 </select>
               </div>
@@ -2364,25 +2411,51 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         >
                           {row.status === 'Pendente' ? (
                             <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => handleApproveOccurrence(row.id)}
-                                title="Aprovar Solicitação"
-                                className="approvals-light-approve px-2.5 py-1.5 rounded-xl font-bold text-xs text-white transition-all shadow-md flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
-                                style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
-                              >
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                <span>Aprovar</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleRejectOccurrence(row.id)}
-                                title="Recusar Solicitação"
-                                className="approvals-light-reject px-2 py-1.5 border border-rose-500/30 text-rose-300 hover:bg-rose-500/10 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
-                              >
-                                <XCircle className="w-3.5 h-3.5" />
-                                <span>Recusar</span>
-                              </button>
+                              {row.type === 'Falta Não Justificada' ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApproveOccurrence(row.id)}
+                                    title="Abonar Falta: Dispensa o desconto e justifica a ausência (sem corte salarial nem DSR)"
+                                    className="approvals-light-approve px-2.5 py-1.5 rounded-xl font-bold text-xs text-white transition-all shadow-md flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
+                                    style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>Abonar</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRejectOccurrence(row.id)}
+                                    title="Descontar Falta: Confirma falta injustificada para desconto em folha (1 dia + perda de DSR)"
+                                    className="approvals-light-reject px-2 py-1.5 border border-rose-500/40 text-rose-300 hover:bg-rose-500/15 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
+                                  >
+                                    <XCircle className="w-3.5 h-3.5" />
+                                    <span>Descontar</span>
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApproveOccurrence(row.id)}
+                                    title="Aprovar Solicitação"
+                                    className="approvals-light-approve px-2.5 py-1.5 rounded-xl font-bold text-xs text-white transition-all shadow-md flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
+                                    style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>Aprovar</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRejectOccurrence(row.id)}
+                                    title="Recusar Solicitação"
+                                    className="approvals-light-reject px-2 py-1.5 border border-rose-500/30 text-rose-300 hover:bg-rose-500/10 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
+                                  >
+                                    <XCircle className="w-3.5 h-3.5" />
+                                    <span>Recusar</span>
+                                  </button>
+                                </>
+                              )}
                             </div>
                           ) : (
                             <span className="text-slate-400 font-mono text-[11px] italic">
@@ -2445,12 +2518,16 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         <h3 className={`text-base font-bold tracking-tight ${
                           isDark ? 'text-white' : 'text-[#640C1E]'
                         }`}>
-                          Detalhes da Solicitação
+                          {selectedDetailOccurrence.type === 'Falta Não Justificada'
+                            ? 'Registro de Falta Não Justificada'
+                            : 'Detalhes da Solicitação'}
                         </h3>
                         <p className={`text-xs mt-0.5 ${
                           isDark ? 'text-slate-400' : 'text-slate-500'
                         }`}>
-                          Justificativa completa enviada pelo colaborador
+                          {selectedDetailOccurrence.type === 'Falta Não Justificada'
+                            ? 'Ocorrência apurada automaticamente após 24h sem ponto'
+                            : 'Justificativa completa enviada pelo colaborador'}
                         </p>
                       </div>
                     </div>
@@ -2544,18 +2621,24 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       </div>
                     </div>
 
-                    {/* JUSTIFICATIVA COMPLETA (SEM LIMITES DE TAMANHO) */}
+                    {/* JUSTIFICATIVA OU SITUAÇÃO DO REGISTRO */}
                     <div className="space-y-1.5">
                       <label className="text-[11px] font-bold font-mono tracking-wider uppercase text-[#f89847] flex items-center gap-1.5">
                         <MessageSquare className="w-3.5 h-3.5" />
-                        <span>JUSTIFICATIVA DO COLABORADOR</span>
+                        <span>
+                          {selectedDetailOccurrence.type === 'Falta Não Justificada'
+                            ? 'SITUAÇÃO DO REGISTRO DE PONTO'
+                            : 'JUSTIFICATIVA DO COLABORADOR'}
+                        </span>
                       </label>
                       <div className={`p-4 rounded-2xl border text-xs leading-relaxed whitespace-pre-wrap ${
                         isDark 
                           ? 'bg-[#0e0f12] border-white/10 text-slate-200' 
                           : 'bg-slate-50 border-slate-200 text-slate-800'
                       }`}>
-                        {selectedDetailOccurrence.reason || 'Nenhuma justificativa detalhada foi fornecida.'}
+                        {selectedDetailOccurrence.type === 'Falta Não Justificada'
+                          ? 'Turno encerrado há mais de 24 horas sem registro de ponto e sem envio de atestado/justificativa pelo colaborador.'
+                          : (selectedDetailOccurrence.reason || 'Nenhuma justificativa detalhada foi fornecida.')}
                       </div>
                     </div>
 
@@ -2626,30 +2709,61 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
                     {selectedDetailOccurrence.status === 'Pendente' ? (
                       <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleRejectOccurrence(selectedDetailOccurrence.id);
-                            setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Recusado / Falta', actionText: 'Ajustado p/ Horário Regular' } : null);
-                          }}
-                          className="px-3.5 py-2 rounded-xl border border-rose-500/40 text-rose-300 hover:bg-rose-500/15 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
-                        >
-                          <XCircle className="w-4 h-4" />
-                          <span>Recusar</span>
-                        </button>
+                        {selectedDetailOccurrence.type === 'Falta Não Justificada' ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleRejectOccurrence(selectedDetailOccurrence.id);
+                                setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Recusado / Falta', actionText: 'Desconto em Folha' } : null);
+                              }}
+                              className="px-3.5 py-2 rounded-xl border border-rose-500/40 text-rose-300 hover:bg-rose-500/15 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                            >
+                              <XCircle className="w-4 h-4" />
+                              <span>Descontar Falta</span>
+                            </button>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleApproveOccurrence(selectedDetailOccurrence.id);
-                            setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Aprovado', actionText: 'Homologado agora' } : null);
-                          }}
-                          className="px-4 py-2 rounded-xl font-bold text-xs text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:scale-105 active:scale-95"
-                          style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
-                        >
-                          <CheckCircle2 className="w-4 h-4" />
-                          <span>Aprovar Solicitação</span>
-                        </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleApproveOccurrence(selectedDetailOccurrence.id);
+                                setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Aprovado', actionText: 'Abonada' } : null);
+                              }}
+                              className="px-4 py-2 rounded-xl font-bold text-xs text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:scale-105 active:scale-95"
+                              style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>Abonar Falta</span>
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleRejectOccurrence(selectedDetailOccurrence.id);
+                                setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Recusado / Falta', actionText: 'Recusado agora' } : null);
+                              }}
+                              className="px-3.5 py-2 rounded-xl border border-rose-500/40 text-rose-300 hover:bg-rose-500/15 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                            >
+                              <XCircle className="w-4 h-4" />
+                              <span>Recusar</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleApproveOccurrence(selectedDetailOccurrence.id);
+                                setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Aprovado', actionText: 'Homologado agora' } : null);
+                              }}
+                              className="px-4 py-2 rounded-xl font-bold text-xs text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:scale-105 active:scale-95"
+                              style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>Aprovar Solicitação</span>
+                            </button>
+                          </>
+                        )}
                       </div>
                     ) : (
                       <span className="text-xs font-mono text-slate-400 italic">
@@ -3492,20 +3606,32 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                               )}
                             </td>
 
-                            {/* Justificativa do Colaborador (Apenas ícone do olhinho com tooltip) */}
+                            {/* Justificativa do Colaborador (Olhinho + Clipe se houver comprovante) */}
                             <td className="p-3.5 text-center whitespace-nowrap align-middle">
-                              <button
-                                type="button"
-                                onClick={() => setSelectedDetailBancoItem(row)}
-                                className={`h-7 w-7 rounded-lg inline-flex items-center justify-center border transition-all cursor-pointer hover:scale-110 active:scale-95 shadow-xs ${
-                                  isDark 
-                                    ? 'bg-[#F59242]/10 hover:bg-[#F59242]/20 text-[#F59242] border-[#F59242]/30' 
-                                    : 'bg-orange-100/80 hover:bg-orange-100 text-[#c2410c] border-orange-300'
-                                }`}
-                                title={`Visualizar justificativa de ${row.employeeName}`}
-                              >
-                                <Eye className="w-3.5 h-3.5 text-[#c2410c] dark:text-[#F59242]" />
-                              </button>
+                              <div className="inline-flex items-center justify-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedDetailBancoItem(row)}
+                                  className={`h-7 w-7 rounded-lg inline-flex items-center justify-center border transition-all cursor-pointer hover:scale-110 active:scale-95 shadow-xs ${
+                                    isDark 
+                                      ? 'bg-[#F59242]/10 hover:bg-[#F59242]/20 text-[#F59242] border-[#F59242]/30' 
+                                      : 'bg-orange-100/80 hover:bg-orange-100 text-[#c2410c] border-orange-300'
+                                  }`}
+                                  title={`Visualizar justificativa de ${row.employeeName}`}
+                                >
+                                  <Eye className="w-3.5 h-3.5 text-[#c2410c] dark:text-[#F59242]" />
+                                </button>
+                                {row.documentName && row.documentName.toLowerCase().includes('.pdf') && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openDocumentSafe(row.documentUrl, row.documentName)}
+                                    className="h-7 w-7 rounded-lg inline-flex items-center justify-center border border-amber-500/30 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 transition-all cursor-pointer hover:scale-110 active:scale-95 shadow-xs"
+                                    title={`Abrir anexo: ${row.documentName}`}
+                                  >
+                                    <Paperclip className="w-3.5 h-3.5 text-amber-500" />
+                                  </button>
+                                )}
+                              </div>
                             </td>
 
                             {/* Status (Apenas Bolinha Indicadora com Tooltip) */}
@@ -3732,6 +3858,32 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         </div>
                       </div>
 
+                      {/* Documento / Comprovante Anexo (se houver) */}
+                      {selectedDetailBancoItem.documentName && selectedDetailBancoItem.documentName.toLowerCase().includes('.pdf') && (
+                        <div className="space-y-1.5">
+                          <label className={`text-[10px] font-bold uppercase tracking-wider block font-mono ${
+                            isDark ? 'text-slate-400' : 'text-slate-600'
+                          }`}>
+                            Comprovante / Declaração Anexa
+                          </label>
+                          <div className="flex items-center justify-between p-3 rounded-xl border border-amber-500/30 bg-amber-500/10">
+                            <div className="flex items-center gap-2">
+                              <Paperclip className="w-4 h-4 text-amber-500" />
+                              <span className="text-xs font-mono font-bold text-amber-400">
+                                {selectedDetailBancoItem.documentName}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => openDocumentSafe(selectedDetailBancoItem.documentUrl, selectedDetailBancoItem.documentName)}
+                              className="text-xs font-bold text-white bg-amber-600 hover:bg-amber-500 px-3 py-1 rounded-lg transition-all cursor-pointer shadow-xs"
+                            >
+                              Abrir Comprovante
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Observação / Feedback do Gestor */}
                       <div className="space-y-1.5">
                         <label className={`text-[11px] font-bold uppercase tracking-wider block font-mono ${
@@ -3772,36 +3924,73 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
                         {selectedDetailBancoItem.status === 'Pendente' ? (
                           <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                handleAjustarHorarioNormal(selectedDetailBancoItem.id);
-                                setSelectedDetailBancoItem(prev => prev ? { ...prev, status: 'Ajustado' } : null);
-                              }}
-                              className={`px-3 py-2 rounded-xl border font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
-                                isDark 
-                                  ? 'border-white/20 text-slate-300 hover:bg-white/10' 
-                                  : 'border-slate-300 text-slate-700 hover:bg-slate-100 bg-white shadow-2xs'
-                              }`}
-                              title="Ajusta para o horário normal previsto sem hora extra (CLT Art. 4º § 2º)"
-                            >
-                              <Clock className="w-3.5 h-3.5" />
-                              <span>Ajustar Horário Normal</span>
-                            </button>
+                            {selectedDetailBancoItem.type === 'atraso' ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleAjustarHorarioNormal(selectedDetailBancoItem.id);
+                                    setSelectedDetailBancoItem(prev => prev ? { ...prev, status: 'Ajustado' } : null);
+                                  }}
+                                  className={`px-3 py-2 rounded-xl border font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
+                                    isDark 
+                                      ? 'border-rose-500/30 text-rose-300 hover:bg-rose-500/10' 
+                                      : 'border-rose-300 text-rose-700 hover:bg-rose-50 bg-white shadow-2xs'
+                                  }`}
+                                  title="Debitar do Banco: Lança os minutos de atraso para compensação no Banco de Horas"
+                                >
+                                  <Clock className="w-3.5 h-3.5 text-rose-500" />
+                                  <span>Debitar do Banco</span>
+                                </button>
 
-                            <button
-                              type="button"
-                              onClick={() => {
-                                handleHomologarBanco(selectedDetailBancoItem.id);
-                                setSelectedDetailBancoItem(prev => prev ? { ...prev, status: 'Homologado' } : null);
-                              }}
-                              className="px-4 py-2 rounded-xl font-bold text-xs text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:scale-105 active:scale-95"
-                              style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
-                              title="Aprova e credita hora extra no Banco de Horas (Art. 58 CLT)"
-                            >
-                              <CheckCircle2 className="w-4 h-4" />
-                              <span>Homologar Banco</span>
-                            </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleHomologarBanco(selectedDetailBancoItem.id);
+                                    setSelectedDetailBancoItem(prev => prev ? { ...prev, status: 'Homologado' } : null);
+                                  }}
+                                  className="px-4 py-2 rounded-xl font-bold text-xs text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:scale-105 active:scale-95"
+                                  style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
+                                  title="Abonar Atraso: Perdoa/abona os minutos com base no comprovante médico (sem débito nem desconto)"
+                                >
+                                  <CheckCircle2 className="w-4 h-4" />
+                                  <span>Abonar Atraso</span>
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleAjustarHorarioNormal(selectedDetailBancoItem.id);
+                                    setSelectedDetailBancoItem(prev => prev ? { ...prev, status: 'Ajustado' } : null);
+                                  }}
+                                  className={`px-3 py-2 rounded-xl border font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
+                                    isDark 
+                                      ? 'border-white/20 text-slate-300 hover:bg-white/10' 
+                                      : 'border-slate-300 text-slate-700 hover:bg-slate-100 bg-white shadow-2xs'
+                                  }`}
+                                  title="Ajusta para o horário normal previsto sem hora extra (CLT Art. 4º § 2º)"
+                                >
+                                  <Clock className="w-3.5 h-3.5" />
+                                  <span>Ajustar Horário Normal</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleHomologarBanco(selectedDetailBancoItem.id);
+                                    setSelectedDetailBancoItem(prev => prev ? { ...prev, status: 'Homologado' } : null);
+                                  }}
+                                  className="px-4 py-2 rounded-xl font-bold text-xs text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:scale-105 active:scale-95"
+                                  style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
+                                  title="Aprova e credita hora extra no Banco de Horas (Art. 58 CLT)"
+                                >
+                                  <CheckCircle2 className="w-4 h-4" />
+                                  <span>Homologar Banco</span>
+                                </button>
+                              </>
+                            )}
                           </div>
                         ) : selectedDetailBancoItem.status === 'Homologado' ? (
                           <span className="text-xs font-mono text-emerald-500 font-semibold inline-flex items-center gap-1">
