@@ -504,50 +504,7 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
           )}
         </div>
 
-        {/* Optional Toggle Theme in Sidebar */}
-        {onToggleTheme && (
-          <div className="px-2.5 pb-2">
-            <button
-              type="button"
-              onClick={onToggleTheme}
-              aria-label={isLightTheme ? 'Ativar tema escuro' : 'Ativar tema claro'}
-              title={isActuallyCollapsed ? (isLightTheme ? 'Modo Escuro' : 'Modo Claro') : undefined}
-              className={`group relative flex items-center h-10 w-full rounded-xl text-left cursor-pointer transition-all duration-200 outline-none font-semibold ${
-                isLightTheme
-                  ? 'text-slate-600 hover:text-[#96183C] hover:bg-slate-100'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <div className="w-[68px] min-w-[68px] h-10 flex items-center justify-center relative flex-shrink-0">
-                {isLightTheme ? (
-                  <Moon className="w-4 h-4 text-slate-700 transition-transform duration-200 group-hover:scale-110" />
-                ) : (
-                  <Sun className="w-4 h-4 text-amber-400 transition-transform duration-200 group-hover:scale-110" />
-                )}
-              </div>
 
-              <span
-                className={`text-xs whitespace-nowrap overflow-hidden flex-1 pr-2 transition-all duration-300 font-medium ${
-                  isLightTheme ? 'text-slate-700' : 'text-slate-300'
-                } ${isActuallyCollapsed ? 'opacity-0 -translate-x-2 pointer-events-none max-w-0' : 'opacity-100 translate-x-0'}`}
-              >
-                {isLightTheme ? '🌙 Modo Escuro' : '☀️ Modo Claro'}
-              </span>
-
-              {isActuallyCollapsed && (
-                <span
-                  className={`pointer-events-none absolute left-[76px] px-2.5 py-1.5 rounded-lg border text-xs font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 -translate-x-1 group-hover:translate-x-0 transition-all duration-200 shadow-xl z-50 ${
-                    isLightTheme
-                      ? 'bg-white border-slate-200 text-slate-700 shadow-slate-200/70'
-                      : 'bg-[#1E2230] border-[#222634] text-white'
-                  }`}
-                >
-                  {isLightTheme ? '🌙 Modo Escuro' : '☀️ Modo Claro'}
-                </span>
-              )}
-            </button>
-          </div>
-        )}
       </div>
     </aside>
   </>

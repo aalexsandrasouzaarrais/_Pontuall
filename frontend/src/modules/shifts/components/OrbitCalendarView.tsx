@@ -636,16 +636,7 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                 </button>
               </>
             )}
-            <button
-              onClick={() => setIsSidebarOpen(false)}
-              className={`w-6 h-6 rounded flex items-center justify-center transition-colors ml-0.5 cursor-pointer ${isDark
-                ? 'text-slate-400 hover:text-white hover:bg-white/5'
-                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-              title="Fechar painel lateral"
-            >
-              <PanelLeftClose className="w-3.5 h-3.5" />
-            </button>
+
           </div>
         </div>
 
