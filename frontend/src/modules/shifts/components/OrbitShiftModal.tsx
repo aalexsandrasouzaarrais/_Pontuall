@@ -553,53 +553,77 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // 1. VIEW MODE: Exibição da Escala Já Publicada (com botão para Editar e aviso)
+  // 1. VIEW MODE: Exibição da Escala Já Publicada (com botão para Editar)
   // ─────────────────────────────────────────────────────────────────────────────
   if ((isAlreadyPublished || isRh) && !isEditingPublished) {
+    const currentWp = workplacesList.find(w => w.id === selectedWorkplaceId)
+      || editingShift?.workplaceLocation
+      || (editingShift?.workplace ? { name: editingShift.workplace, address: editingShift.workplace } : null);
+
+    const wpName = currentWp?.name || 'Sede Principal / Matriz';
+    const wpAddress = currentWp?.address || 'Endereço Principal da Empresa';
+    const mapsLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${wpName} ${wpAddress}`)}`;
+
+    // Formatação da data no cabeçalho: "Terça-feira, 03/11/2026"
+    let headerDateStr = date;
+    let cardDateStr = date;
+    let cardWeekdayStr = '';
+    try {
+      const [y, m, d] = date.split('-').map(Number);
+      const dt = new Date(y, m - 1, d);
+      const weekDays = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+      const dayStr = d.toString().padStart(2, '0');
+      const monthStr = m.toString().padStart(2, '0');
+      headerDateStr = `${weekDays[dt.getDay()]}, ${dayStr}/${monthStr}/${y}`;
+      cardDateStr = `${dayStr}/${monthStr}/${y}`;
+      cardWeekdayStr = weekDays[dt.getDay()];
+    } catch {
+      // fallback
+    }
+
+    const modalTitle = editingShift?.title || title || shiftType || 'Escala de Trabalho';
+    const presenceStatus = presence === 'present' ? 'PRESENTE' : presence === 'absent' ? 'AUSENTE' : 'PENDENTE';
+
     return (
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200"
+        className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200"
         onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       >
         <div
-          className={`relative w-full max-w-2xl rounded-2xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 font-sans ${
+          className={`relative w-full max-w-xl rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 font-sans flex flex-col max-h-[92vh] ${
             isLight ? 'bg-white text-slate-800' : 'text-slate-100'
           }`}
           style={{
             background: isLight ? "#ffffff" : "linear-gradient(160deg, #181920 0%, #111217 60%, #0d0e12 100%)",
-            border: isLight ? "1px solid #e2e8f0" : "1px solid rgba(150, 24, 60, 0.35)",
+            border: isLight ? "1px solid #e2e8f0" : "1px solid rgba(255, 255, 255, 0.1)",
             boxShadow: isLight
-              ? "0 25px 60px rgba(0,0,0,0.12), 0 0 0 1px rgba(248,152,71,0.15)"
-              : "0 25px 60px rgba(0,0,0,0.85), 0 0 0 1px rgba(248,152,71,0.15), inset 0 1px 0 rgba(255,255,255,0.06)",
-            maxHeight: "92vh",
+              ? "0 25px 60px rgba(0,0,0,0.12)"
+              : "0 25px 60px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.06)",
           }}
         >
           {/* Top gradient accent bar (Orbit signature) */}
           <div className="h-1.5 w-full bg-gradient-to-r from-[#96183C] via-[#F89847] to-[#FCEABB] shrink-0" />
 
-          {/* Header */}
+          {/* Header (Disposição idêntica à imagem 2, sem ícone no início, cor escura da 1) */}
           <div
-            className={`px-7 py-4.5 flex items-start justify-between border-b ${
+            className={`px-6 py-4 flex items-start justify-between border-b shrink-0 ${
               isLight ? 'border-slate-100' : 'border-white/10'
             }`}
           >
-            <div className="flex items-center gap-3.5">
-              
-              <div>
-                <h2 className={`text-base sm:text-lg font-bold tracking-wide flex items-center gap-2 ${
-                  isLight ? 'text-slate-900' : 'text-white'
-                }`}>
-                  <span>Detalhes da Escala Publicada</span>
-                </h2>
-                <p className={`text-xs mt-0.5 ${isLight ? 'text-slate-500' : 'text-white/50'}`}>
-                  Visualização oficial da escala atribuída ao colaborador
-                </p>
-              </div>
+            <div className="min-w-0 pr-4">
+              <h2 className={`text-lg sm:text-xl font-bold tracking-tight truncate ${
+                isLight ? 'text-slate-900' : 'text-white'
+              }`}>
+                {modalTitle}
+              </h2>
+              <p className={`text-xs mt-0.5 capitalize ${isLight ? 'text-slate-500' : 'text-zinc-400'}`}>
+                {headerDateStr}
+              </p>
             </div>
             <button
               onClick={onClose}
               type="button"
-              className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+              className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer shrink-0 ${
                 isLight ? 'text-slate-400 hover:text-slate-700 hover:bg-slate-100' : 'hover:bg-white/10 text-slate-400 hover:text-white'
               }`}
             >
@@ -609,188 +633,237 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
             </button>
           </div>
 
-          {/* Status & Presence row */}
-          <div
-            className={`px-7 py-3 flex items-center justify-between border-b ${
-              isLight ? 'border-slate-100 bg-slate-50/50' : 'border-white/5'
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium" style={labelStyle}>Estado:</span>
-              <div
-                className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold"
-                style={{
-                  background: isLight ? "#ecfdf5" : "rgba(72,187,120,0.2)",
-                  color: isLight ? "#047857" : "#48bb78",
-                  border: isLight ? "1px solid #a7f3d0" : "1px solid rgba(72,187,120,0.35)"
-                }}
-              >
-                <span className={`w-1.5 h-1.5 rounded-full ${isLight ? 'bg-emerald-600' : 'bg-[#48bb78]'} animate-pulse`} />
-                <span>PUBLICADO (OFICIAL)</span>
-              </div>
-            </div>
+          {/* Corpo rolável com a disposição exata da imagem 2 */}
+          <div className="overflow-y-auto overflow-x-hidden custom-scrollbar p-5 sm:p-6 flex flex-col gap-3.5 flex-1">
 
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium" style={labelStyle}>Presença:</span>
-              <span
-                className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold"
-                style={presence === "present" ? {
-                  background: isLight ? "#ecfdf5" : "rgba(72,187,120,0.2)",
-                  color: isLight ? "#047857" : "#48bb78",
-                  border: isLight ? "1px solid #a7f3d0" : "1px solid rgba(72,187,120,0.35)"
-                } : presence === "absent" ? {
-                  background: isLight ? "#fef2f2" : "rgba(245,101,101,0.2)",
-                  color: isLight ? "#b91c1c" : "#f56565",
-                  border: isLight ? "1px solid #fecaca" : "1px solid rgba(245,101,101,0.35)"
-                } : {
-                  background: isLight ? "#f1f5f9" : "rgba(255,255,255,0.05)",
-                  color: isLight ? "#475569" : "rgba(255,255,255,0.5)",
-                  border: isLight ? "1px solid #cbd5e1" : "1px solid rgba(255,255,255,0.12)"
-                }}
-              >
-                <span
-                  className="w-1.5 h-1.5 rounded-full"
-                  style={{
-                    background: presence === "present" ? "#48bb78" : presence === "absent" ? "#f56565" : "rgba(255,255,255,0.3)"
-                  }}
-                />
-                {presence === "present" ? "Presente" : presence === "absent" ? "Ausente" : "Pendente"}
-              </span>
-            </div>
-          </div>
-
-          {/* View Mode Content */}
-          <div className="overflow-y-auto overflow-x-hidden custom-scrollbar px-7 py-5 flex flex-col gap-4.5" style={{ maxHeight: "calc(92vh - 210px)" }}>
-
-            {/* Collaborator Card */}
-            <div className={`p-4 rounded-xl border flex items-center gap-4 ${
+            {/* 1. Card do Colaborador no topo */}
+            <div className={`p-4 rounded-2xl border ${
               isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/[0.04] border-white/10'
             }`}>
-              <img
-                src={assignedEmployee?.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80"}
-                alt={assignedEmployee?.name}
-                className="w-13 h-13 rounded-full object-cover ring-2 ring-[#f89847]/40 shadow-md flex-shrink-0"
-              />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className={`text-base font-bold tracking-tight truncate ${
+              <div className="flex items-center justify-between mb-2.5">
+                <span className={`text-[10px] font-mono font-bold tracking-wider uppercase ${
+                  isLight ? 'text-slate-500' : 'text-zinc-400'
+                }`}>
+                  COLABORADOR(A) ATRIBUÍDO(A)
+                </span>
+                <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border tracking-wide uppercase ${
+                  presence === 'present'
+                    ? isLight ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                    : presence === 'absent'
+                    ? isLight ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                    : isLight ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-white/5 text-zinc-400 border-white/10'
+                }`}>
+                  {presenceStatus}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3.5">
+                <img
+                  src={assignedEmployee?.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80"}
+                  alt={assignedEmployee?.name}
+                  className="w-12 h-12 rounded-full object-cover ring-2 ring-[#f89847]/40 shadow-md shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <h3 className={`text-sm sm:text-base font-bold truncate ${
                     isLight ? 'text-slate-900' : 'text-white'
                   }`}>
                     {assignedEmployee?.name || "Colaborador"}
                   </h3>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                    isLight ? 'bg-amber-50 text-amber-900 border-amber-200' : 'bg-[#f89847]/15 text-[#faf0ac] border-[#f89847]/30'
+                  <p className={`text-xs mt-0.5 truncate ${
+                    isLight ? 'text-slate-500' : 'text-zinc-400'
                   }`}>
-                    {assignedEmployee?.department || "Geral"}
-                  </span>
-                  {assignedEmployee?.contractType && (
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                      isLight ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-white/5 text-slate-300 border-white/10'
-                    }`}>
-                      {assignedEmployee.contractType}
-                    </span>
-                  )}
+                    {assignedEmployee?.role || "Função Operacional"}{assignedEmployee?.department ? ` • ${assignedEmployee.department}` : ''}
+                  </p>
                 </div>
-                <p className={`text-xs mt-0.5 truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                  {assignedEmployee?.role || "Função Operacional"}
-                </p>
-                <p className={`text-[11px] mt-0.5 ${isLight ? 'text-slate-400' : 'text-slate-500'}`}>
-                  {assignedEmployee?.email} {assignedEmployee?.phone ? `· ${assignedEmployee.phone}` : ''}
-                </p>
               </div>
             </div>
 
-            {/* Details Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              {/* Data & Horários */}
-              <div className={`p-3.5 rounded-xl border flex flex-col gap-2 ${
-                isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/[0.03] border-white/10'
+            {/* 2. Grid com 3 cards: Data, Horário e Carga/Pausa */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Card Data */}
+              <div className={`p-3.5 rounded-2xl border flex flex-col justify-between ${
+                isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/[0.04] border-white/10'
               }`}>
-                <div className={`flex items-center gap-2 text-xs font-semibold ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                <span className={`text-[10px] font-mono font-bold tracking-wider uppercase flex items-center gap-1.5 ${
+                  isLight ? 'text-slate-500' : 'text-zinc-400'
+                }`}>
                   <Calendar className="w-3.5 h-3.5 text-[#f89847]" />
-                  <span>DATA DA ESCALA</span>
+                  DATA
+                </span>
+                <div className="mt-2">
+                  <div className={`text-sm sm:text-base font-bold ${
+                    isLight ? 'text-slate-900' : 'text-white'
+                  }`}>
+                    {cardDateStr}
+                  </div>
+                  <div className={`text-xs mt-0.5 ${
+                    isLight ? 'text-slate-500' : 'text-zinc-400'
+                  }`}>
+                    {cardWeekdayStr || 'Programada'}
+                  </div>
                 </div>
-                <p className={`text-sm font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                  {formatDisplayDate(date)}
-                </p>
-                <div className={`flex items-center gap-2 text-xs mt-1 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+              </div>
+
+              {/* Card Horário */}
+              <div className={`p-3.5 rounded-2xl border flex flex-col justify-between ${
+                isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/[0.04] border-white/10'
+              }`}>
+                <span className={`text-[10px] font-mono font-bold tracking-wider uppercase flex items-center gap-1.5 ${
+                  isLight ? 'text-slate-500' : 'text-zinc-400'
+                }`}>
                   <Clock className="w-3.5 h-3.5 text-[#f89847]" />
-                  <span className={`font-semibold ${isLight ? 'text-slate-800' : 'text-white'}`}>{startTime} às {endTime}</span>
-                  <span className={isLight ? 'text-slate-400' : 'text-slate-500'}>· Intervalo: {breakTime}</span>
+                  HORÁRIO
+                </span>
+                <div className="mt-2">
+                  <div className={`text-sm sm:text-base font-bold ${
+                    isLight ? 'text-slate-900' : 'text-white'
+                  }`}>
+                    {startTime} às {endTime}
+                  </div>
+                  <div className={`text-xs mt-0.5 ${
+                    isLight ? 'text-slate-500' : 'text-zinc-400'
+                  }`}>
+                    Jornada prevista
+                  </div>
                 </div>
               </div>
 
-              {/* Carga Horária & Tipo */}
-              <div className={`p-3.5 rounded-xl border flex flex-col justify-between gap-2 ${
-                isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/[0.03] border-white/10'
+              {/* Card Carga / Pausa */}
+              <div className={`p-3.5 rounded-2xl border flex flex-col justify-between ${
+                isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/[0.04] border-white/10'
               }`}>
-                <div>
-                  <div className={`flex items-center gap-2 text-xs font-semibold ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                    <Layers className="w-3.5 h-3.5 text-[#f89847]" />
-                    <span>TIPO DE ATIVIDADE</span>
+                <span className={`text-[10px] font-mono font-bold tracking-wider uppercase flex items-center gap-1.5 ${
+                  isLight ? 'text-slate-500' : 'text-zinc-400'
+                }`}>
+                  <Clock className="w-3.5 h-3.5 text-[#f89847]" />
+                  CARGA / PAUSA
+                </span>
+                <div className="mt-2">
+                  <div className={`text-sm sm:text-base font-bold ${
+                    isLight ? 'text-slate-900' : 'text-white'
+                  }`}>
+                    {hoursWorked} totais
                   </div>
-                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                    <span
-                      className="w-2.5 h-2.5 rounded-full shadow-xs"
-                      style={{ background: selectedColor.bg, border: `1px solid ${selectedColor.border}` }}
-                    />
-                    <span className={`text-sm font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                      {shiftType}
-                    </span>
+                  <div className={`text-xs mt-0.5 ${
+                    isLight ? 'text-slate-500' : 'text-zinc-400'
+                  }`}>
+                    {breakTime} de intervalo
                   </div>
-                  {title && (
-                    <p className={`text-xs mt-1 italic ${isLight ? 'text-slate-600' : 'text-slate-300'}`}>
-                      "{title}"
-                    </p>
-                  )}
                 </div>
-                <div className={`flex items-center justify-between pt-2 border-t ${isLight ? 'border-slate-200' : 'border-white/5'}`}>
-                  <span className={`text-xs font-medium ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Carga Líquida:</span>
-                  <span
-                    className="px-3 py-1 rounded-lg text-xs font-extrabold shadow-sm"
-                    style={{
-                      background: isLight ? "#FFF7ED" : "linear-gradient(135deg, rgba(150,24,60,0.35), rgba(248,152,71,0.25))",
-                      border: isLight ? "1.5px solid #F59242" : "1px solid rgba(248,152,71,0.3)",
-                      color: isLight ? "#9a3412" : "#faf0ac"
-                    }}
-                  >
-                    {hoursWorked}
+              </div>
+            </div>
+
+            {/* 3. Grid com 2 cards: Local de Atuação e Orientações do Gestor */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Card Local de Atuação */}
+              <div className={`p-3.5 rounded-2xl border flex flex-col justify-between ${
+                isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/[0.04] border-white/10'
+              }`}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`text-[10px] font-mono font-bold tracking-wider uppercase flex items-center gap-1.5 ${
+                    isLight ? 'text-slate-500' : 'text-zinc-400'
+                  }`}>
+                    <MapPin className="w-3.5 h-3.5 text-[#f89847]" />
+                    LOCAL DE ATUAÇÃO
                   </span>
+                  <a
+                    href={mapsLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] font-semibold text-sky-400 hover:text-sky-300 flex items-center gap-1 transition-colors"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Ver Maps
+                  </a>
+                </div>
+                <div>
+                  <div className={`text-xs sm:text-sm font-bold truncate ${
+                    isLight ? 'text-slate-900' : 'text-white'
+                  }`}>
+                    {wpName}
+                  </div>
+                  <div className={`text-xs mt-0.5 line-clamp-2 ${
+                    isLight ? 'text-slate-500' : 'text-zinc-400'
+                  }`}>
+                    {wpAddress}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Posto de Trabalho Alocado */}
-            <div className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 ${
-              isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/[0.03] border-white/10'
-            }`}>
-              <div className="flex items-center gap-2.5 min-w-0">
-                <MapPin className="w-4 h-4 text-[#F89847] shrink-0" />
-                <div className="min-w-0">
-                  <p className={`text-xs font-bold ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                    Posto: {workplacesList.find(w => w.id === selectedWorkplaceId)?.name || editingShift?.workplaceLocation?.name || editingShift?.workplace || 'Posto Presencial'}
-                  </p>
-                  <p className={`text-[11px] truncate ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                    {workplacesList.find(w => w.id === selectedWorkplaceId)?.address || editingShift?.workplaceLocation?.address || editingShift?.workplace || 'Endereço definido pelo gestor'}
-                  </p>
-                </div>
-              </div>
-              <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold shrink-0 ${
-                isLight ? 'bg-orange-100 text-orange-800' : 'bg-[#96183c]/30 text-[#f89847]'
+              {/* Card Orientações do Gestor */}
+              <div className={`p-3.5 rounded-2xl border flex flex-col justify-between ${
+                isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/[0.04] border-white/10'
               }`}>
-                {workplacesList.find(w => w.id === selectedWorkplaceId)?.isRemote ? 'Raio Livre' : `Raio: ${workplacesList.find(w => w.id === selectedWorkplaceId)?.radiusMeters || 200}m`}
-              </span>
+                <span className={`text-[10px] font-mono font-bold tracking-wider uppercase flex items-center gap-1.5 mb-2 ${
+                  isLight ? 'text-slate-500' : 'text-zinc-400'
+                }`}>
+                  <Sparkles className="w-3.5 h-3.5 text-[#f89847]" />
+                  ORIENTAÇÕES DO GESTOR
+                </span>
+                <p className={`text-xs leading-relaxed line-clamp-3 ${
+                  notes ? (isLight ? 'text-slate-700' : 'text-zinc-200') : (isLight ? 'text-slate-400 italic' : 'text-zinc-500 italic')
+                }`}>
+                  {notes || 'Sem orientações adicionais cadastradas para este turno.'}
+                </p>
+              </div>
             </div>
 
-            {/* Meeting Link (if available) */}
+            {/* 4. Ponto batido (se houver checkIn ou checkOut registrado) */}
+            {(editingShift?.checkInTime || editingShift?.checkOutTime) && (
+              <div className="flex flex-col gap-2">
+                {editingShift.checkInTime && (
+                  <div className={`p-3 rounded-2xl border flex items-start gap-3 ${
+                    isLight ? 'bg-emerald-50 border-emerald-200' : 'bg-emerald-500/10 border-emerald-500/20'
+                  }`}>
+                    <MapPin className={`w-4 h-4 shrink-0 mt-0.5 ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`font-bold text-xs sm:text-sm ${isLight ? 'text-emerald-900' : 'text-emerald-300'}`}>
+                          Entrada Registrada às {editingShift.checkInTime}
+                        </span>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                          GPS Validado
+                        </span>
+                      </div>
+                      <p className={`text-xs mt-0.5 truncate ${isLight ? 'text-emerald-700' : 'text-emerald-300/80'}`}>
+                        {editingShift.checkInLocation?.address || 'Entrada confirmada via aplicativo'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {editingShift.checkOutTime && (
+                  <div className={`p-3 rounded-2xl border flex items-start gap-3 ${
+                    isLight ? 'bg-rose-50 border-rose-200' : 'bg-rose-500/10 border-rose-500/20'
+                  }`}>
+                    <Clock className={`w-4 h-4 shrink-0 mt-0.5 ${isLight ? 'text-rose-600' : 'text-rose-400'}`} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`font-bold text-xs sm:text-sm ${isLight ? 'text-rose-900' : 'text-rose-300'}`}>
+                          Saída Registrada às {editingShift.checkOutTime}
+                        </span>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30">
+                          Ponto Fechado
+                        </span>
+                      </div>
+                      <p className={`text-xs mt-0.5 truncate ${isLight ? 'text-rose-700' : 'text-rose-300/80'}`}>
+                        {editingShift.checkOutLocation?.address || 'Saída confirmada pelo colaborador'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 5. Link da Reunião (se houver) */}
             {meetingLink && (
-              <div className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 ${
+              <div className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 ${
                 isLight ? 'bg-emerald-50/70 border-emerald-200' : 'bg-emerald-500/10 border-emerald-500/20'
               }`}>
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="text-lg">🔗</span>
+                  <span className="text-base">🔗</span>
                   <div className="min-w-0">
-                    <p className={`text-xs font-bold ${isLight ? 'text-emerald-900' : 'text-emerald-300'}`}>Link da Reunião (Meet / Zoom)</p>
+                    <p className={`text-xs font-bold ${isLight ? 'text-emerald-900' : 'text-emerald-300'}`}>Link da Reunião</p>
                     <p className={`text-[11px] truncate ${isLight ? 'text-emerald-700' : 'text-emerald-400/80'}`}>{meetingLink}</p>
                   </div>
                 </div>
@@ -798,7 +871,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                   href={meetingLink}
                   target="_blank"
                   rel="noreferrer"
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-500 transition-colors flex items-center gap-1.5 flex-shrink-0 cursor-pointer shadow-sm"
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-500 transition-colors flex items-center gap-1.5 shrink-0 shadow-sm"
                 >
                   <span>Acessar</span>
                   <ExternalLink className="w-3.5 h-3.5" />
@@ -806,51 +879,49 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
               </div>
             )}
 
-            {/* Notes & Tag (if available) */}
-            {(notes || tag) && (
-              <div className={`p-3.5 rounded-xl border flex flex-col gap-1.5 ${
-                isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/[0.03] border-white/10'
-              }`}>
-                <div className="flex items-center justify-between">
-                  <span className={`text-xs font-semibold flex items-center gap-1.5 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                    <Tag className="w-3.5 h-3.5 text-[#f89847]" />
-                    <span>LEMBRETES & OBSERVAÇÕES</span>
-                  </span>
-                  {tag && (
-                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${
-                      isLight ? 'bg-purple-100 text-purple-800 border-purple-200' : 'bg-purple-500/20 text-purple-300 border-purple-500/30'
-                    }`}>
-                      #{tag}
-                    </span>
-                  )}
-                </div>
-                {notes && (
-                  <p className={`text-xs mt-1 whitespace-pre-wrap leading-relaxed ${isLight ? 'text-slate-700' : 'text-slate-200'}`}>
-                    {notes}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Notice / Transparency Alert */}
-            <div className={`p-4 rounded-xl border flex items-start gap-3 ${
-              isLight ? 'bg-amber-50/80 border-amber-200' : 'bg-amber-500/10 border-amber-500/25'
+            {/* 6. Categoria da Escala (Simples, discreto e sem ícone no início) */}
+            <div className={`p-3 rounded-2xl border flex items-center justify-between gap-3 ${
+              isLight ? 'bg-slate-50 border-slate-200' : 'bg-white/[0.04] border-white/10'
             }`}>
-              <ShieldCheck className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-              <div className="text-xs">
-                <p className={`font-bold ${isLight ? 'text-amber-900' : 'text-amber-300'}`}>Escala Oficial Vigente & Transparência</p>
-                <p className={`mt-1 leading-relaxed ${isLight ? 'text-amber-800' : 'text-amber-200/80'}`}>
-                  Esta escala já foi publicada e está visível para o colaborador. Caso precise redefinir horários ou datas, clique em <strong>"Editar Escala"</strong>. O colaborador será automaticamente avisado com uma notificação oficial sobre as alterações para garantir transparência e pontualidade na equipe.
-                </p>
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span
+                  className="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs"
+                  style={{
+                    background: selectedColor.bg,
+                    border: `2px solid ${selectedColor.border}`,
+                  }}
+                />
+                <div className="min-w-0">
+                  <span className={`text-[10px] uppercase font-bold font-mono tracking-wider block ${
+                    isLight ? 'text-slate-500' : 'text-zinc-400'
+                  }`}>
+                    CATEGORIA DA ESCALA
+                  </span>
+                  <span className={`text-xs sm:text-sm font-bold truncate block ${
+                    isLight ? 'text-slate-900' : 'text-white'
+                  }`}>
+                    {selectedColor.category || selectedColor.label || 'Operacional / Presencial'}
+                  </span>
+                </div>
               </div>
+
+              {selectedColor.label && (
+                <span className={`text-[11px] font-mono font-semibold px-2.5 py-1 rounded-lg border shrink-0 ${
+                  isLight 
+                    ? 'bg-white text-slate-700 border-slate-200 shadow-2xs' 
+                    : 'bg-white/5 text-zinc-300 border-white/10'
+                }`}>
+                  {selectedColor.label}
+                </span>
+              )}
             </div>
 
           </div>
 
-          {/* View Mode Footer */}
+          {/* Rodapé com botões de ação do Gestor */}
           <div
-            className={`px-7 py-4.5 flex items-center justify-between gap-3 border-t ${
-              isLight ? 'border-slate-100 bg-slate-50/50' : 'border-white/10'
+            className={`px-6 py-4 flex items-center justify-between gap-3 border-t shrink-0 ${
+              isLight ? 'border-slate-100 bg-slate-50/50' : 'border-white/10 bg-white/[0.02]'
             }`}
           >
             <div>
@@ -858,12 +929,12 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setConfirmDelete(true)}
-                  className={`text-xs px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  className={`text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer font-medium ${
                     isLight 
                       ? 'bg-red-50 text-red-700 border border-red-200 hover:bg-red-100' 
-                      : 'hover:opacity-80 text-red-400'
+                      : 'hover:bg-red-500/20 text-red-400 border border-red-500/20'
                   }`}
-                  style={!isLight ? { background: "rgba(245,101,101,0.1)", color: "#f56565", border: "1px solid rgba(245,101,101,0.2)" } : undefined}
+                  style={!isLight ? { background: "rgba(245,101,101,0.08)" } : undefined}
                 >
                   Excluir Escala
                 </button>
@@ -872,7 +943,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                 <button
                   type="button"
                   onClick={() => onDelete(editingShift!.id)}
-                  className="text-xs px-3 py-1.5 rounded-lg transition-all font-bold cursor-pointer bg-red-600 text-white hover:bg-red-700"
+                  className="text-xs px-3.5 py-2 rounded-xl transition-all font-bold cursor-pointer bg-red-600 text-white hover:bg-red-700 shadow-sm"
                 >
                   Confirmar exclusão
                 </button>
@@ -1309,32 +1380,29 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
               </div>
             )}
 
-            {/* Color picker com Legenda Informativa */}
-            <div className={`p-3.5 rounded-2xl border transition-all ${
+            {/* Seletor simples e elegante de Categoria da Escala (Sem bolas coloridas) */}
+            <div className={`p-4 rounded-2xl border transition-all ${
               isLight 
-                ? 'bg-slate-50/90 border-slate-200' 
+                ? 'bg-slate-50 border-slate-200' 
                 : 'bg-white/[0.04] border-white/10'
             }`}>
-              <div className="flex items-center justify-between mb-2.5">
-                <label className={`text-xs font-bold tracking-wider uppercase font-mono flex items-center gap-1.5 ${
-                  isLight ? 'text-slate-600' : 'text-slate-300'
+              <div className="flex items-center justify-between mb-3">
+                <label className={`text-xs font-bold tracking-wider uppercase font-mono ${
+                  isLight ? 'text-slate-600' : 'text-zinc-300'
                 }`}>
-                  <Palette className="w-3.5 h-3.5 text-[#f89847]" />
-                  <span>COR DO TURNO & LEGENDA</span>
+                  Categoria da Escala
                 </label>
-                <span className={`text-[11px] font-semibold flex items-center gap-1.5 px-2 py-0.5 rounded-full ${
-                  isLight ? 'bg-white border border-slate-200 text-slate-700' : 'bg-black/30 border border-white/10 text-white/80'
+                <span className={`text-[11px] font-mono font-semibold px-2.5 py-0.5 rounded-lg border ${
+                  isLight 
+                    ? 'bg-white text-slate-700 border-slate-200 shadow-2xs' 
+                    : 'bg-white/5 text-zinc-300 border-white/10'
                 }`}>
-                  <span 
-                    className="w-2 h-2 rounded-full shrink-0 shadow-xs" 
-                    style={{ background: selectedColor.bg }} 
-                  />
-                  <span>{selectedColor.label}</span>
+                  {selectedColor.label}
                 </span>
               </div>
 
-              {/* Botões de seleção de cores */}
-              <div className="flex items-center gap-2.5 flex-wrap">
+              {/* Grid simples e intuitivo de botões de categoria */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {ORBIT_COLORS.map((c) => {
                   const isSelected = selectedColor.label === c.label;
                   return (
@@ -1342,75 +1410,39 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                       key={c.label}
                       type="button"
                       onClick={() => handleColorChange(c)}
-                      className={`w-7.5 h-7.5 rounded-full transition-all relative cursor-pointer flex items-center justify-center ${
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between gap-2 ${
                         isSelected 
                           ? isLight
-                            ? 'scale-110 ring-2 ring-[#640C1E] ring-offset-2 ring-offset-white shadow-md'
-                            : 'scale-110 ring-2 ring-white ring-offset-2 ring-offset-[#181920] shadow-md shadow-black/50'
-                          : 'opacity-85 hover:opacity-100 hover:scale-105'
+                            ? 'bg-white border-[#96183C] shadow-xs ring-1 ring-[#96183C]/30'
+                            : 'bg-white/10 border-[#F89847] shadow-sm ring-1 ring-[#F89847]/40'
+                          : isLight
+                            ? 'bg-white/60 border-slate-200 hover:bg-white hover:border-slate-300 text-slate-700'
+                            : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.05] hover:border-white/15 text-zinc-400'
                       }`}
-                      style={{
-                        background: c.bg,
-                        border: `2px solid ${c.border}`,
-                      }}
-                      title={`${c.label} • ${c.category || ''}`}
                     >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span 
+                          className="w-2.5 h-2.5 rounded-full shrink-0 shadow-xs" 
+                          style={{ background: c.bg, border: `1.5px solid ${c.border}` }} 
+                        />
+                        <span className={`text-xs font-bold truncate ${
+                          isSelected
+                            ? isLight ? 'text-slate-900' : 'text-white'
+                            : isLight ? 'text-slate-700' : 'text-zinc-300'
+                        }`}>
+                          {c.category}
+                        </span>
+                      </div>
                       {isSelected && (
-                        <Check className="w-3.5 h-3.5 text-white stroke-[3] drop-shadow-xs" />
+                        <span className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md shrink-0 ${
+                          isLight ? 'bg-rose-50 text-[#96183C]' : 'bg-[#F89847]/20 text-[#FAF0AC]'
+                        }`}>
+                          Ativo
+                        </span>
                       )}
                     </button>
                   );
                 })}
-              </div>
-
-              {/* Card dinâmico com o significado / legenda da cor selecionada */}
-              <div 
-                className="mt-3 p-3 rounded-xl border flex items-start gap-3 transition-all animate-in fade-in duration-150"
-                style={{
-                  background: isLight 
-                    ? `${selectedColor.bg}12` 
-                    : `${selectedColor.bg}22`,
-                  borderColor: isLight 
-                    ? `${selectedColor.bg}40` 
-                    : `${selectedColor.border}50`,
-                }}
-              >
-                <div 
-                  className="w-8 h-8 rounded-lg shrink-0 flex items-center justify-center shadow-xs mt-0.5"
-                  style={{
-                    background: `linear-gradient(135deg, ${selectedColor.bg}, ${selectedColor.border})`,
-                    color: '#ffffff',
-                  }}
-                >
-                  <Palette className="w-4 h-4" />
-                </div>
-                
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span 
-                      className="text-xs font-extrabold"
-                      style={{ color: isLight ? selectedColor.bg : '#ffffff' }}
-                    >
-                      {selectedColor.category || selectedColor.label}
-                    </span>
-                    <span 
-                      className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md"
-                      style={{
-                        background: isLight ? '#ffffff' : 'rgba(0,0,0,0.35)',
-                        border: `1px solid ${selectedColor.border}66`,
-                        color: isLight ? '#475569' : 'rgba(255,255,255,0.75)',
-                      }}
-                    >
-                      {selectedColor.label}
-                    </span>
-                  </div>
-                  
-                  <p className={`text-xs mt-1 leading-relaxed ${
-                    isLight ? 'text-slate-600' : 'text-slate-300'
-                  }`}>
-                    {selectedColor.description || "Indica a categoria visual desta escala no calendário e grade."}
-                  </p>
-                </div>
               </div>
             </div>
 
