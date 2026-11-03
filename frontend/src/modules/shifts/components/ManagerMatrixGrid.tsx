@@ -632,6 +632,96 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   };
 
   // Ações do Gestor para Banco de Horas e Ajustes CLT (Aba Relatório de Presenças)
+  // Exportação especializada de Fechamento de Folha & Banco de Horas para o RH (Padrão Contábil / eSocial)
+  const handleExportBancoHorasCsv = (rowsToExport: BancoHorasItem[]) => {
+    const headers = [
+      'Colaborador',
+      'Matrícula / ID',
+      'Departamento',
+      'Cargo',
+      'Data',
+      'Escala Contratual',
+      'Batidas de Ponto',
+      'Tipo de Ocorrência',
+      'Variação (min)',
+      'Horas Extras (HH:MM)',
+      'Horas Extras Decimal (p/ Folha)',
+      'Atrasos a Debitar (min)',
+      'Atrasos Decimal (p/ Folha)',
+      'Status Homologação',
+      'Justificativa do Colaborador',
+      'Comprovante Anexado',
+      'Parecer / Observação do Gestor',
+      'Fundamentação Legal'
+    ];
+
+    const escapeCsv = (val: any) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+
+    const rows = rowsToExport.map(row => {
+      const isHe = row.type === 'hora_extra';
+      const isAtraso = row.type === 'atraso';
+      const isEsquecimento = row.type === 'esquecimento';
+
+      const heMinutes = isHe && row.status === 'Homologado' ? Math.max(0, row.diffMinutes) : 0;
+      const heH = Math.floor(heMinutes / 60);
+      const heM = heMinutes % 60;
+      const heHHMM = `${String(heH).padStart(2, '0')}:${String(heM).padStart(2, '0')}`;
+      const heDecimal = (heMinutes / 60).toFixed(2).replace('.', ',');
+
+      const atrasoMinutes = isAtraso && row.status === 'Ajustado' ? Math.abs(row.diffMinutes) : 0;
+      const atrasoDecimal = (atrasoMinutes / 60).toFixed(2).replace('.', ',');
+
+      let statusLabel = row.status;
+      if (row.status === 'Homologado') {
+        statusLabel = isHe ? 'Aprovado p/ Banco de Horas' : 'Atraso Abonado c/ Comprovante';
+      } else if (row.status === 'Ajustado') {
+        statusLabel = isHe ? 'Ajustado p/ Horário Contratual' : 'Débito Confirmado no Banco';
+      }
+
+      let fundLegal = 'CLT Art. 58';
+      if (isEsquecimento) fundLegal = 'CLT Art. 4º § 2º (Não cômputo sem trabalho efetivo)';
+      else if (isHe) fundLegal = 'CLT Art. 59 (Acordo de Banco de Horas / HE)';
+      else if (isAtraso) fundLegal = 'Portaria MTE 671 / CLT Art. 58';
+
+      return [
+        escapeCsv(row.employeeName),
+        escapeCsv(row.employeeId),
+        escapeCsv(row.employeeDept),
+        escapeCsv(row.employeeRole),
+        escapeCsv(formatDateToDDMMAAAA(row.date)),
+        escapeCsv(row.scheduledTime),
+        escapeCsv(row.punchTime),
+        escapeCsv(row.typeLabel),
+        row.diffMinutes,
+        escapeCsv(heHHMM),
+        escapeCsv(heDecimal),
+        atrasoMinutes,
+        escapeCsv(atrasoDecimal),
+        escapeCsv(statusLabel),
+        escapeCsv(row.reason),
+        escapeCsv(row.documentName || 'Sem anexo'),
+        escapeCsv(row.feedback || ''),
+        escapeCsv(fundLegal)
+      ].join(';');
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(';'), ...rows].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `fechamento-banco-horas-folha-${getTodayDateString()}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+
+    showPolishedToast({
+      id: 'csv-folha-export',
+      title: 'Planilha de Folha Exportada!',
+      description: 'Relatório formatado em horas decimais e rubricas de fechamento contábil baixado com sucesso.',
+      rimVariant: 'success',
+      duration: 4000,
+    });
+  };
+
   const handleHomologarAusencia = async (shiftId?: string, rowId?: string) => {
     if (shiftId) {
       const targetShift = shifts.find(s => s.id === shiftId);
@@ -2412,27 +2502,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           {row.status === 'Pendente' ? (
                             <div className="flex items-center justify-end gap-1.5">
                               {row.type === 'Falta Não Justificada' ? (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleApproveOccurrence(row.id)}
-                                    title="Abonar Falta: Dispensa o desconto e justifica a ausência (sem corte salarial nem DSR)"
-                                    className="approvals-light-approve px-2.5 py-1.5 rounded-xl font-bold text-xs text-white transition-all shadow-md flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
-                                    style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
-                                  >
-                                    <CheckCircle2 className="w-3.5 h-3.5" />
-                                    <span>Abonar</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRejectOccurrence(row.id)}
-                                    title="Descontar Falta: Confirma falta injustificada para desconto em folha (1 dia + perda de DSR)"
-                                    className="approvals-light-reject px-2 py-1.5 border border-rose-500/40 text-rose-300 hover:bg-rose-500/15 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
-                                  >
-                                    <XCircle className="w-3.5 h-3.5" />
-                                    <span>Descontar</span>
-                                  </button>
-                                </>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRejectOccurrence(row.id)}
+                                  title="Descontar Falta: Confirma falta injustificada para desconto em folha (1 dia de salário + perda de DSR semanal)"
+                                  className="approvals-light-reject px-3 py-1.5 border border-rose-500/40 text-rose-300 hover:bg-rose-500/15 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0 shadow-xs"
+                                >
+                                  <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                                  <span>Descontar</span>
+                                </button>
                               ) : (
                                 <>
                                   <button
@@ -2710,32 +2788,17 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     {selectedDetailOccurrence.status === 'Pendente' ? (
                       <div className="flex items-center gap-2">
                         {selectedDetailOccurrence.type === 'Falta Não Justificada' ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                handleRejectOccurrence(selectedDetailOccurrence.id);
-                                setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Recusado / Falta', actionText: 'Desconto em Folha' } : null);
-                              }}
-                              className="px-3.5 py-2 rounded-xl border border-rose-500/40 text-rose-300 hover:bg-rose-500/15 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
-                            >
-                              <XCircle className="w-4 h-4" />
-                              <span>Descontar Falta</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                handleApproveOccurrence(selectedDetailOccurrence.id);
-                                setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Aprovado', actionText: 'Abonada' } : null);
-                              }}
-                              className="px-4 py-2 rounded-xl font-bold text-xs text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:scale-105 active:scale-95"
-                              style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
-                            >
-                              <CheckCircle2 className="w-4 h-4" />
-                              <span>Abonar Falta</span>
-                            </button>
-                          </>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleRejectOccurrence(selectedDetailOccurrence.id);
+                              setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Recusado / Falta', actionText: 'Desconto em Folha' } : null);
+                            }}
+                            className="px-4 py-2 rounded-xl border border-rose-500/40 text-rose-300 hover:bg-rose-500/15 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                          >
+                            <XCircle className="w-4 h-4 text-rose-400" />
+                            <span>Descontar Falta</span>
+                          </button>
                         ) : (
                           <>
                             <button
@@ -3467,6 +3530,17 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       Ajustados (Normal)
                     </button>
                   </div>
+
+                  {/* Botão de Exportação para o RH (Padrão Folha / Holerite com Horas Decimais) */}
+                  <button
+                    type="button"
+                    onClick={() => handleExportBancoHorasCsv(filteredBancoHoras)}
+                    title="Exportar Fechamento de Folha & Banco de Horas em CSV formatado em horas decimais para a contabilidade/RH"
+                    className="px-3.5 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white shrink-0"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Exportar Fechamento p/ Folha (RH)</span>
+                  </button>
                 </div>
 
                 {/* Tabela Espaçosa e Organizada de Banco de Horas */}
