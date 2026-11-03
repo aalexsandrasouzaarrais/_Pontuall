@@ -12,7 +12,7 @@ import {
   Copy,
   Check,
 } from 'lucide-react';
-import { Shift, Employee, WorkplaceLocation } from '@/types';
+import { Shift, Employee, WorkplaceLocation, ShiftColor } from '@/types';
 import { formatDateBR, normalizeDateToISO } from '@/shared/utils/dateUtils';
 import { calculateShiftDurationHours } from '@/shared/utils/dateUtils';
 import { ORBIT_COLORS } from './OrbitShiftModal';
@@ -20,15 +20,24 @@ import { findWorkplaceByName } from '@/shared/services/workplaceService';
 
 interface ShiftDetailModalProps {
   shift: Partial<Shift> | null;
-  employees: Employee[];
+  employees?: Employee[];
   isOpen: boolean;
   onClose: () => void;
   isLightTheme?: boolean;
 }
 
+const FALLBACK_ORBIT_COLORS: ShiftColor[] = [
+  { label: "Coral / Vinho", bg: "#63172a", border: "#8f253f", text: "#ffffff", category: "Operacional / Presencial" },
+  { label: "Âmbar / Laranja", bg: "#543015", border: "#7c471f", text: "#ffffff", category: "Plantão / Sobreaviso" },
+  { label: "Esmeralda", bg: "#163a2a", border: "#235840", text: "#ffffff", category: "Home Office / Remoto" },
+  { label: "Azul Oceano", bg: "#18324a", border: "#284e72", text: "#ffffff", category: "Treinamento / Onboarding" },
+  { label: "Violeta / Roxo", bg: "#3a2250", border: "#563476", text: "#ffffff", category: "Reunião / Alinhamento" },
+  { label: "Rosa Magenta", bg: "#501d33", border: "#732c4b", text: "#ffffff", category: "Evento / Extraordinário" },
+];
+
 export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
   shift,
-  employees,
+  employees = [],
   isOpen,
   onClose,
   isLightTheme = false,
@@ -50,146 +59,256 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
     };
   }, [isOpen, onClose]);
 
-  if (!isOpen || !shift) return null;
+  const safeEmployees = useMemo(() => Array.isArray(employees) ? employees : [], [employees]);
+  const safeShift = shift || null;
 
-  const selectedEmployee = employees.find(e => e.id === shift.employeeId);
-  const duration = calculateShiftDurationHours(
-    shift.startTime || '08:00',
-    shift.endTime || '17:00',
-    shift.breakMinutes !== undefined ? shift.breakMinutes : 60
-  );
+  const selectedEmployee = useMemo(() => {
+    if (!safeShift || !safeShift.employeeId) return undefined;
+    return safeEmployees.find(e => e && e.id === safeShift.employeeId);
+  }, [safeEmployees, safeShift]);
+
+  const duration = useMemo(() => {
+    if (!safeShift) return 8;
+    try {
+      return calculateShiftDurationHours(
+        safeShift.startTime || '08:00',
+        safeShift.endTime || '17:00',
+        safeShift.breakMinutes !== undefined ? Number(safeShift.breakMinutes) : 60
+      );
+    } catch {
+      return 8;
+    }
+  }, [safeShift]);
 
   // Extrai com segurança qualquer metadata de local embutida em notes [WP:{...}]
-  const rawNotes = shift.notes || '';
-  let cleanNotes = rawNotes;
-  let parsedWorkplaceFromNotes: WorkplaceLocation | undefined = undefined;
+  const { cleanNotes, parsedWorkplaceFromNotes } = useMemo(() => {
+    const rawNotes = typeof safeShift?.notes === 'string' ? safeShift.notes : '';
+    let parsed: WorkplaceLocation | undefined = undefined;
+    let clean = rawNotes;
 
-  if (rawNotes.includes('[WP:')) {
-    const startIdx = rawNotes.indexOf('[WP:');
-    const endIdx = rawNotes.indexOf(']', startIdx);
-    if (endIdx > startIdx + 4) {
-      try {
-        const jsonStr = rawNotes.substring(startIdx + 4, endIdx);
-        parsedWorkplaceFromNotes = JSON.parse(jsonStr);
-      } catch {}
-      cleanNotes = (rawNotes.substring(0, startIdx) + ' ' + rawNotes.substring(endIdx + 1)).trim();
-    }
-  }
-
-  const assignedWorkplace = shift.workplaceLocation || parsedWorkplaceFromNotes || findWorkplaceByName(shift.workplace || selectedEmployee?.workplace);
-  const isRemote = assignedWorkplace?.isRemote || 
-    shift.workplace?.toLowerCase().includes('remoto') || 
-    shift.workplace?.toLowerCase().includes('home office') ||
-    selectedEmployee?.workplace?.toLowerCase().includes('remoto') ||
-    selectedEmployee?.workplace?.toLowerCase().includes('home office');
-
-  const workplaceName = assignedWorkplace?.name || shift.workplace || selectedEmployee?.workplace || 'Presencial - Sede / Posto Operacional';
-  const workplaceAddress = assignedWorkplace?.address || (isRemote ? 'Atuação 100% Remota / Home Office' : 'Comparecimento presencial com registro de ponto no local.');
-
-  const workplaceMapsUrl = assignedWorkplace?.latitude && assignedWorkplace?.longitude
-    ? `https://www.google.com/maps/dir/?api=1&destination=${assignedWorkplace.latitude},${assignedWorkplace.longitude}`
-    : assignedWorkplace?.address
-    ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(assignedWorkplace.address)}`
-    : null;
-
-  const formattedDate = useMemo(() => {
-    if (!shift?.date) return { fullDate: '—', weekDay: '' };
-    try {
-      const iso = normalizeDateToISO(shift.date);
-      const [y, m, d] = iso.split('-').map(Number);
-      const dateObj = new Date(y, m - 1, d);
-      const weekDay = dateObj.toLocaleDateString('pt-BR', { weekday: 'long' });
-      const fullDate = formatDateBR(shift.date);
-      return {
-        fullDate,
-        weekDay: weekDay ? weekDay.charAt(0).toUpperCase() + weekDay.slice(1) : '',
-      };
-    } catch {
-      return { fullDate: formatDateBR(shift.date) || shift.date, weekDay: '' };
-    }
-  }, [shift?.date]);
-
-  const breakText = useMemo(() => {
-    if (!shift.breakMinutes || shift.breakMinutes <= 0) return 'Sem intervalo';
-    if (shift.breakMinutes >= 60) {
-      const hours = (shift.breakMinutes / 60).toFixed(shift.breakMinutes % 60 === 0 ? 0 : 1);
-      return `${hours}h de intervalo`;
-    }
-    return `${shift.breakMinutes}min de intervalo`;
-  }, [shift.breakMinutes]);
-
-  const initialColor = useMemo(() => {
-    if (shift?.color?.bg) {
-      const match = ORBIT_COLORS.find(
-        (c) =>
-          c.bg.toLowerCase() === shift.color?.bg?.toLowerCase() ||
-          c.label.toLowerCase() === shift.color?.label?.toLowerCase()
-      );
-      if (match) return match;
-      if (shift.color.category || shift.color.description) {
-        return shift.color as typeof ORBIT_COLORS[0];
+    if (rawNotes.includes('[WP:')) {
+      const startIdx = rawNotes.indexOf('[WP:');
+      const endIdx = rawNotes.indexOf(']', startIdx);
+      if (endIdx > startIdx + 4) {
+        try {
+          const jsonStr = rawNotes.substring(startIdx + 4, endIdx);
+          parsed = JSON.parse(jsonStr);
+          clean = (rawNotes.substring(0, startIdx) + ' ' + rawNotes.substring(endIdx + 1)).trim();
+        } catch {}
       }
     }
-    if (shift?.type === 'meeting') return ORBIT_COLORS[4];
-    if (shift?.type === 'on_call') return ORBIT_COLORS[1];
-    if (shift?.type === 'training') return ORBIT_COLORS[3];
-    return ORBIT_COLORS[0];
-  }, [shift]);
 
-  const isMeeting = shift.type === 'meeting' || Boolean(shift.meetingLink);
+    return { cleanNotes: clean, parsedWorkplaceFromNotes: parsed };
+  }, [safeShift?.notes]);
+
+  const workplaceStr = useMemo(() => {
+    if (!safeShift) return '';
+    if (typeof safeShift.workplace === 'string') return safeShift.workplace;
+    if (typeof safeShift.workplace === 'object' && safeShift.workplace !== null) {
+      return (safeShift.workplace as { name?: string }).name || '';
+    }
+    return '';
+  }, [safeShift]);
+
+  const employeeWorkplaceStr = useMemo(() => {
+    if (!selectedEmployee) return '';
+    if (typeof selectedEmployee.workplace === 'string') return selectedEmployee.workplace;
+    if (typeof selectedEmployee.workplace === 'object' && selectedEmployee.workplace !== null) {
+      return (selectedEmployee.workplace as { name?: string }).name || '';
+    }
+    return '';
+  }, [selectedEmployee]);
+
+  const assignedWorkplace = useMemo(() => {
+    if (!safeShift) return undefined;
+    return safeShift.workplaceLocation || parsedWorkplaceFromNotes || findWorkplaceByName(workplaceStr || employeeWorkplaceStr);
+  }, [safeShift, parsedWorkplaceFromNotes, workplaceStr, employeeWorkplaceStr]);
+
+  const isRemote = useMemo(() => {
+    const wLower = workplaceStr.toLowerCase();
+    const eLower = employeeWorkplaceStr.toLowerCase();
+    return Boolean(
+      assignedWorkplace?.isRemote ||
+      wLower.includes('remoto') ||
+      wLower.includes('home office') ||
+      eLower.includes('remoto') ||
+      eLower.includes('home office')
+    );
+  }, [assignedWorkplace, workplaceStr, employeeWorkplaceStr]);
+
+  const workplaceName = assignedWorkplace?.name || workplaceStr || employeeWorkplaceStr || 'Presencial - Sede / Posto Operacional';
+  const workplaceAddress = assignedWorkplace?.address || (isRemote ? 'Atuação 100% Remota / Home Office' : 'Comparecimento presencial com registro de ponto no local.');
+
+  const workplaceMapsUrl = useMemo(() => {
+    if (assignedWorkplace?.latitude && assignedWorkplace?.longitude) {
+      return `https://www.google.com/maps/dir/?api=1&destination=${assignedWorkplace.latitude},${assignedWorkplace.longitude}`;
+    }
+    if (assignedWorkplace?.address) {
+      return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(String(assignedWorkplace.address))}`;
+    }
+    return null;
+  }, [assignedWorkplace]);
+
+  const formattedDate = useMemo(() => {
+    if (!safeShift?.date) return { fullDate: '—', weekDay: '' };
+    try {
+      const iso = normalizeDateToISO(safeShift.date);
+      if (iso && iso.includes('-')) {
+        const [y, m, d] = iso.split('-').map(Number);
+        const dateObj = new Date(y, m - 1, d);
+        if (!isNaN(dateObj.getTime())) {
+          const weekDay = dateObj.toLocaleDateString('pt-BR', { weekday: 'long' });
+          const fullDate = formatDateBR(safeShift.date) || iso;
+          return {
+            fullDate,
+            weekDay: weekDay ? weekDay.charAt(0).toUpperCase() + weekDay.slice(1) : '',
+          };
+        }
+      }
+      return { fullDate: formatDateBR(safeShift.date) || String(safeShift.date), weekDay: '' };
+    } catch {
+      return { fullDate: formatDateBR(safeShift.date) || String(safeShift.date), weekDay: '' };
+    }
+  }, [safeShift?.date]);
+
+  const breakText = useMemo(() => {
+    if (!safeShift) return 'Sem intervalo';
+    try {
+      const minutes = Number(safeShift.breakMinutes);
+      if (isNaN(minutes) || minutes <= 0) return 'Sem intervalo';
+      if (minutes >= 60) {
+        const hours = (minutes / 60).toFixed(minutes % 60 === 0 ? 0 : 1);
+        return `${hours}h de intervalo`;
+      }
+      return `${minutes}min de intervalo`;
+    } catch {
+      return 'Sem intervalo';
+    }
+  }, [safeShift]);
+
+  const colorsList = useMemo(() => {
+    return (Array.isArray(ORBIT_COLORS) && ORBIT_COLORS.length > 0) ? ORBIT_COLORS : FALLBACK_ORBIT_COLORS;
+  }, []);
+
+  const initialColor = useMemo(() => {
+    if (!safeShift) return colorsList[0];
+    try {
+      const shiftColor = safeShift.color;
+      if (typeof shiftColor === 'object' && shiftColor !== null) {
+        const targetBg = typeof shiftColor.bg === 'string' ? shiftColor.bg.toLowerCase() : '';
+        const targetLabel = typeof shiftColor.label === 'string' ? shiftColor.label.toLowerCase() : '';
+
+        if (targetBg || targetLabel) {
+          const match = colorsList.find(
+            (c) =>
+              (targetBg && typeof c.bg === 'string' && c.bg.toLowerCase() === targetBg) ||
+              (targetLabel && typeof c.label === 'string' && c.label.toLowerCase() === targetLabel)
+          );
+          if (match) return match;
+        }
+
+        if (shiftColor.category || shiftColor.description) {
+          return shiftColor as ShiftColor;
+        }
+      }
+      if (safeShift.type === 'meeting') return colorsList[4] || colorsList[0];
+      if (safeShift.type === 'on_call') return colorsList[1] || colorsList[0];
+      if (safeShift.type === 'training') return colorsList[3] || colorsList[0];
+    } catch (e) {
+      console.warn('Erro ao resolver initialColor:', e);
+    }
+    return colorsList[0];
+  }, [safeShift, colorsList]);
+
+  const isMeeting = Boolean(safeShift?.type === 'meeting' || safeShift?.meetingLink);
 
   const handleCopyLink = () => {
-    if (!shift.meetingLink) return;
-    navigator.clipboard.writeText(shift.meetingLink).then(() => {
+    if (!safeShift?.meetingLink) return;
+    navigator.clipboard.writeText(safeShift.meetingLink).then(() => {
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
     });
   };
 
   // Categoria de escala simplificada (exibida de forma sutil no cabeçalho)
-  const getCategoryConfig = () => {
-    const rawType = (shift.type || '').toLowerCase();
-    const rawCategory = (shift.color?.category || initialColor?.category || '').toLowerCase();
+  const categoryConfig = useMemo(() => {
+    if (!safeShift) {
+      return {
+        label: 'Operacional',
+        badgeBg: isLightTheme ? 'bg-rose-100 text-rose-800 border-rose-200' : 'bg-rose-950/50 text-rose-300 border-rose-500/30',
+      };
+    }
+    try {
+      const rawType = typeof safeShift.type === 'string' ? safeShift.type.toLowerCase() : '';
+      const shiftCategory = typeof safeShift?.color?.category === 'string' ? safeShift.color.category.toLowerCase() : '';
+      const initialCat = typeof initialColor?.category === 'string' ? initialColor.category.toLowerCase() : '';
+      const rawCategory = shiftCategory || initialCat;
 
-    if (rawType.includes('meeting') || rawType.includes('reuniao') || rawCategory.includes('reunião') || isMeeting) {
-      return {
-        label: initialColor?.category ? initialColor.category.split('/')[0].trim() : 'Reunião',
-        badgeBg: isLightTheme ? 'bg-purple-100 text-purple-800 border-purple-200' : 'bg-purple-950/50 text-purple-300 border-purple-500/30',
-      };
-    }
-    if (rawType.includes('plantao') || rawType.includes('on_call') || rawCategory.includes('plantão')) {
-      return {
-        label: initialColor?.category ? initialColor.category.split('/')[0].trim() : 'Plantão',
-        badgeBg: isLightTheme ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-amber-950/50 text-amber-300 border-amber-500/30',
-      };
-    }
-    if (rawType.includes('training') || rawType.includes('treinamento') || rawCategory.includes('treinamento')) {
-      return {
-        label: initialColor?.category ? initialColor.category.split('/')[0].trim() : 'Treinamento',
-        badgeBg: isLightTheme ? 'bg-cyan-100 text-cyan-800 border-cyan-200' : 'bg-cyan-950/50 text-cyan-300 border-cyan-500/30',
-      };
-    }
-    if (isRemote || rawCategory.includes('home office') || rawCategory.includes('remoto')) {
-      return {
-        label: initialColor?.category ? initialColor.category.split('/')[0].trim() : 'Home Office',
-        badgeBg: isLightTheme ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-emerald-950/50 text-emerald-300 border-emerald-500/30',
-      };
-    }
-    if (rawCategory.includes('evento') || rawCategory.includes('extraordinário')) {
-      return {
-        label: initialColor?.category ? initialColor.category.split('/')[0].trim() : 'Evento',
-        badgeBg: isLightTheme ? 'bg-pink-100 text-pink-800 border-pink-200' : 'bg-pink-950/50 text-pink-300 border-pink-500/30',
-      };
-    }
-    return {
-      label: initialColor?.category ? initialColor.category.split('/')[0].trim() : 'Operacional',
-      badgeBg: isLightTheme ? 'bg-rose-100 text-rose-800 border-rose-200' : 'bg-rose-950/50 text-rose-300 border-rose-500/30',
-    };
-  };
+      const baseLabel = typeof initialColor?.category === 'string' && initialColor.category.trim().length > 0
+        ? initialColor.category.split('/')[0].trim()
+        : null;
 
-  const categoryConfig = getCategoryConfig();
-  const departmentTag = selectedEmployee?.department || (shift as { department?: string })?.department || 'Geral';
-  const projectTag = shift.projectTag;
+      if (rawType.includes('meeting') || rawType.includes('reuniao') || rawCategory.includes('reunião') || isMeeting) {
+        return {
+          label: baseLabel || 'Reunião',
+          badgeBg: isLightTheme ? 'bg-purple-100 text-purple-800 border-purple-200' : 'bg-purple-950/50 text-purple-300 border-purple-500/30',
+        };
+      }
+      if (rawType.includes('plantao') || rawType.includes('on_call') || rawCategory.includes('plantão')) {
+        return {
+          label: baseLabel || 'Plantão',
+          badgeBg: isLightTheme ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-amber-950/50 text-amber-300 border-amber-500/30',
+        };
+      }
+      if (rawType.includes('training') || rawType.includes('treinamento') || rawCategory.includes('treinamento')) {
+        return {
+          label: baseLabel || 'Treinamento',
+          badgeBg: isLightTheme ? 'bg-cyan-100 text-cyan-800 border-cyan-200' : 'bg-cyan-950/50 text-cyan-300 border-cyan-500/30',
+        };
+      }
+      if (isRemote || rawCategory.includes('home office') || rawCategory.includes('remoto')) {
+        return {
+          label: baseLabel || 'Home Office',
+          badgeBg: isLightTheme ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-emerald-950/50 text-emerald-300 border-emerald-500/30',
+        };
+      }
+      if (rawCategory.includes('evento') || rawCategory.includes('extraordinário')) {
+        return {
+          label: baseLabel || 'Evento',
+          badgeBg: isLightTheme ? 'bg-pink-100 text-pink-800 border-pink-200' : 'bg-pink-950/50 text-pink-300 border-pink-500/30',
+        };
+      }
+      return {
+        label: baseLabel || 'Operacional',
+        badgeBg: isLightTheme ? 'bg-rose-100 text-rose-800 border-rose-200' : 'bg-rose-950/50 text-rose-300 border-rose-500/30',
+      };
+    } catch (e) {
+      console.warn('Erro ao calcular categoryConfig:', e);
+      return {
+        label: 'Operacional',
+        badgeBg: isLightTheme ? 'bg-rose-100 text-rose-800 border-rose-200' : 'bg-rose-950/50 text-rose-300 border-rose-500/30',
+      };
+    }
+  }, [safeShift, initialColor, isMeeting, isRemote, isLightTheme]);
+
+  const departmentTag = useMemo(() => {
+    if (selectedEmployee && typeof selectedEmployee.department === 'string' && selectedEmployee.department) {
+      return selectedEmployee.department;
+    }
+    if (safeShift && typeof (safeShift as { department?: unknown }).department === 'string' && (safeShift as { department?: string }).department) {
+      return (safeShift as { department?: string }).department;
+    }
+    return 'Geral';
+  }, [selectedEmployee, safeShift]);
+
+  const projectTag = safeShift?.projectTag;
+
+  const employeeName = typeof selectedEmployee?.name === 'string' ? selectedEmployee.name : 'Colaborador';
+  const employeeInitials = employeeName.trim().length > 0 ? employeeName.slice(0, 2).toUpperCase() : 'CL';
+  const employeeRole = typeof selectedEmployee?.role === 'string' ? selectedEmployee.role : 'Colaborador';
+  const employeeDept = typeof selectedEmployee?.department === 'string' ? selectedEmployee.department : 'Operacional';
+
+  if (!isOpen || !safeShift) return null;
 
   return (
     <div
@@ -266,7 +385,7 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                   isLightTheme ? 'text-slate-900' : 'text-white'
                 }`}
               >
-                {shift.title || 'Turno de Trabalho'}
+                {safeShift.title || 'Turno de Trabalho'}
               </h2>
             </div>
           </div>
@@ -327,9 +446,9 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                     Horário
                   </span>
                   <span className={`text-xs font-bold font-mono ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
-                    {shift.startTime || '08:00'} às {shift.endTime || '17:00'}
+                    {safeShift.startTime || '08:00'} às {safeShift.endTime || '17:00'}
                     <span className={`ml-1.5 font-normal text-[11px] ${isLightTheme ? 'text-slate-500' : 'text-white/60'}`}>
-                      ({duration}h{shift.breakMinutes && shift.breakMinutes > 0 ? ` • ${breakText}` : ''})
+                      ({duration}h{safeShift.breakMinutes && Number(safeShift.breakMinutes) > 0 ? ` • ${breakText}` : ''})
                     </span>
                   </span>
                 </div>
@@ -339,15 +458,15 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
             <div className="shrink-0">
               <span
                 className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-full border ${
-                  shift.attendanceStatus === 'present'
+                  safeShift.attendanceStatus === 'present'
                     ? isLightTheme
                       ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
                       : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                    : shift.attendanceStatus === 'absent'
+                    : safeShift.attendanceStatus === 'absent'
                     ? isLightTheme
                       ? 'bg-rose-50 text-rose-700 border-rose-200'
                       : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
-                    : shift.attendanceStatus === 'justified'
+                    : safeShift.attendanceStatus === 'justified'
                     ? isLightTheme
                       ? 'bg-amber-50 text-amber-800 border-amber-300'
                       : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
@@ -356,11 +475,11 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                     : 'bg-[#96183c]/30 text-[#f89642] border-[#f89642]/30'
                 }`}
               >
-                {shift.attendanceStatus === 'present'
+                {safeShift.attendanceStatus === 'present'
                   ? 'PRESENTE'
-                  : shift.attendanceStatus === 'absent'
+                  : safeShift.attendanceStatus === 'absent'
                   ? 'FALTA'
-                  : shift.attendanceStatus === 'justified'
+                  : safeShift.attendanceStatus === 'justified'
                   ? 'JUSTIFICADO'
                   : 'EM ABERTO / AGENDADO'}
               </span>
@@ -368,7 +487,7 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
           </div>
 
           {/* Meeting / External Link Section (se reunião online) */}
-          {isMeeting && shift.meetingLink && (
+          {isMeeting && safeShift.meetingLink && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -399,13 +518,13 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                       Sala Virtual
                     </span>
                     <a
-                      href={shift.meetingLink}
+                      href={safeShift.meetingLink}
                       target="_blank"
                       rel="noreferrer"
                       className="text-xs font-medium text-emerald-600 dark:text-emerald-300 hover:underline truncate block"
-                      title={shift.meetingLink}
+                      title={safeShift.meetingLink}
                     >
-                      {shift.meetingLink}
+                      {safeShift.meetingLink}
                     </a>
                   </div>
                 </div>
@@ -428,7 +547,7 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                   </button>
 
                   <a
-                    href={shift.meetingLink}
+                    href={safeShift.meetingLink}
                     target="_blank"
                     rel="noreferrer"
                     className="px-4 py-1.5 bg-gradient-to-r from-[#96183c] to-[#b32047] hover:opacity-95 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
@@ -442,7 +561,7 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
           )}
 
           {/* Local de Atuação (presencial ou remoto quando não é reunião online) */}
-          {(!isMeeting || !shift.meetingLink) && (
+          {(!isMeeting || !safeShift.meetingLink) && (
             <div
               className={`p-3.5 rounded-2xl border flex items-start justify-between gap-3 ${
                 isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'
@@ -489,9 +608,9 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
           )}
 
           {/* Registros de Ponto Real via GPS (Entrada e Saída) */}
-          {(shift.checkInTime || shift.checkOutTime) && (
+          {(safeShift.checkInTime || safeShift.checkOutTime) && (
             <div className="space-y-2">
-              {shift.checkInTime && (
+              {safeShift.checkInTime && (
                 <div className={`p-3 rounded-2xl border flex items-start gap-2.5 ${
                   isLightTheme
                     ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
@@ -501,20 +620,20 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <span className={`font-bold text-xs ${isLightTheme ? 'text-emerald-900' : 'text-emerald-300'}`}>
-                        Entrada Registrada às {shift.checkInTime}
+                        Entrada Registrada às {safeShift.checkInTime}
                       </span>
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
-                        {shift.checkInLocation?.reportedWorkplace || 'GPS Validado'}
+                        {safeShift.checkInLocation?.reportedWorkplace || 'GPS Validado'}
                       </span>
                     </div>
                     <p className={`text-[11px] mt-0.5 truncate ${isLightTheme ? 'text-emerald-700' : 'text-emerald-300/80'}`}>
-                      {shift.checkInLocation?.address || workplaceAddress}
+                      {safeShift.checkInLocation?.address || workplaceAddress}
                     </p>
                   </div>
                 </div>
               )}
 
-              {shift.checkOutTime && (
+              {safeShift.checkOutTime && (
                 <div className={`p-3 rounded-2xl border flex items-start gap-2.5 ${
                   isLightTheme
                     ? 'bg-rose-50 border-rose-200 text-rose-800'
@@ -524,14 +643,14 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <span className={`font-bold text-xs ${isLightTheme ? 'text-rose-900' : 'text-rose-300'}`}>
-                        Saída Registrada às {shift.checkOutTime}
+                        Saída Registrada às {safeShift.checkOutTime}
                       </span>
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30">
                         Ponto Fechado
                       </span>
                     </div>
                     <p className={`text-[11px] mt-0.5 truncate ${isLightTheme ? 'text-rose-700' : 'text-rose-300/80'}`}>
-                      {shift.checkOutLocation?.address || 'Saída confirmada pelo colaborador'}
+                      {safeShift.checkOutLocation?.address || 'Saída confirmada pelo colaborador'}
                     </p>
                   </div>
                 </div>
@@ -597,7 +716,7 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                     {selectedEmployee.avatar ? (
                       <img
                         src={selectedEmployee.avatar}
-                        alt={selectedEmployee.name}
+                        alt={employeeName}
                         className="w-8 h-8 rounded-full object-cover ring-1 ring-white/20"
                       />
                     ) : (
@@ -606,17 +725,17 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                           isLightTheme ? 'bg-[#96183c] text-white' : 'bg-[#f89642] text-slate-950'
                         }`}
                       >
-                        {selectedEmployee.name ? selectedEmployee.name.slice(0, 2) : 'CL'}
+                        {employeeInitials}
                       </div>
                     )}
                   </div>
 
                   <div className="min-w-0 flex-1">
                     <p className={`text-xs font-bold truncate ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
-                      {selectedEmployee.name}
+                      {employeeName}
                     </p>
                     <p className={`text-[11px] truncate ${isLightTheme ? 'text-slate-500' : 'text-zinc-400'}`}>
-                      {selectedEmployee.role || 'Colaborador'} • {selectedEmployee.department || 'Operacional'}
+                      {employeeRole} • {employeeDept}
                     </p>
                   </div>
                 </div>
