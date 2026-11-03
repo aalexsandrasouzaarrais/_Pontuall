@@ -819,18 +819,23 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           late: 'Atrasado',
           pending: 'Pendente'
         };
-        const distInText = s.checkInLocation?.distanceMeters !== undefined 
-          ? (s.checkInLocation.distanceMeters >= 1000 
-              ? `${(s.checkInLocation.distanceMeters / 1000).toFixed(1)} km` 
-              : `${Math.round(s.checkInLocation.distanceMeters)} m`)
-          : '';
-        const distOutText = s.checkOutLocation?.distanceMeters !== undefined 
-          ? (s.checkOutLocation.distanceMeters >= 1000 
-              ? `${(s.checkOutLocation.distanceMeters / 1000).toFixed(1)} km` 
-              : `${Math.round(s.checkOutLocation.distanceMeters)} m`)
-          : '';
-
         const hasRealExit = Boolean(s.checkOutTime) && s.checkOutTime !== s.checkInTime;
+
+        // GPS fora do posto detectado de forma discreta
+        const isCheckInOutside = Boolean(s.checkInLocation && !s.checkInLocation.gpsValidated);
+        const isCheckOutOutside = Boolean(s.checkOutLocation && !s.checkOutLocation.gpsValidated && hasRealExit);
+        const isGpsOutside = isCheckInOutside || isCheckOutOutside;
+
+        let gpsDist = '';
+        if (isCheckInOutside && s.checkInLocation?.distanceMeters !== undefined) {
+          gpsDist = s.checkInLocation.distanceMeters >= 1000 
+            ? `${(s.checkInLocation.distanceMeters / 1000).toFixed(1)} km` 
+            : `${Math.round(s.checkInLocation.distanceMeters)} m`;
+        } else if (isCheckOutOutside && s.checkOutLocation?.distanceMeters !== undefined) {
+          gpsDist = s.checkOutLocation.distanceMeters >= 1000 
+            ? `${(s.checkOutLocation.distanceMeters / 1000).toFixed(1)} km` 
+            : `${Math.round(s.checkOutLocation.distanceMeters)} m`;
+        }
 
         let calculatedHours = '—';
         if (s.checkInTime && hasRealExit) {
@@ -847,22 +852,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           calculatedHours = '0h';
         }
 
-        let obsText = s.notes || '';
-        if (s.checkInLocation?.address) {
-          const inStatus = s.checkInLocation.reportedWorkplace
-            ? `Posto: ${s.checkInLocation.reportedWorkplace}`
-            : s.checkInLocation.gpsValidated
-            ? `Entrada no Posto ${distInText ? `(${distInText})` : ''}`
-            : `Entrada Fora do Posto (${distInText})`;
-          obsText = obsText ? `${obsText} | ${inStatus}` : inStatus;
-        }
-        if (s.checkOutLocation?.address && hasRealExit) {
-          const outStatus = s.checkOutLocation.gpsValidated
-            ? `Saída no Posto ${distOutText ? `(${distOutText})` : ''}`
-            : `Saída Fora do Posto (${distOutText})`;
-          obsText = obsText ? `${obsText} | ${outStatus}` : outStatus;
-        }
-
         const isPast24h = isShiftPast24hWithoutPunch(s);
         const just = (justifications || []).find(j => 
           (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)
@@ -877,7 +866,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           } else if (just.status === 'rejected') {
             finalReportStatus = 'Ausente';
           } else {
-            // Justificativa pendente
             finalReportStatus = (isPast24h || s.attendanceStatus === 'absent') ? 'Ausente' : 'Pendente';
             isDecisionPending = true;
           }
@@ -890,15 +878,36 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           isDecisionPending = true;
         }
 
-        if (finalReportStatus === 'Justificado') {
-          obsText = obsText ? `${obsText} | Ausência justificada e homologada (Abonada)` : 'Ausência justificada e homologada pelo gestor (Abonada)';
-        } else if (finalReportStatus === 'Ausente') {
+        // Observação concisa e limpa (sem acúmulo de textos concatenados)
+        let cleanObs = '';
+        if (finalReportStatus === 'Ausente') {
           if (just && just.status === 'pending') {
-            obsText = obsText ? `${obsText} | Justificativa do colaborador pendente de homologação` : `Justificativa pendente: "${just.reason || 'Em análise'}"`;
+            cleanObs = `Justificativa: "${just.reason || 'Em análise'}"`;
           } else {
-            obsText = obsText ? `${obsText} | Não bateu ponto após 24h (Pendente de justificativa)` : 'Não bateu ponto após 24h da escala (Pendente de justificativa)';
+            cleanObs = 'Não bateu ponto';
+          }
+        } else if (finalReportStatus === 'Justificado') {
+          cleanObs = 'Ausência abonada';
+        } else if (s.notes) {
+          if (s.notes.includes('AJUSTE GESTOR')) {
+            cleanObs = 'Ajustado p/ horário normal';
+          } else if (s.notes.includes('HOMOLOGADO GESTOR')) {
+            cleanObs = 'Homologado no banco';
+          } else if (s.notes.includes('Esquecimento')) {
+            cleanObs = 'Esquecimento de saída';
+          } else {
+            cleanObs = s.notes.replace(/\[.*?\]/g, '').trim() || s.notes;
           }
         }
+
+        const obsParts: string[] = [];
+        if (isGpsOutside) {
+          obsParts.push(`Fora do Posto ${gpsDist ? `(${gpsDist})` : ''}`);
+        }
+        if (cleanObs) {
+          obsParts.push(cleanObs);
+        }
+        const obsFull = obsParts.join(' • ') || '—';
 
         return {
           date: s.date,
@@ -915,7 +924,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           type: s.type === 'regular' ? 'Regular' : 'Extra',
           checkInLocation: s.checkInLocation,
           checkOutLocation: s.checkOutLocation,
-          obs: obsText || '—'
+          isGpsOutside,
+          gpsDist,
+          cleanObs: cleanObs || '—',
+          obsFull,
+          obs: obsFull
         };
       });
     }
@@ -3024,7 +3037,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       <th className="p-3.5 font-bold tracking-wider">DEPARTAMENTO</th>
                       <th className="p-3.5 font-bold tracking-wider">HORÁRIO</th>
                       <th className="p-3.5 font-bold tracking-wider">CARGA</th>
-                      <th className="p-3.5 font-bold tracking-wider">STATUS PRESENÇA</th>
+                      <th className="p-3.5 font-bold tracking-wider text-center">STATUS</th>
                       <th className="p-3.5 font-bold tracking-wider">TIPO</th>
                       <th className="p-3.5 font-bold tracking-wider">OBSERVAÇÕES</th>
                     </tr>
@@ -3100,70 +3113,36 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         <td className={`p-3.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{row.dept}</td>
                         <td className={`p-3.5 font-mono text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{row.time}</td>
                         <td className={`p-3.5 font-mono font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{row.hours}</td>
-                        <td className="p-3.5">
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1.5" style={
-                            row.status === 'Presente'
-                              ? (row.checkInLocation && !row.checkInLocation.gpsValidated
-                                  ? { background: 'rgba(249, 115, 22, 0.18)', color: '#fb923c', border: '1px solid rgba(249, 115, 22, 0.40)' }
-                                  : { background: 'rgba(73, 212, 123, 0.15)', color: '#49d982', border: '1px solid rgba(73, 212, 123, 0.30)' })
-                              : row.status === 'Atrasado'
-                              ? { background: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.40)' }
-                              : row.status === 'Ausente'
-                              ? { background: 'rgba(239, 68, 68, 0.18)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.40)' }
-                              : row.status === 'Justificado'
-                              ? { background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.30)' }
-                              : { background: 'rgba(148, 163, 184, 0.12)', color: '#94a3b8', border: '1px solid rgba(148, 163, 184, 0.30)' }
-                          }>
+                        <td className="p-3.5 text-center">
+                          <div className="flex items-center justify-center">
                             <span 
-                              className="w-1.5 h-1.5 rounded-full" 
+                              className="w-3 h-3 rounded-full inline-block cursor-help transition-transform hover:scale-125" 
                               style={{ 
                                 background: row.status === 'Presente' 
-                                  ? (row.checkInLocation && !row.checkInLocation.gpsValidated ? '#f97316' : '#49d982')
+                                  ? (row.isGpsOutside ? '#f97316' : '#49d982')
                                   : row.status === 'Atrasado' ? '#fbbf24' : row.status === 'Ausente' ? '#ef4444' : row.status === 'Justificado' ? '#38bdf8' : '#94a3b8',
-                                boxShadow: `0 0 6px ${row.status === 'Presente' ? (row.checkInLocation && !row.checkInLocation.gpsValidated ? '#f97316' : '#49d982') : row.status === 'Atrasado' ? '#fbbf24' : row.status === 'Ausente' ? '#ef4444' : row.status === 'Justificado' ? '#38bdf8' : '#94a3b8'}`
+                                boxShadow: `0 0 8px ${row.status === 'Presente' ? (row.isGpsOutside ? '#f97316' : '#49d982') : row.status === 'Atrasado' ? '#fbbf24' : row.status === 'Ausente' ? '#ef4444' : row.status === 'Justificado' ? '#38bdf8' : '#94a3b8'}`
                               }} 
+                              title={
+                                row.status === 'Presente' && row.isGpsOutside
+                                  ? `Presente (Fora do Posto${row.gpsDist ? ` • ${row.gpsDist}` : ''})`
+                                  : row.status === 'Presente'
+                                  ? 'Presente (No Posto)'
+                                  : row.status
+                              }
                             />
-                            {row.status === 'Presente' && row.checkInLocation && !row.checkInLocation.gpsValidated
-                              ? 'Presente (Fora do Raio)'
-                              : row.status === 'Presente' && row.checkInLocation?.gpsValidated
-                              ? 'Presente (GPS OK)'
-                              : row.status}
-                          </span>
+                          </div>
                         </td>
                         <td className={`p-3.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{row.type}</td>
-                        <td className={`p-3.5 text-[11px] max-w-[340px] ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {row.obs.split(' | ').map((part, pIdx) => {
-                              const isGpsFora = part.includes('Fora do Posto') || part.includes('Entrada Fora') || part.includes('Saída Fora') || part.includes('Fora do Raio');
-                              const isGpsOk = part.includes('no Posto') || part.includes('Entrada OK') || part.includes('Saída OK') || part.includes('GPS OK');
-                              const isEsquecimento = part.includes('Esquecimento');
-                              
-                              if (isGpsFora) {
-                                return (
-                                  <span key={pIdx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25">
-                                    <MapPin className="w-2.5 h-2.5 text-amber-500 shrink-0" />
-                                    <span>{part.replace(/^[🟢🟡]\s*/, '')}</span>
-                                  </span>
-                                );
-                              }
-                              if (isGpsOk) {
-                                return (
-                                  <span key={pIdx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
-                                    <MapPin className="w-2.5 h-2.5 text-emerald-500 shrink-0" />
-                                    <span>{part.replace(/^[🟢🟡]\s*/, '')}</span>
-                                  </span>
-                                );
-                              }
-                              if (isEsquecimento) {
-                                return (
-                                  <span key={pIdx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25">
-                                    <Clock className="w-2.5 h-2.5 text-sky-500 shrink-0" />
-                                    <span>{part}</span>
-                                  </span>
-                                );
-                              }
-                              return <span key={pIdx} className="text-slate-400 italic text-[11px] truncate">{part}</span>;
-                            })}
+                        <td className={`p-3.5 text-[11px] max-w-[280px] ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                          <div className="flex items-center gap-2 truncate" title={row.obsFull || row.cleanObs}>
+                            {row.isGpsOutside && (
+                              <span className="inline-flex items-center gap-1 text-[10px] text-amber-500 font-medium shrink-0 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                                <MapPin className="w-2.5 h-2.5 text-amber-500 shrink-0" />
+                                <span>Fora do posto {row.gpsDist ? `(${row.gpsDist})` : ''}</span>
+                              </span>
+                            )}
+                            <span className="truncate text-slate-400 text-[11px]">{row.cleanObs}</span>
                           </div>
                         </td>
                       </tr>
