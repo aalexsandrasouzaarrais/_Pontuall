@@ -10,6 +10,8 @@ interface JustificationModalProps {
   currentEmployee: Employee;
   shifts: Shift[];
   onSubmitJustification: (justification: Partial<AbsenceJustification> & { justificationType?: 'absence' | 'delay' }) => void;
+  onUpdateJustification?: (id: string, updates: Partial<AbsenceJustification>) => void;
+  editingJustification?: AbsenceJustification | null;
   isLightTheme?: boolean;
   initialShiftId?: string;
   initialDate?: string;
@@ -24,6 +26,8 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
   currentEmployee,
   shifts,
   onSubmitJustification,
+  onUpdateJustification,
+  editingJustification,
   isLightTheme = false,
   initialShiftId,
   initialDate,
@@ -32,21 +36,48 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
   delayMinutes,
 }) => {
   const isDelay = justificationType === 'delay';
-  const [selectedShiftId, setSelectedShiftId] = useState(initialShiftId || shifts[0]?.id || '');
-  const [absenceDate, setAbsenceDate] = useState(initialDate || getTodayDateString());
+  const [selectedShiftId, setSelectedShiftId] = useState('');
+  const [absenceDate, setAbsenceDate] = useState('');
   const [reason, setReason] = useState('');
   const [documentName, setDocumentName] = useState('');
   const [documentUrl, setDocumentUrl] = useState('');
   const [isUploaded, setIsUploaded] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
+  // Limpa rigorosamente os campos ao abrir para novo atestado ou preenche ao editar
   useEffect(() => {
     if (isOpen) {
-      if (initialShiftId) setSelectedShiftId(initialShiftId);
-      if (initialDate) setAbsenceDate(initialDate);
-      setReason(''); // Campo motivo detalhado sempre começa vazio para o colaborador preencher
+      if (editingJustification) {
+        setSelectedShiftId(editingJustification.shiftId || shifts[0]?.id || '');
+        setAbsenceDate(editingJustification.date || getTodayDateString());
+        setReason(editingJustification.reason || '');
+        setDocumentName(editingJustification.documentName || '');
+        setDocumentUrl(editingJustification.documentUrl || '');
+        setIsUploaded(Boolean(editingJustification.documentName || editingJustification.documentUrl));
+        setIsUploading(false);
+      } else {
+        // Novo atestado: 100% limpo, sem resquícios do envio anterior
+        setSelectedShiftId(initialShiftId || shifts[0]?.id || '');
+        setAbsenceDate(initialDate || getTodayDateString());
+        setReason(initialReason || '');
+        setDocumentName('');
+        setDocumentUrl('');
+        setIsUploaded(false);
+        setIsUploading(false);
+      }
     }
-  }, [isOpen, initialShiftId, initialDate]);
+  }, [isOpen, editingJustification, initialShiftId, initialDate, initialReason, shifts]);
+
+  const handleClose = () => {
+    setSelectedShiftId('');
+    setAbsenceDate('');
+    setReason('');
+    setDocumentName('');
+    setDocumentUrl('');
+    setIsUploaded(false);
+    setIsUploading(false);
+    onClose();
+  };
 
   if (!isOpen) return null;
 
@@ -91,22 +122,33 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
     if (!reason.trim()) return;
 
     const chosenShift = shifts.find(s => s.id === selectedShiftId);
+    const finalDate = absenceDate || chosenShift?.date || getTodayDateString();
 
-    onSubmitJustification({
-      employeeId: currentEmployee.id,
-      employeeName: currentEmployee.name,
-      employeeAvatar: currentEmployee.avatar,
-      shiftId: selectedShiftId || undefined,
-      date: absenceDate || chosenShift?.date || getTodayDateString(),
-      reason,
-      documentName: documentName || (isDelay ? '' : 'Atestado_Medico_Anexo.pdf'),
-      documentType: documentName ? 'application/pdf' : undefined,
-      documentUrl: documentUrl || undefined,
-      status: 'pending',
-      justificationType: isDelay ? 'delay' : 'absence'
-    });
+    if (editingJustification && onUpdateJustification) {
+      onUpdateJustification(editingJustification.id, {
+        shiftId: selectedShiftId || undefined,
+        date: finalDate,
+        reason,
+        documentName: documentName || editingJustification.documentName,
+        documentUrl: documentUrl || editingJustification.documentUrl,
+      });
+    } else {
+      onSubmitJustification({
+        employeeId: currentEmployee.id,
+        employeeName: currentEmployee.name,
+        employeeAvatar: currentEmployee.avatar,
+        shiftId: selectedShiftId || undefined,
+        date: finalDate,
+        reason,
+        documentName: documentName || (isDelay ? '' : 'Atestado_Medico_Anexo.pdf'),
+        documentType: documentName ? 'application/pdf' : undefined,
+        documentUrl: documentUrl || undefined,
+        status: 'pending',
+        justificationType: isDelay ? 'delay' : 'absence'
+      });
+    }
 
-    onClose();
+    handleClose();
   };
 
   return (
@@ -141,7 +183,9 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
             </div>
             <div>
               <h3 className={`font-bold text-base leading-tight ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
-                {isDelay ? 'Justificar Atraso de Entrada' : 'Enviar Atestado / Justificar Ausência'}
+                {editingJustification 
+                  ? 'Editar Atestado / Justificativa' 
+                  : (isDelay ? 'Justificar Atraso de Entrada' : 'Enviar Atestado / Justificar Ausência')}
               </h3>
               <p className={`text-[11px] mt-0.5 ${isLightTheme ? 'text-slate-500' : 'text-white/50'}`}>
                 {isDelay 
@@ -151,7 +195,7 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
               isLightTheme
                 ? 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
@@ -282,7 +326,7 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
           }`}>
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer border ${
                 isLightTheme
                   ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 border-slate-200'
@@ -295,7 +339,9 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
               type="submit"
               className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#96183c] via-[#f89642] to-[#faf0ac] hover:brightness-110 active:scale-[0.98] text-white text-xs font-bold shadow-lg shadow-[#96183c]/25 transition-all flex items-center gap-2 cursor-pointer"
             >
-              {isDelay ? 'Enviar Justificativa de Atraso' : 'Enviar Atestado'}
+              {editingJustification 
+                ? 'Salvar Alterações' 
+                : (isDelay ? 'Enviar Justificativa de Atraso' : 'Enviar Atestado')}
             </button>
           </div>
         </form>

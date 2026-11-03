@@ -1,4 +1,4 @@
-import { getTodayDateString } from '@/shared/utils/dateUtils';
+import { getTodayDateString, addDaysLocal, toLocalDateString, normalizeDateToISO } from '@/shared/utils/dateUtils';
 import { supabase } from '@/shared/services/supabase';
 
 // Estrutura no banco:
@@ -106,12 +106,46 @@ async function saveAssignments(reminderId: string, employeeIds: string[], replac
   return validIds;
 }
 
+
+/**
+ * Expurga automaticamente do banco registros de lembretes com mais de 60 dias
+ */
+export async function purgeExpiredRemindersSupabase(companyId?: string): Promise<boolean> {
+  try {
+    const cutoff60 = toLocalDateString(addDaysLocal(new Date(), -60));
+    let q = supabase
+      .from('TAB_Lembrete')
+      .delete()
+      .lt('Dta_Lembrete', cutoff60);
+
+    if (companyId && isUuid(companyId)) {
+      q = q.eq('Idf_Empresa', companyId);
+    }
+
+    const { error } = await q;
+    if (error) {
+      console.warn('Aviso ao expurgar lembretes com mais de 60 dias:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    console.warn('Erro ao expurgar lembretes antigos:', err.message);
+    return false;
+  }
+}
+
 export async function getRemindersSupabase(filter: ReminderFilter = {}): Promise<ReminderItem[]> {
   try {
+    const cutoff60 = toLocalDateString(addDaysLocal(new Date(), -60));
+
+    // Expurga automaticamente lembretes com mais de 60 dias no banco
+    purgeExpiredRemindersSupabase(filter.companyId).catch(() => {});
+
     let query = supabase
       .from('TAB_Lembrete')
       .select('*')
-      .eq('Flg_Ativo', true);
+      .eq('Flg_Ativo', true)
+      .gte('Dta_Lembrete', cutoff60);
 
     if (isUuid(filter.companyId)) {
       query = query.eq('Idf_Empresa', filter.companyId);
@@ -133,7 +167,8 @@ export async function getRemindersSupabase(filter: ReminderFilter = {}): Promise
     if (!data || data.length === 0) return [];
 
     const assignments = await getAssignmentsMap(data.map((r: any) => r.Idf_Lembrete));
-    let result = data.map((row: any) => mapBneToReminder(row, assignments.get(row.Idf_Lembrete) || []));
+    let result = data.map((row: any) => mapBneToReminder(row, assignments.get(row.Idf_Lembrete) || []))
+      .filter(r => !r.date || normalizeDateToISO(r.date) >= cutoff60);
 
     if (filter.creatorId && filter.visibleEmployeeIds) {
       const visible = new Set(filter.visibleEmployeeIds);

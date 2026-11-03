@@ -28,7 +28,7 @@ import { getWeekDates,
   hoursToMinutes,
   calculatePunchDurationMinutes,
   evaluatePunchTolerance,
-  isShiftPast24hWithoutPunch, formatDateBR } from '@/shared/utils/dateUtils';
+  isShiftPast24hWithoutPunch, formatDateBR, addDaysLocal, toLocalDateString, normalizeDateToISO } from '@/shared/utils/dateUtils';
 import { ReminderDetailModal } from './ReminderDetailModal';
 import { getCurrentCoordinates, reverseGeocode, validateGeofence, calculateHaversineDistance } from '@/shared/utils/geolocation';
 import { findWorkplaceByName, getStoredWorkplaces } from '@/shared/services/workplaceService';

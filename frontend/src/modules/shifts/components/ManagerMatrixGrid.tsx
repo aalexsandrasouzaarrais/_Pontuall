@@ -79,7 +79,7 @@ interface ManagerMatrixGridProps {
   onOpenEditShift: (shift: Shift) => void;
   onOpenRequests: () => void;
   onOpenPjModal: () => void;
-  onExportCsv: () => void;
+  onExportCsv: (targetMonth?: string) => void;
   onAddEmployee: () => void;
   onSwitchToEmployee?: () => void;
   onOpenChat?: () => void;
@@ -243,6 +243,114 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
   const toggleExpandBancoReason = (id: string) => {
     setExpandedBancoReasons(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  // Estados e cálculos para exportação mensal de presenças
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [selectedExportMonth, setSelectedExportMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+
+  const availableExportMonths = useMemo(() => {
+    const monthsMap = new Map<string, { label: string; count: number }>();
+    const monthNames = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth();
+    const curKey = `${curYear}-${String(curMonth + 1).padStart(2, '0')}`;
+
+    const prevDate = new Date(curYear, curMonth - 1, 1);
+    const prevYear = prevDate.getFullYear();
+    const prevMonth = prevDate.getMonth();
+    const prevKey = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}`;
+
+    monthsMap.set(curKey, {
+      label: `${monthNames[curMonth]}/${curYear} (Mês Atual)`,
+      count: 0
+    });
+
+    monthsMap.set(prevKey, {
+      label: `${monthNames[prevMonth]}/${prevYear} (Mês Anterior)`,
+      count: 0
+    });
+
+    (shifts || []).forEach(s => {
+      if (!s.date) return;
+      const iso = normalizeDateToISO(s.date);
+      const key = iso.substring(0, 7);
+      if (monthsMap.has(key)) {
+        monthsMap.get(key)!.count++;
+      } else {
+        const [y, m] = key.split('-').map(Number);
+        if (y && m && m >= 1 && m <= 12) {
+          monthsMap.set(key, {
+            label: `${monthNames[m - 1]}/${y}`,
+            count: 1
+          });
+        }
+      }
+    });
+
+    const list = Array.from(monthsMap.entries()).map(([key, val]) => ({
+      key,
+      label: val.label,
+      count: val.count
+    }));
+
+    list.push({
+      key: 'all',
+      label: 'Todo o Histórico Disponível (Últimos 60 dias)',
+      count: shifts?.length || 0
+    });
+
+    return list;
+  }, [shifts]);
+
+  // Identifica se estamos perto do final do mês (dia >= 25) ou no início (dias 1 a 3)
+  const monthClosingInfo = useMemo(() => {
+    const now = new Date();
+    const day = now.getDate();
+    if (day < 25 && day > 3) return null;
+
+    const monthNames = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+    const targetDate = day <= 3 ? new Date(now.getFullYear(), now.getMonth() - 1, 1) : now;
+    const targetMonthName = monthNames[targetDate.getMonth()];
+    const targetKey = `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, '0')}`;
+
+    return {
+      isStartOfNextMonth: day <= 3,
+      monthName: targetMonthName,
+      monthKey: targetKey
+    };
+  }, []);
+
+  // Estado para dismiss do aviso sutil de retenção de presenças
+  const [isRetentionNoticeDismissed, setIsRetentionNoticeDismissed] = useState<boolean>(() => {
+    try {
+      const dismissedUntil = localStorage.getItem('pontuall_retention_dismissed_until');
+      if (dismissedUntil && Number(dismissedUntil) > Date.now()) {
+        return true;
+      }
+    } catch {
+      // Ignora erro de acesso a localStorage
+    }
+    return false;
+  });
+
+  const handleDismissRetentionNotice = () => {
+    setIsRetentionNoticeDismissed(true);
+    try {
+      localStorage.setItem('pontuall_retention_dismissed_until', String(Date.now() + 7 * 24 * 60 * 60 * 1000));
+    } catch {
+      // Ignora erro de acesso a localStorage
+    }
   };
 
   useEffect(() => {
@@ -515,7 +623,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       id: 'approval-rejected',
       title: 'Solicitação Recusada',
       description: 'A solicitação foi recusada e o colaborador foi notificado.',
-      rimVariant: 'default',
+      rimVariant: 'success',
       duration: 3500,
     });
   };
@@ -581,7 +689,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       id: 'bh-ajustado',
       title: 'Ponto Ajustado p/ Horário Normal',
       description: 'Registro técnico preservado (Portaria 671). Ajuste de tratamento aplicado sem gerar HE indevida (Art. 4º CLT).',
-      rimVariant: 'default',
+      rimVariant: 'success',
       duration: 5000,
     });
   };
@@ -651,7 +759,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         id: 'sim-late-created',
         title: 'Caso de Atraso Gerado (-35 min)',
         description: 'Colaborador entrou 35 min após o início da escala. Avalie o débito/justificativa.',
-        rimVariant: 'default',
+        rimVariant: 'success',
       });
     } else {
       newOcc = {
@@ -676,7 +784,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         id: 'sim-forgot-created',
         title: 'Caso de Esquecimento Gerado',
         description: 'Colaborador registrou saída tardia por esquecimento. Clique em "Ajustar Horário Normal" (Art. 4º CLT).',
-        rimVariant: 'default',
+        rimVariant: 'success',
       });
     }
 
@@ -734,9 +842,47 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   const [relatorioStatus, setRelatorioStatus] = useState('all');
   const [relatorioDept, setRelatorioDept] = useState('all');
 
+  // Calcula se existem presenças próximas do limite de 60 dias (idade entre 50 e 60 dias)
+  const expiringAttendanceInfo = useMemo(() => {
+    if (!shifts || shifts.length === 0) return null;
+    const now = new Date();
+    const cutoff60 = toLocalDateString(addDaysLocal(now, -60));
+    const cutoff50 = toLocalDateString(addDaysLocal(now, -50));
+
+    let minDaysRemaining = 60;
+    let countExpiringSoon = 0;
+
+    for (const s of shifts) {
+      if (!s.date) continue;
+      const iso = normalizeDateToISO(s.date);
+      if (iso < cutoff60) continue;
+      if (iso <= cutoff50) {
+        countExpiringSoon++;
+        const parts = iso.split('-');
+        if (parts.length === 3) {
+          const shiftDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+          const ageDays = Math.floor((now.getTime() - shiftDate.getTime()) / (1000 * 60 * 60 * 24));
+          const daysLeft = Math.max(1, 60 - ageDays);
+          if (daysLeft < minDaysRemaining) {
+            minDaysRemaining = daysLeft;
+          }
+        }
+      }
+    }
+
+    if (countExpiringSoon === 0) return null;
+    return {
+      count: countExpiringSoon,
+      daysLeft: minDaysRemaining
+    };
+  }, [shifts]);
+
   const reportRows = useMemo(() => {
     if (shifts && shifts.length > 0) {
-      return shifts.map(s => {
+      const cutoff60 = toLocalDateString(addDaysLocal(new Date(), -60));
+      return shifts
+        .filter(s => !s.date || normalizeDateToISO(s.date) >= cutoff60)
+        .map(s => {
         const emp = employees.find(e => e.id === s.employeeId);
         const statusMap: Record<string, string> = {
           present: 'Presente',
@@ -1943,7 +2089,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
                 <div className="relative z-10 flex flex-wrap items-center gap-3 shrink-0">
                   <button
-                    onClick={onExportCsv}
+                    onClick={() => setIsExportModalOpen(true)}
                     className="approvals-light-export px-5 py-2.5 font-bold text-xs rounded-full text-white flex items-center gap-2 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer"
                     style={{ 
                       background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)',
@@ -2115,16 +2261,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 </button>
               </div>
 
-              <button
-                onClick={() => setIsNewOccurrenceModalOpen(true)}
-                className="approvals-light-new-request px-5 py-2.5 font-bold text-xs rounded-full text-white flex items-center justify-center gap-2 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer shrink-0"
-                style={{ 
-                  background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)',
-                  boxShadow: '0 4px 18px rgba(100, 12, 30, 0.30)'
-                }}
-              >
-                <Plus className="w-4 h-4" /> Nova Solicitação / Lançar Falta
-              </button>
+
             </div>
 
             {/* Data Table igual à Imagem 2 + Coluna Adicional de Observação / Feedback para o Colaborador */}
@@ -2755,7 +2892,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
               <div className="relative z-10 flex items-center gap-3 shrink-0">
                 <button
-                  onClick={onExportCsv}
+                  onClick={() => setIsExportModalOpen(true)}
                   className="attendance-report-export px-5 py-2.5 font-bold text-xs rounded-2xl text-white flex items-center gap-2 shadow-xl hover:scale-105 active:scale-95 transition-all cursor-pointer"
                   style={{ 
                     background: 'linear-gradient(135deg, #96183c, #f89847)'
@@ -2766,6 +2903,62 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               </div>
             </div>
           </div>
+
+                    {/* Micro-aviso Sutil e Condicional: Fechamento de Mês OU Retenção de 60 Dias */}
+          {(monthClosingInfo || expiringAttendanceInfo) && !isRetentionNoticeDismissed && (
+            <div className={`px-3.5 py-2 rounded-xl border flex items-center justify-between gap-3 text-xs relative z-10 transition-colors animate-in fade-in duration-300 ${
+              isDark 
+                ? 'bg-amber-950/25 border-amber-500/25 text-amber-200/90' 
+                : 'bg-amber-50/90 border-amber-200 text-amber-900 shadow-xs'
+            }`}>
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span className="truncate">
+                  {monthClosingInfo ? (
+                    <>
+                      <strong className="font-semibold">Fechamento Mensal:</strong> {monthClosingInfo.isStartOfNextMonth 
+                        ? `Lembre-se de salvar a folha de presenças do mês de ${monthClosingInfo.monthName} para o arquivo da empresa.` 
+                        : `O mês de ${monthClosingInfo.monthName} está encerrando. Exporte a folha mensal consolidada.`}
+                    </>
+                  ) : (
+                    <>
+                      <strong className="font-semibold">Aviso de Retenção:</strong> Registros mais antigos expiram em cerca de {expiringAttendanceInfo?.daysLeft} {expiringAttendanceInfo?.daysLeft === 1 ? 'dia' : 'dias'}. Lembre-se de exportar a folha mensal.
+                    </>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (monthClosingInfo) {
+                      onExportCsv(monthClosingInfo.monthKey);
+                      showPolishedToast({
+                        title: 'Folha mensal exportada!',
+                        description: `A folha consolidada de ${monthClosingInfo.monthName} foi baixada em CSV.`,
+                        rimVariant: 'success',
+                      });
+                    } else {
+                      setIsExportModalOpen(true);
+                    }
+                  }}
+                  className="font-bold underline hover:no-underline text-amber-600 dark:text-amber-400 shrink-0 cursor-pointer text-xs"
+                >
+                  {monthClosingInfo ? `Exportar ${monthClosingInfo.monthName}` : 'Exportar CSV'}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleDismissRetentionNotice}
+                className={`p-1 rounded-md transition-colors shrink-0 cursor-pointer ${
+                  isDark ? 'text-amber-400/60 hover:text-amber-200 hover:bg-white/5' : 'text-amber-800/60 hover:text-amber-950 hover:bg-amber-100'
+                }`}
+                title="Dispensar aviso por 7 dias"
+                aria-label="Dispensar aviso de retenção"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
           {/* Sub-Navegação: Visão Geral de Presenças vs. Banco de Horas & Extras */}
           <div className="flex flex-wrap items-center justify-between gap-3 relative z-10">
@@ -3780,6 +3973,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       {/* ─── TAB 4: LEMBRETES & TAREFAS (ESTILO DAS FOTOS / IDENTIDADE VISUAL LP) ─── */}
       {activeTab === 'tarefas' && (() => {
         const filteredReminders = reminders.filter((rem) => {
+          // Ocultar automaticamente lembretes com mais de 60 dias
+          const cutoff60 = toLocalDateString(addDaysLocal(new Date(), -60));
+          const remDateISO = normalizeDateToISO(rem.date);
+          if (remDateISO && remDateISO < cutoff60) return false;
+
           if (reminderFilterType !== 'all' && rem.type !== reminderFilterType) return false;
           if (reminderCollaboratorFilter !== 'all') {
             if (!rem.assignedEmployeeIds || !rem.assignedEmployeeIds.includes(reminderCollaboratorFilter)) {
@@ -3927,6 +4125,21 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   </button>
                 </div>
               </div>
+            </div>
+
+                        {/* Aviso de Retenção de 60 Dias em Lembretes */}
+            <div className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 text-xs relative z-10 ${
+              isDark ? 'bg-amber-950/20 border-amber-500/20 text-slate-300' : 'bg-amber-50/80 border-amber-200 text-amber-900'
+            }`}>
+              <div className="flex items-center gap-2.5">
+                <Clock className="w-4 h-4 text-[#F59242] shrink-0" />
+                <span>
+                  <strong>Política de Retenção de 60 Dias:</strong> Lembretes anteriores a 60 dias são automaticamente ocultados/expurgados. Você também pode excluir lembretes individualmente a qualquer momento.
+                </span>
+              </div>
+              <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-[#F59242]/10 text-[#F59242] font-bold border border-[#F59242]/20 shrink-0 hidden sm:inline-block">
+                Expiração 60d
+              </span>
             </div>
 
             {/* Filter Bar (Suporta Dark e Light) */}
@@ -4117,17 +4330,24 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={async () => {
-                              if (confirm(`Remover "${rem.title}"?`)) {
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Deseja realmente excluir o lembrete individual "${rem.title}"? Esta ação é definitiva.`)) {
                                 setReminders(prev => prev.filter(r => r.id !== rem.id));
                                 await deleteReminderSupabase(rem.id);
+                                showPolishedToast({
+                                  id: `del-rem-${rem.id}`,
+                                  title: 'Lembrete Excluído',
+                                  description: `O lembrete "${rem.title}" foi excluído com sucesso.`,
+                                  rimVariant: 'destructive',
+                                });
                               }
                             }}
-                            title="Excluir lembrete"
+                            title="Excluir este lembrete individualmente"
                             className={`reminders-delete-button p-1.5 rounded-lg transition-colors cursor-pointer border ${
                               isDark
-                                ? 'text-slate-400 hover:text-rose-400 hover:bg-white/5 border-transparent hover:border-rose-500/20'
-                                : 'text-slate-400 hover:text-rose-600 hover:bg-slate-100 border-transparent hover:border-rose-300'
+                                ? 'text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border-transparent hover:border-rose-500/25'
+                                : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 border-transparent hover:border-rose-300'
                             }`}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -5441,6 +5661,94 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             onDeactivateEmployee={onDeactivateEmployee || (() => {})}
           />
         </ErrorBoundary>
+      )}
+
+      {/* Modal de Seleção de Mês para Exportação da Folha CSV */}
+      {isExportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl space-y-5 transition-all ${
+            isDark ? 'bg-[#15161b] border-[#282a33] text-white' : 'bg-white border-slate-200 text-slate-800'
+          }`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <h3 className="text-base font-bold">Exportar Folha Mensal</h3>
+                <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  Selecione o mês de competência para gerar a planilha consolidada de presenças.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsExportModalOpen(false)}
+                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                  isDark ? 'text-slate-400 hover:text-white hover:bg-white/5' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <label className={`block text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                Mês de Competência
+              </label>
+              <select
+                value={selectedExportMonth}
+                onChange={(e) => setSelectedExportMonth(e.target.value)}
+                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium border outline-none cursor-pointer transition-colors ${
+                  isDark 
+                    ? 'bg-[#0e0f12] border-[#282a33] text-white focus:border-[#F59242]' 
+                    : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-[#9F243C]'
+                }`}
+              >
+                {availableExportMonths.map(m => (
+                  <option key={m.key} value={m.key}>
+                    {m.label} ({m.count} {m.count === 1 ? 'registro' : 'registros'})
+                  </option>
+                ))}
+              </select>
+
+              <div className={`p-3 rounded-xl border text-xs ${
+                isDark ? 'bg-black/20 border-white/5 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'
+              }`}>
+                <div className="flex items-center justify-between font-medium">
+                  <span>Registros a exportar:</span>
+                  <span className="font-bold text-amber-500">
+                    {availableExportMonths.find(m => m.key === selectedExportMonth)?.count || 0}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsExportModalOpen(false)}
+                className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                  isDark ? 'text-slate-400 hover:text-white hover:bg-white/5' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onExportCsv(selectedExportMonth);
+                  setIsExportModalOpen(false);
+                  showPolishedToast({
+                    title: 'Planilha exportada com sucesso!',
+                    description: 'O arquivo CSV mensal foi baixado no padrão brasileiro.',
+                    rimVariant: 'success',
+                  });
+                }}
+                className="px-5 py-2 rounded-xl text-xs font-bold text-white shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
+                style={{ background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)' }}
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Baixar Planilha (CSV)</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modal de Exclusão de Escalas em Lote / Filtro */}
