@@ -1918,42 +1918,39 @@ function AppContent() {
                       const isPendingPeer = req.type === 'swap' && req.peerStatus === 'pending';
                       const isAcceptedPeer = req.type === 'swap' && req.peerStatus === 'accepted';
                       const isRejectedPeer = req.type === 'swap' && req.peerStatus === 'rejected';
+                      const isDefaultFeedback =
+                        !req.managerNotes ||
+                        ['recusado pelo colega substituto', 'homologado pelo rh', 'homologado pelo gestor', 'recusado pelo gestor'].includes(
+                          req.managerNotes.trim().toLowerCase()
+                        );
 
                       return (
                       <div
                         key={req.id}
-                        className={`relative rounded-xl border overflow-hidden shadow-lg flex flex-col transition-all duration-300 ${
+                        className={`rounded-xl border p-4 flex flex-col gap-2.5 transition-all ${
                           !isDark
-                            ? 'bg-white border-slate-200 shadow-slate-200/60'
+                            ? 'bg-white border-slate-200 shadow-xs'
                             : 'bg-[#0d0d10] border-white/10'
                         }`}
-                        style={{
-                          borderLeft: `3px solid ${
-                            req.type === 'swap' ? '#f89642' : '#96183c'
-                          }`,
-                        }}
                       >
-                        {/* Card Header */}
-                        <div className="flex items-start justify-between gap-2 px-4 pt-4 pb-2">
-                          <div className="flex flex-col gap-1.5">
+                        {/* Topo simples: Tipo + Data | Status + Acoes */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
                             <span
-                              className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full w-fit ${
-                                req.type === 'swap'
-                                  ? !isDark
-                                    ? 'bg-orange-50 text-orange-600 border border-orange-200'
-                                    : 'bg-[#f89642]/15 text-[#f89642] border border-[#f89642]/30'
-                                  : !isDark
-                                  ? 'bg-rose-50 text-[#96183c] border border-rose-200'
-                                  : 'bg-[#96183c]/20 text-[#faf0ac] border border-[#96183c]/30'
+                              className={`text-xs font-bold truncate ${
+                                !isDark ? 'text-slate-900' : 'text-white'
                               }`}
                             >
-                              {req.type === 'swap'
-                                ? 'Troca de Turno'
-                                : 'Folga Compensatória'}
+                              {req.type === 'swap' ? 'Troca de Turno' : 'Folga Compensatória'}
                             </span>
+                            <span className={`text-[11px] font-mono shrink-0 ${!isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                              • {formatDateBR(req.date)}
+                            </span>
+                          </div>
 
+                          <div className="flex items-center gap-1.5 shrink-0">
                             <span
-                              className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full w-fit ${
+                              className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
                                 req.status === 'approved'
                                   ? !isDark
                                     ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
@@ -1983,118 +1980,25 @@ function AppContent() {
                                 }`}
                               />
                               {req.status === 'approved'
-                                ? 'Homologado pelo Gestor'
+                                ? 'Aprovado'
                                 : isRejectedPeer
                                 ? 'Recusado pelo Colega'
                                 : req.status === 'rejected'
-                                ? 'Recusado pelo Gestor'
+                                ? 'Recusado'
                                 : isAcceptedPeer
-                                ? 'Colega Aceitou • Aguardando Gestor'
+                                ? 'Aguardando Gestor'
                                 : isPendingPeer
-                                ? 'Aguardando Aceite do Colega'
-                                : 'Em Análise pelo Gestor'}
+                                ? 'Aguardando Colega'
+                                : 'Em Análise'}
                             </span>
-                          </div>
 
-                          <div
-                            className={`flex items-center gap-1 text-[11px] font-mono px-2 py-1 rounded-lg shrink-0 ${
-                              !isDark
-                                ? 'text-slate-500 bg-slate-100 border border-slate-200'
-                                : 'text-slate-400 bg-white/5 border border-white/10'
-                            }`}
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                              <rect x="3" y="4" width="18" height="18" rx="2" />
-                              <path d="M16 2v4M8 2v4M3 10h18" />
-                            </svg>
-                            {formatDateBR(req.date)}
-                          </div>
-                        </div>
-
-                        <div
-                          className={`mx-4 border-t ${
-                            !isDark ? 'border-slate-200' : 'border-white/5'
-                          }`}
-                        />
-
-                        <div className="px-4 py-3 flex-1 space-y-2">
-                          {req.targetEmployeeName && (
-                            <div
-                              className={`flex items-center gap-2 text-[11px] ${
-                                !isDark ? 'text-slate-600' : 'text-slate-300'
-                              }`}
-                            >
-                              <svg className="w-3.5 h-3.5 text-[#f89642] shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                                <circle cx="9" cy="7" r="4" />
-                                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                              </svg>
-                              <span>
-                                Troca com{' '}
-                                <strong className={!isDark ? 'text-slate-900' : 'text-white'}>
-                                  {req.targetEmployeeName}
-                                </strong>
-                              </span>
-                            </div>
-                          )}
-
-                          <p
-                            className={`text-xs leading-relaxed line-clamp-3 ${
-                              !isDark ? 'text-slate-600' : 'text-slate-300'
-                            }`}
-                          >
-                            "{req.reason}"
-                          </p>
-                        </div>
-
-                        {req.managerNotes && (
-                          <div
-                            className={`mx-4 mb-2.5 p-2.5 rounded-xl border flex items-start gap-2 text-xs ${
-                              req.status === 'approved'
-                                ? !isDark
-                                  ? 'bg-emerald-50/90 border-emerald-200 text-emerald-800'
-                                  : 'bg-emerald-950/30 border-emerald-500/30 text-emerald-300'
-                                : req.status === 'rejected'
-                                ? !isDark
-                                  ? 'bg-rose-50/90 border-rose-200 text-rose-800'
-                                  : 'bg-rose-950/30 border-rose-500/30 text-rose-300'
-                                : !isDark
-                                ? 'bg-amber-50/90 border-amber-200 text-amber-800'
-                                : 'bg-amber-950/30 border-amber-500/30 text-amber-300'
-                            }`}
-                          >
-                            <MessageSquare className="w-3.5 h-3.5 shrink-0 mt-0.5 opacity-80" />
-                            <div className="min-w-0 flex-1">
-                              <span className="text-[10px] font-bold font-mono uppercase block tracking-wider opacity-75">
-                                Parecer / Feedback da Gestão
-                              </span>
-                              <p className="leading-snug mt-0.5">{req.managerNotes}</p>
-                            </div>
-                          </div>
-                        )}
-
-                        <div
-                          className={`px-4 pb-3 flex items-center justify-between gap-2 border-t pt-2 ${
-                            !isDark ? 'border-slate-200' : 'border-white/5'
-                          }`}
-                        >
-                          <span
-                            className={`text-[10px] font-mono ${
-                              !isDark ? 'text-slate-400' : 'text-slate-500'
-                            }`}
-                          >
-                            Enviado: {req.createdAt}
-                          </span>
-
-                          <div className="flex items-center gap-1 shrink-0">
                             <button
                               type="button"
                               onClick={() => {
                                 setEditingRequest(req);
                                 setIsSwapModalOpen(true);
                               }}
-                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                              className={`p-1 rounded-lg transition-colors cursor-pointer ${
                                 !isDark ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50' : 'text-slate-400 hover:text-amber-400 hover:bg-white/10'
                               }`}
                               title="Editar solicitação"
@@ -2105,7 +2009,7 @@ function AppContent() {
                             <button
                               type="button"
                               onClick={() => handleDeleteRequest(req.id)}
-                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                              className={`p-1 rounded-lg transition-colors cursor-pointer ${
                                 !isDark ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50' : 'text-slate-400 hover:text-rose-400 hover:bg-white/10'
                               }`}
                               title="Excluir solicitação"
@@ -2114,6 +2018,27 @@ function AppContent() {
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
+                        </div>
+
+                        {/* Conteudo enxuto */}
+                        <div className="space-y-1">
+                          {req.targetEmployeeName && (
+                            <p className={`text-[11px] ${!isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                              Troca com <strong className={!isDark ? 'text-slate-800' : 'text-slate-200'}>{req.targetEmployeeName}</strong>
+                            </p>
+                          )}
+
+                          {req.reason && (
+                            <p className={`text-xs leading-relaxed line-clamp-2 ${!isDark ? 'text-slate-600' : 'text-slate-300'}`}>
+                              {req.reason}
+                            </p>
+                          )}
+
+                          {!isDefaultFeedback && req.managerNotes && (
+                            <p className={`text-[11px] pt-1 ${!isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                              <strong className="font-semibold">Obs:</strong> {req.managerNotes}
+                            </p>
+                          )}
                         </div>
                       </div>
                     );
@@ -2217,33 +2142,40 @@ function AppContent() {
                       Nenhuma justificativa ou atestado registrado para este perfil.
                     </div>
                   ) : (
-                    myJustifications.map(just => (
+                    myJustifications.map(just => {
+                      const isDefaultFeedback =
+                        !just.managerNotes ||
+                        ['homologado pelo rh', 'homologado pelo gestor', 'não homologado', 'recusado pelo rh', 'recusado pelo gestor'].includes(
+                          just.managerNotes.trim().toLowerCase()
+                        );
+
+                      return (
                       <div
                         key={just.id}
-                        className={`relative rounded-xl border overflow-hidden shadow-lg flex flex-col transition-all duration-300 ${
+                        className={`rounded-xl border p-4 flex flex-col gap-2.5 transition-all ${
                           !isDark
-                            ? 'bg-white border-slate-200 shadow-slate-200/60'
+                            ? 'bg-white border-slate-200 shadow-xs'
                             : 'bg-[#0d0d10] border-white/10'
                         }`}
-                        style={{
-                          borderLeft: '3px solid #96183c',
-                        }}
                       >
-                        {/* Card Header */}
-                        <div className="flex items-start justify-between gap-2 px-4 pt-4 pb-2">
-                          <div className="flex flex-col gap-1.5">
+                        {/* Topo simples: Titulo + Data | Status + Acoes */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
                             <span
-                              className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full w-fit ${
-                                !isDark
-                                  ? 'bg-rose-50 text-[#96183c] border border-rose-200'
-                                  : 'bg-[#96183c]/20 text-[#faf0ac] border border-[#96183c]/30'
+                              className={`text-xs font-bold truncate ${
+                                !isDark ? 'text-slate-900' : 'text-white'
                               }`}
                             >
-                              📄 Atestado / Declaração
+                              Atestado / Declaração
                             </span>
+                            <span className={`text-[11px] font-mono shrink-0 ${!isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                              • {formatDateBR(just.date)}
+                            </span>
+                          </div>
 
+                          <div className="flex items-center gap-1.5 shrink-0">
                             <span
-                              className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full w-fit ${
+                              className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
                                 just.status === 'approved'
                                   ? !isDark
                                     ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
@@ -2270,119 +2202,16 @@ function AppContent() {
                                 ? 'Homologado'
                                 : just.status === 'rejected'
                                 ? 'Recusado'
-                                : 'Em Análise pelo RH'}
+                                : 'Em Análise'}
                             </span>
-                          </div>
 
-                          <div
-                            className={`flex items-center gap-1 text-[11px] font-mono px-2 py-1 rounded-lg shrink-0 ${
-                              !isDark
-                                ? 'text-slate-500 bg-slate-100 border border-slate-200'
-                                : 'text-slate-400 bg-white/5 border border-white/10'
-                            }`}
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                              <rect x="3" y="4" width="18" height="18" rx="2" />
-                              <path d="M16 2v4M8 2v4M3 10h18" />
-                            </svg>
-                            {formatDateBR(just.date)}
-                          </div>
-                        </div>
-
-                        <div
-                          className={`mx-4 border-t ${
-                            !isDark ? 'border-slate-200' : 'border-white/5'
-                          }`}
-                        />
-
-                        <div className="px-4 py-3 flex-1 space-y-2">
-                          <p
-                            className={`text-xs leading-relaxed line-clamp-3 ${
-                              !isDark ? 'text-slate-600' : 'text-slate-300'
-                            }`}
-                          >
-                            "{just.reason}"
-                          </p>
-
-                          {just.documentName && (
-                            <button
-                              type="button"
-                              onClick={() => openDocumentSafe(just.documentUrl, just.documentName)}
-                              title="Clique para visualizar o atestado"
-                              className={`w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-left transition-all cursor-pointer ${
-                                !isDark
-                                  ? 'bg-rose-50 hover:bg-rose-100 border border-rose-200 text-[#96183c]'
-                                  : 'bg-[#96183c]/10 hover:bg-[#96183c]/20 border border-[#96183c]/25 text-[#f89642]'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <FileText
-                                  className={`w-3.5 h-3.5 shrink-0 ${
-                                    !isDark ? 'text-[#96183c]' : 'text-[#f89642]'
-                                  }`}
-                                />
-                                <span
-                                  className={`text-[11px] font-semibold truncate ${
-                                    !isDark ? 'text-[#96183c]' : 'text-[#faf0ac]'
-                                  }`}
-                                >
-                                  {just.documentName}
-                                </span>
-                              </div>
-                              <span className="text-[10px] font-medium underline opacity-80 shrink-0">
-                                Visualizar
-                              </span>
-                            </button>
-                          )}
-                        </div>
-
-                        {just.managerNotes && (
-                          <div
-                            className={`mx-4 mb-2.5 p-2.5 rounded-xl border flex items-start gap-2 text-xs ${
-                              just.status === 'approved'
-                                ? !isDark
-                                  ? 'bg-emerald-50/90 border-emerald-200 text-emerald-800'
-                                  : 'bg-emerald-950/30 border-emerald-500/30 text-emerald-300'
-                                : just.status === 'rejected'
-                                ? !isDark
-                                  ? 'bg-rose-50/90 border-rose-200 text-rose-800'
-                                  : 'bg-rose-950/30 border-rose-500/30 text-rose-300'
-                                : !isDark
-                                ? 'bg-amber-50/90 border-amber-200 text-amber-800'
-                                : 'bg-amber-950/30 border-amber-500/30 text-amber-300'
-                            }`}
-                          >
-                            <MessageSquare className="w-3.5 h-3.5 shrink-0 mt-0.5 opacity-80" />
-                            <div className="min-w-0 flex-1">
-                              <span className="text-[10px] font-bold font-mono uppercase block tracking-wider opacity-75">
-                                Parecer / Feedback da Gestão
-                              </span>
-                              <p className="leading-snug mt-0.5">{just.managerNotes}</p>
-                            </div>
-                          </div>
-                        )}
-
-                        <div
-                          className={`px-4 pb-3 flex items-center justify-between gap-2 border-t pt-2 ${
-                            !isDark ? 'border-slate-200' : 'border-white/5'
-                          }`}
-                        >
-                          <span
-                            className={`text-[10px] font-mono ${
-                              !isDark ? 'text-slate-400' : 'text-slate-500'
-                            }`}
-                          >
-                            Enviado: {just.submittedAt}
-                          </span>
-
-                          <div className="flex items-center gap-1 shrink-0">
                             <button
                               type="button"
                               onClick={() => {
                                 setEditingJustification(just);
                                 setIsJustificationModalOpen(true);
                               }}
-                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                              className={`p-1 rounded-lg transition-colors cursor-pointer ${
                                 !isDark ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50' : 'text-slate-400 hover:text-amber-400 hover:bg-white/10'
                               }`}
                               title="Editar atestado"
@@ -2393,7 +2222,7 @@ function AppContent() {
                             <button
                               type="button"
                               onClick={() => handleDeleteJustification(just.id)}
-                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                              className={`p-1 rounded-lg transition-colors cursor-pointer ${
                                 !isDark ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50' : 'text-slate-400 hover:text-rose-400 hover:bg-white/10'
                               }`}
                               title="Excluir atestado"
@@ -2403,8 +2232,41 @@ function AppContent() {
                             </button>
                           </div>
                         </div>
+
+                        {/* Conteudo enxuto */}
+                        <div className="space-y-1.5">
+                          {just.reason && (
+                            <p className={`text-xs leading-relaxed line-clamp-2 ${!isDark ? 'text-slate-600' : 'text-slate-300'}`}>
+                              {just.reason}
+                            </p>
+                          )}
+
+                          {just.documentName && (
+                            <button
+                              type="button"
+                              onClick={() => openDocumentSafe(just.documentUrl, just.documentName)}
+                              title="Clique para visualizar o atestado"
+                              className={`inline-flex items-center gap-1.5 text-[11px] font-medium transition-colors cursor-pointer ${
+                                !isDark
+                                  ? 'text-[#96183c] hover:underline'
+                                  : 'text-[#f89642] hover:underline'
+                              }`}
+                            >
+                              <FileText className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate max-w-[240px]">{just.documentName}</span>
+                              <span className="opacity-75">(Visualizar)</span>
+                            </button>
+                          )}
+
+                          {!isDefaultFeedback && just.managerNotes && (
+                            <p className={`text-[11px] pt-0.5 ${!isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                              <strong className="font-semibold">Obs:</strong> {just.managerNotes}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    ))
+                    );
+                    })
                   )}
                 </div>
               </div>
