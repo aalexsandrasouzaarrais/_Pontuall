@@ -101,6 +101,7 @@ import {
 import { 
   CheckCircle2, 
   Clock, 
+  Calendar,
   CalendarDays, 
   FileText, 
   ArrowLeftRight, 
@@ -1918,88 +1919,90 @@ function AppContent() {
                       const isPendingPeer = req.type === 'swap' && req.peerStatus === 'pending';
                       const isAcceptedPeer = req.type === 'swap' && req.peerStatus === 'accepted';
                       const isRejectedPeer = req.type === 'swap' && req.peerStatus === 'rejected';
-                      const isDefaultFeedback =
-                        !req.managerNotes ||
-                        ['recusado pelo colega substituto', 'homologado pelo rh', 'homologado pelo gestor', 'recusado pelo gestor'].includes(
-                          req.managerNotes.trim().toLowerCase()
-                        );
+                      const accentColor = req.type === 'swap' ? '#F59242' : '#96183c';
+
+                      const statusLabel =
+                        req.status === 'approved'
+                          ? 'Homologado'
+                          : isRejectedPeer
+                          ? 'Recusado pelo Colega'
+                          : req.status === 'rejected'
+                          ? 'Recusado'
+                          : isAcceptedPeer
+                          ? 'Aguardando Gestor'
+                          : isPendingPeer
+                          ? 'Aguardando Colega'
+                          : 'Em Análise';
 
                       return (
                       <div
                         key={req.id}
-                        className={`rounded-xl border p-4 flex flex-col gap-2.5 transition-all ${
+                        className={`group relative rounded-2xl p-5 border transition-all duration-200 flex flex-col justify-between overflow-hidden ${
                           !isDark
-                            ? 'bg-white border-slate-200 shadow-xs'
-                            : 'bg-[#0d0d10] border-white/10'
+                            ? 'bg-white border-slate-200 shadow-sm hover:border-slate-300 hover:shadow-md'
+                            : 'bg-[#15161b] border-[#282a33] hover:border-white/20'
                         }`}
+                        style={{
+                          boxShadow: !isDark ? '0 2px 10px rgba(0,0,0,0.04)' : '0 4px 16px rgba(0,0,0,0.35)',
+                          borderLeft: `3px solid ${accentColor}`,
+                        }}
                       >
-                        {/* Topo simples: Tipo + Data | Status + Acoes */}
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
+                        {/* Top Header: Badge, Status Tag & Actions */}
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span
-                              className={`text-xs font-bold truncate ${
-                                !isDark ? 'text-slate-900' : 'text-white'
+                              className="inline-flex items-center gap-1.5 text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full uppercase tracking-wider"
+                              style={
+                                req.type === 'swap'
+                                  ? {
+                                      background: !isDark ? '#fff7ed' : 'rgba(245, 146, 66, 0.14)',
+                                      color: !isDark ? '#c2410c' : '#F59242',
+                                      border: !isDark ? '1px solid #fed7aa' : '1px solid rgba(245, 146, 66, 0.3)',
+                                    }
+                                  : {
+                                      background: !isDark ? '#fff1f2' : 'rgba(150, 24, 60, 0.22)',
+                                      color: !isDark ? '#96183c' : '#F9DE97',
+                                      border: !isDark ? '1px solid #fecdd3' : '1px solid rgba(150, 24, 60, 0.4)',
+                                    }
+                              }
+                            >
+                              <span
+                                className="w-1.5 h-1.5 rounded-full"
+                                style={{ background: accentColor }}
+                              />
+                              {req.type === 'swap' ? 'Troca de Turno' : 'Folga'}
+                            </span>
+
+                            <span
+                              className={`text-[11px] font-mono px-2.5 py-0.5 rounded-lg border ${
+                                req.status === 'approved'
+                                  ? !isDark
+                                    ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                                    : 'text-emerald-400 bg-[#0e0f12] border-emerald-500/30'
+                                  : req.status === 'rejected' || isRejectedPeer
+                                  ? !isDark
+                                    ? 'text-rose-700 bg-rose-50 border-rose-200'
+                                    : 'text-rose-400 bg-[#0e0f12] border-rose-500/30'
+                                  : !isDark
+                                  ? 'text-slate-600 bg-slate-100 border-slate-200'
+                                  : 'text-slate-400 bg-[#0e0f12] border-[#282a33]'
                               }`}
                             >
-                              {req.type === 'swap' ? 'Troca de Turno' : 'Folga Compensatória'}
-                            </span>
-                            <span className={`text-[11px] font-mono shrink-0 ${!isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                              • {formatDateBR(req.date)}
+                              {statusLabel}
                             </span>
                           </div>
 
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <span
-                              className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                                req.status === 'approved'
-                                  ? !isDark
-                                    ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-                                    : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                  : req.status === 'rejected' || isRejectedPeer
-                                  ? !isDark
-                                    ? 'bg-rose-50 text-rose-600 border border-rose-200'
-                                    : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                                  : isAcceptedPeer
-                                  ? !isDark
-                                    ? 'bg-indigo-50 text-indigo-600 border border-indigo-200'
-                                    : 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20'
-                                  : !isDark
-                                  ? 'bg-amber-50 text-amber-600 border border-amber-200'
-                                  : 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
-                              }`}
-                            >
-                              <span
-                                className={`w-1.5 h-1.5 rounded-full ${
-                                  req.status === 'approved'
-                                    ? 'bg-emerald-400'
-                                    : req.status === 'rejected' || isRejectedPeer
-                                    ? 'bg-rose-400'
-                                    : isAcceptedPeer
-                                    ? 'bg-indigo-400'
-                                    : 'bg-amber-300'
-                                }`}
-                              />
-                              {req.status === 'approved'
-                                ? 'Aprovado'
-                                : isRejectedPeer
-                                ? 'Recusado pelo Colega'
-                                : req.status === 'rejected'
-                                ? 'Recusado'
-                                : isAcceptedPeer
-                                ? 'Aguardando Gestor'
-                                : isPendingPeer
-                                ? 'Aguardando Colega'
-                                : 'Em Análise'}
-                            </span>
-
+                          <div className="flex items-center gap-1 shrink-0">
                             <button
                               type="button"
                               onClick={() => {
                                 setEditingRequest(req);
                                 setIsSwapModalOpen(true);
                               }}
-                              className={`p-1 rounded-lg transition-colors cursor-pointer ${
-                                !isDark ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50' : 'text-slate-400 hover:text-amber-400 hover:bg-white/10'
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer border ${
+                                !isDark
+                                  ? 'text-slate-400 hover:text-[#9F243C] hover:bg-slate-100 border-transparent hover:border-slate-300'
+                                  : 'text-slate-400 hover:text-[#F59242] hover:bg-white/5 border-transparent hover:border-[#F59242]/20'
                               }`}
                               title="Editar solicitação"
                               aria-label="Editar solicitação"
@@ -2009,8 +2012,10 @@ function AppContent() {
                             <button
                               type="button"
                               onClick={() => handleDeleteRequest(req.id)}
-                              className={`p-1 rounded-lg transition-colors cursor-pointer ${
-                                !isDark ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50' : 'text-slate-400 hover:text-rose-400 hover:bg-white/10'
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer border ${
+                                !isDark
+                                  ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 border-transparent hover:border-rose-300'
+                                  : 'text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border-transparent hover:border-rose-500/25'
                               }`}
                               title="Excluir solicitação"
                               aria-label="Excluir solicitação"
@@ -2020,25 +2025,66 @@ function AppContent() {
                           </div>
                         </div>
 
-                        {/* Conteudo enxuto */}
-                        <div className="space-y-1">
-                          {req.targetEmployeeName && (
-                            <p className={`text-[11px] ${!isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                              Troca com <strong className={!isDark ? 'text-slate-800' : 'text-slate-200'}>{req.targetEmployeeName}</strong>
-                            </p>
-                          )}
+                        {/* Content: Title & Description */}
+                        <div className="space-y-1.5 mb-2">
+                          <h3 className={`font-bold text-sm tracking-tight leading-snug ${
+                            !isDark ? 'text-slate-900' : 'text-white'
+                          }`}>
+                            {req.type === 'swap' && req.targetEmployeeName
+                              ? `Troca com ${req.targetEmployeeName}`
+                              : req.type === 'swap'
+                              ? 'Solicitação de Troca de Turno'
+                              : 'Solicitação de Folga Compensatória'}
+                          </h3>
+                          <p className={`text-xs leading-relaxed line-clamp-2 ${
+                            !isDark ? 'text-slate-600' : 'text-slate-400'
+                          }`}>
+                            {req.reason}
+                          </p>
+                        </div>
 
-                          {req.reason && (
-                            <p className={`text-xs leading-relaxed line-clamp-2 ${!isDark ? 'text-slate-600' : 'text-slate-300'}`}>
-                              {req.reason}
-                            </p>
-                          )}
+                        {/* Inner Box (Baseado no card de lembretes, sem foto) */}
+                        <div className={`my-2.5 p-2.5 rounded-xl border flex items-center justify-between gap-2.5 ${
+                          !isDark ? 'bg-slate-50 border-slate-200' : 'bg-[#0e0f12] border-[#282a33]'
+                        }`}>
+                          <div className="min-w-0 flex-1">
+                            <span className={`text-[9px] uppercase font-bold tracking-wider block font-mono ${
+                              !isDark ? 'text-slate-500' : 'text-slate-400'
+                            }`}>
+                              {req.managerNotes ? 'Parecer da Gestão' : 'Status do Pedido'}
+                            </span>
+                            <span className={`font-medium truncate block text-xs ${
+                              !isDark ? 'text-slate-900' : 'text-white'
+                            }`}>
+                              {req.managerNotes || statusLabel}
+                            </span>
+                          </div>
 
-                          {!isDefaultFeedback && req.managerNotes && (
-                            <p className={`text-[11px] pt-1 ${!isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                              <strong className="font-semibold">Obs:</strong> {req.managerNotes}
-                            </p>
-                          )}
+                          <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-md font-mono border ${
+                            !isDark
+                              ? 'text-amber-800 bg-amber-50 border-amber-200'
+                              : 'text-[#F9DE97] bg-[#F59242]/10 border-[#F59242]/20'
+                          }`}>
+                            {req.type === 'swap' ? 'Troca' : 'Folga'}
+                          </span>
+                        </div>
+
+                        {/* Footer Row: Date Pill & CreatedAt */}
+                        <div className={`pt-3 border-t flex flex-wrap items-center justify-between gap-2 text-xs ${
+                          !isDark ? 'border-slate-100' : 'border-white/5'
+                        }`}>
+                          <div className={`flex items-center gap-2 font-mono ${!isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                            <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${
+                              !isDark ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-[#0e0f12] border-[#282a33] text-slate-300'
+                            }`}>
+                              <Calendar className={`w-3.5 h-3.5 ${!isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+                              <span>{formatDateBR(req.date)}</span>
+                            </div>
+                          </div>
+
+                          <span className={`text-[11px] font-mono ${!isDark ? 'text-slate-400' : 'text-slate-400'}`}>
+                            Enviado: {req.createdAt}
+                          </span>
                         </div>
                       </div>
                     );
@@ -2143,76 +2189,71 @@ function AppContent() {
                     </div>
                   ) : (
                     myJustifications.map(just => {
-                      const isDefaultFeedback =
-                        !just.managerNotes ||
-                        ['homologado pelo rh', 'homologado pelo gestor', 'não homologado', 'recusado pelo rh', 'recusado pelo gestor'].includes(
-                          just.managerNotes.trim().toLowerCase()
-                        );
+                      const statusLabel =
+                        just.status === 'approved'
+                          ? 'Homologado'
+                          : just.status === 'rejected'
+                          ? 'Recusado'
+                          : 'Em Análise';
 
                       return (
                       <div
                         key={just.id}
-                        className={`rounded-xl border p-4 flex flex-col gap-2.5 transition-all ${
+                        className={`group relative rounded-2xl p-5 border transition-all duration-200 flex flex-col justify-between overflow-hidden ${
                           !isDark
-                            ? 'bg-white border-slate-200 shadow-xs'
-                            : 'bg-[#0d0d10] border-white/10'
+                            ? 'bg-white border-slate-200 shadow-sm hover:border-slate-300 hover:shadow-md'
+                            : 'bg-[#15161b] border-[#282a33] hover:border-white/20'
                         }`}
+                        style={{
+                          boxShadow: !isDark ? '0 2px 10px rgba(0,0,0,0.04)' : '0 4px 16px rgba(0,0,0,0.35)',
+                          borderLeft: '3px solid #96183c',
+                        }}
                       >
-                        {/* Topo simples: Titulo + Data | Status + Acoes */}
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
+                        {/* Top Header: Badge, Status Tag & Actions */}
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span
-                              className={`text-xs font-bold truncate ${
-                                !isDark ? 'text-slate-900' : 'text-white'
+                              className="inline-flex items-center gap-1.5 text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full uppercase tracking-wider"
+                              style={{
+                                background: !isDark ? '#fff1f2' : 'rgba(150, 24, 60, 0.22)',
+                                color: !isDark ? '#96183c' : '#F9DE97',
+                                border: !isDark ? '1px solid #fecdd3' : '1px solid rgba(150, 24, 60, 0.4)',
+                              }}
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#96183c]" />
+                              Atestado
+                            </span>
+
+                            <span
+                              className={`text-[11px] font-mono px-2.5 py-0.5 rounded-lg border ${
+                                just.status === 'approved'
+                                  ? !isDark
+                                    ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                                    : 'text-emerald-400 bg-[#0e0f12] border-emerald-500/30'
+                                  : just.status === 'rejected'
+                                  ? !isDark
+                                    ? 'text-rose-700 bg-rose-50 border-rose-200'
+                                    : 'text-rose-400 bg-[#0e0f12] border-rose-500/30'
+                                  : !isDark
+                                  ? 'text-slate-600 bg-slate-100 border-slate-200'
+                                  : 'text-slate-400 bg-[#0e0f12] border-[#282a33]'
                               }`}
                             >
-                              Atestado / Declaração
-                            </span>
-                            <span className={`text-[11px] font-mono shrink-0 ${!isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                              • {formatDateBR(just.date)}
+                              {statusLabel}
                             </span>
                           </div>
 
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <span
-                              className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                                just.status === 'approved'
-                                  ? !isDark
-                                    ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-                                    : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                  : just.status === 'rejected'
-                                  ? !isDark
-                                    ? 'bg-rose-50 text-rose-600 border border-rose-200'
-                                    : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                                  : !isDark
-                                  ? 'bg-amber-50 text-amber-600 border border-amber-200'
-                                  : 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
-                              }`}
-                            >
-                              <span
-                                className={`w-1.5 h-1.5 rounded-full ${
-                                  just.status === 'approved'
-                                    ? 'bg-emerald-400'
-                                    : just.status === 'rejected'
-                                    ? 'bg-rose-400'
-                                    : 'bg-amber-300'
-                                }`}
-                              />
-                              {just.status === 'approved'
-                                ? 'Homologado'
-                                : just.status === 'rejected'
-                                ? 'Recusado'
-                                : 'Em Análise'}
-                            </span>
-
+                          <div className="flex items-center gap-1 shrink-0">
                             <button
                               type="button"
                               onClick={() => {
                                 setEditingJustification(just);
                                 setIsJustificationModalOpen(true);
                               }}
-                              className={`p-1 rounded-lg transition-colors cursor-pointer ${
-                                !isDark ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50' : 'text-slate-400 hover:text-amber-400 hover:bg-white/10'
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer border ${
+                                !isDark
+                                  ? 'text-slate-400 hover:text-[#9F243C] hover:bg-slate-100 border-transparent hover:border-slate-300'
+                                  : 'text-slate-400 hover:text-[#F59242] hover:bg-white/5 border-transparent hover:border-[#F59242]/20'
                               }`}
                               title="Editar atestado"
                               aria-label="Editar atestado"
@@ -2222,8 +2263,10 @@ function AppContent() {
                             <button
                               type="button"
                               onClick={() => handleDeleteJustification(just.id)}
-                              className={`p-1 rounded-lg transition-colors cursor-pointer ${
-                                !isDark ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50' : 'text-slate-400 hover:text-rose-400 hover:bg-white/10'
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer border ${
+                                !isDark
+                                  ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 border-transparent hover:border-rose-300'
+                                  : 'text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border-transparent hover:border-rose-500/25'
                               }`}
                               title="Excluir atestado"
                               aria-label="Excluir atestado"
@@ -2233,36 +2276,76 @@ function AppContent() {
                           </div>
                         </div>
 
-                        {/* Conteudo enxuto */}
-                        <div className="space-y-1.5">
-                          {just.reason && (
-                            <p className={`text-xs leading-relaxed line-clamp-2 ${!isDark ? 'text-slate-600' : 'text-slate-300'}`}>
-                              {just.reason}
-                            </p>
-                          )}
+                        {/* Content: Title & Description */}
+                        <div className="space-y-1.5 mb-2">
+                          <h3 className={`font-bold text-sm tracking-tight leading-snug ${
+                            !isDark ? 'text-slate-900' : 'text-white'
+                          }`}>
+                            Atestado / Declaração de Ausência
+                          </h3>
+                          <p className={`text-xs leading-relaxed line-clamp-2 ${
+                            !isDark ? 'text-slate-600' : 'text-slate-400'
+                          }`}>
+                            {just.reason}
+                          </p>
+                        </div>
 
-                          {just.documentName && (
+                        {/* Inner Box (Baseado no card de lembretes, sem foto) */}
+                        <div className={`my-2.5 p-2.5 rounded-xl border flex items-center justify-between gap-2.5 ${
+                          !isDark ? 'bg-slate-50 border-slate-200' : 'bg-[#0e0f12] border-[#282a33]'
+                        }`}>
+                          <div className="min-w-0 flex-1">
+                            <span className={`text-[9px] uppercase font-bold tracking-wider block font-mono ${
+                              !isDark ? 'text-slate-500' : 'text-slate-400'
+                            }`}>
+                              {just.documentName ? 'Comprovante Anexado' : 'Parecer da Gestão'}
+                            </span>
+                            <span className={`font-medium truncate block text-xs ${
+                              !isDark ? 'text-slate-900' : 'text-white'
+                            }`}>
+                              {just.documentName || just.managerNotes || statusLabel}
+                            </span>
+                          </div>
+
+                          {just.documentName ? (
                             <button
                               type="button"
                               onClick={() => openDocumentSafe(just.documentUrl, just.documentName)}
-                              title="Clique para visualizar o atestado"
-                              className={`inline-flex items-center gap-1.5 text-[11px] font-medium transition-colors cursor-pointer ${
+                              className={`shrink-0 text-[10px] font-semibold px-2.5 py-1 rounded-md font-mono border cursor-pointer transition-opacity hover:opacity-80 ${
                                 !isDark
-                                  ? 'text-[#96183c] hover:underline'
-                                  : 'text-[#f89642] hover:underline'
+                                  ? 'text-amber-800 bg-amber-50 border-amber-200'
+                                  : 'text-[#F9DE97] bg-[#F59242]/10 border-[#F59242]/20'
                               }`}
                             >
-                              <FileText className="w-3.5 h-3.5 shrink-0" />
-                              <span className="truncate max-w-[240px]">{just.documentName}</span>
-                              <span className="opacity-75">(Visualizar)</span>
+                              Visualizar
                             </button>
+                          ) : (
+                            <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-md font-mono border ${
+                              !isDark
+                                ? 'text-slate-600 bg-slate-200 border-slate-300'
+                                : 'text-slate-400 bg-white/5 border-white/10'
+                            }`}>
+                              {statusLabel}
+                            </span>
                           )}
+                        </div>
 
-                          {!isDefaultFeedback && just.managerNotes && (
-                            <p className={`text-[11px] pt-0.5 ${!isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                              <strong className="font-semibold">Obs:</strong> {just.managerNotes}
-                            </p>
-                          )}
+                        {/* Footer Row: Date Pill & SubmittedAt */}
+                        <div className={`pt-3 border-t flex flex-wrap items-center justify-between gap-2 text-xs ${
+                          !isDark ? 'border-slate-100' : 'border-white/5'
+                        }`}>
+                          <div className={`flex items-center gap-2 font-mono ${!isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                            <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${
+                              !isDark ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-[#0e0f12] border-[#282a33] text-slate-300'
+                            }`}>
+                              <Calendar className={`w-3.5 h-3.5 ${!isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+                              <span>{formatDateBR(just.date)}</span>
+                            </div>
+                          </div>
+
+                          <span className={`text-[11px] font-mono ${!isDark ? 'text-slate-400' : 'text-slate-400'}`}>
+                            Enviado: {just.submittedAt}
+                          </span>
                         </div>
                       </div>
                     );
