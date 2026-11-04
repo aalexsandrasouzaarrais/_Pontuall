@@ -18,6 +18,7 @@ import {
 import { 
   ShiftDetailModal 
 } from '@/modules/shifts/components/ShiftDetailModal';
+import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
 import { 
   ShiftSwapModal 
 } from '@/modules/requests/components/ShiftSwapModal';
@@ -591,7 +592,7 @@ function AppContent() {
       setActiveEmployee(emp);
       setCurrentRole(systemRole);
       setIsAuthenticated(true);
-      showToast('Google Workspace', `Bem-vindo(a), ${emp.name}! Foto conectada.`, 'success');
+      // Toast de bem-vindo removido
 
       // Limpa a URL caso contenha hash de autenticação do Supabase
       if (typeof window !== 'undefined' && window.location.hash && window.location.hash.includes('access_token')) {
@@ -2459,7 +2460,8 @@ function AppContent() {
         isRh={isRhUser}
       />
 
-      <ShiftDetailModal
+      <ErrorBoundary fallbackTitle="Detalhes da Escala" fallbackMessage="Não foi possível exibir os detalhes desta escala.">
+        <ShiftDetailModal
         shift={selectedShiftForDetail}
         employees={employees}
         isOpen={isDetailModalOpen}
@@ -2469,6 +2471,7 @@ function AppContent() {
         }}
         isLightTheme={!isDark}
       />
+      </ErrorBoundary>
 
       <ShiftSwapModal
         isOpen={isSwapModalOpen}
