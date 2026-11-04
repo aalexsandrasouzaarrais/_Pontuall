@@ -41,7 +41,7 @@ const paddingClass = {
 
 const BORDER_TRAIL_LOOP_MS = 5250
 
-export type RimVariant = "default" | "success" | "destructive"
+export type RimVariant = "default" | "success" | "destructive" | "warning" | "info"
 
 const RIM_BLOB_GRADIENTS: Record<
   RimVariant,
@@ -63,6 +63,18 @@ const RIM_BLOB_GRADIENTS: Record<
       "linear-gradient(90deg, #991b1b, #dc2626, #e11d48, #f43f5e, #be123c)",
     secondaryBg: "linear-gradient(90deg, #fb7185, #fda4af, #f87171, #fecdd3)",
     tertiaryBg: "linear-gradient(90deg, #7f1d1d, #b91c1c, #dc2626)",
+  },
+  warning: {
+    primaryBg:
+      "linear-gradient(90deg, #d97706, #f59e0b, #fbbf24, #f89847, #96183c)",
+    secondaryBg: "linear-gradient(90deg, #fde68a, #fcd34d, #f59e0b, #fb923c)",
+    tertiaryBg: "linear-gradient(90deg, #b45309, #d97706, #ea580c)",
+  },
+  info: {
+    primaryBg:
+      "linear-gradient(90deg, #0284c7, #0ea5e9, #38bdf8, #6366f1, #4f46e5)",
+    secondaryBg: "linear-gradient(90deg, #7dd3fc, #bae6fd, #38bdf8, #818cf8)",
+    tertiaryBg: "linear-gradient(90deg, #0369a1, #0284c7, #4338ca)",
   },
 }
 
@@ -103,6 +115,26 @@ const RIM_BORDER_TRAIL: Record<RimVariant, BorderTrailChrome> = {
       "0 0 22px rgba(220,38,38,0.35), 0 0 44px rgba(244,63,94,0.24), 0 0 2px rgba(255,255,255,0.08)",
     coreGlow:
       "0 0 14px rgba(220,38,38,0.48), 0 0 28px rgba(244,63,94,0.4), inset 0 0 1px rgba(255,255,255,0.16)",
+  },
+  warning: {
+    ambientGradient:
+      "linear-gradient(90deg, transparent 0%, rgba(245,158,11,0) 6%, rgba(245,158,11,0.4) 24%, rgba(251,191,36,0.52) 50%, rgba(217,119,6,0.44) 76%, rgba(217,119,6,0) 94%, transparent 100%)",
+    coreGradient:
+      "linear-gradient(90deg, transparent 0%, rgba(245,158,11,0.75) 20%, rgba(253,230,138,0.9) 50%, rgba(251,191,36,0.82) 80%, transparent 100%)",
+    ambientGlow:
+      "0 0 22px rgba(245,158,11,0.35), 0 0 44px rgba(217,119,6,0.24), 0 0 2px rgba(255,255,255,0.08)",
+    coreGlow:
+      "0 0 14px rgba(245,158,11,0.48), 0 0 28px rgba(251,191,36,0.4), inset 0 0 1px rgba(255,255,255,0.16)",
+  },
+  info: {
+    ambientGradient:
+      "linear-gradient(90deg, transparent 0%, rgba(14,165,233,0) 6%, rgba(14,165,233,0.4) 24%, rgba(56,189,248,0.52) 50%, rgba(2,132,199,0.44) 76%, rgba(2,132,199,0) 94%, transparent 100%)",
+    coreGradient:
+      "linear-gradient(90deg, transparent 0%, rgba(14,165,233,0.75) 20%, rgba(186,230,253,0.9) 50%, rgba(56,189,248,0.82) 80%, transparent 100%)",
+    ambientGlow:
+      "0 0 22px rgba(14,165,233,0.35), 0 0 44px rgba(2,132,199,0.24), 0 0 2px rgba(255,255,255,0.08)",
+    coreGlow:
+      "0 0 14px rgba(14,165,233,0.48), 0 0 28px rgba(56,189,248,0.4), inset 0 0 1px rgba(255,255,255,0.16)",
   },
 }
 
@@ -146,7 +178,7 @@ function ToastCardBorderTrail({
     width: trailLengthPx,
   } as const
 
-  const trail = RIM_BORDER_TRAIL[rimVariant]
+  const trail = RIM_BORDER_TRAIL[rimVariant] || RIM_BORDER_TRAIL.default
 
   return (
     <div
@@ -202,7 +234,7 @@ function toastBorderGlowConfig(
   } else {
     idleOpacity = rimEmphasis ? 0.78 : 0.5
   }
-  const gradients = RIM_BLOB_GRADIENTS[rimVariant]
+  const gradients = RIM_BLOB_GRADIENTS[rimVariant] || RIM_BLOB_GRADIENTS.default
   return {
     opacityIdle: idleOpacity,
     primaryBg: gradients.primaryBg,

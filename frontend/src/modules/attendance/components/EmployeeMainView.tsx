@@ -194,6 +194,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
       delayInfo?: {
         minutes: number;
         isJustified: boolean;
+        isPendingApproval?: boolean;
         justificationReason?: string;
       };
     };
@@ -234,19 +235,26 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
             const notes = matchingShift.notes || '';
             const matchAtrasoNote = notes.match(/\[Atraso \d+m:\s*([^\]]+)\]/i);
             const noteReason = matchAtrasoNote ? matchAtrasoNote[1].trim() : '';
-            const hasValidNoteReason = noteReason && !noteReason.toLowerCase().includes('sem justificativa');
+            const isPlaceholderNote = !noteReason || 
+              noteReason.toLowerCase().includes('aguardando') || 
+              noteReason.toLowerCase().includes('sem justificativa') ||
+              noteReason.toLowerCase().includes('não informada');
+            const hasValidNoteReason = Boolean(noteReason && !isPlaceholderNote);
 
-            const hasJustificationRecord = (justifications || []).some(j => {
+            const empJustification = (justifications || []).find(j => {
+              const isMatchingEmp = !j.employeeId || j.employeeId === employee.id;
               const jDate = (j.date || (j as any).Dta_Ausencia || '').slice(0, 10);
-              return (j.shiftId === matchingShift.id || jDate === dateStr);
+              return isMatchingEmp && (j.shiftId === matchingShift.id || jDate === dateStr);
             });
 
-            const isJustified = Boolean(hasValidNoteReason || hasJustificationRecord || matchingShift.attendanceStatus === 'justified');
+            const isApproved = empJustification?.status === 'approved' || matchingShift.attendanceStatus === 'justified' || notes.includes('ABONO GESTOR');
+            const isPendingApproval = Boolean(empJustification && empJustification.status === 'pending') || (hasValidNoteReason && !isApproved);
 
             delayInfo = {
               minutes: diffMin,
-              isJustified,
-              justificationReason: hasValidNoteReason ? noteReason : hasJustificationRecord ? 'Justificativa registrada' : undefined,
+              isJustified: isApproved,
+              isPendingApproval,
+              justificationReason: hasValidNoteReason ? noteReason : empJustification?.reason || undefined,
             };
           }
         }
@@ -255,9 +263,11 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
         let subtitle = punch.Des_Endereco || 'Localização Registrada';
         if (delayInfo) {
           if (delayInfo.isJustified) {
-            subtitle = `${subtitle} • Justificado na batida: "${delayInfo.justificationReason || 'Informada'}"`;
+            subtitle = `${subtitle} • Atraso abonado pelo gestor${delayInfo.justificationReason ? `: "${delayInfo.justificationReason}"` : ''}`;
+          } else if (delayInfo.isPendingApproval) {
+            subtitle = `${subtitle} • Justificativa em análise pelo gestor: "${delayInfo.justificationReason || 'Informada'}"`;
           } else {
-            subtitle = `${subtitle} • Horário previsto: ${matchingShift?.startTime || '08:00'}`;
+            subtitle = `${subtitle} • Horário previsto: ${matchingShift?.startTime || '08:00'} (Aguardando justificativa)`;
           }
         }
 
@@ -275,7 +285,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
             : (isLightTheme ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-amber-500/10 text-amber-300 border-amber-500/20'),
           address: punch.Des_Endereco,
           shiftId: matchingShift?.id,
-          canJustify: Boolean(isAtraso && delayInfo && !delayInfo.isJustified),
+          canJustify: Boolean(isAtraso && delayInfo && !delayInfo.isJustified && !delayInfo.isPendingApproval),
           justificationReasonDefault: `Justificativa de atraso de ${delayInfo?.minutes || ''} minutos no dia ${dateFormatted}`,
           isGpsOk: isValid,
           delayInfo
@@ -346,13 +356,38 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
             const notes = shift.notes || '';
             const matchAtrasoNote = notes.match(/\[Atraso \d+m:\s*([^\]]+)\]/i);
             const noteReason = matchAtrasoNote ? matchAtrasoNote[1].trim() : '';
-            const hasValidNoteReason = noteReason && !noteReason.toLowerCase().includes('sem justificativa');
-            const isDelayJustified = Boolean(hasValidNoteReason || isJustified);
+            const isPlaceholderNote = !noteReason || 
+              noteReason.toLowerCase().includes('aguardando') || 
+              noteReason.toLowerCase().includes('sem justificativa') ||
+              noteReason.toLowerCase().includes('não informada');
+            const hasValidNoteReason = Boolean(noteReason && !isPlaceholderNote);
+
+            const empJustification = (justifications || []).find(j => {
+              const isMatchingEmp = !j.employeeId || j.employeeId === employee.id;
+              const jDate = (j.date || (j as any).Dta_Ausencia || '').slice(0, 10);
+              return isMatchingEmp && (j.shiftId === shift.id || jDate === shift.date);
+            });
+
+            const isApproved = empJustification?.status === 'approved' || shift.attendanceStatus === 'justified' || notes.includes('ABONO GESTOR');
+            const isPendingApproval = Boolean(empJustification && empJustification.status === 'pending') || (hasValidNoteReason && !isApproved);
+
             delayInfo = {
               minutes: diffMin,
-              isJustified: isDelayJustified,
-              justificationReason: hasValidNoteReason ? noteReason : undefined
+              isJustified: isApproved,
+              isPendingApproval,
+              justificationReason: hasValidNoteReason ? noteReason : empJustification?.reason || undefined
             };
+          }
+        }
+
+        let fallbackSubtitle = shift.checkInLocation?.address || shift.workplace || 'Posto Presencial';
+        if (delayInfo) {
+          if (delayInfo.isJustified) {
+            fallbackSubtitle = `${fallbackSubtitle} • Atraso abonado pelo gestor${delayInfo.justificationReason ? `: "${delayInfo.justificationReason}"` : ''}`;
+          } else if (delayInfo.isPendingApproval) {
+            fallbackSubtitle = `${fallbackSubtitle} • Justificativa em análise pelo gestor: "${delayInfo.justificationReason || 'Informada'}"`;
+          } else {
+            fallbackSubtitle = `${fallbackSubtitle} • Horário previsto: ${shift.startTime || '08:00'} (Aguardando justificativa)`;
           }
         }
 
@@ -362,14 +397,14 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
           dateFormatted,
           type: isAtraso ? 'atraso' : 'presenca',
           title: `Entrada: ${shift.checkInTime}${shift.checkOutTime ? ` • Saída: ${shift.checkOutTime}` : ''}`,
-          subtitle: shift.checkInLocation?.address || shift.workplace || 'Posto Presencial',
+          subtitle: fallbackSubtitle,
           timeDisplay: shift.checkInTime,
           badgeText: isGpsOk ? 'GPS OK' : 'Fora do Raio',
           badgeClass: isGpsOk
             ? (isLightTheme ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-white/10 text-slate-300 border-white/10')
             : (isLightTheme ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-amber-500/10 text-amber-300 border-amber-500/20'),
           shiftId: shift.id,
-          canJustify: Boolean(isAtraso && delayInfo && !delayInfo.isJustified),
+          canJustify: Boolean(isAtraso && delayInfo && !delayInfo.isJustified && !delayInfo.isPendingApproval),
           justificationReasonDefault: `Justificativa de atraso de ${delayInfo?.minutes || ''} minutos no dia ${dateFormatted}`,
           isGpsOk,
           delayInfo
@@ -1937,15 +1972,21 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                             style={
                               isDelayJustified
                                 ? isLightTheme
-                                  ? { backgroundColor: '#f1f5f9', color: '#475569', borderColor: '#cbd5e1' }
-                                  : { backgroundColor: 'rgba(255, 255, 255, 0.08)', color: '#cbd5e1', borderColor: 'rgba(255, 255, 255, 0.15)' }
-                                : isLightTheme
+                                  ? { backgroundColor: '#dcfce7', color: '#064e3b', borderColor: '#86efac' }
+                                  : { backgroundColor: 'rgba(16, 185, 129, 0.25)', color: '#a7f3d0', borderColor: 'rgba(16, 185, 129, 0.4)' }
+                                : item.delayInfo?.isPendingApproval
+                                ? isLightTheme
                                   ? { backgroundColor: '#fef3c7', color: '#78350f', borderColor: '#fcd34d' }
                                   : { backgroundColor: 'rgba(245, 158, 11, 0.25)', color: '#fde68a', borderColor: 'rgba(245, 158, 11, 0.4)' }
+                                : isLightTheme
+                                  ? { backgroundColor: '#fee2e2', color: '#991b1b', borderColor: '#fca5a5' }
+                                  : { backgroundColor: 'rgba(239, 68, 68, 0.25)', color: '#fca5a5', borderColor: 'rgba(239, 68, 68, 0.4)' }
                             }
                           >
                             {isDelayJustified
-                              ? `Atraso justificado (+${item.delayInfo?.minutes}m)`
+                              ? `Atraso abonado (+${item.delayInfo?.minutes}m)`
+                              : item.delayInfo?.isPendingApproval
+                              ? `Atraso em análise (+${item.delayInfo?.minutes}m)`
                               : `Atraso (+${item.delayInfo?.minutes}m)`
                             }
                           </span>
@@ -1980,7 +2021,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                           }
                         </span>
 
-                        {/* Ação de Justificar (Apenas se a falta ou o atraso não foi justificado) */}
+                        {/* Ação de Justificar (Apenas se a falta ou o atraso não foi justificado e não está em análise) */}
                         {item.canJustify && onOpenJustificationModal && (
                           <button
                             type="button"
@@ -1997,8 +2038,8 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                               isFalta
                                 ? 'bg-[#96183c] hover:bg-[#b32047] text-white'
                                 : isLightTheme
-                                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300'
-                                  : 'bg-white/10 hover:bg-white/20 text-white border border-white/15'
+                                  ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300'
+                                  : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/30'
                             }`}
                             title={isFalta ? 'Enviar justificativa/atestado para esta falta' : 'Enviar justificativa para este atraso'}
                           >
@@ -2006,10 +2047,16 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                             <span>Justificar</span>
                           </button>
                         )}
+                        {item.delayInfo?.isPendingApproval && !item.delayInfo?.isJustified && (
+                          <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                            <Clock className="w-3.5 h-3.5" />
+                            <span>Aguardando análise</span>
+                          </span>
+                        )}
                         {item.delayInfo?.isJustified && (
                           <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
                             <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>Justificado</span>
+                            <span>Abonado</span>
                           </span>
                         )}
                       </div>

@@ -1671,21 +1671,26 @@ function AppContent() {
               });
 
               return (
-                <EmployeeMainView
-                  employee={activeEmployee}
-                  shifts={shifts}
-                  reminders={filteredReminders}
-                  onCheckIn={handleCheckIn}
-                  onNavigateToCalendar={() => setEmployeeTab('calendar')}
-                  onNavigateToRequests={() => setEmployeeTab('requests')}
-                  onNavigateToJustifications={() => setEmployeeTab('justifications')}
-                  onNavigateToPjReports={() => setEmployeeTab('pj_reports')}
-                  onShiftClick={handleOpenShiftDetails}
-                  isLightTheme={!isDark}
-                  employees={employees}
-                  justifications={justifications}
-                  onOpenJustificationModal={handleOpenJustificationModal}
-                />
+                <ErrorBoundary
+                  fallbackTitle="Painel do Colaborador"
+                  fallbackMessage="Ocorreu uma instabilidade na exibição do ponto. Clique abaixo para restabelecer a tela."
+                >
+                  <EmployeeMainView
+                    employee={activeEmployee}
+                    shifts={shifts}
+                    reminders={filteredReminders}
+                    onCheckIn={handleCheckIn}
+                    onNavigateToCalendar={() => setEmployeeTab('calendar')}
+                    onNavigateToRequests={() => setEmployeeTab('requests')}
+                    onNavigateToJustifications={() => setEmployeeTab('justifications')}
+                    onNavigateToPjReports={() => setEmployeeTab('pj_reports')}
+                    onShiftClick={handleOpenShiftDetails}
+                    isLightTheme={!isDark}
+                    employees={employees}
+                    justifications={justifications}
+                    onOpenJustificationModal={handleOpenJustificationModal}
+                  />
+                </ErrorBoundary>
               );
             })()}
 
