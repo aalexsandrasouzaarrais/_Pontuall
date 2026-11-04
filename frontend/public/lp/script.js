@@ -313,9 +313,9 @@ if (lightboxModal && lightboxImg) {
         img.style.cursor = 'zoom-in';
         img.addEventListener('click', () => {
             lightboxImg.src = img.src;
-            lightboxImg.alt = img.alt || 'Visualização do Módulo Pontual';
+            lightboxImg.alt = '';
             if (lightboxCaption) {
-                lightboxCaption.textContent = img.alt || 'Toque fora ou no X para fechar';
+                lightboxCaption.textContent = '';
             }
             lightboxModal.classList.add('active');
             lightboxModal.setAttribute('aria-hidden', 'false');
