@@ -18,11 +18,12 @@ import '../assets/css/login.css';
 interface LoginViewProps {
   onLoginSuccess: (user: Employee, role: 'manager' | 'employee') => void;
   externalFeedback?: { message: string; type: 'error' | 'warning' | 'success' } | null;
+  onBackToLanding?: () => void;
 }
 
 
 
-export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFeedback }) => {
+export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFeedback, onBackToLanding }) => {
   const { theme, setTheme } = useTheme();
   const isDark = theme === 'dark';
 
@@ -630,7 +631,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         ================================================== */}
         <div className="left-panel">
           {/* Logo */}
-          <div className="logo2 cursor-pointer" onClick={() => setViewMode('login')} title="Ir para o início">
+          <div className="logo2 cursor-pointer" onClick={() => { if (viewMode === 'login' && onBackToLanding) { onBackToLanding(); } else { setViewMode('login'); } }} title="Ir para o início">
             <img src={logoPontualTransparente} alt="Pontual Logo" width="160px" />
             <img src={pontualBranco} alt="" />
           </div>
