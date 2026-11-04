@@ -361,11 +361,11 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
                 className="hidden"
               />
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className={`py-2 px-3.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition-all ${
+                  className={`w-full py-2 px-3.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition-all ${
                     isDark
                       ? 'border-white/10 bg-white/5 hover:bg-white/10 text-white'
                       : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-800'
@@ -373,20 +373,6 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
                 >
                   <Upload className="w-4 h-4 text-[#f89847]" />
                   <span>Enviar do Computador</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleRestoreGooglePhoto}
-                  className={`py-2 px-3.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-2 cursor-pointer transition-all ${
-                    isDark
-                      ? 'border-white/10 bg-white/5 hover:bg-white/10 text-white'
-                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-800'
-                  }`}
-                  title="Sincronizar a foto da sua conta Google / Workspace"
-                >
-                  <RefreshCw className="w-4 h-4 text-[#96183c]" />
-                  <span>Foto do Google Workspace</span>
                 </button>
               </div>
 

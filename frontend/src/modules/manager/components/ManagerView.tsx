@@ -3,7 +3,8 @@ import {
   calculateShiftDurationHours,
   formatMinutesToHoursString,
   hoursToMinutes,
-  calculatePunchDurationMinutes
+  calculatePunchDurationMinutes,
+  normalizeDateToISO
 } from '@/shared/utils/dateUtils';
 import React, { useState } from 'react';
 import { ManagerSidebar, ManagerTabId } from './ManagerSidebar';
@@ -83,7 +84,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
     title: 'Novo turno', startTime: '09:00', endTime: '18:00', breakMinutes: 60,
   });
 
-  const exportCsv = () => {
+  const exportCsv = (targetMonth?: string) => {
     // Relatório de Auditoria de Ponto & Banco de Horas (Conformidade Portaria MTE 671/2021)
     const headers = [
       'Colaborador',
@@ -103,11 +104,30 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
       'Parecer / Auditoria Legal (Portaria 671)'
     ];
 
-    const rows = shifts.map(s => {
+    // Se especificado targetMonth (ex: '2026-10'), filtra apenas turnos do mês correspondente
+    const targetShifts = targetMonth && targetMonth !== 'all'
+      ? shifts.filter(s => {
+          if (!s.date) return false;
+          const iso = normalizeDateToISO(s.date);
+          return iso.startsWith(targetMonth);
+        })
+      : shifts;
+
+    const rows = targetShifts.map(s => {
       const emp = employees.find(e => e.id === s.employeeId);
       const name = `"${(emp?.name || 'Não informado').replace(/"/g, '""')}"`;
       const dept = `"${(emp?.department || 'Geral').replace(/"/g, '""')}"`;
-      const date = s.date;
+      
+      // Formata a data para padrão brasileiro DD/MM/AAAA no CSV
+      let date = s.date || '';
+      if (date) {
+        const iso = normalizeDateToISO(date);
+        const parts = iso.split('-');
+        if (parts.length === 3) {
+          date = `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+      }
+
       const scheduledStart = s.startTime || '--:--';
       const scheduledEnd = s.endTime || '--:--';
       const realIn = s.checkInTime || '--:--';
@@ -186,7 +206,19 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `relatorio-espelho-ponto-auditoria-${getTodayDateString()}.csv`;
+
+    let filenameSuffix = getTodayDateString();
+    if (targetMonth && targetMonth !== 'all') {
+      const [y, m] = targetMonth.split('-');
+      const monthNames = [
+        'janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho',
+        'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'
+      ];
+      const mIdx = Number(m) - 1;
+      const mName = (mIdx >= 0 && mIdx < 12) ? monthNames[mIdx] : m;
+      filenameSuffix = `${mName}-${y}`;
+    }
+    link.download = `folha-presencas-${filenameSuffix}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
   };

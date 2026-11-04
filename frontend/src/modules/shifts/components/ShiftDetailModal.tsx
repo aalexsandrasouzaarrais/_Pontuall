@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, 
   Clock, 
@@ -12,123 +12,242 @@ import {
   FileCheck,
   MapPin,
   Sparkles,
-  Palette,
-  Check
 } from 'lucide-react';
-import { Shift, Employee, WorkplaceLocation } from '@/types';
+import { Shift, Employee, WorkplaceLocation, ShiftColor } from '@/types';
 import { formatDateBR, normalizeDateToISO } from '@/shared/utils/dateUtils';
 import { calculateShiftDurationHours } from '@/shared/utils/dateUtils';
-import { ORBIT_COLORS } from './OrbitShiftModal';
 import { findWorkplaceByName } from '@/shared/services/workplaceService';
 
 interface ShiftDetailModalProps {
   shift: Partial<Shift> | null;
-  employees: Employee[];
+  employees?: Employee[];
   isOpen: boolean;
   onClose: () => void;
   isLightTheme?: boolean;
 }
 
+const FALLBACK_ORBIT_COLORS: ShiftColor[] = [
+  { label: "Coral / Vinho", bg: "#63172a", border: "#8f253f", text: "#ffffff", category: "Operacional / Presencial" },
+  { label: "Âmbar / Laranja", bg: "#543015", border: "#7c471f", text: "#ffffff", category: "Plantão / Sobreaviso" },
+  { label: "Esmeralda", bg: "#163a2a", border: "#235840", text: "#ffffff", category: "Home Office / Remoto" },
+  { label: "Azul Oceano", bg: "#18324a", border: "#284e72", text: "#ffffff", category: "Treinamento / Onboarding" },
+  { label: "Violeta / Roxo", bg: "#3a2250", border: "#563476", text: "#ffffff", category: "Reunião / Alinhamento" },
+  { label: "Rosa Magenta", bg: "#501d33", border: "#732c4b", text: "#ffffff", category: "Evento / Extraordinário" },
+];
+
 export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
   shift,
-  employees,
+  employees = [],
   isOpen,
   onClose,
   isLightTheme = false,
 }) => {
-  if (!isOpen || !shift) return null;
+  // Fecha o modal ao pressionar tecla Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
 
-  const selectedEmployee = employees.find(e => e.id === shift.employeeId);
-  const duration = calculateShiftDurationHours(
-    shift.startTime || '08:00',
-    shift.endTime || '17:00',
-    shift.breakMinutes !== undefined ? shift.breakMinutes : 60
-  );
+  const safeEmployees = useMemo(() => Array.isArray(employees) ? employees : [], [employees]);
+  const safeShift = shift || null;
+
+  const selectedEmployee = useMemo(() => {
+    if (!safeShift || !safeShift.employeeId) return undefined;
+    return safeEmployees.find(e => e && e.id === safeShift.employeeId);
+  }, [safeEmployees, safeShift]);
+
+  const duration = useMemo(() => {
+    if (!safeShift) return 8;
+    try {
+      return calculateShiftDurationHours(
+        safeShift.startTime || '08:00',
+        safeShift.endTime || '17:00',
+        safeShift.breakMinutes !== undefined ? Number(safeShift.breakMinutes) : 60
+      );
+    } catch {
+      return 8;
+    }
+  }, [safeShift]);
 
   // Extrai com segurança qualquer metadata de local embutida em notes [WP:{...}]
-  const rawNotes = shift.notes || '';
-  let cleanNotes = rawNotes;
-  let parsedWorkplaceFromNotes: WorkplaceLocation | undefined = undefined;
+  const { cleanNotes, parsedWorkplaceFromNotes } = useMemo(() => {
+    const rawNotes = typeof safeShift?.notes === 'string' ? safeShift.notes : '';
+    let parsed: WorkplaceLocation | undefined = undefined;
+    let clean = rawNotes;
 
-  if (rawNotes.includes('[WP:')) {
-    const startIdx = rawNotes.indexOf('[WP:');
-    const endIdx = rawNotes.indexOf(']', startIdx);
-    if (endIdx > startIdx + 4) {
-      try {
-        const jsonStr = rawNotes.substring(startIdx + 4, endIdx);
-        parsedWorkplaceFromNotes = JSON.parse(jsonStr);
-      } catch {}
-      cleanNotes = (rawNotes.substring(0, startIdx) + ' ' + rawNotes.substring(endIdx + 1)).trim();
-    }
-  }
-
-  const assignedWorkplace = shift.workplaceLocation || parsedWorkplaceFromNotes || findWorkplaceByName(shift.workplace || selectedEmployee?.workplace);
-  const isRemote = assignedWorkplace?.isRemote || 
-    shift.workplace?.toLowerCase().includes('remoto') || 
-    shift.workplace?.toLowerCase().includes('home office') ||
-    selectedEmployee?.workplace?.toLowerCase().includes('remoto') ||
-    selectedEmployee?.workplace?.toLowerCase().includes('home office');
-
-  const workplaceName = assignedWorkplace?.name || shift.workplace || selectedEmployee?.workplace || 'Presencial - Sede / Posto Operacional';
-  const workplaceAddress = assignedWorkplace?.address || (isRemote ? 'Atuação 100% Remota / Home Office' : 'Comparecimento presencial com registro de ponto no local.');
-
-  const workplaceMapsUrl = assignedWorkplace?.latitude && assignedWorkplace?.longitude
-    ? `https://www.google.com/maps/dir/?api=1&destination=${assignedWorkplace.latitude},${assignedWorkplace.longitude}`
-    : assignedWorkplace?.address
-    ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(assignedWorkplace.address)}`
-    : null;
-
-  const formattedDate = React.useMemo(() => {
-    if (!shift?.date) return { fullDate: '—', weekDay: '' };
-    try {
-      const iso = normalizeDateToISO(shift.date);
-      const [y, m, d] = iso.split('-').map(Number);
-      const dateObj = new Date(y, m - 1, d);
-      const weekDay = dateObj.toLocaleDateString('pt-BR', { weekday: 'long' });
-      const fullDate = formatDateBR(shift.date);
-      return {
-        fullDate,
-        weekDay: weekDay ? weekDay.charAt(0).toUpperCase() + weekDay.slice(1) : '',
-      };
-    } catch {
-      return { fullDate: formatDateBR(shift.date) || shift.date, weekDay: '' };
-    }
-  }, [shift?.date]);
-
-  const breakText = React.useMemo(() => {
-    if (!shift.breakMinutes || shift.breakMinutes <= 0) return 'Sem intervalo';
-    if (shift.breakMinutes >= 60) {
-      const hours = (shift.breakMinutes / 60).toFixed(shift.breakMinutes % 60 === 0 ? 0 : 1);
-      return `${hours}h de intervalo`;
-    }
-    return `${shift.breakMinutes}min de intervalo`;
-  }, [shift.breakMinutes]);
-
-  const initialColor = React.useMemo(() => {
-    if (shift?.color?.bg) {
-      const match = ORBIT_COLORS.find(
-        (c) =>
-          c.bg.toLowerCase() === shift.color?.bg?.toLowerCase() ||
-          c.label.toLowerCase() === shift.color?.label?.toLowerCase()
-      );
-      if (match) return match;
-      if (shift.color.category || shift.color.description) {
-        return shift.color as typeof ORBIT_COLORS[0];
+    if (rawNotes.includes('[WP:')) {
+      const startIdx = rawNotes.indexOf('[WP:');
+      const endIdx = rawNotes.indexOf(']', startIdx);
+      if (endIdx > startIdx + 4) {
+        try {
+          const jsonStr = rawNotes.substring(startIdx + 4, endIdx);
+          parsed = JSON.parse(jsonStr);
+          clean = (rawNotes.substring(0, startIdx) + ' ' + rawNotes.substring(endIdx + 1)).trim();
+        } catch {}
       }
     }
-    if (shift?.type === 'meeting') return ORBIT_COLORS[4];
-    if (shift?.type === 'on_call') return ORBIT_COLORS[1];
-    if (shift?.type === 'training') return ORBIT_COLORS[3];
-    return ORBIT_COLORS[0];
-  }, [shift]);
 
-  const [selectedColor, setSelectedColor] = React.useState(initialColor);
+    return { cleanNotes: clean, parsedWorkplaceFromNotes: parsed };
+  }, [safeShift?.notes]);
 
-  React.useEffect(() => {
-    setSelectedColor(initialColor);
-  }, [initialColor]);
+  const workplaceStr = useMemo(() => {
+    if (!safeShift) return '';
+    if (typeof safeShift.workplace === 'string') return safeShift.workplace;
+    if (typeof safeShift.workplace === 'object' && safeShift.workplace !== null) {
+      return (safeShift.workplace as { name?: string }).name || '';
+    }
+    return '';
+  }, [safeShift]);
 
-  const isMeeting = shift.type === 'meeting' || Boolean(shift.meetingLink);
+  const employeeWorkplaceStr = useMemo(() => {
+    if (!selectedEmployee) return '';
+    if (typeof selectedEmployee.workplace === 'string') return selectedEmployee.workplace;
+    if (typeof selectedEmployee.workplace === 'object' && selectedEmployee.workplace !== null) {
+      return (selectedEmployee.workplace as { name?: string }).name || '';
+    }
+    return '';
+  }, [selectedEmployee]);
+
+  const assignedWorkplace = useMemo(() => {
+    if (!safeShift) return undefined;
+    return safeShift.workplaceLocation || parsedWorkplaceFromNotes || findWorkplaceByName(workplaceStr || employeeWorkplaceStr);
+  }, [safeShift, parsedWorkplaceFromNotes, workplaceStr, employeeWorkplaceStr]);
+
+  const isRemote = useMemo(() => {
+    const wLower = workplaceStr.toLowerCase();
+    const eLower = employeeWorkplaceStr.toLowerCase();
+    return Boolean(
+      assignedWorkplace?.isRemote ||
+      wLower.includes('remoto') ||
+      wLower.includes('home office') ||
+      eLower.includes('remoto') ||
+      eLower.includes('home office')
+    );
+  }, [assignedWorkplace, workplaceStr, employeeWorkplaceStr]);
+
+  const workplaceName = assignedWorkplace?.name || workplaceStr || employeeWorkplaceStr || 'Presencial - Sede / Posto Operacional';
+  const workplaceAddress = assignedWorkplace?.address || (isRemote ? 'Atuação 100% Remota / Home Office' : 'Comparecimento presencial com registro de ponto no local.');
+
+  const workplaceMapsUrl = useMemo(() => {
+    if (assignedWorkplace?.latitude && assignedWorkplace?.longitude) {
+      return `https://www.google.com/maps/dir/?api=1&destination=${assignedWorkplace.latitude},${assignedWorkplace.longitude}`;
+    }
+    if (assignedWorkplace?.address) {
+      return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(String(assignedWorkplace.address))}`;
+    }
+    return null;
+  }, [assignedWorkplace]);
+
+  const formattedDate = useMemo(() => {
+    if (!safeShift?.date) return { fullDate: '—', weekDay: '' };
+    try {
+      const iso = normalizeDateToISO(safeShift.date);
+      if (iso && iso.includes('-')) {
+        const [y, m, d] = iso.split('-').map(Number);
+        const dateObj = new Date(y, m - 1, d);
+        if (!isNaN(dateObj.getTime())) {
+          const weekDay = dateObj.toLocaleDateString('pt-BR', { weekday: 'long' });
+          const fullDate = formatDateBR(safeShift.date) || iso;
+          return {
+            fullDate,
+            weekDay: weekDay ? weekDay.charAt(0).toUpperCase() + weekDay.slice(1) : '',
+          };
+        }
+      }
+      return { fullDate: formatDateBR(safeShift.date) || String(safeShift.date), weekDay: '' };
+    } catch {
+      return { fullDate: formatDateBR(safeShift.date) || String(safeShift.date), weekDay: '' };
+    }
+  }, [safeShift?.date]);
+
+  const breakText = useMemo(() => {
+    if (!safeShift) return 'Sem intervalo';
+    try {
+      const minutes = Number(safeShift.breakMinutes);
+      if (isNaN(minutes) || minutes <= 0) return 'Sem intervalo';
+      if (minutes >= 60) {
+        const hours = (minutes / 60).toFixed(minutes % 60 === 0 ? 0 : 1);
+        return `${hours}h de intervalo`;
+      }
+      return `${minutes}min de intervalo`;
+    } catch {
+      return 'Sem intervalo';
+    }
+  }, [safeShift]);
+
+  // Identificador da Escala limpo e simplificado
+  const scaleInfo = useMemo(() => {
+    if (!safeShift) {
+      return {
+        category: 'Operacional / Presencial',
+        label: 'Coral / Vinho',
+        bg: '#63172a',
+        border: '#8f253f',
+      };
+    }
+
+    try {
+      const shiftColor = safeShift.color;
+      if (typeof shiftColor === 'object' && shiftColor !== null) {
+        const targetBg = typeof shiftColor.bg === 'string' ? shiftColor.bg.toLowerCase() : '';
+        const targetLabel = typeof shiftColor.label === 'string' ? shiftColor.label.toLowerCase() : '';
+
+        const match = FALLBACK_ORBIT_COLORS.find(
+          c =>
+            (targetBg && c.bg.toLowerCase() === targetBg) ||
+            (targetLabel && c.label.toLowerCase() === targetLabel)
+        );
+
+        if (match) {
+          return {
+            category: shiftColor.category || match.category || 'Operacional / Presencial',
+            label: shiftColor.label || match.label,
+            bg: match.bg,
+            border: match.border,
+          };
+        }
+
+        if (shiftColor.category || shiftColor.label) {
+          return {
+            category: shiftColor.category || shiftColor.label || 'Personalizado',
+            label: shiftColor.label || shiftColor.category || '',
+            bg: typeof shiftColor.bg === 'string' ? shiftColor.bg : '#63172a',
+            border: typeof shiftColor.border === 'string' ? shiftColor.border : '#8f253f',
+          };
+        }
+      }
+
+      if (safeShift.type === 'meeting' || safeShift.meetingLink) {
+        return FALLBACK_ORBIT_COLORS[4];
+      }
+      if (safeShift.type === 'on_call') {
+        return FALLBACK_ORBIT_COLORS[1];
+      }
+      if (safeShift.type === 'training') {
+        return FALLBACK_ORBIT_COLORS[3];
+      }
+      if (isRemote) {
+        return FALLBACK_ORBIT_COLORS[2];
+      }
+    } catch (e) {
+      console.warn('Erro ao calcular scaleInfo:', e);
+    }
+
+    return FALLBACK_ORBIT_COLORS[0];
+  }, [safeShift, isRemote]);
+
+  const isMeeting = Boolean(safeShift?.type === 'meeting' || safeShift?.meetingLink);
+
+  if (!isOpen || !safeShift) return null;
 
   return (
     <div className={`fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 ${
@@ -146,37 +265,28 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                 boxShadow: '0 25px 50px -12px rgba(0,0,0,0.18)'
               }
             : {
-                background: 'linear-gradient(160deg, #1a0010 0%, #0d0008 60%, #0a0308 100%)',
-                border: '1px solid rgba(150,24,60,0.4)',
-                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.75)'
+                background: 'linear-gradient(160deg, #181920 0%, #111217 60%, #0d0e12 100%)',
+                border: '1px solid rgba(150, 24, 60, 0.35)',
+                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.8)'
               }
         }
       >
         {/* Barra superior de destaque em degradê */}
-        <div className="h-1.5 w-full bg-gradient-to-r from-[#96183C] via-[#F89847] to-[#FCEABB]"></div>
+        <div className="h-1.5 w-full bg-gradient-to-r from-[#96183C] via-[#F89847] to-[#FCEABB]" />
 
         {/* Cabeçalho */}
-        <div className={`px-4 sm:px-5 py-3.5 sm:py-4 flex items-center justify-between flex-shrink-0 border-b ${
+        <div className={`px-5 py-4 flex items-center justify-between flex-shrink-0 border-b ${
           isLightTheme ? 'border-slate-100 bg-slate-50/70' : 'border-white/5 bg-white/[0.02]'
         }`}>
-          <div className="flex items-center gap-3 min-w-0 pr-2">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#96183C] to-[#F89847] flex items-center justify-center shadow-md shadow-[#96183C]/30 shrink-0 border border-[#F89847]/40">
-              {isMeeting ? (
-                <Video className="w-5 h-5 text-[#FCEABB]" />
-              ) : (
-                <Calendar className="w-5 h-5 text-[#FCEABB]" />
-              )}
-            </div>
-            <div className="min-w-0">
-              <h3 className={`font-black text-base sm:text-lg leading-tight truncate ${
-                isLightTheme ? 'text-slate-900' : 'text-white'
-              }`}>
-                {shift.title || 'Turno de Trabalho'}
-              </h3>
-              <p className={`text-xs mt-0.5 truncate ${isLightTheme ? 'text-slate-500' : 'text-white/60'}`}>
-                {formattedDate.weekDay ? `${formattedDate.weekDay}, ${formattedDate.fullDate}` : 'Detalhes da escala'}
-              </p>
-            </div>
+          <div className="min-w-0 pr-2">
+            <h3 className={`font-black text-base sm:text-lg leading-tight truncate ${
+              isLightTheme ? 'text-slate-900' : 'text-white'
+            }`}>
+              {safeShift.title || 'Turno de Trabalho'}
+            </h3>
+            <p className={`text-xs mt-0.5 truncate ${isLightTheme ? 'text-slate-500' : 'text-white/60'}`}>
+              {formattedDate.weekDay ? `${formattedDate.weekDay}, ${formattedDate.fullDate}` : 'Detalhes da escala'}
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -210,15 +320,15 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
               {/* Badge de Presença */}
               <div className="flex items-center gap-1.5">
                 <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-extrabold flex items-center gap-1 border ${
-                  shift.attendanceStatus === 'present'
+                  safeShift.attendanceStatus === 'present'
                     ? isLightTheme
                       ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
                       : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                    : shift.attendanceStatus === 'absent'
+                    : safeShift.attendanceStatus === 'absent'
                       ? isLightTheme
                         ? 'bg-rose-50 text-rose-700 border-rose-200'
                         : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
-                      : shift.attendanceStatus === 'justified'
+                      : safeShift.attendanceStatus === 'justified'
                         ? isLightTheme
                           ? 'bg-amber-50 text-amber-800 border-amber-300'
                           : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
@@ -226,15 +336,15 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                           ? 'bg-slate-200/80 text-slate-700 border-slate-300'
                           : 'bg-white/10 text-white/70 border-white/15'
                 }`}>
-                  {shift.attendanceStatus === 'present' && <CheckCircle2 className="w-3 h-3 text-emerald-500" />}
-                  {shift.attendanceStatus === 'absent' && <XCircle className="w-3 h-3 text-rose-500" />}
-                  {shift.attendanceStatus === 'justified' && <FileCheck className="w-3 h-3 text-amber-500" />}
-                  {shift.attendanceStatus === 'pending' && <Clock className="w-3 h-3 text-amber-400" />}
-                  {shift.attendanceStatus === 'present'
+                  {safeShift.attendanceStatus === 'present' && <CheckCircle2 className="w-3 h-3 text-emerald-500" />}
+                  {safeShift.attendanceStatus === 'absent' && <XCircle className="w-3 h-3 text-rose-500" />}
+                  {safeShift.attendanceStatus === 'justified' && <FileCheck className="w-3 h-3 text-amber-500" />}
+                  {(!safeShift.attendanceStatus || safeShift.attendanceStatus === 'pending') && <Clock className="w-3 h-3 text-amber-400" />}
+                  {safeShift.attendanceStatus === 'present'
                     ? 'PRESENTE'
-                    : shift.attendanceStatus === 'absent'
+                    : safeShift.attendanceStatus === 'absent'
                       ? 'FALTA'
-                      : shift.attendanceStatus === 'justified'
+                      : safeShift.attendanceStatus === 'justified'
                         ? 'JUSTIFICADO'
                         : 'PENDENTE'}
                 </span>
@@ -258,7 +368,7 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                   {selectedEmployee?.name || 'Colaborador não especificado'}
                 </div>
                 <div className={`text-xs truncate ${isLightTheme ? 'text-slate-500' : 'text-zinc-400'}`}>
-                  {selectedEmployee ? `${selectedEmployee.role} • ${selectedEmployee.department}` : 'Equipe Geral'}
+                  {selectedEmployee ? `${selectedEmployee.role || 'Colaborador'} • ${selectedEmployee.department || 'Geral'}` : 'Equipe Geral'}
                 </div>
               </div>
             </div>
@@ -298,7 +408,7 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
               </div>
               <div className="text-right sm:text-left">
                 <div className={`text-sm font-black font-mono ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
-                  {shift.startTime || '08:00'} às {shift.endTime || '17:00'}
+                  {safeShift.startTime || '08:00'} às {safeShift.endTime || '17:00'}
                 </div>
                 <span className={`text-[11px] font-semibold block ${isLightTheme ? 'text-slate-500' : 'text-zinc-400'}`}>
                   Jornada prevista
@@ -329,7 +439,7 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
           {/* Cards de Local de Atuação e Orientações do Gestor */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
             {/* Local de Atuação */}
-            {isMeeting && shift.meetingLink ? (
+            {isMeeting && safeShift.meetingLink ? (
               <div className={`p-4 rounded-2xl border space-y-2 flex flex-col justify-between ${
                 isLightTheme ? 'bg-rose-50/70 border-rose-200' : 'bg-[#96183c]/15 border-[#96183c]/40'
               }`}>
@@ -343,11 +453,11 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                     </div>
                   </div>
                   <div className={`text-xs font-medium break-all ${isLightTheme ? 'text-slate-600' : 'text-[#FCEABB]/90'}`}>
-                    {shift.meetingLink}
+                    {safeShift.meetingLink}
                   </div>
                 </div>
                 <a
-                  href={shift.meetingLink}
+                  href={safeShift.meetingLink}
                   target="_blank"
                   rel="noreferrer"
                   className={`mt-2 w-full px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all border ${
@@ -396,7 +506,7 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
               </div>
             )}
 
-            {/* Orientações do Gestor (Sanitizado sem tags técnicas [WP:...]) */}
+            {/* Orientações do Gestor */}
             <div className={`p-4 rounded-2xl border space-y-2.5 flex flex-col justify-between ${
               isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'
             }`}>
@@ -413,12 +523,12 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                 </p>
               </div>
 
-              {shift.projectTag && (
+              {safeShift.projectTag && (
                 <div className={`border-t pt-2 ${isLightTheme ? 'border-slate-200' : 'border-white/10'}`}>
                   <span className={`inline-block px-2.5 py-0.5 rounded-md border text-[11px] font-semibold ${
                     isLightTheme ? 'border-slate-200 bg-white text-slate-700' : 'border-white/10 bg-white/5 text-zinc-300'
                   }`}>
-                    Tag: {shift.projectTag}
+                    Tag: {safeShift.projectTag}
                   </span>
                 </div>
               )}
@@ -426,9 +536,9 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
           </div>
 
           {/* Registros de Ponto Real via GPS (Entrada e Saída) */}
-          {(shift.checkInTime || shift.checkOutTime) && (
+          {(safeShift.checkInTime || safeShift.checkOutTime) && (
             <div className="space-y-2">
-              {shift.checkInTime && (
+              {safeShift.checkInTime && (
                 <div className={`p-3.5 rounded-2xl border flex items-start gap-3 ${
                   isLightTheme
                     ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
@@ -438,20 +548,20 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <span className={`font-bold text-xs sm:text-sm ${isLightTheme ? 'text-emerald-900' : 'text-emerald-300'}`}>
-                        Entrada Registrada às {shift.checkInTime}
+                        Entrada Registrada às {safeShift.checkInTime}
                       </span>
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
-                        {shift.checkInLocation?.reportedWorkplace || 'GPS Validado'}
+                        {safeShift.checkInLocation?.reportedWorkplace || 'GPS Validado'}
                       </span>
                     </div>
                     <p className={`text-xs mt-0.5 truncate ${isLightTheme ? 'text-emerald-700' : 'text-emerald-300/80'}`}>
-                      {shift.checkInLocation?.address || workplaceAddress}
+                      {safeShift.checkInLocation?.address || workplaceAddress}
                     </p>
                   </div>
                 </div>
               )}
 
-              {shift.checkOutTime && (
+              {safeShift.checkOutTime && (
                 <div className={`p-3.5 rounded-2xl border flex items-start gap-3 ${
                   isLightTheme
                     ? 'bg-rose-50 border-rose-200 text-rose-800'
@@ -461,14 +571,14 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <span className={`font-bold text-xs sm:text-sm ${isLightTheme ? 'text-rose-900' : 'text-rose-300'}`}>
-                        Saída Registrada às {shift.checkOutTime}
+                        Saída Registrada às {safeShift.checkOutTime}
                       </span>
                       <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-bold border border-rose-500/30">
                         Ponto Fechado
                       </span>
                     </div>
                     <p className={`text-xs mt-0.5 truncate ${isLightTheme ? 'text-rose-700' : 'text-rose-300/80'}`}>
-                      {shift.checkOutLocation?.address || 'Saída confirmada pelo colaborador'}
+                      {safeShift.checkOutLocation?.address || 'Saída confirmada pelo colaborador'}
                     </p>
                   </div>
                 </div>
@@ -476,92 +586,29 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
             </div>
           )}
 
-          {/* Categoria Visual da Escala - Limpo e Adaptado para Mobile */}
-          <div className={`p-3.5 sm:p-4 rounded-2xl border space-y-2.5 ${
+          {/* Identificador de Escala Simples e Discreto */}
+          <div className={`p-3 rounded-2xl border flex items-center justify-between gap-3 ${
             isLightTheme ? 'bg-slate-50 border-slate-200' : 'bg-white/5 border-white/10'
           }`}>
-            <div className="flex items-center justify-between gap-2">
-              <span className={`text-[10px] font-bold uppercase font-mono flex items-center gap-1.5 tracking-wider ${
-                isLightTheme ? 'text-slate-500' : 'text-zinc-400'
-              }`}>
-                <Palette className={`w-3.5 h-3.5 ${isLightTheme ? 'text-slate-400' : 'text-zinc-400'}`} /> Categoria da Escala
-              </span>
-
-              {/* Bolinhas de cores em linha única sem quebra */}
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                {ORBIT_COLORS.map((c) => {
-                  const isSelected = selectedColor.label === c.label;
-                  return (
-                    <button
-                      key={c.label}
-                      type="button"
-                      onClick={() => setSelectedColor(c)}
-                      className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full transition-all relative cursor-pointer flex items-center justify-center ${
-                        isSelected 
-                          ? isLightTheme
-                            ? 'scale-110 ring-2 ring-[#640C1E] ring-offset-2 ring-offset-white shadow-xs'
-                            : 'scale-110 ring-2 ring-white ring-offset-2 ring-offset-[#0a0308] shadow-md shadow-black/50'
-                          : 'opacity-70 hover:opacity-100 hover:scale-105'
-                      }`}
-                      style={{
-                        background: c.bg,
-                        border: `2px solid ${c.border}`,
-                      }}
-                      title={`${c.label} • ${c.category || ''}`}
-                    >
-                      {isSelected && (
-                        <Check className="w-3 h-3 text-white stroke-[3] drop-shadow-xs" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Card com a categoria selecionada */}
-            <div 
-              className="p-3 rounded-xl border flex items-center gap-3 transition-all"
-              style={{
-                background: isLightTheme 
-                  ? `${selectedColor.bg}12` 
-                  : `${selectedColor.bg}22`,
-                borderColor: isLightTheme 
-                  ? `${selectedColor.bg}35` 
-                  : `${selectedColor.border}50`,
-              }}
-            >
-              <div 
-                className="w-8 h-8 rounded-lg shrink-0 flex items-center justify-center shadow-xs"
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span
+                className="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs"
                 style={{
-                  background: `linear-gradient(135deg, ${selectedColor.bg}, ${selectedColor.border})`,
-                  color: '#ffffff',
+                  background: scaleInfo.bg,
+                  border: `2px solid ${scaleInfo.border}`,
                 }}
-              >
-                <Palette className="w-4 h-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span 
-                    className="text-xs font-black"
-                    style={{ color: isLightTheme ? selectedColor.bg : '#ffffff' }}
-                  >
-                    {selectedColor.category || selectedColor.label}
-                  </span>
-                  <span 
-                    className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded"
-                    style={{
-                      background: isLightTheme ? '#ffffff' : 'rgba(0,0,0,0.3)',
-                      color: isLightTheme ? '#475569' : 'rgba(255,255,255,0.7)',
-                    }}
-                  >
-                    {selectedColor.label}
-                  </span>
-                </div>
-                <p className={`text-[11px] mt-0.5 leading-snug truncate sm:whitespace-normal ${
-                  isLightTheme ? 'text-slate-600' : 'text-zinc-300'
+              />
+              <div className="min-w-0">
+                <span className={`text-[10px] uppercase font-bold font-mono tracking-wider block ${
+                  isLightTheme ? 'text-slate-500' : 'text-zinc-400'
                 }`}>
-                  {selectedColor.description || 'Identificação visual no calendário.'}
-                </p>
+                  Categoria da Escala
+                </span>
+                <span className={`text-xs sm:text-sm font-bold truncate block ${
+                  isLightTheme ? 'text-slate-900' : 'text-white'
+                }`}>
+                  {scaleInfo.category}
+                </span>
               </div>
             </div>
           </div>

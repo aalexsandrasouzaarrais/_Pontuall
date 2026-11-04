@@ -18,6 +18,7 @@ import {
 import { 
   ShiftDetailModal 
 } from '@/modules/shifts/components/ShiftDetailModal';
+import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
 import { 
   ShiftSwapModal 
 } from '@/modules/requests/components/ShiftSwapModal';
@@ -69,10 +70,14 @@ import {
   getJustificativasSupabase,
   createJustificativaSupabase,
   updateJustificativaStatusSupabase,
+  deleteJustificativaSupabase,
+  updateJustificativaSupabase,
   getSolicitacoesSupabase,
   createSolicitacaoSupabase,
   updateSolicitacaoStatusSupabase,
-  updateSolicitacaoPeerStatusSupabase
+  updateSolicitacaoPeerStatusSupabase,
+  deleteSolicitacaoSupabase,
+  updateSolicitacaoSupabase
 } from '@/modules/requests/services/requestService';
 import { findShiftOverlapConflict } from '@/shared/utils/shiftValidation';
 import {
@@ -109,7 +114,9 @@ import {
   Sun, 
   Moon, 
   LogOut,
-  X 
+  X,
+  Edit2,
+  Trash2
 } from 'lucide-react';
 import { ThemeProvider, useTheme } from '@/shared/context/ThemeContext';
 import { showPolishedToast, PolishedToaster, type RimVariant } from '@/components/ui/halo-toast';
@@ -369,15 +376,100 @@ function AppContent() {
       return () => unsubscribe();
     }, [activeEmployee?.id]);
 
+    // Lembrete de Fechamento da Folha Mensal no Sino de Notificações para Gestores e RH
+    useEffect(() => {
+      if (!isAuthenticated || !activeEmployee) return;
+      const isManagerOrRh = currentRole === 'manager' || activeEmployee.roleType === 'gestor' || activeEmployee.isRh || activeEmployee.role === 'Gestor' || activeEmployee.isMasterManager;
+      if (!isManagerOrRh) return;
+
+      const now = new Date();
+      const currentDay = now.getDate();
+      // Ativa na janela de fechamento (dia 25 em diante até o fim do mês, ou primeiros 3 dias do mês seguinte)
+      if (currentDay < 25 && currentDay > 3) return;
+
+      const monthNames = [
+        'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+      ];
+      const targetClosingDate = currentDay <= 3 ? new Date(now.getFullYear(), now.getMonth() - 1, 1) : now;
+      const monthName = monthNames[targetClosingDate.getMonth()];
+      const targetYear = targetClosingDate.getFullYear();
+      const closingNotifId = `monthly-closing-${targetYear}-${String(targetClosingDate.getMonth() + 1).padStart(2, '0')}`;
+
+      setNotifications(prev => {
+        if (prev.some(n => n.id === closingNotifId || n.title?.includes('Fechamento da Folha'))) {
+          return prev;
+        }
+        const closingNotif: NotificationItem = {
+          id: closingNotifId,
+          title: `🗓️ Fechamento da Folha (${monthName}/${targetYear})`,
+          message: `O mês de ${monthName} está no período de fechamento contábil. Acesse a aba de Relatórios no Painel de Gestão para exportar a planilha mensal consolidada em CSV.`,
+          type: 'system',
+          timestamp: 'Agora',
+          read: false,
+          actionRequired: true,
+        };
+        return [closingNotif, ...prev];
+      });
+    }, [currentRole, activeEmployee?.id, isAuthenticated]);
+
   // Modals state
   const [selectedShiftForDetail, setSelectedShiftForDetail] = useState<Shift | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isSwapModalOpen, setIsSwapModalOpen] = useState(false);
   const [isJustificationModalOpen, setIsJustificationModalOpen] = useState(false);
-  const [justificationPrefill, setJustificationPrefill] = useState<{ shiftId?: string; date?: string; reason?: string } | null>(null);
+  const [justificationPrefill, setJustificationPrefill] = useState<{ 
+    shiftId?: string; 
+    date?: string; 
+    reason?: string; 
+    type?: 'absence' | 'delay';
+    delayMinutes?: number;
+  } | null>(null);
+  const [editingRequest, setEditingRequest] = useState<TimeOffRequest | null>(null);
+  const [editingJustification, setEditingJustification] = useState<AbsenceJustification | null>(null);
 
-  const handleOpenJustificationModal = (shiftId?: string, date?: string, reason?: string) => {
-    setJustificationPrefill({ shiftId, date, reason });
+  const handleDeleteRequest = async (id: string) => {
+    if (!window.confirm('Deseja realmente cancelar e excluir esta solicitação? Esta ação é definitiva.')) {
+      return;
+    }
+    setRequests(prev => prev.filter(r => r.id !== id));
+    await deleteSolicitacaoSupabase(id);
+    showToast('Solicitação excluída', 'A sua solicitação foi removida com sucesso.', 'info');
+  };
+
+  const handleUpdateRequest = async (id: string, updates: Partial<TimeOffRequest>) => {
+    setRequests(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
+    await updateSolicitacaoSupabase(id, updates);
+    setEditingRequest(null);
+    setIsSwapModalOpen(false);
+    showToast('Solicitação atualizada', 'As alterações foram salvas com sucesso.', 'success');
+  };
+
+  const handleDeleteJustification = async (id: string) => {
+    if (!window.confirm('Deseja realmente excluir este atestado/justificativa? Esta ação é definitiva.')) {
+      return;
+    }
+    setJustifications(prev => prev.filter(j => j.id !== id));
+    await deleteJustificativaSupabase(id);
+    showToast('Atestado excluído', 'O atestado foi removido com sucesso.', 'info');
+  };
+
+  const handleUpdateJustification = async (id: string, updates: Partial<AbsenceJustification>) => {
+    setJustifications(prev => prev.map(j => j.id === id ? { ...j, ...updates } : j));
+    await updateJustificativaSupabase(id, updates);
+    setEditingJustification(null);
+    setIsJustificationModalOpen(false);
+    showToast('Atestado atualizado', 'As alterações do atestado foram salvas.', 'success');
+  };
+
+  const handleOpenJustificationModal = (
+    shiftId?: string, 
+    date?: string, 
+    type: 'absence' | 'delay' = 'absence', 
+    delayMinutes?: number,
+    reason?: string
+  ) => {
+    setJustificationPrefill({ shiftId, date, reason, type, delayMinutes });
     setIsJustificationModalOpen(true);
   };
   const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState(false);
@@ -500,7 +592,7 @@ function AppContent() {
       setActiveEmployee(emp);
       setCurrentRole(systemRole);
       setIsAuthenticated(true);
-      showToast('Google Workspace', `Bem-vindo(a), ${emp.name}! Foto conectada.`, 'success');
+      // Toast de bem-vindo removido
 
       // Limpa a URL caso contenha hash de autenticação do Supabase
       if (typeof window !== 'undefined' && window.location.hash && window.location.hash.includes('access_token')) {
@@ -834,8 +926,9 @@ function AppContent() {
     }
   };
 
-  // Submit absence justification
-  const handleSubmitJustification = async (just: Partial<AbsenceJustification>) => {
+  // Submit absence or delay justification
+  const handleSubmitJustification = async (just: Partial<AbsenceJustification> & { justificationType?: 'absence' | 'delay' }) => {
+    const isDelayJustification = just.justificationType === 'delay';
     const tempId = `just-${Date.now()}`;
     const newJust: AbsenceJustification = {
       id: tempId,
@@ -854,10 +947,27 @@ function AppContent() {
     setJustifications(prev => [newJust, ...prev]);
     
     if (just.shiftId) {
-      setShifts(prev => prev.map(s => s.id === just.shiftId ? { ...s, attendanceStatus: 'justified' } : s));
+      setShifts(prev => prev.map(s => {
+        if (s.id === just.shiftId) {
+          const updatedNotes = isDelayJustification
+            ? (s.notes ? `${s.notes} | [Justificativa Atraso: ${just.reason}]` : `[Justificativa Atraso: ${just.reason}]`)
+            : s.notes;
+          return {
+            ...s,
+            attendanceStatus: isDelayJustification ? s.attendanceStatus : 'justified',
+            notes: updatedNotes
+          };
+        }
+        return s;
+      }));
     }
 
-    setEmployeeTab('justifications');
+    if (!isDelayJustification) {
+      setEmployeeTab('justifications');
+      showToast('Atestado Enviado', 'Seu atestado/comprovante foi enviado para o RH e Gestor.', 'success');
+    } else {
+      showToast('Justificativa Enviada', 'Sua justificativa de atraso foi registrada e enviada para o Gestor.', 'success');
+    }
 
     try {
       const saved = await createJustificativaSupabase(just, activeEmployee);
@@ -865,11 +975,16 @@ function AppContent() {
         setJustifications(prev => prev.map(j => j.id === tempId ? { ...saved, employeeName: activeEmployee.name, employeeAvatar: activeEmployee.avatar } : j));
         // Notifica gestores/RH
         const managers = employees.filter(e => e.roleType === 'gestor' || e.isMasterManager || e.isRh);
+        const notifTitle = isDelayJustification ? 'Nova Justificativa de Atraso' : 'Novo Atestado / Justificativa';
+        const notifMsg = isDelayJustification
+          ? `${activeEmployee.name} enviou justificativa para atraso no dia ${just.date || ''}: "${just.reason}".`
+          : `${activeEmployee.name} enviou atestado/comprovante para ${just.date || 'data de ausência'}.`;
+
         managers.forEach(mgr => {
           createNotificationSupabase({
             targetEmployeeId: mgr.id,
-            title: 'Novo Atestado / Justificativa',
-            message: `${activeEmployee.name} enviou atestado/comprovante para ${just.date || 'data de ausência'}.`,
+            title: notifTitle,
+            message: notifMsg,
             type: 'justification',
             actionRequired: true,
           });
@@ -878,7 +993,6 @@ function AppContent() {
     } catch (err) {
       console.warn('Erro ao salvar justificativa no Supabase:', err);
     }
-    showToast('Atestado Enviado', 'Sua justificativa/atestado foi gravado no banco de dados e enviado para o RH e Gestor.', 'success');
   };
 
   // Manager Actions
@@ -1605,8 +1719,8 @@ function AppContent() {
                 employee={activeEmployee}
                 shifts={shifts}
                 onShiftClick={handleOpenShiftDetails}
-                onRequestTimeOff={() => setIsSwapModalOpen(true)}
-                onSendJustification={() => setIsJustificationModalOpen(true)}
+                onRequestTimeOff={() => { setEditingRequest(null); setIsSwapModalOpen(true); }}
+                onSendJustification={() => { setEditingJustification(null); setJustificationPrefill(null); setIsJustificationModalOpen(true); }}
                 isLightTheme={!isDark}
               />
             )}
@@ -1683,7 +1797,7 @@ function AppContent() {
                   {/* Botão Nova Solicitação */}
                   <button
                     type="button"
-                    onClick={() => setIsSwapModalOpen(true)}
+                    onClick={() => { setEditingRequest(null); setIsSwapModalOpen(true); }}
                     className="relative z-10 shrink-0 self-start md:self-center px-6 py-3 rounded-full bg-gradient-to-r from-[#96183c] via-[#f89642] to-[#faf0ac] hover:brightness-110 active:scale-[0.98] text-white font-bold text-xs sm:text-sm shadow-lg shadow-[#96183c]/25 hover:shadow-[#96183c]/40 transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <Plus className="w-4 h-4 stroke-[2.5]" />
@@ -1972,6 +2086,34 @@ function AppContent() {
                           >
                             Enviado: {req.createdAt}
                           </span>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingRequest(req);
+                                setIsSwapModalOpen(true);
+                              }}
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                !isDark ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50' : 'text-slate-400 hover:text-amber-400 hover:bg-white/10'
+                              }`}
+                              title="Editar solicitação"
+                              aria-label="Editar solicitação"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteRequest(req.id)}
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                !isDark ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50' : 'text-slate-400 hover:text-rose-400 hover:bg-white/10'
+                              }`}
+                              title="Excluir solicitação"
+                              aria-label="Excluir solicitação"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -2054,7 +2196,7 @@ function AppContent() {
                   {/* Botão Enviar Novo Atestado */}
                   <button
                     type="button"
-                    onClick={() => setIsJustificationModalOpen(true)}
+                    onClick={() => { setEditingJustification(null); setJustificationPrefill(null); setIsJustificationModalOpen(true); }}
                     className="relative z-10 shrink-0 self-start md:self-center px-6 py-3 rounded-full bg-gradient-to-r from-[#96183c] via-[#f89642] to-[#faf0ac] hover:brightness-110 active:scale-[0.98] text-white font-bold text-xs sm:text-sm shadow-lg shadow-[#96183c]/25 hover:shadow-[#96183c]/40 transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <Plus className="w-4 h-4 stroke-[2.5]" />
@@ -2221,7 +2363,7 @@ function AppContent() {
                         )}
 
                         <div
-                          className={`px-4 pb-3 border-t pt-2 ${
+                          className={`px-4 pb-3 flex items-center justify-between gap-2 border-t pt-2 ${
                             !isDark ? 'border-slate-200' : 'border-white/5'
                           }`}
                         >
@@ -2232,6 +2374,34 @@ function AppContent() {
                           >
                             Enviado: {just.submittedAt}
                           </span>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingJustification(just);
+                                setIsJustificationModalOpen(true);
+                              }}
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                !isDark ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50' : 'text-slate-400 hover:text-amber-400 hover:bg-white/10'
+                              }`}
+                              title="Editar atestado"
+                              aria-label="Editar atestado"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteJustification(just.id)}
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                                !isDark ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50' : 'text-slate-400 hover:text-rose-400 hover:bg-white/10'
+                              }`}
+                              title="Excluir atestado"
+                              aria-label="Excluir atestado"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))
@@ -2290,7 +2460,8 @@ function AppContent() {
         isRh={isRhUser}
       />
 
-      <ShiftDetailModal
+      <ErrorBoundary fallbackTitle="Detalhes da Escala" fallbackMessage="Não foi possível exibir os detalhes desta escala.">
+        <ShiftDetailModal
         shift={selectedShiftForDetail}
         employees={employees}
         isOpen={isDetailModalOpen}
@@ -2300,15 +2471,21 @@ function AppContent() {
         }}
         isLightTheme={!isDark}
       />
+      </ErrorBoundary>
 
       <ShiftSwapModal
         isOpen={isSwapModalOpen}
-        onClose={() => setIsSwapModalOpen(false)}
+        onClose={() => {
+          setIsSwapModalOpen(false);
+          setEditingRequest(null);
+        }}
         currentEmployee={activeEmployee}
         employees={employees}
         myShifts={shifts.filter(s => s.employeeId === activeEmployee.id)}
         allShifts={shifts}
         onSubmitRequest={handleSubmitRequest}
+        onUpdateRequest={handleUpdateRequest}
+        editingRequest={editingRequest}
         isLightTheme={!isDark}
       />
 
@@ -2316,15 +2493,20 @@ function AppContent() {
         isOpen={isJustificationModalOpen}
         onClose={() => {
           setIsJustificationModalOpen(false);
+          setEditingJustification(null);
           setJustificationPrefill(null);
         }}
         currentEmployee={activeEmployee}
         shifts={shifts.filter(s => s.employeeId === activeEmployee.id)}
         onSubmitJustification={handleSubmitJustification}
+        onUpdateJustification={handleUpdateJustification}
+        editingJustification={editingJustification}
         isLightTheme={!isDark}
         initialShiftId={justificationPrefill?.shiftId}
         initialDate={justificationPrefill?.date}
         initialReason={justificationPrefill?.reason}
+        justificationType={justificationPrefill?.type || 'absence'}
+        delayMinutes={justificationPrefill?.delayMinutes}
       />
 
       <NotificationsModal
