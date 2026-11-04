@@ -1732,7 +1732,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-xs font-semibold" style={labelStyle}>
-                  ✨ LEMBRETES & ATIVIDADES
+                  LEMBRETES & ATIVIDADES
                 </label>
                 <input
                   type="text"
