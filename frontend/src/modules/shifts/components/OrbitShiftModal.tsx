@@ -1055,39 +1055,6 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium" style={labelStyle}>Presença:</span>
-            <button
-              type="button"
-              onClick={() => {
-                const cycle: AttendanceStatus[] = ["pending", "present", "absent"];
-                const next = cycle[(cycle.indexOf(presence) + 1) % cycle.length];
-                setPresence(next);
-              }}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer hover:scale-105"
-              style={presence === "present" ? {
-                background: isLight ? "#ecfdf5" : "rgba(72,187,120,0.2)",
-                color: isLight ? "#047857" : "#48bb78",
-                border: isLight ? "1px solid #a7f3d0" : "1px solid rgba(72,187,120,0.35)"
-              } : presence === "absent" ? {
-                background: isLight ? "#fef2f2" : "rgba(245,101,101,0.2)",
-                color: isLight ? "#b91c1c" : "#f56565",
-                border: isLight ? "1px solid #fecaca" : "1px solid rgba(245,101,101,0.35)"
-              } : {
-                background: isLight ? "#f1f5f9" : "rgba(255,255,255,0.05)",
-                color: isLight ? "#475569" : "rgba(255,255,255,0.5)",
-                border: isLight ? "1px solid #cbd5e1" : "1px solid rgba(255,255,255,0.12)"
-              }}
-            >
-              <span
-                className="w-1.5 h-1.5 rounded-full"
-                style={{
-                  background: presence === "present" ? "#48bb78" : presence === "absent" ? "#f56565" : isLight ? "#94a3b8" : "rgba(255,255,255,0.3)"
-                }}
-              />
-              {presence === "present" ? "Presente" : presence === "absent" ? "Ausente" : "Pendente"}
-            </button>
-          </div>
         </div>
 
         {/* Form */}
