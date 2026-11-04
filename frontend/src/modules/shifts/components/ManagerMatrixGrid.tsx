@@ -182,7 +182,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   const [approvalsFilterTab, setApprovalsFilterTab] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [approvalsSearch, setApprovalsSearch] = useState('');
   const [approvalsDept, setApprovalsDept] = useState('all');
-  const [approvalsTypeFilter, setApprovalsTypeFilter] = useState<'all' | 'swap' | 'medical' | 'delay' | 'overtime' | 'absent' | 'time_off'>('all');
+  const [approvalsTypeFilter, setApprovalsTypeFilter] = useState<'all' | 'swap' | 'medical' | 'delay' | 'overtime' | 'absent' | 'justified' | 'time_off'>('all');
   const [isNewOccurrenceModalOpen, setIsNewOccurrenceModalOpen] = useState(false);
   const [expandedReasons, setExpandedReasons] = useState<Record<string, boolean>>({});
   const [selectedDetailOccurrence, setSelectedDetailOccurrence] = useState<{
@@ -420,16 +420,17 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       };
     });
 
-    // Mapeamento de Faltas Não Justificadas (sem batida e sem atestado após 24h)
+    // Mapeamento de Faltas Não Justificadas e Faltas Justificadas
     const mappedAbsences = (shifts || []).filter(s => {
       const isPast24h = isShiftPast24hWithoutPunch(s) || s.attendanceStatus === 'absent';
       const hasJustification = (justifications || []).some(j => 
         (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)
       );
-      return isPast24h && !s.checkInTime && !hasJustification;
+      const isJustified = s.attendanceStatus === 'justified';
+      return (isPast24h && !s.checkInTime && !hasJustification) || isJustified;
     }).map(s => {
       const emp = employees.find(e => e.id === s.employeeId);
-      const isJustified = s.attendanceStatus === 'justified';
+      const isJustified = s.attendanceStatus === 'justified' || s.notes?.includes('ABONO GESTOR') || s.notes?.includes('Ausência Justificada');
       return {
         id: `absence-${s.id}`,
         shiftId: s.id,
@@ -438,10 +439,10 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         employeeRole: emp?.role || 'Colaborador',
         employeeDept: emp?.department || 'Geral',
         employeeAvatar: emp?.avatar || '',
-        type: 'Falta Não Justificada',
-        reason: 'Colaborador escalado não registrou ponto de entrada/saída após 24h e não apresentou atestado/justificativa.',
+        type: isJustified ? 'Falta Justificada' : 'Falta Não Justificada',
+        reason: isJustified ? 'Ausência abonada com justificativa ou atestado médico aceito.' : 'Colaborador escalado não registrou ponto de entrada/saída após 24h e não apresentou atestado/justificativa.',
         date: s.date,
-        documentName: 'Sem anexo',
+        documentName: isJustified ? 'Declaracao_ou_Atestado.pdf' : 'Sem anexo',
         documentUrl: undefined,
         status: (isJustified ? 'Aprovado' : 'Pendente') as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
         actionText: isJustified ? 'Abonada' : undefined,
@@ -449,7 +450,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       };
     });
 
-    const demoAbsenceItem = mappedAbsences.length > 0 ? [] : [{
+    const demoAbsenceItem = mappedAbsences.filter(a => a.type === 'Falta Não Justificada').length > 0 ? [] : [{
       id: 'demo-absence-1',
       employeeId: emp2.id,
       employeeName: emp2.name || 'Carlos Silveira',
@@ -463,6 +464,23 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       documentUrl: undefined,
       status: 'Pendente' as const,
       feedback: '',
+    }];
+
+    const demoJustifiedItem = [{
+      id: 'demo-justified-1',
+      employeeId: emp3.id,
+      employeeName: emp3.name || 'Mariana Rios',
+      employeeRole: emp3.role || 'Assistente de DP',
+      employeeDept: emp3.department || 'RH',
+      employeeAvatar: emp3.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+      type: 'Falta Justificada',
+      reason: 'Ausência abonada com declaração / atestado médico apresentado dentro do prazo.',
+      date: today,
+      documentName: 'Atestado_Medico_Homologado.pdf',
+      documentUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+      status: 'Aprovado' as const,
+      actionText: 'Abonada',
+      feedback: 'Atestado válido homologado pelo gestor.',
     }];
 
     // Ocorrências de Atraso e Horas Extras apuradas para a Central Única de Aprovações
@@ -551,9 +569,10 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     }];
 
     // Central Unificada de Aprovações (Aba 2):
-    // Reúne Atestados Médicos, Faltas Não Justificadas, Atrasos de Entrada, Horas Extras, Trocas de Turno e Folgas
+    // Reúne Atestados Médicos, Faltas Não Justificadas, Justificados, Atrasos de Entrada, Horas Extras, Trocas de Turno e Folgas
     setApprovalsData([
       ...demoAbsenceItem,
+      ...demoJustifiedItem,
       ...demoDelayItem,
       ...demoOvertimeItem,
       ...mappedAbsences,
@@ -727,6 +746,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
     setApprovalsData(prev => prev.map(item => item.id === id ? { 
       ...item, 
+      type: isFalta ? 'Falta Justificada' : item.type,
       status: 'Aprovado', 
       actionText 
     } : item));
@@ -2421,13 +2441,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             return false;
           }
 
-          // Type filter (Todos, Trocas, Atestados Médicos, Faltas Não Justificadas, Atrasos, Horas Extras, Folgas)
+          // Type filter (Todos, Trocas, Atestados Médicos, Faltas Não Justificadas, Justificados, Atrasos, Horas Extras, Folgas)
           if (approvalsTypeFilter === 'swap') {
             if (!row.type.toLowerCase().includes('troca')) return false;
           } else if (approvalsTypeFilter === 'medical') {
             if (!row.type.toLowerCase().includes('atestado') && !row.type.toLowerCase().includes('médico') && !row.type.toLowerCase().includes('ausência')) return false;
           } else if (approvalsTypeFilter === 'absent') {
-            if (!row.type.toLowerCase().includes('falta')) return false;
+            if (!row.type.toLowerCase().includes('falta') || row.type.toLowerCase().includes('justificad') || row.actionText?.toLowerCase().includes('abonad')) return false;
+          } else if (approvalsTypeFilter === 'justified') {
+            const isJust = (
+              row.type.toLowerCase().includes('justificad') ||
+              row.actionText?.toLowerCase().includes('abonad') ||
+              (row.status === 'Aprovado' && (row.type.toLowerCase().includes('falta') || row.type.toLowerCase().includes('atraso')))
+            );
+            if (!isJust) return false;
           } else if (approvalsTypeFilter === 'delay') {
             if (!row.type.toLowerCase().includes('atraso')) return false;
           } else if (approvalsTypeFilter === 'overtime') {
@@ -2649,6 +2676,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 { id: 'overtime', label: 'Horas Extras' },
                 { id: 'medical', label: 'Atestados Médicos' },
                 { id: 'absent', label: 'Faltas Não Justificadas' },
+                { id: 'justified', label: 'Justificados' },
                 { id: 'swap', label: 'Trocas de Turno' },
                 { id: 'time_off', label: 'Folgas / Dispensas' },
               ].map(cat => {
@@ -2658,7 +2686,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   if (cat.id === 'delay') return row.type.toLowerCase().includes('atraso');
                   if (cat.id === 'overtime') return row.type.toLowerCase().includes('hora extra') || row.type.toLowerCase().includes('extra');
                   if (cat.id === 'medical') return row.type.toLowerCase().includes('atestado') || row.type.toLowerCase().includes('médico');
-                  if (cat.id === 'absent') return row.type.toLowerCase().includes('falta');
+                  if (cat.id === 'absent') return row.type.toLowerCase().includes('falta') && !row.type.toLowerCase().includes('justificad') && !row.actionText?.toLowerCase().includes('abonad');
+                  if (cat.id === 'justified') return row.type.toLowerCase().includes('justificad') || row.actionText?.toLowerCase().includes('abonad') || (row.status === 'Aprovado' && (row.type.toLowerCase().includes('falta') || row.type.toLowerCase().includes('atraso')));
                   if (cat.id === 'swap') return row.type.toLowerCase().includes('troca');
                   if (cat.id === 'time_off') return row.type.toLowerCase().includes('folga') || row.type.toLowerCase().includes('dispensa');
                   return true;
