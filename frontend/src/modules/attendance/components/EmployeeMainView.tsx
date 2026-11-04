@@ -121,17 +121,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  const [tolerancePrompt, setTolerancePrompt] = useState<{
-    isOpen: boolean;
-    type: 'entrada' | 'saida';
-    diffMinutes: number;
-    scheduledTime: string;
-    actualTime: string;
-    simulatedTime?: string;
-    action: (reason?: string, isForgetfulness?: boolean) => void;
-  } | null>(null);
-  const [punchReasonInput, setPunchReasonInput] = useState('');
-  const [exitReasonType, setExitReasonType] = useState<'overtime' | 'forgot'>('overtime');
+  // Ponto Rápido: Sem bloqueio na batida. Registro em 1 clique com sinalização de status; justificativa posterior em Minhas Ocorrências
 
   const todayStr = getTodayDateString();
   const weekDays = getWeekDates(new Date());
@@ -669,53 +659,55 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
     const now = new Date();
     const timeStr = simulatedTime || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-    // Verificação de Tolerância CLT para Saída (Hora Extra / Saída Tardia)
+    // Verificação de Tolerância CLT para Saída (Sinalização não bloqueante)
     if (punchType === 'saida' && todayShift.endTime) {
       const tol = evaluatePunchTolerance(todayShift.endTime, timeStr, 'saida', 10);
       if (tol.isOvertime) {
-        setPunchReasonInput('');
-        setExitReasonType('overtime');
-        setTolerancePrompt({
-          isOpen: true,
-          type: 'saida',
-          diffMinutes: tol.diffMinutes,
-          scheduledTime: todayShift.endTime,
-          actualTime: timeStr,
-          simulatedTime,
-          action: (reason, isForgetfulness) => {
-            setTolerancePrompt(null);
-            const finalReason = isForgetfulness
-              ? `Esquecimento de registro; saída real no horário contratual (${todayShift.endTime})`
-              : (reason || 'Hora extra realizada');
-            executePunchClock(punchType, finalReason, simulatedTime);
-          }
+        showPolishedToast({
+          id: 'overtime-punch-toast',
+          title: `Saída Registrada (+${tol.diffMinutes} min)`,
+          description: `Batida registrada às ${timeStr} com permanência além do horário contratual. Se desejar justificar, acesse "Minhas Ocorrências".`,
+          rimVariant: 'warning',
+          duration: 6000,
+          closeButton: true,
         });
-        return;
+      } else if (tol.isEarlyLeave) {
+        showPolishedToast({
+          id: 'early-leave-punch-toast',
+          title: `Saída Antecipada (-${Math.abs(tol.diffMinutes)} min)`,
+          description: `Batida registrada às ${timeStr}. Se possuir justificativa ou autorização, acesse "Minhas Ocorrências".`,
+          rimVariant: 'warning',
+          duration: 6000,
+          closeButton: true,
+        });
       }
     }
 
-    // Verificação de Tolerância CLT para Entrada (Atraso)
+    // Verificação de Tolerância CLT para Entrada (Sinalização não bloqueante)
     if (punchType === 'entrada' && todayShift.startTime) {
       const tol = evaluatePunchTolerance(todayShift.startTime, timeStr, 'entrada', 10);
       if (tol.isLate) {
-        setPunchReasonInput('');
-        setTolerancePrompt({
-          isOpen: true,
-          type: 'entrada',
-          diffMinutes: tol.diffMinutes,
-          scheduledTime: todayShift.startTime,
-          actualTime: timeStr,
-          simulatedTime,
-          action: (reason) => {
-            setTolerancePrompt(null);
-            executePunchClock(punchType, reason, simulatedTime);
-          }
+        showPolishedToast({
+          id: 'late-punch-toast',
+          title: `Entrada Registrada (+${tol.diffMinutes} min de atraso)`,
+          description: `Batida registrada às ${timeStr}. Você pode anexar comprovante médico ou justificativa em "Minhas Ocorrências".`,
+          rimVariant: 'warning',
+          duration: 6000,
+          closeButton: true,
         });
-        return;
+      } else if (tol.isEarly) {
+        showPolishedToast({
+          id: 'early-entry-toast',
+          title: 'Entrada Antecipada',
+          description: `Batida registrada às ${timeStr} antes do início previsto da escala.`,
+          rimVariant: 'info',
+          duration: 5000,
+          closeButton: true,
+        });
       }
     }
 
-    // Marcação regular dentro da tolerância
+    // Registra o ponto imediatamente em 1 clique (Ponto Rápido, sem bloqueio de tela!)
     executePunchClock(punchType, undefined, simulatedTime);
   };
 
@@ -1840,18 +1832,28 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                     <span className="w-2 h-2 rounded-full bg-[#96183c] shrink-0" />
                     <div>
                       <p className="font-bold text-[11px] sm:text-xs">
-                        Você possui {faltasCount} {faltasCount === 1 ? 'ausência não justificada' : 'ausências não justificadas'}.
+                        Você possui {faltasCount} {faltasCount === 1 ? 'ausência pendente de justificativa' : 'ausências pendentes de justificativa'}.
                       </p>
                       <p className="text-[10px] sm:text-[11px] opacity-80">
-                        Envie sua justificativa no cartão abaixo ou acesse a aba de solicitações.
+                        Envie seu atestado médico ou declaração para análise e homologação do gestor.
                       </p>
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => {
-                      setIsHistoryOpen(false);
-                      onNavigateToRequests();
+                      const firstPending = occurrences.find(o => o.canJustify);
+                      if (firstPending && onOpenJustificationModal) {
+                        setIsHistoryOpen(false);
+                        onOpenJustificationModal(
+                          firstPending.shiftId,
+                          firstPending.date,
+                          firstPending.type === 'falta' ? 'absence' : 'delay',
+                          firstPending.delayInfo?.minutes
+                        );
+                      } else {
+                        setHistoryFilter('faltas');
+                      }
                     }}
                     className={`w-full sm:w-auto px-3 py-1.5 rounded-xl border text-[11px] sm:text-xs font-bold transition-all cursor-pointer shrink-0 text-center ${
                       isLightTheme
@@ -1859,7 +1861,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                         : 'border-rose-500/40 bg-rose-500/15 hover:bg-rose-500/25 text-rose-200'
                     }`}
                   >
-                    Abrir em Folgas & Trocas →
+                    Justificar Agora →
                   </button>
                 </div>
               )}
@@ -2076,210 +2078,6 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
         </div>
       )}
 
-      {/* Modal de Confirmação & Justificativa de Tolerância / Hora Extra / Atraso (CLT) */}
-      {tolerancePrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div
-            className={`w-full max-w-md rounded-3xl border shadow-2xl p-6 relative transition-all ${
-              isLightTheme
-                ? 'bg-white border-slate-200 text-slate-900'
-                : 'bg-[#111318] border-white/10 text-white'
-            }`}
-          >
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <div className="flex items-center gap-2.5">
-                <div
-                  className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
-                    tolerancePrompt.type === 'saida'
-                      ? 'bg-[#96183c]/15 text-[#96183c] dark:bg-[#96183c]/30 dark:text-[#F89847]'
-                      : 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
-                  }`}
-                >
-                  <Clock className="w-5 h-5 stroke-[2.5]" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black">
-                    {tolerancePrompt.type === 'saida' ? 'Registro de Saída Fora do Horário' : 'Registro de Entrada com Atraso'}
-                  </h3>
-                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    Conformidade CLT • Art. 58 § 1º & Portaria MTE 671/2021
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setTolerancePrompt(null)}
-                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400 cursor-pointer transition-all"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Box comparativo de horários */}
-            <div
-              className={`p-3.5 rounded-2xl border text-xs space-y-1 mb-4 ${
-                tolerancePrompt.type === 'saida'
-                  ? 'bg-[#96183c]/10 border-[#96183c]/30 text-[#96183c] dark:text-[#F9DE97] dark:bg-[#640C1E]/25 dark:border-[#96183c]/40'
-                  : 'bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-200'
-              }`}
-            >
-              <div className="font-bold flex items-center justify-between">
-                <span>Horário previsto da escala:</span>
-                <span className="font-mono font-black">{tolerancePrompt.scheduledTime}</span>
-              </div>
-              <div className="font-bold flex items-center justify-between">
-                <span>Horário registrado da batida:</span>
-                <span className="font-mono font-black">{tolerancePrompt.actualTime}</span>
-              </div>
-              <div className="pt-1.5 border-t border-current/20 flex items-center justify-between font-black text-[13px]">
-                <span>{tolerancePrompt.type === 'saida' ? 'Permanência excedente:' : 'Atraso apurado:'}</span>
-                <span>+{tolerancePrompt.diffMinutes} min (Tolerância: 10 min)</span>
-              </div>
-            </div>
-
-            {/* Se for saída: Alternativa entre Hora Extra Real vs. Esquecimento de Ponto */}
-            {tolerancePrompt.type === 'saida' ? (
-              <div className="space-y-3 mb-4">
-                <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                  Qual a situação deste registro após o horário previsto?
-                </p>
-
-                <div className="space-y-2">
-                  {/* Opção 1: Hora Extra Real */}
-                  <label
-                    onClick={() => setExitReasonType('overtime')}
-                    className={`flex items-start gap-3 p-3 rounded-2xl border cursor-pointer transition-all ${
-                      exitReasonType === 'overtime'
-                        ? 'border-[#96183c] bg-[#96183c]/10 ring-1 ring-[#96183c] dark:border-[#F89847] dark:bg-[#F89847]/10 dark:ring-[#F89847]'
-                        : isLightTheme ? 'border-slate-200 hover:bg-slate-50' : 'border-white/10 hover:bg-white/5'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="exitReason"
-                      checked={exitReasonType === 'overtime'}
-                      onChange={() => setExitReasonType('overtime')}
-                      className="mt-0.5 accent-[#96183c] dark:accent-[#F89847] cursor-pointer"
-                    />
-                    <div className="text-xs">
-                      <span className="font-black text-slate-900 dark:text-white block">
-                        Estive trabalhando além do horário (Hora Extra)
-                      </span>
-                      <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">
-                        Gera notificação ao gestor para homologação no Banco de Horas ou Folha.
-                      </span>
-                    </div>
-                  </label>
-
-                  {/* Opção 2: Esquecimento */}
-                  <label
-                    onClick={() => setExitReasonType('forgot')}
-                    className={`flex items-start gap-3 p-3 rounded-2xl border cursor-pointer transition-all ${
-                      exitReasonType === 'forgot'
-                        ? 'border-amber-500 bg-amber-500/10 ring-1 ring-amber-500'
-                        : isLightTheme ? 'border-slate-200 hover:bg-slate-50' : 'border-white/10 hover:bg-white/5'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="exitReason"
-                      checked={exitReasonType === 'forgot'}
-                      onChange={() => setExitReasonType('forgot')}
-                      className="mt-0.5 accent-amber-600 dark:accent-amber-500 cursor-pointer"
-                    />
-                    <div className="text-xs">
-                      <span className="font-black text-slate-900 dark:text-white block">
-                        Apenas esqueci de bater na saída (Saí no horário normal previsto)
-                      </span>
-                      <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">
-                        A batida das {tolerancePrompt.actualTime} é salva no histórico (Portaria 671 MTE), mas registrada como esquecimento no horário das {tolerancePrompt.scheduledTime}, sem horas extras indevidas.
-                      </span>
-                    </div>
-                  </label>
-                </div>
-
-                {exitReasonType === 'overtime' && (
-                  <div className="pt-1">
-                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block mb-1">
-                      Justificativa da Hora Extra para o Gestor:
-                    </label>
-                    <textarea
-                      value={punchReasonInput}
-                      onChange={(e) => setPunchReasonInput(e.target.value)}
-                      placeholder="Ex: Atendimento ao cliente até o final, demanda urgente autorizada..."
-                      rows={2}
-                      className={`w-full p-2.5 rounded-xl border text-xs outline-none transition-all resize-none ${
-                        isLightTheme
-                          ? 'bg-slate-50 border-slate-200 text-slate-900 focus:border-[#96183c]'
-                          : 'bg-black/30 border-white/10 text-white focus:border-[#F89847]'
-                      }`}
-                    />
-                  </div>
-                )}
-              </div>
-            ) : (
-              /* Se for entrada: Campo para justificar o atraso */
-              <div className="space-y-2 mb-4">
-                <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
-                  Conforme a CLT (Art. 58 § 1º), variações superiores a 10 min são apuradas. Informe o motivo para análise do gestor:
-                </p>
-                <textarea
-                  value={punchReasonInput}
-                  onChange={(e) => setPunchReasonInput(e.target.value)}
-                  placeholder="Ex: Trânsito atípico, imprevisto de transporte..."
-                  rows={3}
-                  className={`w-full p-3 rounded-2xl border text-xs outline-none transition-all resize-none ${
-                    isLightTheme
-                      ? 'bg-slate-50 border-slate-200 text-slate-900 focus:border-amber-600'
-                      : 'bg-black/30 border-white/10 text-white focus:border-amber-500'
-                  }`}
-                />
-              </div>
-            )}
-
-            <div className="flex flex-col gap-2 pt-1">
-              <div className="flex items-center gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => tolerancePrompt.action(punchReasonInput.trim(), exitReasonType === 'forgot')}
-                  className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-[#96183c] to-[#b32047] hover:brightness-110 active:scale-[0.99] text-white font-black text-xs shadow-md shadow-[#96183c]/30 flex items-center justify-center gap-1.5 cursor-pointer transition-all"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>Confirmar com Justificativa</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTolerancePrompt(null)}
-                  className={`py-3 px-3.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                    isLightTheme
-                      ? 'border-slate-200 hover:bg-slate-100 text-slate-600'
-                      : 'border-white/10 hover:bg-white/5 text-slate-400'
-                  }`}
-                >
-                  Cancelar
-                </button>
-              </div>
-
-              {/* Opção para bater ponto imediatamente e justificar depois */}
-              {tolerancePrompt.type === 'entrada' && (
-                <button
-                  type="button"
-                  onClick={() => tolerancePrompt.action('', false)}
-                  className={`w-full py-2.5 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                    isLightTheme
-                      ? 'border-slate-300 bg-slate-100 hover:bg-slate-200 text-slate-700'
-                      : 'border-white/15 bg-white/5 hover:bg-white/10 text-slate-300'
-                  }`}
-                  title="Registra a batida agora sem bloquear o início do trabalho e permite justificar o atraso mais tarde"
-                >
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>Registrar entrada agora e justificar depois</span>
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
