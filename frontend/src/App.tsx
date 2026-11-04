@@ -35,6 +35,7 @@ import { useUnreadChatCount } from '@/shared/hooks/useUnreadChatCount';
 import { 
   LoginView 
 } from '@/modules/auth/components/LoginView';
+import { LandingView } from '@/modules/auth/components/LandingView';
 import { 
   ProfileEditModal 
 } from '@/shared/components/ProfileEditModal';
@@ -183,6 +184,56 @@ function AppContent() {
   }, []);
 
   const [authFeedback, setAuthFeedback] = useState<{ message: string; type: 'error' | 'warning' | 'success' } | null>(null);
+
+  const [showLogin, setShowLogin] = useState<boolean>(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const search = window.location.search.toLowerCase();
+        const hash = window.location.hash.toLowerCase();
+        const pathname = window.location.pathname.toLowerCase();
+        if (
+          search.includes('login=true') ||
+          search.includes('reset=true') ||
+          search.includes('type=recovery') ||
+          search.includes('primeiro_acesso=true') ||
+          search.includes('matricula=') ||
+          search.includes('code=') ||
+          hash.includes('access_token=') ||
+          pathname.includes('/login') ||
+          pathname.includes('/colaborador') ||
+          pathname.includes('/gestor') ||
+          pathname.includes('/redefinir-senha')
+        ) {
+          return true;
+        }
+      }
+    } catch {}
+    return false;
+  });
+
+  useEffect(() => {
+    if (authFeedback) {
+      setShowLogin(true);
+    }
+  }, [authFeedback]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      try {
+        const search = window.location.search.toLowerCase();
+        const pathname = window.location.pathname.toLowerCase();
+        const isLoginUrl =
+          search.includes('login=true') ||
+          pathname.includes('/login') ||
+          pathname.includes('/colaborador') ||
+          pathname.includes('/gestor') ||
+          pathname.includes('/redefinir-senha');
+        setShowLogin(isLoginUrl);
+      } catch {}
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Global Role Mode: 'manager' (Visual requested in photo) vs 'employee'
   const [currentRole, setCurrentRole] = useState<'manager' | 'employee'>(() => {
@@ -1399,6 +1450,7 @@ function AppContent() {
       }
     } catch {}
     setIsAuthenticated(false);
+    setShowLogin(true);
   };
 
   const handleAddEmployee = async (newEmp: Employee) => {
@@ -1475,7 +1527,31 @@ function AppContent() {
 
   // Se o usuário não estiver autenticado, exibe a tela de Login oficial integrada ao Supabase
   if (!isAuthenticated) {
-    return <LoginView onLoginSuccess={handleLoginSuccess} externalFeedback={authFeedback} />;
+    if (!showLogin) {
+      return (
+        <LandingView
+          onGoToLogin={() => {
+            try {
+              window.history.pushState({ page: 'login' }, '', '/?login=true');
+            } catch {}
+            setShowLogin(true);
+          }}
+        />
+      );
+    }
+
+    return (
+      <LoginView
+        onLoginSuccess={handleLoginSuccess}
+        externalFeedback={authFeedback}
+        onBackToLanding={() => {
+          try {
+            window.history.pushState({ page: 'landing' }, '', '/');
+          } catch {}
+          setShowLogin(false);
+        }}
+      />
+    );
   }
 
   return (

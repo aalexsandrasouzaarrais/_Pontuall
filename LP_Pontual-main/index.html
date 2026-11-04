@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="modo-escuro" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Pontual | Gestão de equipes</title>
+<link rel="icon" type="image/png" href="img/logo_pontual_transparente.png" />
+
+    <!-- FONTES GOOGLE -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Serif:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600;1,700&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="style.css">    
+
+    <!-- CONTROLE INICIAL DO TEMA -->
+    <script>
+        (function () {
+            var saved = localStorage.getItem('pontual-theme') || localStorage.getItem('pontual_theme_preference');
+
+            var theme = saved || (
+                window.matchMedia('(prefers-color-scheme: light)').matches
+                    ? 'light'
+                    : 'dark'
+            );
+
+            document.documentElement.setAttribute('data-theme', theme);
+            if (theme === 'light') {
+                document.documentElement.classList.remove('modo-escuro');
+                document.documentElement.classList.add('modo-claro');
+            } else {
+                document.documentElement.classList.remove('modo-claro');
+                document.documentElement.classList.add('modo-escuro');
+            }
+        })();
+    </script>
+</head>
+
+<body>
+
+    <!-- FUNDO DECORATIVO -->
+
+    <div class="background-glow glow-one"></div>
+    <div class="background-glow glow-two"></div>
+
+    <!-- HEADER / NAVEGAÇÃO STICKY (ACOMPANHA O SITE COMO NA PERFIL.HTML) -->
+    <header class="header-alt profiles-sticky-header">
+
+        <div class="logos-alt">
+
+            <a href="#inicio" class="logo">
+                <img src="img/logo_pontual_transparente.png"
+                     alt="Pontual"
+                     class="logo-light">
+                <img src="img/logo_dark.png"
+                     alt="Pontual"
+                     class="logo-dark">
+            </a>
+
+            <a href="#inicio" class="logo">
+                <img src="img/Pontual-Branco.png"
+                     alt="Pontual"
+                     class="logo-light">
+                <img src="img/Pontual-Branco.png"
+                     alt="Pontual"
+                     class="logo-dark"
+                     style="filter: brightness(0) saturate(100%);">
+            </a>
+
+        </div>
+
+
+        <nav class="nav-alt" id="mainNav">
+
+            <a href="#inicio" class="active">Início</a>
+
+            <a href="#funcionalidades">
+                Funcionalidades
+            </a>
+
+            <a href="#sobre">
+                Sobre nós
+            </a>
+
+            <a href="#como-funciona">
+                Como funciona
+            </a>
+
+            <a href="perfil.html">
+                Perfis
+            </a>
+
+        </nav>
+
+
+        <div class="header-actions">
+
+            <!-- BOTÃO DE TEMA -->
+
+            <button
+                class="theme-toggle"
+                id="themeToggle"
+                aria-label="Alternar tema claro/escuro"
+                title="Alternar tema">
+
+                <!-- ÍCONE SOL -->
+
+                <svg
+                    class="icon-sun"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round">
+
+                    <circle cx="12" cy="12" r="4"></circle>
+
+                    <line x1="12" y1="2" x2="12" y2="4"></line>
+                    <line x1="12" y1="20" x2="12" y2="22"></line>
+
+                    <line x1="4.93" y1="4.93"
+                          x2="6.34" y2="6.34"></line>
+
+                    <line x1="17.66" y1="17.66"
+                          x2="19.07" y2="19.07"></line>
+
+                    <line x1="2" y1="12"
+                          x2="4" y2="12"></line>
+
+                    <line x1="20" y1="12"
+                          x2="22" y2="12"></line>
+
+                    <line x1="4.93" y1="19.07"
+                          x2="6.34" y2="17.66"></line>
+
+                    <line x1="17.66" y1="6.34"
+                          x2="19.07" y2="4.93"></line>
+
+                </svg>
+
+
+                <!-- ÍCONE LUA -->
+
+                <svg
+                    class="icon-moon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round">
+
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3
+                             7 7 0 0 0 21 12.79z">
+                    </path>
+
+                </svg>
+
+            </button>
+
+
+            <!-- BOTÃO ENTRAR -->
+
+            <button type="button" class="login-alt" data-action="go-login">
+                Entrar
+                <span>↗</span>
+            </button>
+
+
+            <!-- BOTÃO MENU SANDUÍCHE (MOBILE) -->
+
+            <button
+                class="mobile-menu-toggle"
+                id="mobileMenuToggle"
+                aria-label="Abrir menu de navegação"
+                aria-expanded="false"
+                aria-controls="mainNav">
+                <span class="hamburger-bar"></span>
+                <span class="hamburger-bar"></span>
+                <span class="hamburger-bar"></span>
+            </button>
+
+        </div>
+
+    </header>
+
+    <!-- BACKDROP DO MENU MOBILE -->
+    <div class="mobile-nav-backdrop" id="mobileNavBackdrop"></div>
+
+
+    <!-- HERO V2 -->
+
+    <section class="landing-alt" id="inicio">
+
+        <div class="hero-alt">
+
+            <div class="shape-alt shape-blue"></div>
+            <div class="shape-alt shape-pink"></div>
+            <div class="shape-alt shape-yellow"></div>
+            <div class="shape-alt shape-purple"></div>
+
+
+            <div class="hero-content-alt">
+
+                <h1>
+                    Sua equipe<br>
+                    Seu ritmo<br>
+                    <span>Seu Pontual</span>
+                </h1>
+
+                <p>
+                    Simplifique escalas, turnos e controle de escalas
+                    em uma única experiência.
+                </p>
+
+
+                <div class="hero-buttons-agr">
+
+                    <a href="/?login=true" class="btn-primary-alt" data-action="go-login">
+
+                        Conheça a plataforma
+                        <span>→</span>
+
+                    </a>
+
+
+                
+
+                    
+                </div>
+
+            </div>
+
+
+            
+
+        </div>
+
+    </section>
+
+       <!-- MARQUEE -->
+
+    <div class="marquee">
+
+        <div>
+            PONTUAL
+            <span>✦</span>
+
+            GESTÃO
+            <span>✦</span>
+
+            ORGANIZAÇÃO
+            <span>✦</span>
+
+            EFICIÊNCIA
+            <span>✦</span>
+
+            PONTUAL
+            <span>✦</span>
+        </div>
+
+    </div>
+
+
+
+
+    
+    <!-- FRASE PRINCIPAL & DEMO MOBILE -->
+
+    <section class="big-statement" id="visao">
+
+        <div class="statement-glow"></div>
+
+        <div class="statement-wrapper">
+
+            <!-- Coluna de Texto à Esquerda -->
+            <div class="statement-left">
+
+                
+
+                <h2>
+                    Porque cada
+                    <br>
+                    <strong>minuto</strong>
+                    <br>
+                    importa.
+                </h2>
+
+                <p class="statement-subtitle">
+                    Gestão eficiente começa com organização. Toda a sua equipe e escalas na palma da mão, em tempo real.
+                </p>
+
+                <div class="statement-badges">
+                    <div class="statement-badge-item">
+                        <span class="badge-dot"></span>
+                        <span>Geolocalização GPS Ativa</span>
+                    </div>
+                    <div class="statement-badge-item">
+                        <span class="badge-dot"></span>
+                        <span>Controle de Ponto em Tempo Real</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Coluna do Celular & Cards à Direita (Showcase) -->
+            <div class="statement-right">
+
+                <!-- Luzes e efeitos vibrantes das cores do site no fundo -->
+                <div class="phone-ambient-lights">
+                    <div class="ambient-glow-orb glow-wine"></div>
+                    <div class="ambient-glow-orb glow-orange"></div>
+                    <div class="ambient-glow-orb glow-yellow"></div>
+                    <div class="ambient-glow-orb glow-crimson"></div>
+                    <div class="ambient-glow-radial"></div>
+                </div>
+
+                <!-- Grupo de Apresentação: Cards + Smartphone -->
+                <div class="statement-showcase-group">
+
+                    
+                    <!-- Chassis 3D do Celular (Maior e com proporções esguias) -->
+                    <div class="phone-mockup">
+                        <div class="phone-chassis">
+
+                            <!-- Botões físicos externos -->
+                            <div class="phone-btn-vol-up"></div>
+                            <div class="phone-btn-vol-down"></div>
+                            <div class="phone-btn-power"></div>
+
+                            <!-- Tela do App Pontual (OLED Screen) -->
+                            <div class="phone-screen app-mobile-screen">
+
+                                <!-- Topo do App: Logo Oficial Pontual + Avatar do Colaborador + Botão de Tema -->
+                                <div class="app-top-header">
+                                    <div class="app-brand-logo-wrap">
+                                        <img src="img/Pontual-Branco.png" alt="Pontual" class="app-brand-logo-img">
+                                    </div>
+                                    <div class="app-header-right">
+                                        <div class="app-avatar-wrapper" title="Lucas Silva">
+                                            <img class="app-avatar-img"
+                                                 src="https://i.pinimg.com/736x/2e/19/56/2e1956804d151a1517133e5df0a2f055.jpg"
+                                                 alt="Lucas Silva"
+                                                 onerror="this.src='https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=160&auto=format&fit=crop&q=80'">
+                                            <span class="app-avatar-online"></span>
+                                        </div>
+                                        <button type="button" class="app-theme-icon-btn" aria-label="Alternar tema">
+                                            <svg class="app-icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <circle cx="12" cy="12" r="5"></circle>
+                                                <line x1="12" y1="1" x2="12" y2="3"></line>
+                                                <line x1="12" y1="21" x2="12" y2="23"></line>
+                                                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                                                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                                                <line x1="1" y1="12" x2="3" y2="12"></line>
+                                                <line x1="21" y1="12" x2="23" y2="12"></line>
+                                                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                                                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                                            </svg>
+                                            <svg class="app-icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Barra de Ícones / Abas do App -->
+                                <div class="app-tab-navigation">
+                                    <!-- Aba 1: Ponto (Ativa) -->
+                                    <div class="app-nav-tab active">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <polyline points="12 6 12 12 16 14"></polyline>
+                                        </svg>
+                                    </div>
+                                    <!-- Aba 2: Calendário / Escala -->
+                                    <div class="app-nav-tab">
+                                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                                            <line x1="16" y1="2" x2="16" y2="6"></line>
+                                            <line x1="8" y1="2" x2="8" y2="6"></line>
+                                            <line x1="3" y1="10" x2="21" y2="10"></line>
+                                        </svg>
+                                    </div>
+                                    <!-- Aba 3: Trocas / Transferências -->
+                                    <div class="app-nav-tab">
+                                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="17 1 21 5 17 9"></polyline>
+                                            <path d="M3 5h18"></path>
+                                            <polyline points="7 23 3 19 7 15"></polyline>
+                                            <path d="M21 19H3"></path>
+                                        </svg>
+                                    </div>
+                                    <!-- Aba 4: Documentos / Folha -->
+                                    <div class="app-nav-tab">
+                                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                            <polyline points="14 2 14 8 20 8"></polyline>
+                                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                                        </svg>
+                                    </div>
+                                    <!-- Aba 5: Mensagens (Badge 2) -->
+                                    <div class="app-nav-tab has-pill">
+                                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                                        </svg>
+                                        <span class="tab-notification-pill">2</span>
+                                    </div>
+                                    <!-- Aba 6: Notificações (Badge 12) -->
+                                    <div class="app-nav-tab has-pill">
+                                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                                            <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                                        </svg>
+                                        <span class="tab-notification-pill">12</span>
+                                    </div>
+                                </div>
+
+                                <!-- Bloco de Bater Ponto Pontual (Card Principal Fiel ao App) -->
+                                <div class="app-punch-container">
+
+                                    <!-- Relógio e Data com Indicador Vertical Laranja -->
+                                    <div class="app-clock-row">
+                                        <div class="app-clock-bar"></div>
+                                        <div class="app-clock-meta">
+                                            <div class="app-clock-time" id="screen-clock">16:00:11</div>
+                                            <div class="app-clock-date" id="screen-date">Terça-Feira, 27 De Outubro De 2026</div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Pill de Status: Expediente em andamento -->
+                                    <div class="app-status-badge" id="app-status-badge">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <polyline points="12 6 12 12 16 14"></polyline>
+                                        </svg>
+                                        <span id="app-status-text">Expediente em andamento</span>
+                                    </div>
+
+                                    <!-- Stepper da Jornada: Entrada (14:37) -> Em andamento (8h) -> Saída (--:--) -->
+                                    <div class="app-stepper-track" id="app-stepper-track">
+                                        <!-- Entrada (Ativo) -->
+                                        <div class="app-step-item step-completed">
+                                            <div class="app-step-bullet">
+                                                <div class="app-step-dot" id="step-dot-entry"></div>
+                                            </div>
+                                            <div class="app-step-text">
+                                                <span class="app-step-label">Entrada</span>
+                                                <span class="app-step-val" id="step-time-entry">14:37</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="app-step-connector active"></div>
+
+                                        <!-- Em andamento (Ativo) -->
+                                        <div class="app-step-item step-completed">
+                                            <div class="app-step-bullet">
+                                                <div class="app-step-dot"></div>
+                                            </div>
+                                            <div class="app-step-text">
+                                                <span class="app-step-label">Em andamento</span>
+                                                <span class="app-step-val">8h</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="app-step-connector" id="step-connector-2"></div>
+
+                                        <!-- Saída (Pendente / Concluída após clique) -->
+                                        <div class="app-step-item" id="step-exit-item">
+                                            <div class="app-step-bullet">
+                                                <div class="app-step-dot" id="step-dot-exit"></div>
+                                            </div>
+                                            <div class="app-step-text">
+                                                <span class="app-step-label">Saída</span>
+                                                <span class="app-step-val" id="step-time-exit">--:--</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Card Principal com Linhas Verticais: Turno de Hoje + Meu Local Atual -->
+                                    <div class="app-details-card">
+                                        <div class="app-card-accent-bar"></div>
+
+                                        <!-- Linha 1: Turno de hoje -->
+                                        <div class="app-card-row">
+                                            <div class="app-row-circle-icon">
+                                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <circle cx="12" cy="12" r="10"></circle>
+                                                    <polyline points="12 6 12 12 16 14"></polyline>
+                                                </svg>
+                                            </div>
+                                            <div class="app-row-details">
+                                                <span class="app-row-label">Turno de hoje</span>
+                                                <div class="app-row-val">08:00 – 17:00 (8h)</div>
+                                                <span class="app-row-pill">Comercial (5x2)</span>
+                                            </div>
+                                        </div>
+
+                                        <!-- Linha 2: Meu local atual + Botão Como chegar -->
+                                        <div class="app-card-row row-location">
+                                            <div class="app-row-circle-icon">
+                                                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                                                    <circle cx="12" cy="10" r="3"></circle>
+                                                </svg>
+                                            </div>
+                                            <div class="app-row-details">
+                                                <span class="app-row-label">Meu local atual</span>
+                                                <div class="app-row-val bold">BNE</div>
+                                                <div class="app-row-address">Rua Antônio Chemi...</div>
+                                            </div>
+                                            <button type="button" class="app-btn-directions">
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                                                    <circle cx="12" cy="10" r="3"></circle>
+                                                </svg>
+                                                <span>Como chegar</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Botão de Ação Primário: Registrar Saída (100% largura) -->
+                                    <button type="button" class="app-btn-primary" id="interactive-punch-btn" onclick="triggerPunchSimulation()">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                                            <polyline points="12 5 19 12 12 19"></polyline>
+                                        </svg>
+                                        <span id="punch-btn-text">Registrar Saída</span>
+                                    </button>
+
+                                    <!-- Botão de Ação Secundário: Meus Registros (100% largura) -->
+                                    <button type="button" class="app-btn-secondary">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                                            <path d="M3 3v5h5"></path>
+                                            <polyline points="12 7 12 12 15 15"></polyline>
+                                        </svg>
+                                        <span>Meus Registros</span>
+                                    </button>
+
+                                    <!-- Rodapé: Status GPS -->
+                                    <div class="app-gps-row">
+                                        <span class="app-gps-dot"></span>
+                                        <span class="app-gps-text">GPS: Fora (1.2 km)</span>
+                                    </div>
+
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- RECURSOS -->
+
+    <section class="resources" id="funcionalidades">
+
+        <div class="section-top">
+
+            <div>
+
+                <span> RECURSOS</span>
+
+                <h2>
+                    Feito para
+                    <br>
+                    <strong>funcionar.</strong>
+                </h2>
+
+            </div>
+
+            <p>
+                Ferramentas pensadas para tornar
+                cada etapa da gestão mais clara.
+            </p>
+
+        </div>
+
+
+        <div class="resource-list" id="resourceAccordion">
+
+            <!-- 01. ESCALAS -->
+            <article class="resource-item active" data-resource="escalas">
+
+                <button class="resource-header" type="button" aria-expanded="true" aria-controls="content-escalas">
+                    <span class="resource-index">01</span>
+
+                    <div class="resource-name">
+                        <h3>Escalas</h3>
+                        <p>Planejamento de turnos de forma organizada.</p>
+                    </div>
+
+                    <div class="resource-icon" aria-hidden="true">
+                        <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </div>
+                </button>
+
+                <div class="resource-body" id="content-escalas">
+                    <div class="resource-content">
+
+                        <div class="resource-details-text">
+                            <span class="resource-badge badge-escalas"> Planejamento de Escalas</span>
+                            <h4>Monte escalas de trabalho de forma simples e visual</h4>
+                            <p>
+                                Monte e distribua grades de horários com total suporte a regimes flexíveis (5x2, , 12x36).
+                                O sistema avisa sobre conflitos de horários, respeita intervalos de descanso da legislação trabalhista e notifica os colaboradores instantaneamente a cada nova publicação.
+                            </p>
+                            <ul class="resource-features">
+                                <li>
+                                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                    Visualização clara mensal, semanal e por setor da empresa
+                                </li>
+                                <li>
+                                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                    Gestão simplificada de trocas de plantão com aprovação em 1 clique
+                                </li>
+                                <li>
+                                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                     Publicação das escalas para consulta da equipe.                                </li>
+                            </ul>
+                        </div>
+
+                        
+                        <div class="resource-details-media">
+                            <div class="project-photo-wrapper">
+                                
+                                
+                                    <img src="img/escalas.png" alt="Preview do Módulo de Escalas Pontual" class="resource-image" loading="lazy">
+                                
+                                
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </article>
+
+
+            <!-- 02. PONTO -->
+            <article class="resource-item" data-resource="ponto">
+
+                <button class="resource-header" type="button" aria-expanded="false" aria-controls="content-ponto">
+                    <span class="resource-index">02</span>
+
+                    <div class="resource-name">
+                        <h3>Presença</h3>
+                        <p>Acompanhamento da jornada dos colaboradores.</p>
+                    </div>
+
+                    <div class="resource-icon" aria-hidden="true">
+                        <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </div>
+                </button>
+
+                <div class="resource-body" id="content-ponto">
+                    <div class="resource-content">
+
+                        <div class="resource-details-text">
+                            <span class="resource-badge badge-ponto"> Ponto Digital Seguro</span>
+                            <h4>Acompanhe faltas e identifique padrões de presença</h4>
+                            <p>
+                                Centralize os registros de comparecimento e tenha uma visão clara da assiduidade dos colaboradores. Consulte faltas, acompanhe o histórico de presença e analise os dados para identificar ocorrências e apoiar a organização da equipe.
+                            <ul class="resource-features">
+                                <li>
+                                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                    Histórico de presenças, faltas e ausências justificadas
+                                </li>
+                                <li>
+                                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                    Acompanhamento dos índices de assiduidade dos colaboradores.
+                                </li>
+                                <li>
+                                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                    Consulta aos registros para facilitar a identificação de faltas recorrentes.
+                                </li>
+                            </ul>
+                        </div>
+
+                        <!-- ESPAÇO PARA FOTO DO PROJETO -->
+                        <div class="resource-details-media">
+                            <div class="project-photo-wrapper">
+                                <img src="img/relatorio.png" alt="Preview do Módulo de Ponto Pontual" class="resource-image" loading="lazy">
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </article>
+
+
+            <!-- 03. PRESENÇA -->
+            <article class="resource-item" data-resource="presenca">
+
+                <button class="resource-header" type="button" aria-expanded="false" aria-controls="content-presenca">
+                    <span class="resource-index">03</span>
+
+                    <div class="resource-name">
+                        <h3>Ponto</h3>
+                        <p>Check-in e controle de presença da equipe.</p>
+                    </div>
+
+                    <div class="resource-icon" aria-hidden="true">
+                        <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </div>
+                </button>
+
+                <div class="resource-body" id="content-presenca">
+                    <div class="resource-content">
+
+                        <div class="resource-details-text">
+                            <span class="resource-badge badge-presenca"> Visão em Tempo Real do Colaborador</span>
+                            <h4>Confirme o comparecimento de forma simples e rápida</h4>
+                            <p>
+                                Facilite a confirmação de presença diretamente pelo celular. Com apenas um clique e a validação de proximidade via GPS, os colaboradores registram seu comparecimento, permitindo que a gestão acompanhe a situação dos turnos.
+
+                            </p>
+                            <ul class="resource-features">
+                                <li>
+                                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                    Confirmação de presença pelo celular.
+                                </li>
+                                <li>
+                                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                    Validação de proximidade do local de trabalho via GPS.
+                                </li>
+                                <li>
+                                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                    Atualização do status dos turnos: pendente, presente, ausente ou justificado
+                                </li>
+                            </ul>
+                        </div>
+
+                        <!-- ESPAÇO PARA FOTO DO PROJETO -->
+                        <div class="resource-details-media">
+                            <div class="project-photo-wrapper">
+                               <img src="img/pontocolab.png" alt="" class="resource-image" loading="lazy"> 
+                                                   
+
+                               
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </article>
+
+
+            <!-- 04. GESTÃO -->
+            <article class="resource-item" data-resource="gestao">
+
+                <button class="resource-header" type="button" aria-expanded="false" aria-controls="content-gestao">
+                    <span class="resource-index">04</span>
+
+                    <div class="resource-name">
+                        <h3>Gestão</h3>
+                        <p>Informações centralizadas para decisões melhores.</p>
+                    </div>
+
+                    <div class="resource-icon" aria-hidden="true">
+                        <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                    </div>
+                </button>
+
+                <div class="resource-body" id="content-gestao">
+                    <div class="resource-content">
+
+                        <div class="resource-details-text">
+                            <span class="resource-badge badge-gestao">Inteligência Operacional</span>
+                            <h4>Acompanhe a equipe e tome decisões com mais clareza</h4>
+                            <p>
+                                Organize as informações dos trabalhadores em um painel centralizado e intuitivo. Consulte os colaboradores cadastrados, visualize seus dados e gerencie os acessos de acordo com as permissões de cada perfil, mantendo a equipe organizada e as informações sempre acessíveis.
+                            </p>
+                            <ul class="resource-features">
+                                <li>
+                                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                    Cadastro e consulta dos colaboradores da empresa.
+                                </li>
+                                <li>
+                                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                    Visualização das informações e dos dados de cada trabalhador.
+                                </li>
+                                <li>
+                                    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                    Gerenciamento de usuários e permissões de acesso.
+                                </li>
+                            </ul>
+                        </div>
+
+                        <!-- ESPAÇO PARA FOTO DO PROJETO -->
+                        <div class="resource-details-media">
+                            <div class="project-photo-wrapper">
+                                <img src="img/colaboradores.png" alt="Preview do Módulo de Gestão Pontual" class="resource-image" loading="lazy">
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </article>
+
+        </div>
+
+    </section>
+
+
+    <!-- SOLUÇÃO -->
+
+    <section class="solution" id="sobre">
+
+        <div class="solution-left">
+
+            <span class="label">
+                SOBRE NÓS
+            </span>
+
+            <h2>
+                Menos complicação.
+                <br>
+                <strong>Mais controle.</strong>
+
+                <img
+                    src="img/logo_pontual_transparente.png"
+                    alt="Logo Pontual"
+                    class="solution-logo logo-light"
+                >
+                <img
+                    src="img/logo_dark.png"
+                    alt="Logo Pontual"
+                    class="solution-logo logo-dark"
+                >
+            </h2>
+
+        </div>
+
+
+        <div class="solution-right">
+
+            <p>
+                O Pontual é uma plataforma desenvolvida para simplificar a gestão de equipes, reunindo organização de escalas, confirmação de presença e gerenciamento de colaboradores em um só lugar. 
+            </p>
+
+            <p>Nosso objetivo é tornar a rotina das empresas mais prática e eficiente, facilitando o acompanhamento dos trabalhadores e contribuindo para uma gestão mais organizada, transparente e acessível.</p>
+
+            
+        </div>
+
+    </section>
+
+
+    <!-- COMO FUNCIONA -->
+
+    <section class="process" id="como-funciona">
+
+        <div class="process-title">
+
+            <span class="label">
+                COMO FUNCIONA
+            </span>
+
+            <h2>
+                Do planejamento
+                <br>
+                <strong>à execução.</strong>
+            </h2>
+
+        </div>
+
+
+        <div class="process-list">
+
+
+            <div class="process-item">
+
+                <span>01</span>
+
+                <div>
+
+                    <h3>Planeje</h3>
+
+                    <p>
+                        Organize os horários e escalas
+                        da sua equipe.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="process-item">
+
+                <span>02</span>
+
+                <div>
+
+                    <h3>Publique</h3>
+
+                    <p>
+                        Compartilhe as escalas
+                        com seus colaboradores.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="process-item">
+
+                <span>03</span>
+
+                <div>
+
+                    <h3>Acompanhe</h3>
+
+                    <p>
+                        Tenha controle da jornada
+                        e presença em tempo real.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+        </div>
+
+    </section>
+
+
+    <!-- CTA FINAL -->
+
+    <section class="final-cta brand-bg" id="comece">
+
+        <div class="cta-background-text">
+            PONTUAL
+        </div>
+
+
+        <div class="cta-content">
+
+            <h2>
+                Faça sua gestão
+                <br>
+                acontecer.
+            </h2>
+
+            <button type="button" class="primary-button" data-action="go-login">
+
+                Acessar plataforma
+
+                <span>↗</span>
+                
+
+            </button>
+
+        </div>
+
+    </section>
+
+
+    <!-- FOOTER -->
+
+    <footer>
+
+        <div class="footer-left">
+            <div class="footer-brand">
+                <img
+                    src="img/logo_pontual_transparente.png"
+                    alt="Pontual"
+                    class="logo-light footer-logo-img">
+                <img
+                    src="img/logo_dark.png"
+                    alt="Pontual"
+                    class="logo-dark footer-logo-img">
+
+                 
+            </div>
+            <span class="footer-bullet">•</span>
+            <span class="footer-tagline">Sistema Corporativo de Gestão de Escalas</span>
+        </div>
+
+        <div class="footer-links">
+            <a href="#inicio">Início</a>
+            <a href="#funcionalidades">Recursos</a>
+            <a href="#sobre">Sobre</a>
+            <a href="perfil.html">Perfis</a>
+            <a href="/?login=true" class="footer-link-highlight" data-action="go-login">Portal de Acesso</a>
+        </div>
+
+        <p class="footer-copy">
+            © 2026 Pontual. Todos os direitos reservados.
+        </p>
+
+    </footer>
+
+
+    <!-- BOTÃO VOLTAR AO TOPO -->
+    <button class="back-to-top" id="backToTop" aria-label="Voltar para o topo" title="Voltar ao topo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="18 15 12 9 6 15"></polyline>
+        </svg>
+    </button>
+
+    <!-- MODAL LIGHTBOX PARA VISUALIZAÇÃO AMPLIADA DE IMAGENS NO MOBILE/DESKTOP -->
+    <div class="image-lightbox-modal" id="imageLightboxModal" aria-hidden="true" role="dialog" aria-label="Visualização ampliada">
+        <div class="lightbox-backdrop" id="lightboxBackdrop"></div>
+        <div class="lightbox-container">
+            <button type="button" class="lightbox-close-btn" id="lightboxCloseBtn" aria-label="Fechar visualização">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+            <div class="lightbox-image-wrap">
+                <img src="" alt="Visualização ampliada" id="lightboxImage" class="lightbox-img">
+            </div>
+            <div class="lightbox-caption" id="lightboxCaption">Toque fora ou no X para fechar</div>
+        </div>
+    </div>
+
+    <!-- SCRIPT PRINCIPAL -->
+    <script src="script.js"></script>
+
+</body>
+</html>
