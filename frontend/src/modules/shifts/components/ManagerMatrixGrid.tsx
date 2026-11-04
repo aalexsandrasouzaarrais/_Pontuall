@@ -247,8 +247,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     setExpandedBancoReasons(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // Estados e cálculos para exportação mensal de presenças
+  // Estados e cálculos para exportação mensal de presenças e aprovações
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportModalContext, setExportModalContext] = useState<'attendance' | 'approvals'>('attendance');
   const [selectedExportMonth, setSelectedExportMonth] = useState<string>(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -311,6 +312,77 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
     return list;
   }, [shifts]);
+
+  const availableApprovalsExportMonths = useMemo(() => {
+    const monthsMap = new Map<string, { label: string; count: number }>();
+    const monthNames = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth();
+    const curKey = `${curYear}-${String(curMonth + 1).padStart(2, '0')}`;
+
+    const prevDate = new Date(curYear, curMonth - 1, 1);
+    const prevYear = prevDate.getFullYear();
+    const prevMonth = prevDate.getMonth();
+    const prevKey = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}`;
+
+    monthsMap.set(curKey, {
+      label: `${monthNames[curMonth]}/${curYear} (Mês Atual)`,
+      count: 0
+    });
+
+    monthsMap.set(prevKey, {
+      label: `${monthNames[prevMonth]}/${prevYear} (Mês Anterior)`,
+      count: 0
+    });
+
+    (approvalsData || []).forEach(item => {
+      if (!item.date) return;
+      const iso = normalizeDateToISO(item.date);
+      const key = iso.substring(0, 7);
+      if (monthsMap.has(key)) {
+        monthsMap.get(key)!.count++;
+      } else {
+        const [y, m] = key.split('-').map(Number);
+        if (y && m && m >= 1 && m <= 12) {
+          monthsMap.set(key, {
+            label: `${monthNames[m - 1]}/${y}`,
+            count: 1
+          });
+        }
+      }
+    });
+
+    const list = Array.from(monthsMap.entries()).map(([key, val]) => ({
+      key,
+      label: val.label,
+      count: val.count
+    }));
+
+    list.push({
+      key: 'all',
+      label: 'Todo o Histórico Disponível',
+      count: approvalsData?.length || 0
+    });
+
+    return list;
+  }, [approvalsData]);
+
+  const handleOpenExportModal = (context: 'attendance' | 'approvals') => {
+    setExportModalContext(context);
+    const targetList = context === 'approvals' ? availableApprovalsExportMonths : availableExportMonths;
+    const now = new Date();
+    const curKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    if (targetList.some(m => m.key === curKey)) {
+      setSelectedExportMonth(curKey);
+    } else if (targetList.length > 0) {
+      setSelectedExportMonth(targetList[0].key);
+    }
+    setIsExportModalOpen(true);
+  };
 
   // Identifica se estamos perto do final do mês (dia >= 25) ou no início (dias 1 a 3)
   const monthClosingInfo = useMemo(() => {
@@ -1026,6 +1098,81 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       id: 'csv-folha-export',
       title: 'Planilha de Folha Exportada!',
       description: 'Relatório formatado em horas decimais e rubricas de fechamento contábil baixado com sucesso.',
+      rimVariant: 'success',
+      duration: 4000,
+    });
+  };
+
+  const handleExportApprovalsCsv = (rowsToExport: any[], targetMonth?: string) => {
+    if (!rowsToExport || rowsToExport.length === 0) {
+      showPolishedToast({
+        id: 'csv-approvals-export-empty',
+        title: 'Nenhum registro para exportar',
+        description: 'Não foram encontradas ocorrências para o período selecionado.',
+        rimVariant: 'warning',
+        duration: 3500,
+      });
+      return;
+    }
+
+    const headers = [
+      'Colaborador',
+      'Matrícula / ID',
+      'Departamento',
+      'Cargo',
+      'Data da Ocorrência',
+      'Tipo de Ocorrência',
+      'Motivo / Detalhes da Solicitação',
+      'Comprovante / Atestado Anexado',
+      'Status',
+      'Ação Realizada',
+      'Observação / Feedback do Gestor'
+    ];
+
+    const escapeCsv = (val: any) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+
+    const rows = rowsToExport.map(row => {
+      let statusFormatted = row.status || 'Pendente';
+      if (row.status === 'Recusado / Falta') {
+        statusFormatted = 'Recusado / Descontado';
+      }
+
+      let dateFormatted = row.date;
+      if (row.date && row.date.includes('-')) {
+        const parts = row.date.split('-');
+        if (parts.length === 3) {
+          dateFormatted = `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+      }
+
+      return [
+        escapeCsv(row.employeeName),
+        escapeCsv(row.employeeId || '—'),
+        escapeCsv(row.employeeDept),
+        escapeCsv(row.employeeRole),
+        escapeCsv(dateFormatted),
+        escapeCsv(row.type),
+        escapeCsv(row.reason),
+        escapeCsv(row.documentName || 'Sem anexo'),
+        escapeCsv(statusFormatted),
+        escapeCsv(row.actionText || (row.status === 'Pendente' ? 'Aguardando decisão' : 'Processado')),
+        escapeCsv(row.feedback || '—')
+      ].join(';');
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(';'), ...rows].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    const monthSuffix = targetMonth && targetMonth !== 'all' ? targetMonth : getTodayDateString();
+    link.download = `relatorio-aprovacoes-e-faltas-${monthSuffix}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+
+    showPolishedToast({
+      id: 'csv-approvals-export',
+      title: 'Planilha exportada com sucesso!',
+      description: `${rowsToExport.length} ocorrência(s) baixada(s) em CSV com sucesso.`,
       rimVariant: 'success',
       duration: 4000,
     });
@@ -2447,13 +2594,16 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           } else if (approvalsTypeFilter === 'medical') {
             if (!row.type.toLowerCase().includes('atestado') && !row.type.toLowerCase().includes('médico') && !row.type.toLowerCase().includes('ausência')) return false;
           } else if (approvalsTypeFilter === 'absent') {
-            if (!row.type.toLowerCase().includes('falta') || row.type.toLowerCase().includes('justificad') || row.actionText?.toLowerCase().includes('abonad')) return false;
+            const t = row.type.toLowerCase();
+            const isExplicitNao = t.includes('não justificada') || t.includes('nao justificada');
+            const isNaoJustificada = isExplicitNao || (t.includes('falta') && !t.includes('falta justificada'));
+            if (!isNaoJustificada || row.status === 'Aprovado' || row.actionText?.toLowerCase().includes('abonad')) return false;
           } else if (approvalsTypeFilter === 'justified') {
-            const isJust = (
-              row.type.toLowerCase().includes('justificad') ||
-              row.actionText?.toLowerCase().includes('abonad') ||
-              (row.status === 'Aprovado' && (row.type.toLowerCase().includes('falta') || row.type.toLowerCase().includes('atraso')))
-            );
+            const t = row.type.toLowerCase();
+            const isExplicitNao = t.includes('não justificada') || t.includes('nao justificada');
+            const isJust = (!isExplicitNao && (t === 'falta justificada' || t === 'justificado')) ||
+              Boolean(row.actionText?.toLowerCase().includes('abonad')) ||
+              (row.status === 'Aprovado' && (t.includes('falta') || t.includes('atraso')));
             if (!isJust) return false;
           } else if (approvalsTypeFilter === 'delay') {
             if (!row.type.toLowerCase().includes('atraso')) return false;
@@ -2542,13 +2692,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
                 <div className="relative z-10 flex items-center gap-3 shrink-0">
                   <button
-                    onClick={() => handleExportBancoHorasCsv(bancoHorasData)}
+                    onClick={() => handleOpenExportModal('approvals')}
                     className="approvals-light-export px-5 py-2.5 font-bold text-xs rounded-full text-white flex items-center gap-2 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer"
                     style={{ 
                       background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)',
                       boxShadow: '0 4px 18px rgba(100, 12, 30, 0.30)'
                     }}
-                    title="Exportar relatório completo de aprovações, ocorrências e fechamento em CSV"
+                    title="Exportar folha mensal consolidada de aprovações e faltas em CSV"
                   >
                     <Download className="w-4 h-4" /> Exportar Relatório CSV
                   </button>
@@ -2686,8 +2836,19 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   if (cat.id === 'delay') return row.type.toLowerCase().includes('atraso');
                   if (cat.id === 'overtime') return row.type.toLowerCase().includes('hora extra') || row.type.toLowerCase().includes('extra');
                   if (cat.id === 'medical') return row.type.toLowerCase().includes('atestado') || row.type.toLowerCase().includes('médico');
-                  if (cat.id === 'absent') return row.type.toLowerCase().includes('falta') && !row.type.toLowerCase().includes('justificad') && !row.actionText?.toLowerCase().includes('abonad');
-                  if (cat.id === 'justified') return row.type.toLowerCase().includes('justificad') || row.actionText?.toLowerCase().includes('abonad') || (row.status === 'Aprovado' && (row.type.toLowerCase().includes('falta') || row.type.toLowerCase().includes('atraso')));
+                  if (cat.id === 'absent') {
+                    const t = row.type.toLowerCase();
+                    const isExplicitNao = t.includes('não justificada') || t.includes('nao justificada');
+                    const isNaoJustificada = isExplicitNao || (t.includes('falta') && !t.includes('falta justificada'));
+                    return isNaoJustificada && row.status !== 'Aprovado' && !row.actionText?.toLowerCase().includes('abonad');
+                  }
+                  if (cat.id === 'justified') {
+                    const t = row.type.toLowerCase();
+                    const isExplicitNao = t.includes('não justificada') || t.includes('nao justificada');
+                    return (!isExplicitNao && (t === 'falta justificada' || t === 'justificado')) ||
+                      Boolean(row.actionText?.toLowerCase().includes('abonad')) ||
+                      (row.status === 'Aprovado' && (t.includes('falta') || t.includes('atraso')));
+                  }
                   if (cat.id === 'swap') return row.type.toLowerCase().includes('troca');
                   if (cat.id === 'time_off') return row.type.toLowerCase().includes('folga') || row.type.toLowerCase().includes('dispensa');
                   return true;
@@ -3563,7 +3724,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
               <div className="relative z-10 flex items-center gap-3 shrink-0">
                 <button
-                  onClick={() => setIsExportModalOpen(true)}
+                  onClick={() => handleOpenExportModal('attendance')}
                   className="attendance-report-export px-5 py-2.5 font-bold text-xs rounded-full text-white flex items-center gap-2 shadow-lg hover:scale-105 active:scale-95 transition-all cursor-pointer"
                   style={{ 
                     background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)',
@@ -3609,7 +3770,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         rimVariant: 'success',
                       });
                     } else {
-                      setIsExportModalOpen(true);
+                      handleOpenExportModal('attendance');
                     }
                   }}
                   className="font-bold underline hover:no-underline text-amber-600 dark:text-amber-400 shrink-0 cursor-pointer text-xs"
@@ -3692,33 +3853,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           : 'bg-slate-50 text-slate-900 placeholder:text-slate-400 border border-slate-200 focus:border-[#9F243C]'
                       }`}
                     />
-                  </div>
-
-                  {/* Filtro específico por data */}
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="date"
-                      value={relatorioDate}
-                      onChange={(e) => setRelatorioDate(e.target.value)}
-                      className={`py-2 px-3 text-xs font-semibold rounded-full outline-none cursor-pointer transition-colors ${
-                        isDark 
-                          ? 'bg-[#0e0f12] text-white border border-[#282a33]' 
-                          : 'bg-slate-50 text-slate-900 border border-slate-200'
-                      }`}
-                      title="Filtrar por data específica"
-                    />
-                    {relatorioDate && (
-                      <button
-                        type="button"
-                        onClick={() => setRelatorioDate('')}
-                        className={`px-2 py-1 text-[10px] font-bold rounded-full transition-colors cursor-pointer ${
-                          isDark ? 'text-slate-400 hover:text-white bg-white/5' : 'text-slate-500 hover:text-slate-900 bg-slate-100'
-                        }`}
-                        title="Limpar filtro de data"
-                      >
-                        ✕ Limpar data
-                      </button>
-                    )}
                   </div>
 
                   <select
@@ -5581,93 +5715,110 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         </ErrorBoundary>
       )}
 
-      {/* Modal de Seleção de Mês para Exportação da Folha CSV */}
-      {isExportModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl space-y-5 transition-all ${
-            isDark ? 'bg-[#15161b] border-[#282a33] text-white' : 'bg-white border-slate-200 text-slate-800'
-          }`}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-1">
-                <h3 className="text-base font-bold">Exportar Folha Mensal</h3>
-                <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                  Selecione o mês de competência para gerar a planilha consolidada de presenças.
-                </p>
+      {/* Modal de Seleção de Mês para Exportação da Folha CSV (Presenças ou Aprovações) */}
+      {isExportModalOpen && (() => {
+        const activeMonths = exportModalContext === 'approvals'
+          ? availableApprovalsExportMonths
+          : availableExportMonths;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+            <div className={`w-full max-w-md rounded-2xl border p-6 shadow-2xl space-y-5 transition-all ${
+              isDark ? 'bg-[#15161b] border-[#282a33] text-white' : 'bg-white border-slate-200 text-slate-800'
+            }`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <h3 className="text-base font-bold">Exportar Folha Mensal</h3>
+                  <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    {exportModalContext === 'approvals'
+                      ? 'Selecione o mês de competência para gerar a planilha consolidada de aprovações e faltas.'
+                      : 'Selecione o mês de competência para gerar a planilha consolidada de presenças.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsExportModalOpen(false)}
+                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                    isDark ? 'text-slate-400 hover:text-white hover:bg-white/5' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsExportModalOpen(false)}
-                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                  isDark ? 'text-slate-400 hover:text-white hover:bg-white/5' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
-                }`}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
 
-            <div className="space-y-3">
-              <label className={`block text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                Mês de Competência
-              </label>
-              <select
-                value={selectedExportMonth}
-                onChange={(e) => setSelectedExportMonth(e.target.value)}
-                className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium border outline-none cursor-pointer transition-colors ${
-                  isDark 
-                    ? 'bg-[#0e0f12] border-[#282a33] text-white focus:border-[#F59242]' 
-                    : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-[#9F243C]'
-                }`}
-              >
-                {availableExportMonths.map(m => (
-                  <option key={m.key} value={m.key}>
-                    {m.label} ({m.count} {m.count === 1 ? 'registro' : 'registros'})
-                  </option>
-                ))}
-              </select>
+              <div className="space-y-3">
+                <label className={`block text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                  Mês de Competência
+                </label>
+                <select
+                  value={selectedExportMonth}
+                  onChange={(e) => setSelectedExportMonth(e.target.value)}
+                  className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium border outline-none cursor-pointer transition-colors ${
+                    isDark 
+                      ? 'bg-[#0e0f12] border-[#282a33] text-white focus:border-[#F59242]' 
+                      : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-[#9F243C]'
+                  }`}
+                >
+                  {activeMonths.map(m => (
+                    <option key={m.key} value={m.key}>
+                      {m.label} ({m.count} {m.count === 1 ? 'registro' : 'registros'})
+                    </option>
+                  ))}
+                </select>
 
-              <div className={`p-3 rounded-xl border text-xs ${
-                isDark ? 'bg-black/20 border-white/5 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'
-              }`}>
-                <div className="flex items-center justify-between font-medium">
-                  <span>Registros a exportar:</span>
-                  <span className="font-bold text-amber-500">
-                    {availableExportMonths.find(m => m.key === selectedExportMonth)?.count || 0}
-                  </span>
+                <div className={`p-3 rounded-xl border text-xs ${
+                  isDark ? 'bg-black/20 border-white/5 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'
+                }`}>
+                  <div className="flex items-center justify-between font-medium">
+                    <span>Registros a exportar:</span>
+                    <span className="font-bold text-amber-500">
+                      {activeMonths.find(m => m.key === selectedExportMonth)?.count || 0}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="flex items-center justify-end gap-2.5 pt-2">
-              <button
-                type="button"
-                onClick={() => setIsExportModalOpen(false)}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
-                  isDark ? 'text-slate-400 hover:text-white hover:bg-white/5' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                }`}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  onExportCsv(selectedExportMonth);
-                  setIsExportModalOpen(false);
-                  showPolishedToast({
-                    title: 'Planilha exportada com sucesso!',
-                    description: 'O arquivo CSV mensal foi baixado no padrão brasileiro.',
-                    rimVariant: 'success',
-                  });
-                }}
-                className="px-5 py-2 rounded-xl text-xs font-bold text-white shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
-                style={{ background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)' }}
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Baixar Planilha (CSV)</span>
-              </button>
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsExportModalOpen(false)}
+                  className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                    isDark ? 'text-slate-400 hover:text-white hover:bg-white/5' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (exportModalContext === 'approvals') {
+                      const rowsToExport = selectedExportMonth === 'all'
+                        ? approvalsData
+                        : approvalsData.filter(row => row.date && normalizeDateToISO(row.date).startsWith(selectedExportMonth));
+
+                      handleExportApprovalsCsv(rowsToExport, selectedExportMonth);
+                      setIsExportModalOpen(false);
+                    } else {
+                      onExportCsv(selectedExportMonth);
+                      setIsExportModalOpen(false);
+                      showPolishedToast({
+                        title: 'Planilha exportada com sucesso!',
+                        description: 'O arquivo CSV mensal foi baixado no padrão brasileiro.',
+                        rimVariant: 'success',
+                      });
+                    }
+                  }}
+                  className="px-5 py-2 rounded-xl text-xs font-bold text-white shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
+                  style={{ background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)' }}
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Baixar Planilha (CSV)</span>
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Modal de Exclusão de Escalas em Lote / Filtro */}
       <DeleteShiftsModal
