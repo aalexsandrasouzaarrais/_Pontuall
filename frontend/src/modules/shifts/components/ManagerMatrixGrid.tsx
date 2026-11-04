@@ -118,6 +118,8 @@ export interface BancoHorasItem {
   type: 'hora_extra' | 'atraso' | 'esquecimento' | 'ausencia';
   typeLabel: string;
   reason: string;
+  documentName?: string;
+  documentUrl?: string;
   status: 'Pendente' | 'Homologado' | 'Ajustado' | 'Justificado';
   feedback: string;
 }
@@ -180,7 +182,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   const [approvalsFilterTab, setApprovalsFilterTab] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [approvalsSearch, setApprovalsSearch] = useState('');
   const [approvalsDept, setApprovalsDept] = useState('all');
-  const [approvalsTypeFilter, setApprovalsTypeFilter] = useState<'all' | 'swap' | 'medical' | 'time_off'>('all');
+  const [approvalsTypeFilter, setApprovalsTypeFilter] = useState<'all' | 'swap' | 'medical' | 'delay' | 'overtime' | 'absent' | 'time_off'>('all');
   const [isNewOccurrenceModalOpen, setIsNewOccurrenceModalOpen] = useState(false);
   const [expandedReasons, setExpandedReasons] = useState<Record<string, boolean>>({});
   const [selectedDetailOccurrence, setSelectedDetailOccurrence] = useState<{
@@ -354,8 +356,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   };
 
   useEffect(() => {
+    const today = getTodayDateString();
+    const emp1 = employees[0] || {
+      id: 'emp-1',
+      name: 'Alexsandra Arrais',
+      role: 'Analista de Operações',
+      department: 'Operações',
+      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
+    };
+    const emp2 = employees[1] || emp1;
+    const emp3 = employees[2] || emp1;
+
     const mappedJustifications = (justifications || []).map(j => {
       const emp = employees.find(e => e.id === j.employeeId);
+      const isDelayJust = j.reason?.toLowerCase().includes('atraso') || (j as any).justificationType === 'delay';
       return {
         id: j.id,
         employeeId: j.employeeId,
@@ -363,10 +377,10 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         employeeRole: emp?.role || 'Colaborador',
         employeeDept: emp?.department || 'Geral',
         employeeAvatar: emp?.avatar || j.employeeAvatar || '',
-        type: 'Atestado Médico',
+        type: isDelayJust ? 'Justificativa de Atraso' : 'Atestado Médico',
         reason: j.reason,
         date: j.date,
-        documentName: j.documentName || 'atestado.pdf',
+        documentName: j.documentName || (isDelayJust ? 'Declaracao_Comparecimento_Horas.pdf' : 'atestado.pdf'),
         documentUrl: j.documentUrl,
         status: (j.status === 'approved' ? 'Aprovado' : j.status === 'rejected' ? 'Recusado / Falta' : 'Pendente') as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
         actionText: j.status === 'approved' ? 'Homologado' : j.status === 'rejected' ? 'Não homologado' : undefined,
@@ -406,89 +420,204 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       };
     });
 
-    // Aba Aprovações & Faltas contém estritamente Atestados Médicos, Trocas de Turno e Folgas
-    setApprovalsData([...mappedJustifications, ...mappedRequests]);
+    // Mapeamento de Faltas Não Justificadas (sem batida e sem atestado após 24h)
+    const mappedAbsences = (shifts || []).filter(s => {
+      const isPast24h = isShiftPast24hWithoutPunch(s) || s.attendanceStatus === 'absent';
+      const hasJustification = (justifications || []).some(j => 
+        (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)
+      );
+      return isPast24h && !s.checkInTime && !hasJustification;
+    }).map(s => {
+      const emp = employees.find(e => e.id === s.employeeId);
+      const isJustified = s.attendanceStatus === 'justified';
+      return {
+        id: `absence-${s.id}`,
+        shiftId: s.id,
+        employeeId: s.employeeId,
+        employeeName: emp?.name || 'Colaborador',
+        employeeRole: emp?.role || 'Colaborador',
+        employeeDept: emp?.department || 'Geral',
+        employeeAvatar: emp?.avatar || '',
+        type: 'Falta Não Justificada',
+        reason: 'Colaborador escalado não registrou ponto de entrada/saída após 24h e não apresentou atestado/justificativa.',
+        date: s.date,
+        documentName: 'Sem anexo',
+        documentUrl: undefined,
+        status: (isJustified ? 'Aprovado' : 'Pendente') as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
+        actionText: isJustified ? 'Abonada' : undefined,
+        feedback: isJustified ? 'Ausência abonada pelo gestor' : '',
+      };
+    });
 
-    // Ocorrências de Banco de Horas & Registro de Ponto (Exibidas na Aba de Relatório de Presenças)
-    const today = getTodayDateString();
-    const emp1 = employees[0] || {
-      id: 'emp-1',
-      name: 'Alexsandra Arrais',
-      role: 'Analista de Operações',
-      department: 'Operações',
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
-    };
-    const emp2 = employees[1] || emp1;
-    const emp3 = employees[2] || emp1;
+    const demoAbsenceItem = mappedAbsences.length > 0 ? [] : [{
+      id: 'demo-absence-1',
+      employeeId: emp2.id,
+      employeeName: emp2.name || 'Carlos Silveira',
+      employeeRole: emp2.role || 'Supervisor',
+      employeeDept: emp2.department || 'Logística',
+      employeeAvatar: emp2.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+      type: 'Falta Não Justificada',
+      reason: 'Colaborador escalado não registrou ponto na escala e não apresentou atestado médico.',
+      date: today,
+      documentName: 'Sem anexo',
+      documentUrl: undefined,
+      status: 'Pendente' as const,
+      feedback: '',
+    }];
 
+    // Ocorrências de Atraso e Horas Extras apuradas para a Central Única de Aprovações
+    const mappedDelaysAndOvertimeFromShifts = (shifts || []).filter(s => {
+      const hasHe = s.notes && s.notes.includes('[HE');
+      const hasLate = (s.notes && s.notes.includes('[Atraso')) || s.attendanceStatus === 'late';
+      return hasHe || hasLate;
+    }).map(s => {
+      const emp = employees.find(e => e.id === s.employeeId) || emp1;
+      const isHe = Boolean(s.notes?.includes('[HE'));
+      const isLate = (Boolean(s.notes?.includes('[Atraso')) || s.attendanceStatus === 'late') && !isHe;
+      
+      const type = isLate ? 'Atraso de Entrada' : 'Hora Extra';
+      let diffStr = '';
+      if (isLate) {
+        const lateMatch = s.notes?.match(/\[Atraso (\d+)m/);
+        diffStr = lateMatch ? ` (-${lateMatch[1]} min)` : ' (-35 min)';
+      } else {
+        const heMatch = s.notes?.match(/\[HE \+(\d+)m/);
+        diffStr = heMatch ? ` (+${heMatch[1]} min)` : ' (+39 min)';
+      }
+
+      const shiftJust = (justifications || []).find(j => 
+        (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)
+      );
+
+      const isHomologated = s.notes?.includes('HOMOLOGADO') || shiftJust?.status === 'approved';
+      const isAdjusted = s.notes?.includes('AJUSTE GESTOR') || shiftJust?.status === 'rejected';
+
+      const statusVal = isHomologated ? 'Aprovado' : isAdjusted ? 'Recusado / Falta' : 'Pendente';
+      const actionText = isHomologated 
+        ? (isLate ? 'Abonado' : 'Homologado')
+        : isAdjusted 
+        ? (isLate ? 'Debitado' : 'Ajustado')
+        : undefined;
+
+      return {
+        id: `shift-occ-${s.id}`,
+        shiftId: s.id,
+        employeeId: s.employeeId,
+        employeeName: emp.name,
+        employeeRole: emp.role || 'Colaborador',
+        employeeDept: emp.department || 'Geral',
+        employeeAvatar: emp.avatar || '',
+        type,
+        reason: shiftJust?.reason || s.notes || (isLate ? `Entrada com atraso${diffStr}` : `Permanência com hora extra${diffStr}`),
+        date: s.date,
+        documentName: shiftJust?.documentName || (isLate ? 'Declaracao_Comparecimento_Horas.pdf' : 'Não se aplica'),
+        documentUrl: shiftJust?.documentUrl,
+        status: statusVal as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
+        actionText,
+        feedback: shiftJust?.managerNotes || '',
+      };
+    });
+
+    const demoDelayItem = (mappedDelaysAndOvertimeFromShifts.some(i => i.type === 'Atraso de Entrada') || mappedJustifications.some(j => j.type === 'Atraso de Entrada' || j.type === 'Justificativa de Atraso')) ? [] : [{
+      id: 'demo-delay-1',
+      employeeId: emp2.id,
+      employeeName: emp2.name || 'Carlos Silveira',
+      employeeRole: emp2.role || 'Supervisor',
+      employeeDept: emp2.department || 'Logística',
+      employeeAvatar: emp2.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+      type: 'Atraso de Entrada',
+      reason: 'Atraso de 35 min: Consulta médica matinal com declaração anexada',
+      date: today,
+      documentName: 'Declaracao_Comparecimento_Horas.pdf',
+      documentUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+      status: 'Pendente' as const,
+      feedback: '',
+    }];
+
+    const demoOvertimeItem = mappedDelaysAndOvertimeFromShifts.some(i => i.type === 'Hora Extra') ? [] : [{
+      id: 'demo-overtime-1',
+      employeeId: emp1.id,
+      employeeName: emp1.name,
+      employeeRole: emp1.role || 'Analista de Operações',
+      employeeDept: emp1.department || 'Operações',
+      employeeAvatar: emp1.avatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
+      type: 'Hora Extra',
+      reason: 'Hora extra de +39 min: Atendimento urgente e suporte estendido a cliente',
+      date: today,
+      documentName: 'Não se aplica',
+      documentUrl: undefined,
+      status: 'Pendente' as const,
+      feedback: '',
+    }];
+
+    // Central Unificada de Aprovações (Aba 2):
+    // Reúne Atestados Médicos, Faltas Não Justificadas, Atrasos de Entrada, Horas Extras, Trocas de Turno e Folgas
+    setApprovalsData([
+      ...demoAbsenceItem,
+      ...demoDelayItem,
+      ...demoOvertimeItem,
+      ...mappedAbsences,
+      ...mappedDelaysAndOvertimeFromShifts,
+      ...mappedJustifications.map(j => ({
+        ...j,
+        type: j.type === 'Justificativa de Atraso' ? 'Atraso de Entrada' : j.type
+      })),
+      ...mappedRequests
+    ]);
+
+    // Ocorrências de Banco de Horas & Registro de Ponto (Exclusivo para jornada com trabalho efetivo)
     const mappedFromShifts: BancoHorasItem[] = (shifts || []).filter(s => {
       const hasHe = s.notes && s.notes.includes('[HE');
       const hasLate = (s.notes && s.notes.includes('[Atraso')) || s.attendanceStatus === 'late';
       const hasAdjustment = s.notes && (s.notes.includes('Esquecimento') || s.notes.includes('AJUSTE') || s.notes.includes('HOMOLOGADO'));
-      const isAbsentOver24h = isShiftPast24hWithoutPunch(s) || s.attendanceStatus === 'absent' || s.attendanceStatus === 'justified';
-      return hasHe || hasLate || hasAdjustment || isAbsentOver24h;
+      return hasHe || hasLate || hasAdjustment;
     }).map(s => {
       const emp = employees.find(e => e.id === s.employeeId) || emp1;
       const isHe = s.notes?.includes('[HE');
       const isForget = s.notes?.includes('Esquecimento');
       const isLate = (s.notes?.includes('[Atraso') || s.attendanceStatus === 'late') && !isHe;
-      const isAbsent = isShiftPast24hWithoutPunch(s) || s.attendanceStatus === 'absent' || s.attendanceStatus === 'justified';
 
-      const just = (justifications || []).find(j => 
-        (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)
-      );
-
-      let type: 'hora_extra' | 'atraso' | 'esquecimento' | 'ausencia' = 'hora_extra';
-      let typeLabel = '⏰ Hora Extra';
+      let type: 'hora_extra' | 'atraso' | 'esquecimento' = 'hora_extra';
+      let typeLabel = 'Hora Extra';
       let diffMinutes = 39;
       let diffBadge = '+39 min';
 
-      if (isAbsent && !isHe && !isLate && !isForget) {
-        type = 'ausencia';
-        typeLabel = s.attendanceStatus === 'justified' || just?.status === 'approved' ? '📋 Ausência Justificada' : '❌ Falta / Ausência';
-        diffMinutes = -480;
-        diffBadge = s.attendanceStatus === 'justified' || just?.status === 'approved' ? '0 min (Abonado)' : '-8h (Falta)';
-      } else if (isForget) {
+      if (isForget) {
         type = 'esquecimento';
-        typeLabel = 'ℹ️ Esquecimento de Saída';
+        typeLabel = 'Esquecimento de Saída';
         diffMinutes = 0;
         diffBadge = '0 min (Esquecimento)';
       } else if (isLate) {
         type = 'atraso';
-        typeLabel = '⚠️ Atraso de Entrada';
+        typeLabel = 'Atraso de Entrada';
         const lateMatch = s.notes?.match(/\[Atraso (\d+)m/);
         diffMinutes = lateMatch ? -Number(lateMatch[1]) : -35;
         diffBadge = `${diffMinutes} min`;
       } else if (isHe) {
         type = 'hora_extra';
-        typeLabel = '⏰ Hora Extra';
+        typeLabel = 'Hora Extra';
         const heMatch = s.notes?.match(/\[HE \+(\d+)m/);
         diffMinutes = heMatch ? Number(heMatch[1]) : 39;
         diffBadge = `+${diffMinutes} min`;
       }
 
-      const isHomologated = s.notes?.includes('HOMOLOGADO') || just?.status === 'approved' || s.attendanceStatus === 'justified';
+      const isHomologated = s.notes?.includes('HOMOLOGADO');
       const isAdjusted = s.notes?.includes('AJUSTE GESTOR');
+      const defaultReason = isLate ? 'Entrada com atraso superior à tolerância CLT' : 'Ocorrência de jornada';
 
-      let defaultReason = 'Ocorrência de jornada';
-      if (type === 'ausencia') {
-        if (just) {
-          defaultReason = `Justificativa: "${just.reason}" (${just.status === 'approved' ? 'Homologada' : 'Pendente de homologação'})`;
-        } else {
-          defaultReason = 'Colaborador não registrou ponto após 24h da escala (Pendente de justificativa)';
-        }
-      } else if (isLate) {
-        defaultReason = 'Entrada com atraso superior à tolerância CLT';
-      }
+      const shiftJust = (justifications || []).find(j => 
+        (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)
+      );
 
       let statusVal: 'Pendente' | 'Homologado' | 'Ajustado' = isHomologated ? 'Homologado' : isAdjusted ? 'Ajustado' : 'Pendente';
       let feedbackVal = '';
-      if (type === 'ausencia') {
-        feedbackVal = isHomologated ? 'Ausência justificada e abonada pelo gestor' : 'Aguardando justificativa ou homologação do gestor';
-      } else if (isAdjusted) {
+      if (isAdjusted) {
         feedbackVal = 'Ponto mantido com ajuste para jornada contratual (sem HE indevida)';
       } else if (isHomologated) {
         feedbackVal = 'Aprovado para Banco de Horas / Folha';
+      } else if (shiftJust && shiftJust.status === 'approved') {
+        statusVal = 'Homologado';
+        feedbackVal = 'Atraso abonado com base em atestado/comprovante';
       }
 
       return {
@@ -506,91 +635,179 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         diffBadge,
         type,
         typeLabel,
-        reason: s.notes || defaultReason,
+        reason: shiftJust?.reason || s.notes || defaultReason,
+        documentName: shiftJust?.documentName,
+        documentUrl: shiftJust?.documentUrl,
         status: statusVal,
         feedback: feedbackVal,
       };
     });
-    if (mappedFromShifts.length > 0) {
-      setBancoHorasData(mappedFromShifts);
-    } else {
-      setBancoHorasData([
-        {
-          id: 'bh-sim-1',
-          employeeId: emp1.id,
-          employeeName: emp1.name,
-          employeeRole: emp1.role || 'Analista de Operações',
-          employeeDept: emp1.department || 'Operações',
-          employeeAvatar: emp1.avatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
-          date: today,
-          scheduledTime: '08:00 às 15:20',
-          punchTime: '08:00 às 15:59',
-          diffMinutes: 39,
-          diffBadge: '+39 min',
-          type: 'hora_extra',
-          typeLabel: '⏰ Hora Extra',
-          reason: 'Atendimento urgente e suporte estendido a cliente corporativo',
-          status: 'Pendente',
-          feedback: '',
-        },
-        {
-          id: 'bh-sim-2',
-          employeeId: emp2.id,
-          employeeName: emp2.name || 'Carlos Silveira',
-          employeeRole: emp2.role || 'Supervisor',
-          employeeDept: emp2.department || 'Logística',
-          employeeAvatar: emp2.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
-          date: today,
-          scheduledTime: '08:00 às 17:00',
-          punchTime: '08:35 às 17:00',
-          diffMinutes: -35,
-          diffBadge: '-35 min',
-          type: 'atraso',
-          typeLabel: '⚠️ Atraso de Entrada',
-          reason: 'Paralisação inesperada e atraso no transporte público na linha 9',
-          status: 'Pendente',
-          feedback: '',
-        },
-        {
-          id: 'bh-sim-3',
-          employeeId: emp3.id,
-          employeeName: emp3.name || 'Mariana Rios',
-          employeeRole: emp3.role || 'Atendente',
-          employeeDept: emp3.department || 'Atendimento',
-          employeeAvatar: emp3.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-          date: today,
-          scheduledTime: '08:00 às 15:20',
-          punchTime: '08:00 às 15:59',
-          diffMinutes: 0,
-          diffBadge: '0 min (Esquecimento)',
-          type: 'esquecimento',
-          typeLabel: 'ℹ️ Esquecimento de Saída',
-          reason: 'Esquecimento de Saída: Saída real no horário previsto (15:20) - Batida às 15:59',
-          status: 'Pendente',
-          feedback: '',
-        },
-      ]);
+
+    const demoHoraExtra: BancoHorasItem = {
+      id: 'bh-sim-1',
+      employeeId: emp1.id,
+      employeeName: emp1.name,
+      employeeRole: emp1.role || 'Analista de Operações',
+      employeeDept: emp1.department || 'Operações',
+      employeeAvatar: emp1.avatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
+      date: today,
+      scheduledTime: '08:00 às 15:20',
+      punchTime: '08:00 às 15:59',
+      diffMinutes: 39,
+      diffBadge: '+39 min',
+      type: 'hora_extra',
+      typeLabel: 'Hora Extra',
+      reason: 'Atendimento urgente e suporte estendido a cliente corporativo',
+      status: 'Pendente',
+      feedback: '',
+    };
+
+    const demoAtraso: BancoHorasItem = {
+      id: 'bh-sim-2',
+      employeeId: emp2.id,
+      employeeName: emp2.name || 'Carlos Silveira',
+      employeeRole: emp2.role || 'Supervisor',
+      employeeDept: emp2.department || 'Logística',
+      employeeAvatar: emp2.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+      date: today,
+      scheduledTime: '08:00 às 17:00',
+      punchTime: '08:35 às 17:00',
+      diffMinutes: -35,
+      diffBadge: '-35 min',
+      type: 'atraso',
+      typeLabel: 'Atraso de Entrada',
+      reason: 'Atraso de 35 min: Consulta médica matinal com declaração de comparecimento anexada',
+      documentName: 'Declaracao_Comparecimento_Horas.pdf',
+      documentUrl: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+      status: 'Pendente',
+      feedback: '',
+    };
+
+    const demoEsquecimento: BancoHorasItem = {
+      id: 'bh-sim-3',
+      employeeId: emp3.id,
+      employeeName: emp3.name || 'Mariana Rios',
+      employeeRole: emp3.role || 'Atendente',
+      employeeDept: emp3.department || 'Atendimento',
+      employeeAvatar: emp3.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+      date: today,
+      scheduledTime: '08:00 às 15:20',
+      punchTime: '08:00 às 15:59',
+      diffMinutes: 0,
+      diffBadge: '0 min (Esquecimento)',
+      type: 'esquecimento',
+      typeLabel: 'Esquecimento de Saída',
+      reason: 'Esquecimento de Saída: Saída real no horário previsto (15:20) - Batida às 15:59',
+      status: 'Pendente',
+      feedback: '',
+    };
+
+    const finalBancoHoras: BancoHorasItem[] = [...mappedFromShifts];
+    if (!finalBancoHoras.some(b => b.type === 'hora_extra')) {
+      finalBancoHoras.unshift(demoHoraExtra);
     }
+    if (!finalBancoHoras.some(b => b.type === 'atraso')) {
+      finalBancoHoras.splice(1, 0, demoAtraso);
+    }
+    if (!finalBancoHoras.some(b => b.type === 'esquecimento')) {
+      finalBancoHoras.push(demoEsquecimento);
+    }
+    setBancoHorasData(finalBancoHoras);
   }, [employees, justifications, requests, shifts]);
 
-  // Ações de Aprovação / Recusa para Atestados e Trocas (Aba Aprovações)
+  // Ações de Homologação / Aprovação para Atestados, Faltas, Atrasos e Horas Extras (Central de Aprovações)
   const handleApproveOccurrence = async (id: string) => {
     const targetItem = approvalsData.find(i => i.id === id);
+    const isFalta = targetItem?.type === 'Falta Não Justificada' || id.startsWith('absence-');
+    const isAtraso = targetItem?.type === 'Atraso de Entrada' || targetItem?.type === 'Justificativa de Atraso';
+    const isHe = targetItem?.type === 'Hora Extra';
     const customFeedback = targetItem?.feedback?.trim() || undefined;
 
-    setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, status: 'Aprovado', actionText: 'Homologado agora' } : item));
-    const isRequest = requests.some(r => r.id === id);
+    const actionText = isFalta ? 'Abonada' : isAtraso ? 'Abonado' : isHe ? 'Homologado' : 'Homologado agora';
 
-    if (isRequest) {
-      if (onApproveRequest) {
-        onApproveRequest(id, customFeedback);
-      } else {
-        await updateSolicitacaoStatusSupabase(id, 'approved', customFeedback || 'Aprovado pelo gestor');
+    setApprovalsData(prev => prev.map(item => item.id === id ? { 
+      ...item, 
+      status: 'Aprovado', 
+      actionText 
+    } : item));
+    
+    if (isFalta) {
+      const shiftId = (targetItem as any)?.shiftId || id.replace('absence-', '');
+      const targetShift = shifts.find(s => s.id === shiftId);
+      if (targetShift) {
+        onOpenEditShift?.({
+          ...targetShift,
+          attendanceStatus: 'justified',
+          notes: `${targetShift.notes || ''} [ABONO GESTOR: Ausência Justificada / Abonada em Folha]`
+        });
       }
-    } else if (onApproveJustification) {
-      onApproveJustification(id, customFeedback);
+      showPolishedToast({
+        id: 'abono-falta-success',
+        title: 'Falta Abonada com Sucesso!',
+        description: 'A ausência foi abonada pelo gestor e não gerará desconto na folha de pagamento.',
+        rimVariant: 'success',
+        duration: 4000,
+      });
+      return;
+    }
+
+    if (isAtraso) {
+      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace('shift-occ-', '') : undefined);
+      if (shiftId) {
+        const targetShift = shifts.find(s => s.id === shiftId);
+        if (targetShift) {
+          onOpenEditShift?.({
+            ...targetShift,
+            notes: `${targetShift.notes || ''} [ABONO GESTOR: Atraso Abonado]`
+          });
+        }
+      }
+      showPolishedToast({
+        id: 'abono-atraso-success',
+        title: 'Atraso Abonado com Sucesso!',
+        description: 'O atraso foi abonado pelo gestor com base no comprovante e não gerará débito.',
+        rimVariant: 'success',
+        duration: 4000,
+      });
+      return;
+    }
+
+    if (isHe) {
+      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace('shift-occ-', '') : undefined);
+      if (shiftId) {
+        const targetShift = shifts.find(s => s.id === shiftId);
+        if (targetShift) {
+          onOpenEditShift?.({
+            ...targetShift,
+            notes: `${targetShift.notes || ''} [HOMOLOGADO GESTOR: Hora Extra Aprovada]`
+          });
+        }
+      }
+      showPolishedToast({
+        id: 'homologar-he-success',
+        title: 'Hora Extra Homologada!',
+        description: 'As horas extras foram aprovadas e lançadas com sucesso para crédito no Banco de Horas / Folha.',
+        rimVariant: 'success',
+        duration: 4000,
+      });
+      return;
+    }
+
+    if (id.startsWith('demo-')) {
+      // Item demonstrativo atualizado localmente
     } else {
-      await updateJustificativaStatusSupabase(id, 'approved', customFeedback || 'Homologado pelo gestor');
+      const isRequest = requests.some(r => r.id === id);
+      if (isRequest) {
+        if (onApproveRequest) {
+          onApproveRequest(id, customFeedback);
+        } else {
+          await updateSolicitacaoStatusSupabase(id, 'approved', customFeedback || 'Aprovado pelo gestor');
+        }
+      } else if (onApproveJustification) {
+        onApproveJustification(id, customFeedback);
+      } else {
+        await updateJustificativaStatusSupabase(id, 'approved', customFeedback || 'Homologado pelo gestor');
+      }
     }
     showPolishedToast({
       id: 'approval-success',
@@ -603,21 +820,96 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
   const handleRejectOccurrence = async (id: string) => {
     const targetItem = approvalsData.find(i => i.id === id);
+    const isFalta = targetItem?.type === 'Falta Não Justificada' || id.startsWith('absence-');
+    const isAtraso = targetItem?.type === 'Atraso de Entrada' || targetItem?.type === 'Justificativa de Atraso';
+    const isHe = targetItem?.type === 'Hora Extra';
     const customFeedback = targetItem?.feedback?.trim() || undefined;
 
-    setApprovalsData(prev => prev.map(item => item.id === id ? { ...item, status: 'Recusado / Falta', actionText: 'Recusado agora' } : item));
-    const isRequest = requests.some(r => r.id === id);
+    const actionText = isFalta ? 'Desconto em Folha' : isAtraso ? 'Debitado' : isHe ? 'Ajustado' : 'Recusado agora';
 
-    if (isRequest) {
-      if (onRejectRequest) {
-        onRejectRequest(id, customFeedback);
-      } else {
-        await updateSolicitacaoStatusSupabase(id, 'rejected', customFeedback || 'Recusado pelo gestor');
+    setApprovalsData(prev => prev.map(item => item.id === id ? { 
+      ...item, 
+      status: 'Recusado / Falta', 
+      actionText 
+    } : item));
+    
+    if (isFalta) {
+      const shiftId = (targetItem as any)?.shiftId || id.replace('absence-', '');
+      const targetShift = shifts.find(s => s.id === shiftId);
+      if (targetShift) {
+        onOpenEditShift?.({
+          ...targetShift,
+          attendanceStatus: 'absent',
+          notes: `${targetShift.notes || ''} [CONFIRMADA FALTA: Lançado desconto de 1 dia + DSR]`
+        });
       }
-    } else if (onRejectJustification) {
-      onRejectJustification(id, customFeedback);
+      showPolishedToast({
+        id: 'desconto-falta-confirm',
+        title: 'Desconto de Falta Confirmado',
+        description: 'A ausência não justificada foi confirmada para desconto na folha (1 dia + DSR semanal).',
+        rimVariant: 'danger',
+        duration: 4000,
+      });
+      return;
+    }
+
+    if (isAtraso) {
+      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace('shift-occ-', '') : undefined);
+      if (shiftId) {
+        const targetShift = shifts.find(s => s.id === shiftId);
+        if (targetShift) {
+          onOpenEditShift?.({
+            ...targetShift,
+            notes: `${targetShift.notes || ''} [AJUSTE GESTOR: Débito de Atraso Confirmado]`
+          });
+        }
+      }
+      showPolishedToast({
+        id: 'debito-atraso-confirm',
+        title: 'Débito de Atraso Confirmado',
+        description: 'Os minutos de atraso foram confirmados para débito/compensação no Banco de Horas.',
+        rimVariant: 'default',
+        duration: 4000,
+      });
+      return;
+    }
+
+    if (isHe) {
+      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace('shift-occ-', '') : undefined);
+      if (shiftId) {
+        const targetShift = shifts.find(s => s.id === shiftId);
+        if (targetShift) {
+          onOpenEditShift?.({
+            ...targetShift,
+            notes: `${targetShift.notes || ''} [AJUSTE GESTOR: Ajustado p/ Horário Normal]`
+          });
+        }
+      }
+      showPolishedToast({
+        id: 'ajuste-he-confirm',
+        title: 'Hora Extra Ajustada',
+        description: 'Registro tratado para a jornada contratual (Art. 4º § 2º CLT - Sem HE indevida).',
+        rimVariant: 'default',
+        duration: 4000,
+      });
+      return;
+    }
+
+    if (id.startsWith('demo-')) {
+      // Item demonstrativo atualizado localmente
     } else {
-      await updateJustificativaStatusSupabase(id, 'rejected', customFeedback || 'Recusado pelo gestor');
+      const isRequest = requests.some(r => r.id === id);
+      if (isRequest) {
+        if (onRejectRequest) {
+          onRejectRequest(id, customFeedback);
+        } else {
+          await updateSolicitacaoStatusSupabase(id, 'rejected', customFeedback || 'Recusado pelo gestor');
+        }
+      } else if (onRejectJustification) {
+        onRejectJustification(id, customFeedback);
+      } else {
+        await updateJustificativaStatusSupabase(id, 'rejected', customFeedback || 'Recusado pelo gestor');
+      }
     }
     showPolishedToast({
       id: 'approval-rejected',
@@ -629,6 +921,96 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   };
 
   // Ações do Gestor para Banco de Horas e Ajustes CLT (Aba Relatório de Presenças)
+  // Exportação especializada de Fechamento de Folha & Banco de Horas para o RH (Padrão Contábil / eSocial)
+  const handleExportBancoHorasCsv = (rowsToExport: BancoHorasItem[]) => {
+    const headers = [
+      'Colaborador',
+      'Matrícula / ID',
+      'Departamento',
+      'Cargo',
+      'Data',
+      'Escala Contratual',
+      'Batidas de Ponto',
+      'Tipo de Ocorrência',
+      'Variação (min)',
+      'Horas Extras (HH:MM)',
+      'Horas Extras Decimal (p/ Folha)',
+      'Atrasos a Debitar (min)',
+      'Atrasos Decimal (p/ Folha)',
+      'Status Homologação',
+      'Justificativa do Colaborador',
+      'Comprovante Anexado',
+      'Parecer / Observação do Gestor',
+      'Fundamentação Legal'
+    ];
+
+    const escapeCsv = (val: any) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+
+    const rows = rowsToExport.map(row => {
+      const isHe = row.type === 'hora_extra';
+      const isAtraso = row.type === 'atraso';
+      const isEsquecimento = row.type === 'esquecimento';
+
+      const heMinutes = isHe && row.status === 'Homologado' ? Math.max(0, row.diffMinutes) : 0;
+      const heH = Math.floor(heMinutes / 60);
+      const heM = heMinutes % 60;
+      const heHHMM = `${String(heH).padStart(2, '0')}:${String(heM).padStart(2, '0')}`;
+      const heDecimal = (heMinutes / 60).toFixed(2).replace('.', ',');
+
+      const atrasoMinutes = isAtraso && row.status === 'Ajustado' ? Math.abs(row.diffMinutes) : 0;
+      const atrasoDecimal = (atrasoMinutes / 60).toFixed(2).replace('.', ',');
+
+      let statusLabel = row.status;
+      if (row.status === 'Homologado') {
+        statusLabel = isHe ? 'Aprovado p/ Banco de Horas' : 'Atraso Abonado c/ Comprovante';
+      } else if (row.status === 'Ajustado') {
+        statusLabel = isHe ? 'Ajustado p/ Horário Contratual' : 'Débito Confirmado no Banco';
+      }
+
+      let fundLegal = 'CLT Art. 58';
+      if (isEsquecimento) fundLegal = 'CLT Art. 4º § 2º (Não cômputo sem trabalho efetivo)';
+      else if (isHe) fundLegal = 'CLT Art. 59 (Acordo de Banco de Horas / HE)';
+      else if (isAtraso) fundLegal = 'Portaria MTE 671 / CLT Art. 58';
+
+      return [
+        escapeCsv(row.employeeName),
+        escapeCsv(row.employeeId),
+        escapeCsv(row.employeeDept),
+        escapeCsv(row.employeeRole),
+        escapeCsv(formatDateToDDMMAAAA(row.date)),
+        escapeCsv(row.scheduledTime),
+        escapeCsv(row.punchTime),
+        escapeCsv(row.typeLabel),
+        row.diffMinutes,
+        escapeCsv(heHHMM),
+        escapeCsv(heDecimal),
+        atrasoMinutes,
+        escapeCsv(atrasoDecimal),
+        escapeCsv(statusLabel),
+        escapeCsv(row.reason),
+        escapeCsv(row.documentName || 'Sem anexo'),
+        escapeCsv(row.feedback || ''),
+        escapeCsv(fundLegal)
+      ].join(';');
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(';'), ...rows].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `fechamento-banco-horas-folha-${getTodayDateString()}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+
+    showPolishedToast({
+      id: 'csv-folha-export',
+      title: 'Planilha de Folha Exportada!',
+      description: 'Relatório formatado em horas decimais e rubricas de fechamento contábil baixado com sucesso.',
+      rimVariant: 'success',
+      duration: 4000,
+    });
+  };
+
   const handleHomologarAusencia = async (shiftId?: string, rowId?: string) => {
     if (shiftId) {
       const targetShift = shifts.find(s => s.id === shiftId);
@@ -663,11 +1045,16 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         });
       }
     }
-    setBancoHorasData(prev => prev.map(i => i.id === id ? { ...i, status: 'Homologado', feedback: i.feedback || 'Horas extras aprovadas para crédito no Banco de Horas / folha' } : i));
+    const isLate = item?.type === 'atraso';
+    const defaultFeedback = isLate
+      ? 'Atraso abonado pelo gestor com base na justificativa / comprovante (sem débito)'
+      : (item?.feedback || 'Horas extras aprovadas para crédito no Banco de Horas / folha');
+
+    setBancoHorasData(prev => prev.map(i => i.id === id ? { ...i, status: 'Homologado', feedback: defaultFeedback } : i));
     showPolishedToast({
       id: 'bh-homologado',
-      title: 'Hora Extra Homologada!',
-      description: 'Saldo aprovado e creditado no Banco de Horas do colaborador com sucesso.',
+      title: isLate ? 'Atraso Abonado com Sucesso!' : 'Hora Extra Homologada!',
+      description: isLate ? 'O atraso foi abonado com base no comprovante e não gerará débito no Banco de Horas.' : 'Saldo aprovado e creditado no Banco de Horas do colaborador com sucesso.',
       rimVariant: 'success',
       duration: 4000,
     });
@@ -680,15 +1067,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       if (targetShift) {
         onOpenEditShift?.({
           ...targetShift,
-          notes: `${targetShift.notes || ''} [AJUSTE GESTOR: Saída considerada no horário contratual (${targetShift.endTime}) - Sem HE]`
+          notes: `${targetShift.notes || ''} [AJUSTE GESTOR: Ajuste aplicado]`
         });
       }
     }
-    setBancoHorasData(prev => prev.map(i => i.id === id ? { ...i, status: 'Ajustado', feedback: i.feedback || 'Tratado para horário previsto contratual (CLT Art. 4º § 2º - Sem HE indevida)' } : i));
+    const isLate = item?.type === 'atraso';
+    const defaultFeedback = isLate
+      ? 'Débito de minutos de atraso confirmado para compensação no Banco de Horas'
+      : (item?.feedback || 'Tratado para horário previsto contratual (CLT Art. 4º § 2º - Sem HE indevida)');
+
+    setBancoHorasData(prev => prev.map(i => i.id === id ? { ...i, status: 'Ajustado', feedback: defaultFeedback } : i));
     showPolishedToast({
       id: 'bh-ajustado',
-      title: 'Ponto Ajustado p/ Horário Normal',
-      description: 'Registro técnico preservado (Portaria 671). Ajuste de tratamento aplicado sem gerar HE indevida (Art. 4º CLT).',
+      title: isLate ? 'Débito de Atraso Confirmado' : 'Ponto Ajustado p/ Horário Normal',
+      description: isLate ? 'O atraso foi lançado para compensação no saldo do Banco de Horas.' : 'Registro técnico preservado (Portaria 671). Ajuste de tratamento aplicado sem gerar HE indevida (Art. 4º CLT).',
       rimVariant: 'success',
       duration: 5000,
     });
@@ -725,7 +1117,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         diffMinutes: 39,
         diffBadge: '+39 min',
         type: 'hora_extra',
-        typeLabel: '⏰ Hora Extra',
+        typeLabel: 'Hora Extra',
         reason: 'Atendimento urgente e suporte estendido a cliente corporativo',
         status: 'Pendente',
         feedback: '',
@@ -750,7 +1142,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         diffMinutes: -35,
         diffBadge: '-35 min',
         type: 'atraso',
-        typeLabel: '⚠️ Atraso de Entrada',
+        typeLabel: 'Atraso de Entrada',
         reason: 'Paralisação inesperada e atraso no transporte público na linha 9',
         status: 'Pendente',
         feedback: '',
@@ -775,7 +1167,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         diffMinutes: 0,
         diffBadge: '0 min (Esquecimento)',
         type: 'esquecimento',
-        typeLabel: 'ℹ️ Esquecimento de Saída',
+        typeLabel: 'Esquecimento de Saída',
         reason: 'Esquecimento de Saída: Saída real no horário previsto (15:20) - Batida às 15:59',
         status: 'Pendente',
         feedback: '',
@@ -891,18 +1283,23 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           late: 'Atrasado',
           pending: 'Pendente'
         };
-        const distInText = s.checkInLocation?.distanceMeters !== undefined 
-          ? (s.checkInLocation.distanceMeters >= 1000 
-              ? `${(s.checkInLocation.distanceMeters / 1000).toFixed(1)} km` 
-              : `${Math.round(s.checkInLocation.distanceMeters)} m`)
-          : '';
-        const distOutText = s.checkOutLocation?.distanceMeters !== undefined 
-          ? (s.checkOutLocation.distanceMeters >= 1000 
-              ? `${(s.checkOutLocation.distanceMeters / 1000).toFixed(1)} km` 
-              : `${Math.round(s.checkOutLocation.distanceMeters)} m`)
-          : '';
-
         const hasRealExit = Boolean(s.checkOutTime) && s.checkOutTime !== s.checkInTime;
+
+        // GPS fora do posto detectado de forma discreta
+        const isCheckInOutside = Boolean(s.checkInLocation && !s.checkInLocation.gpsValidated);
+        const isCheckOutOutside = Boolean(s.checkOutLocation && !s.checkOutLocation.gpsValidated && hasRealExit);
+        const isGpsOutside = isCheckInOutside || isCheckOutOutside;
+
+        let gpsDist = '';
+        if (isCheckInOutside && s.checkInLocation?.distanceMeters !== undefined) {
+          gpsDist = s.checkInLocation.distanceMeters >= 1000 
+            ? `${(s.checkInLocation.distanceMeters / 1000).toFixed(1)} km` 
+            : `${Math.round(s.checkInLocation.distanceMeters)} m`;
+        } else if (isCheckOutOutside && s.checkOutLocation?.distanceMeters !== undefined) {
+          gpsDist = s.checkOutLocation.distanceMeters >= 1000 
+            ? `${(s.checkOutLocation.distanceMeters / 1000).toFixed(1)} km` 
+            : `${Math.round(s.checkOutLocation.distanceMeters)} m`;
+        }
 
         let calculatedHours = '—';
         if (s.checkInTime && hasRealExit) {
@@ -919,22 +1316,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           calculatedHours = '0h';
         }
 
-        let obsText = s.notes || '';
-        if (s.checkInLocation?.address) {
-          const inStatus = s.checkInLocation.reportedWorkplace
-            ? `Posto: ${s.checkInLocation.reportedWorkplace}`
-            : s.checkInLocation.gpsValidated
-            ? `Entrada no Posto ${distInText ? `(${distInText})` : ''}`
-            : `Entrada Fora do Posto (${distInText})`;
-          obsText = obsText ? `${obsText} | ${inStatus}` : inStatus;
-        }
-        if (s.checkOutLocation?.address && hasRealExit) {
-          const outStatus = s.checkOutLocation.gpsValidated
-            ? `Saída no Posto ${distOutText ? `(${distOutText})` : ''}`
-            : `Saída Fora do Posto (${distOutText})`;
-          obsText = obsText ? `${obsText} | ${outStatus}` : outStatus;
-        }
-
         const isPast24h = isShiftPast24hWithoutPunch(s);
         const just = (justifications || []).find(j => 
           (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)
@@ -949,7 +1330,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           } else if (just.status === 'rejected') {
             finalReportStatus = 'Ausente';
           } else {
-            // Justificativa pendente
             finalReportStatus = (isPast24h || s.attendanceStatus === 'absent') ? 'Ausente' : 'Pendente';
             isDecisionPending = true;
           }
@@ -962,15 +1342,36 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           isDecisionPending = true;
         }
 
-        if (finalReportStatus === 'Justificado') {
-          obsText = obsText ? `${obsText} | Ausência justificada e homologada (Abonada)` : 'Ausência justificada e homologada pelo gestor (Abonada)';
-        } else if (finalReportStatus === 'Ausente') {
+        // Observação concisa e limpa (sem acúmulo de textos concatenados)
+        let cleanObs = '';
+        if (finalReportStatus === 'Ausente') {
           if (just && just.status === 'pending') {
-            obsText = obsText ? `${obsText} | Justificativa do colaborador pendente de homologação` : `Justificativa pendente: "${just.reason || 'Em análise'}"`;
+            cleanObs = `Justificativa: "${just.reason || 'Em análise'}"`;
           } else {
-            obsText = obsText ? `${obsText} | Não bateu ponto após 24h (Pendente de justificativa)` : 'Não bateu ponto após 24h da escala (Pendente de justificativa)';
+            cleanObs = 'Não bateu ponto';
+          }
+        } else if (finalReportStatus === 'Justificado') {
+          cleanObs = 'Ausência abonada';
+        } else if (s.notes) {
+          if (s.notes.includes('AJUSTE GESTOR')) {
+            cleanObs = 'Ajustado p/ horário normal';
+          } else if (s.notes.includes('HOMOLOGADO GESTOR')) {
+            cleanObs = 'Homologado no banco';
+          } else if (s.notes.includes('Esquecimento')) {
+            cleanObs = 'Esquecimento de saída';
+          } else {
+            cleanObs = s.notes.replace(/\[.*?\]/g, '').trim() || s.notes;
           }
         }
+
+        const obsParts: string[] = [];
+        if (isGpsOutside) {
+          obsParts.push(`Fora do Posto ${gpsDist ? `(${gpsDist})` : ''}`);
+        }
+        if (cleanObs) {
+          obsParts.push(cleanObs);
+        }
+        const obsFull = obsParts.join(' • ') || '—';
 
         return {
           date: s.date,
@@ -987,7 +1388,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           type: s.type === 'regular' ? 'Regular' : 'Extra',
           checkInLocation: s.checkInLocation,
           checkOutLocation: s.checkOutLocation,
-          obs: obsText || '—'
+          isGpsOutside,
+          gpsDist,
+          cleanObs: cleanObs || '—',
+          obsFull,
+          obs: obsFull
         };
       });
     }
@@ -1775,11 +2180,14 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               <select
                 value={selectedDepartment}
                 onChange={(e) => setSelectedDepartment(e.target.value)}
-                className="py-1.5 px-3 bg-slate-50 border border-slate-200 text-slate-900 text-xs font-bold rounded-xl outline-none cursor-pointer"
+                className={`py-1.5 px-3 border text-xs font-bold rounded-xl outline-none cursor-pointer ${
+                  isDark ? 'bg-[#181A24] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                }`}
+                style={{ colorScheme: isDark ? 'dark' : 'light' }}
               >
-                <option value="all">Todos os Setores</option>
+                <option value="all" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>Todos os Setores</option>
                 {departments.map(d => (
-                  <option key={d} value={d}>{d}</option>
+                  <option key={d} value={d} className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>{d}</option>
                 ))}
               </select>
 
@@ -2013,11 +2421,17 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             return false;
           }
 
-          // Type filter (Todos, Trocas, Atestados, Folgas)
+          // Type filter (Todos, Trocas, Atestados Médicos, Faltas Não Justificadas, Atrasos, Horas Extras, Folgas)
           if (approvalsTypeFilter === 'swap') {
             if (!row.type.toLowerCase().includes('troca')) return false;
           } else if (approvalsTypeFilter === 'medical') {
             if (!row.type.toLowerCase().includes('atestado') && !row.type.toLowerCase().includes('médico') && !row.type.toLowerCase().includes('ausência')) return false;
+          } else if (approvalsTypeFilter === 'absent') {
+            if (!row.type.toLowerCase().includes('falta')) return false;
+          } else if (approvalsTypeFilter === 'delay') {
+            if (!row.type.toLowerCase().includes('atraso')) return false;
+          } else if (approvalsTypeFilter === 'overtime') {
+            if (!row.type.toLowerCase().includes('hora extra') && !row.type.toLowerCase().includes('extra')) return false;
           } else if (approvalsTypeFilter === 'time_off') {
             if (!row.type.toLowerCase().includes('folga') && !row.type.toLowerCase().includes('dispensa')) return false;
           }
@@ -2048,31 +2462,41 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               }}
             />
 
-            {/* Hero Banner Dark com Luz Quente na Lateral Direita (Fiel à Imagem 1) */}
+            {/* Hero Banner (Suporta Dark e Light) */}
             <div 
-              className="approvals-hero approvals-light-hero rounded-3xl p-6 sm:p-8 border border-white/10 shadow-2xl relative overflow-hidden"
+              className={`approvals-hero approvals-light-hero rounded-3xl p-6 sm:p-8 border shadow-2xl relative overflow-hidden transition-all duration-300 ${
+                isDark 
+                  ? 'border-white/10' 
+                  : 'border-slate-200'
+              }`}
               style={{ 
-                backgroundColor: '#111216',
-                boxShadow: '0 20px 50px rgba(0,0,0,0.6)'
+                backgroundColor: isDark ? '#111216' : '#ffffff',
+                boxShadow: isDark ? '0 20px 50px rgba(0,0,0,0.6)' : '0 10px 30px rgba(0,0,0,0.06)'
               }}
             >
-              {/* Feixe quente alaranjado/vermelho da Landing Page */}
+              {/* Feixe quente alaranjado/vermelho */}
               <div 
                 className="approvals-light-hero-glow absolute -top-1/2 -right-10 w-[55%] h-[200%] pointer-events-none"
                 style={{
-                  background: 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.24) 0%, rgba(100, 12, 30, 0.22) 45%, transparent 75%)',
+                  background: isDark
+                    ? 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.24) 0%, rgba(100, 12, 30, 0.22) 45%, transparent 75%)'
+                    : 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.12) 0%, rgba(100, 12, 30, 0.08) 45%, transparent 75%)',
                   filter: 'blur(60px)',
                 }}
               />
 
               <div className="approvals-light-hero-content relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div className="approvals-light-hero-copy max-w-xl space-y-2">
-                  <div className="approvals-light-eyebrow inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-slate-300 border border-white/10 bg-white/5">
+                  <div className={`approvals-light-eyebrow inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                    isDark ? 'text-slate-300 border-white/10 bg-white/5' : 'text-slate-600 border-slate-200 bg-slate-100'
+                  }`}>
                     <span className="w-3.5 h-0.5 rounded-full" style={{ background: 'linear-gradient(90deg, #640C1E, #9F243C, #F59242)' }} />
                     CENTRAL DE GESTÃO & AUDITORIA DE PONTO
                   </div>
-                  <h1 className="approvals-light-title text-2xl sm:text-3xl font-black text-white tracking-tight leading-tight">
-                    Aprovações e <br className="hidden sm:inline" />
+                  <h1 className={`approvals-light-title text-2xl sm:text-3xl font-black tracking-tight leading-tight ${
+                    isDark ? 'text-white' : 'text-slate-900'
+                  }`}>
+                    Aprovações e{' '}
                     <span style={{
                       background: 'linear-gradient(90deg, #F9DE97 0%, #F59242 52%, #9F243C 100%)',
                       WebkitBackgroundClip: 'text',
@@ -2082,33 +2506,30 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     </span>
                   </h1>
                   
-                  <p className="approvals-light-description text-xs sm:text-sm text-slate-400 leading-relaxed">
+                  <p className={`approvals-light-description text-xs sm:text-sm leading-relaxed ${
+                    isDark ? 'text-slate-400' : 'text-slate-500'
+                  }`}>
                     Central unificada para análise de atestados médicos, gestão de ocorrências, homologação de justificativas e aprovação de trocas de escala em tempo real.
                   </p>
                 </div>
 
-                <div className="relative z-10 flex flex-wrap items-center gap-3 shrink-0">
+                <div className="relative z-10 flex items-center gap-3 shrink-0">
                   <button
-                    onClick={() => setIsExportModalOpen(true)}
+                    onClick={() => handleExportBancoHorasCsv(bancoHorasData)}
                     className="approvals-light-export px-5 py-2.5 font-bold text-xs rounded-full text-white flex items-center gap-2 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer"
                     style={{ 
                       background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)',
                       boxShadow: '0 4px 18px rgba(100, 12, 30, 0.30)'
                     }}
+                    title="Exportar relatório completo de aprovações, ocorrências e fechamento em CSV"
                   >
                     <Download className="w-4 h-4" /> Exportar Relatório CSV
-                  </button>
-                  <button
-                    onClick={() => onNavigateToOrbit ? onNavigateToOrbit() : setActiveTab('escala')}
-                    className="approvals-light-secondary px-4 py-2.5 font-bold text-xs rounded-full text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-all flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <span>Ver Grade de Escalas →</span>
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* KPI Cards Estilo Widget da Imagem 1 com Métricas de Aprovações/Faltas da Imagem 2 */}
+            {/* KPI Cards Estilo Widget com suporte a Dark e Light */}
             <div className="approvals-light-kpis grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
               {[
                 { 
@@ -2146,18 +2567,28 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               ].map((kpi, i) => (
                 <div 
                   key={i} 
-                  className="approval-kpi approvals-light-kpi p-5 rounded-2xl border border-[#282a33] space-y-2 transition-transform hover:-translate-y-1 hover:border-[#3b3e4c]" 
-                  style={{ background: '#15161b', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
+                  className={`approval-kpi approvals-light-kpi p-5 rounded-2xl border space-y-2 transition-transform hover:-translate-y-1 ${
+                    isDark 
+                      ? 'bg-[#15161b] border-[#282a33] hover:border-[#3b3e4c]' 
+                      : 'bg-white border-slate-200 shadow-sm hover:border-slate-300'
+                  }`}
+                  style={{ boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.4)' : '0 4px 16px rgba(0,0,0,0.04)' }}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="approvals-light-kpi-label text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">{kpi.label}</span>
+                    <span className={`approvals-light-kpi-label text-[11px] font-semibold uppercase tracking-wider block ${
+                      isDark ? 'text-slate-400' : 'text-slate-500'
+                    }`}>{kpi.label}</span>
                     <span 
                       className="approvals-light-kpi-dot w-2.5 h-2.5 rounded-full" 
                       style={{ background: kpi.dotColor, boxShadow: `0 0 8px ${kpi.dotGlow}` }}
                     />
                   </div>
-                  <div className="approvals-light-kpi-value text-3xl font-extrabold text-white font-sans">{kpi.value}</div>
-                  <span className="approvals-light-kpi-sub text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
+                  <div className={`approvals-light-kpi-value text-3xl font-extrabold font-sans ${
+                    isDark ? 'text-white' : 'text-slate-900'
+                  }`}>{kpi.value}</div>
+                  <span className={`approvals-light-kpi-sub text-[11px] font-medium flex items-center gap-1.5 ${
+                    isDark ? 'text-slate-500' : 'text-slate-500'
+                  }`}>
                     {kpi.hasDotInSub && (
                       <span className="w-1.5 h-1.5 rounded-full bg-[#F59242]" />
                     )}
@@ -2167,124 +2598,139 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               ))}
             </div>
 
-            {/* Filter Bar (Igual à da imagem 2 com os filtros e busca) */}
+            {/* Filter Bar (Busca e Departamentos com suporte a Dark e Light) */}
             <div 
-              className="approval-filter-bar approvals-light-filter p-4 rounded-2xl border border-[#282a33] flex flex-wrap items-center justify-between gap-3 relative z-10" 
-              style={{ background: '#15161b' }}
+              className={`approval-filter-bar approvals-light-filter p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-3 relative z-10 transition-colors ${
+                isDark ? 'bg-[#15161b] border-[#282a33]' : 'bg-white border-slate-200 shadow-xs'
+              }`}
             >
-              {/* Search & Departamentos */}
               <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[260px]">
                 <div className="relative flex-1 min-w-[220px]">
-                  <Search className="approvals-light-search-icon w-3.5 h-3.5 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <Search className={`approvals-light-search-icon w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 ${
+                    isDark ? 'text-slate-500' : 'text-slate-400'
+                  }`} />
                   <input
                     type="text"
                     value={approvalsSearch}
                     onChange={(e) => setApprovalsSearch(e.target.value)}
                     placeholder="Buscar por colaborador..."
-                    className="approvals-light-search w-full pl-9 pr-3 py-2 text-xs rounded-full text-white placeholder:text-slate-500 outline-none transition-colors"
-                    style={{ background: '#0e0f12', border: '1px solid #282a33' }}
+                    className={`approvals-light-search w-full pl-9 pr-3 py-2 text-xs rounded-full outline-none transition-colors border ${
+                      isDark
+                        ? 'bg-[#0e0f12] text-white placeholder:text-slate-500 border-[#282a33] focus:border-[#F59242]'
+                        : 'bg-slate-50 text-slate-900 placeholder:text-slate-400 border-slate-200 focus:border-[#96183c]'
+                    }`}
                   />
                 </div>
                 <select
                   value={approvalsDept}
                   onChange={(e) => setApprovalsDept(e.target.value)}
-                  className="approvals-light-department py-2 px-4 text-xs font-semibold rounded-full text-white outline-none cursor-pointer"
-                  style={{ background: '#0e0f12', border: '1px solid #282a33', colorScheme: 'dark' }}
+                  className={`approvals-light-department py-2 px-4 text-xs font-semibold rounded-full outline-none cursor-pointer border ${
+                    isDark
+                      ? 'bg-[#0e0f12] text-white border-[#282a33]'
+                      : 'bg-slate-50 text-slate-800 border-slate-200'
+                  }`}
+                  style={{ colorScheme: isDark ? 'dark' : 'light' }}
                 >
-                  <option value="all">Todos os Departamentos</option>
-                  {departments.map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
-                <select
-                  value={approvalsTypeFilter}
-                  onChange={(e) => setApprovalsTypeFilter(e.target.value as any)}
-                  className="approvals-light-department py-2 px-4 text-xs font-semibold rounded-full text-white outline-none cursor-pointer"
-                  style={{ background: '#0e0f12', border: '1px solid #282a33', colorScheme: 'dark' }}
-                  title="Filtrar por tipo de solicitação"
-                >
-                  <option value="all">Todos os Tipos</option>
-                  <option value="swap">Trocas de Turno</option>
-                  <option value="medical">Atestados Médicos</option>
-                  <option value="time_off">Folgas / Dispensas</option>
+                  <option value="all" className={isDark ? "bg-[#0e0f12] text-white" : "bg-white text-slate-800"}>Todos os Departamentos</option>
+                  {departments.map(d => (
+                    <option key={d} value={d} className={isDark ? "bg-[#0e0f12] text-white" : "bg-white text-slate-800"}>
+                      {d}
+                    </option>
+                  ))}
                 </select>
               </div>
-
-              {/* Status Filter Pills da Imagem 2 */}
-              <div className="approvals-light-status-filter flex items-center gap-1.5 bg-[#0e0f12] p-1 rounded-full border border-[#282a33]">
-                <button
-                  onClick={() => setApprovalsFilterTab('all')}
-                  data-active={approvalsFilterTab === 'all' ? 'true' : 'false'}
-                  className={`approvals-light-status-button px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                    approvalsFilterTab === 'all'
-                      ? 'bg-gradient-to-r from-[#640C1E] to-[#9F243C] text-[#F9DE97] shadow-md'
-                      : 'text-slate-400 hover:text-[#F9DE97]'
-                  }`}
-                >
-                  Todos
-                </button>
-                <button
-                  onClick={() => setApprovalsFilterTab('pending')}
-                  data-active={approvalsFilterTab === 'pending' ? 'true' : 'false'}
-                  className={`approvals-light-status-button px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    approvalsFilterTab === 'pending'
-                      ? 'bg-white/15 text-white font-black border border-white/20'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <span>Pendentes</span>
-                  {pendingCount > 0 && (
-                    <span className="w-4 h-4 rounded-full text-[9px] font-mono bg-[#F59242] text-[#640C1E] flex items-center justify-center font-bold">
-                      {pendingCount}
-                    </span>
-                  )}
-                </button>
-                <button
-                  onClick={() => setApprovalsFilterTab('approved')}
-                  data-active={approvalsFilterTab === 'approved' ? 'true' : 'false'}
-                  className={`approvals-light-status-button px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                    approvalsFilterTab === 'approved'
-                      ? 'bg-white/15 text-white font-black border border-white/20'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Aprovados
-                </button>
-                <button
-                  onClick={() => setApprovalsFilterTab('rejected')}
-                  data-active={approvalsFilterTab === 'rejected' ? 'true' : 'false'}
-                  className={`approvals-light-status-button px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                    approvalsFilterTab === 'rejected'
-                      ? 'bg-white/15 text-white font-black border border-white/20'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Faltas / Recusados
-                </button>
-              </div>
-
-
             </div>
 
-            {/* Data Table igual à Imagem 2 + Coluna Adicional de Observação / Feedback para o Colaborador */}
+            {/* Pílulas de Categoria Rápida (Filtros da parte de baixo com Bordô no estado ativo) */}
+            <div className="flex flex-wrap items-center gap-2 relative z-10">
+              {[
+                { id: 'all', label: 'Todos' },
+                { id: 'delay', label: 'Atrasos de Entrada' },
+                { id: 'overtime', label: 'Horas Extras' },
+                { id: 'medical', label: 'Atestados Médicos' },
+                { id: 'absent', label: 'Faltas Não Justificadas' },
+                { id: 'swap', label: 'Trocas de Turno' },
+                { id: 'time_off', label: 'Folgas / Dispensas' },
+              ].map(cat => {
+                const isActive = approvalsTypeFilter === cat.id;
+                const count = approvalsData.filter(row => {
+                  if (cat.id === 'all') return true;
+                  if (cat.id === 'delay') return row.type.toLowerCase().includes('atraso');
+                  if (cat.id === 'overtime') return row.type.toLowerCase().includes('hora extra') || row.type.toLowerCase().includes('extra');
+                  if (cat.id === 'medical') return row.type.toLowerCase().includes('atestado') || row.type.toLowerCase().includes('médico');
+                  if (cat.id === 'absent') return row.type.toLowerCase().includes('falta');
+                  if (cat.id === 'swap') return row.type.toLowerCase().includes('troca');
+                  if (cat.id === 'time_off') return row.type.toLowerCase().includes('folga') || row.type.toLowerCase().includes('dispensa');
+                  return true;
+                }).length;
+
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setApprovalsTypeFilter(cat.id as any)}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                      isActive
+                        ? 'text-white border-[#80142B] font-black'
+                        : isDark
+                        ? 'bg-[#15161b] text-slate-400 hover:text-white border-[#282a33] hover:border-[#3b3e4c]'
+                        : 'bg-white text-slate-600 hover:text-slate-900 border-slate-200 hover:border-slate-300'
+                    }`}
+                    style={
+                      isActive
+                        ? { background: 'linear-gradient(135deg, #640C1E 0%, #9F243C 100%)', boxShadow: '0 4px 14px rgba(100, 12, 30, 0.35)' }
+                        : undefined
+                    }
+                  >
+                    <span>{cat.label}</span>
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                      isActive
+                        ? 'bg-black/25 text-[#F9DE97]'
+                        : isDark ? 'bg-white/5 text-slate-400' : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Data Table com suporte total a Light e Dark Mode */}
             <div 
-              className="approval-table-card approvals-light-table rounded-2xl border border-[#282a33] overflow-hidden overflow-x-auto relative z-10 shadow-xl" 
-              style={{ background: '#15161b' }}
+              className={`approval-table-card approvals-light-table rounded-2xl border overflow-hidden overflow-x-auto relative z-10 transition-colors ${
+                isDark 
+                  ? 'bg-[#15161b] border-[#282a33] shadow-xl' 
+                  : 'bg-white border-slate-200 shadow-md'
+              }`}
             >
               <table className="approvals-light-data w-full border-collapse text-left text-xs font-sans min-w-[780px]">
                 <thead>
-                  <tr className="border-b border-[#282a33] font-mono text-[10px] uppercase text-slate-400" style={{ background: '#101115' }}>
+                  <tr 
+                    className={`border-b font-mono text-[10px] uppercase ${
+                      isDark 
+                        ? 'border-[#282a33] text-slate-400 bg-[#101115]' 
+                        : 'border-slate-200 text-slate-500 bg-slate-50'
+                    }`}
+                  >
                     <th className="p-3">COLABORADOR</th>
                     <th className="p-3">TIPO & JUSTIFICATIVA</th>
                     <th className="p-3">DATA</th>
                     <th className="p-3 text-center">COMPROVANTE</th>
                     <th className="p-3 text-center">STATUS</th>
                     <th className="p-3">OBSERVAÇÃO / FEEDBACK</th>
-                    <th className="p-3 text-right pr-4 sticky right-0 z-20 shadow-[-6px_0_12px_rgba(0,0,0,0.25)]" style={{ background: '#101115' }}>AÇÕES</th>
+                    <th 
+                      className={`p-3 text-right pr-4 sticky right-0 z-20 shadow-[-6px_0_12px_rgba(0,0,0,0.08)] ${
+                        isDark ? 'bg-[#101115]' : 'bg-slate-50'
+                      }`}
+                    >
+                      AÇÕES
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredApprovals.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-slate-500 text-xs">
+                      <td colSpan={7} className={`p-8 text-center text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                         Nenhuma solicitação ou ocorrência encontrada para os filtros selecionados.
                       </td>
                     </tr>
@@ -2292,8 +2738,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     filteredApprovals.map((row) => (
                       <tr 
                         key={row.id} 
-                        className="approvals-light-row border-b border-white/5 transition-colors hover:bg-white/[0.03]" 
-                        style={{ color: '#e2e8f0' }}
+                        className={`approvals-light-row border-b transition-colors ${
+                          isDark 
+                            ? 'border-white/5 hover:bg-white/[0.03] text-slate-200' 
+                            : 'border-slate-100 hover:bg-slate-50/80 text-slate-800'
+                        }`}
                       >
                         {/* Colaborador */}
                         <td className="p-3">
@@ -2301,11 +2750,17 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             <img 
                               src={row.employeeAvatar} 
                               alt={row.employeeName} 
-                              className="w-8 h-8 rounded-full object-cover ring-2 ring-white/10 shrink-0" 
+                              className={`w-8 h-8 rounded-full object-cover shrink-0 ring-2 ${
+                                isDark ? 'ring-white/10' : 'ring-slate-200'
+                              }`} 
                             />
                             <div>
-                              <span className="font-bold text-white block text-xs leading-tight">{row.employeeName}</span>
-                              <span className="block text-[10.5px] text-slate-400 font-normal leading-tight mt-0.5">{row.employeeRole}</span>
+                              <span className={`font-bold block text-xs leading-tight ${
+                                isDark ? 'text-white' : 'text-slate-900'
+                              }`}>{row.employeeName}</span>
+                              <span className={`block text-[10.5px] font-normal leading-tight mt-0.5 ${
+                                isDark ? 'text-slate-400' : 'text-slate-500'
+                              }`}>{row.employeeRole}</span>
                             </div>
                           </div>
                         </td>
@@ -2314,7 +2769,19 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         <td className="p-3 align-top">
                           <div className="space-y-1">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-bold text-white block text-xs leading-tight">{row.type}</span>
+                              <span className={`font-bold block text-xs leading-tight ${
+                                isDark ? 'text-white' : 'text-slate-900'
+                              }`}>{row.type}</span>
+                              {row.type === 'Atraso de Entrada' && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/15 text-amber-500 dark:text-amber-300 border border-amber-500/30">
+                                  -35 min
+                                </span>
+                              )}
+                              {row.type === 'Hora Extra' && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30">
+                                  +39 min
+                                </span>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => setSelectedDetailOccurrence(row)}
@@ -2341,8 +2808,12 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
                         {/* Data / Período */}
                         <td className="p-3 whitespace-nowrap">
-                          <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 border border-white/5 text-slate-300 font-mono text-[11px]">
-                            <Calendar className="w-3 h-3 text-slate-400" />
+                          <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border font-mono text-[11px] ${
+                            isDark 
+                              ? 'bg-white/5 border-white/5 text-slate-300' 
+                              : 'bg-slate-100 border-slate-200 text-slate-700'
+                          }`}>
+                            <Calendar className={`w-3 h-3 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
                             <span>{formatDateBR(row.date)}</span>
                           </div>
                         </td>
@@ -2353,13 +2824,17 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             <button
                               type="button"
                               onClick={() => openDocumentSafe(row.documentUrl, row.documentName)}
-                              className="approvals-light-proof p-1.5 rounded-lg text-[#f89847] bg-[#f89847]/10 border border-[#f89847]/25 hover:bg-[#f89847]/25 hover:scale-110 active:scale-95 transition-all cursor-pointer inline-flex items-center justify-center shadow-xs"
+                              className={`approvals-light-proof p-1.5 rounded-lg border hover:scale-110 active:scale-95 transition-all cursor-pointer inline-flex items-center justify-center shadow-xs ${
+                                isDark
+                                  ? 'text-[#f89847] bg-[#f89847]/10 border-[#f89847]/25 hover:bg-[#f89847]/25'
+                                  : 'text-[#96183c] bg-[#96183c]/10 border-[#96183c]/25 hover:bg-[#96183c]/20'
+                              }`}
                               title={`Abrir comprovante: ${row.documentName || 'Anexo'}`}
                             >
-                              <Paperclip className="w-4 h-4 text-[#f89847]" />
+                              <Paperclip className="w-4 h-4" />
                             </button>
                           ) : (
-                            <span className="text-slate-500 text-xs font-mono select-none" title="Sem anexo">—</span>
+                            <span className="text-slate-400 text-xs font-mono select-none" title="Sem anexo">—</span>
                           )}
                         </td>
 
@@ -2400,36 +2875,101 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             value={row.feedback}
                             onChange={(e) => handleUpdateFeedback(row.id, e.target.value)}
                             placeholder="Observação (opcional)..."
-                            className="approvals-light-feedback w-full min-w-[120px] max-w-[180px] px-2.5 py-1.5 bg-[#0e0f12] border border-[#282a33] focus:border-[#ff601f] rounded-xl text-xs text-slate-200 placeholder:text-slate-600 outline-none transition-colors"
+                            className={`approvals-light-feedback w-full min-w-[120px] max-w-[180px] px-2.5 py-1.5 rounded-xl text-xs outline-none transition-colors border ${
+                              isDark
+                                ? 'bg-[#0e0f12] border-[#282a33] focus:border-[#ff601f] text-slate-200 placeholder:text-slate-600'
+                                : 'bg-slate-50 border-slate-200 focus:border-[#96183c] text-slate-800 placeholder:text-slate-400'
+                            }`}
                           />
                         </td>
 
-                        {/* Ações (Fixa sticky à direita para nunca sumir) */}
+                        {/* Ações (Fixa sticky à direita com suporte a tema) */}
                         <td 
-                          className="p-3 text-right pr-4 sticky right-0 z-10 shadow-[-6px_0_12px_rgba(0,0,0,0.25)]" 
-                          style={{ background: isDark ? '#15161b' : '#ffffff' }}
+                          className={`p-3 text-right pr-4 sticky right-0 z-10 ${
+                            isDark 
+                              ? 'bg-[#15161b] shadow-[-6px_0_12px_rgba(0,0,0,0.35)]' 
+                              : 'bg-white shadow-[-6px_0_12px_rgba(0,0,0,0.06)]'
+                          }`}
                         >
                           {row.status === 'Pendente' ? (
                             <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => handleApproveOccurrence(row.id)}
-                                title="Aprovar Solicitação"
-                                className="approvals-light-approve px-2.5 py-1.5 rounded-xl font-bold text-xs text-white transition-all shadow-md flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
-                                style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
-                              >
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                <span>Aprovar</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleRejectOccurrence(row.id)}
-                                title="Recusar Solicitação"
-                                className="approvals-light-reject px-2 py-1.5 border border-rose-500/30 text-rose-300 hover:bg-rose-500/10 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
-                              >
-                                <XCircle className="w-3.5 h-3.5" />
-                                <span>Recusar</span>
-                              </button>
+                              {row.type === 'Falta Não Justificada' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRejectOccurrence(row.id)}
+                                  title="Descontar Falta: Confirma falta injustificada para desconto em folha (1 dia de salário + perda de DSR semanal)"
+                                  className="approvals-light-reject px-3 py-1.5 border border-rose-500/40 text-rose-500 dark:text-rose-300 hover:bg-rose-500/15 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0 shadow-xs"
+                                >
+                                  <XCircle className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400" />
+                                  <span>Descontar</span>
+                                </button>
+                              ) : row.type === 'Atraso de Entrada' ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApproveOccurrence(row.id)}
+                                    title="Abonar Atraso: Justifica e abona os minutos de atraso (sem débito)"
+                                    className="approvals-light-approve px-2.5 py-1.5 rounded-xl font-bold text-xs text-white transition-all shadow-md flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
+                                    style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>Abonar</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRejectOccurrence(row.id)}
+                                    title="Debitar Atraso: Confirma débito de atraso para compensação no Banco de Horas"
+                                    className="approvals-light-reject px-2 py-1.5 border border-rose-500/30 text-rose-500 dark:text-rose-300 hover:bg-rose-500/10 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
+                                  >
+                                    <XCircle className="w-3.5 h-3.5" />
+                                    <span>Debitar</span>
+                                  </button>
+                                </>
+                              ) : row.type === 'Hora Extra' ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApproveOccurrence(row.id)}
+                                    title="Homologar Hora Extra: Aprova para crédito no Banco de Horas ou pagamento em Folha"
+                                    className="approvals-light-approve px-2.5 py-1.5 rounded-xl font-bold text-xs text-white transition-all shadow-md flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
+                                    style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>Homologar</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRejectOccurrence(row.id)}
+                                    title="Ajustar Horário Normal: Trata para a jornada contratual sem gerar HE indevida (Art. 4º CLT)"
+                                    className="approvals-light-reject px-2 py-1.5 border border-amber-500/30 text-amber-600 dark:text-amber-300 hover:bg-amber-500/10 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
+                                  >
+                                    <Clock className="w-3.5 h-3.5" />
+                                    <span>Ajustar</span>
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApproveOccurrence(row.id)}
+                                    title="Aprovar Solicitação"
+                                    className="approvals-light-approve px-2.5 py-1.5 rounded-xl font-bold text-xs text-white transition-all shadow-md flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
+                                    style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>Aprovar</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRejectOccurrence(row.id)}
+                                    title="Recusar Solicitação"
+                                    className="approvals-light-reject px-2 py-1.5 border border-rose-500/30 text-rose-500 dark:text-rose-300 hover:bg-rose-500/10 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
+                                  >
+                                    <XCircle className="w-3.5 h-3.5" />
+                                    <span>Recusar</span>
+                                  </button>
+                                </>
+                              )}
                             </div>
                           ) : (
                             <span className="text-slate-400 font-mono text-[11px] italic">
@@ -2492,12 +3032,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         <h3 className={`text-base font-bold tracking-tight ${
                           isDark ? 'text-white' : 'text-[#640C1E]'
                         }`}>
-                          Detalhes da Solicitação
+                          {selectedDetailOccurrence.type === 'Falta Não Justificada'
+                            ? 'Registro de Falta Não Justificada'
+                            : selectedDetailOccurrence.type === 'Atraso de Entrada'
+                            ? 'Registro de Atraso de Entrada'
+                            : selectedDetailOccurrence.type === 'Hora Extra'
+                            ? 'Registro de Hora Extra'
+                            : 'Detalhes da Solicitação'}
                         </h3>
                         <p className={`text-xs mt-0.5 ${
                           isDark ? 'text-slate-400' : 'text-slate-500'
                         }`}>
-                          Justificativa completa enviada pelo colaborador
+                          {selectedDetailOccurrence.type === 'Falta Não Justificada'
+                            ? 'Ocorrência apurada automaticamente após 24h sem ponto'
+                            : 'Justificativa completa enviada pelo colaborador'}
                         </p>
                       </div>
                     </div>
@@ -2591,18 +3139,24 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       </div>
                     </div>
 
-                    {/* JUSTIFICATIVA COMPLETA (SEM LIMITES DE TAMANHO) */}
+                    {/* JUSTIFICATIVA OU SITUAÇÃO DO REGISTRO */}
                     <div className="space-y-1.5">
                       <label className="text-[11px] font-bold font-mono tracking-wider uppercase text-[#f89847] flex items-center gap-1.5">
                         <MessageSquare className="w-3.5 h-3.5" />
-                        <span>JUSTIFICATIVA DO COLABORADOR</span>
+                        <span>
+                          {selectedDetailOccurrence.type === 'Falta Não Justificada'
+                            ? 'SITUAÇÃO DO REGISTRO DE PONTO'
+                            : 'JUSTIFICATIVA DO COLABORADOR'}
+                        </span>
                       </label>
                       <div className={`p-4 rounded-2xl border text-xs leading-relaxed whitespace-pre-wrap ${
                         isDark 
                           ? 'bg-[#0e0f12] border-white/10 text-slate-200' 
                           : 'bg-slate-50 border-slate-200 text-slate-800'
                       }`}>
-                        {selectedDetailOccurrence.reason || 'Nenhuma justificativa detalhada foi fornecida.'}
+                        {selectedDetailOccurrence.type === 'Falta Não Justificada'
+                          ? 'Turno encerrado há mais de 24 horas sem registro de ponto e sem envio de atestado/justificativa pelo colaborador.'
+                          : (selectedDetailOccurrence.reason || 'Nenhuma justificativa detalhada foi fornecida.')}
                       </div>
                     </div>
 
@@ -2673,30 +3227,100 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
                     {selectedDetailOccurrence.status === 'Pendente' ? (
                       <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleRejectOccurrence(selectedDetailOccurrence.id);
-                            setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Recusado / Falta', actionText: 'Ajustado p/ Horário Regular' } : null);
-                          }}
-                          className="px-3.5 py-2 rounded-xl border border-rose-500/40 text-rose-300 hover:bg-rose-500/15 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
-                        >
-                          <XCircle className="w-4 h-4" />
-                          <span>Recusar</span>
-                        </button>
+                        {selectedDetailOccurrence.type === 'Falta Não Justificada' ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleRejectOccurrence(selectedDetailOccurrence.id);
+                              setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Recusado / Falta', actionText: 'Desconto em Folha' } : null);
+                            }}
+                            className="px-4 py-2 rounded-xl border border-rose-500/40 text-rose-300 hover:bg-rose-500/15 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                          >
+                            <XCircle className="w-4 h-4 text-rose-400" />
+                            <span>Descontar Falta</span>
+                          </button>
+                        ) : selectedDetailOccurrence.type === 'Atraso de Entrada' ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleRejectOccurrence(selectedDetailOccurrence.id);
+                                setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Recusado / Falta', actionText: 'Debitado' } : null);
+                              }}
+                              className="px-3.5 py-2 rounded-xl border border-rose-500/40 text-rose-300 hover:bg-rose-500/15 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                            >
+                              <XCircle className="w-4 h-4" />
+                              <span>Debitar Atraso</span>
+                            </button>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleApproveOccurrence(selectedDetailOccurrence.id);
-                            setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Aprovado', actionText: 'Homologado agora' } : null);
-                          }}
-                          className="px-4 py-2 rounded-xl font-bold text-xs text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:scale-105 active:scale-95"
-                          style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
-                        >
-                          <CheckCircle2 className="w-4 h-4" />
-                          <span>Aprovar Solicitação</span>
-                        </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleApproveOccurrence(selectedDetailOccurrence.id);
+                                setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Aprovado', actionText: 'Abonado' } : null);
+                              }}
+                              className="px-4 py-2 rounded-xl font-bold text-xs text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:scale-105 active:scale-95"
+                              style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>Abonar Atraso</span>
+                            </button>
+                          </>
+                        ) : selectedDetailOccurrence.type === 'Hora Extra' ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleRejectOccurrence(selectedDetailOccurrence.id);
+                                setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Recusado / Falta', actionText: 'Ajustado' } : null);
+                              }}
+                              className="px-3.5 py-2 rounded-xl border border-amber-500/40 text-amber-300 hover:bg-amber-500/15 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                            >
+                              <Clock className="w-4 h-4" />
+                              <span>Ajustar Horário Contratual</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleApproveOccurrence(selectedDetailOccurrence.id);
+                                setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Aprovado', actionText: 'Homologado' } : null);
+                              }}
+                              className="px-4 py-2 rounded-xl font-bold text-xs text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:scale-105 active:scale-95"
+                              style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>Homologar Hora Extra</span>
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleRejectOccurrence(selectedDetailOccurrence.id);
+                                setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Recusado / Falta', actionText: 'Recusado agora' } : null);
+                              }}
+                              className="px-3.5 py-2 rounded-xl border border-rose-500/40 text-rose-300 hover:bg-rose-500/15 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                            >
+                              <XCircle className="w-4 h-4" />
+                              <span>Recusar</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleApproveOccurrence(selectedDetailOccurrence.id);
+                                setSelectedDetailOccurrence(prev => prev ? { ...prev, status: 'Aprovado', actionText: 'Homologado agora' } : null);
+                              }}
+                              className="px-4 py-2 rounded-xl font-bold text-xs text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:scale-105 active:scale-95"
+                              style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>Aprovar Solicitação</span>
+                            </button>
+                          </>
+                        )}
                       </div>
                     ) : (
                       <span className="text-xs font-mono text-slate-400 italic">
@@ -2859,33 +3483,51 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             }}
           />
 
-          {/* Hero Banner com Suporte Completo a Dark e Light Mode */}
+          {/* Hero Banner Padronizado com Suporte Completo a Dark e Light Mode */}
           <div 
             className={`approvals-hero attendance-report-hero rounded-3xl p-6 sm:p-8 border shadow-2xl relative overflow-hidden transition-all duration-300 ${
-              isDark 
-                ? 'border-white/10 bg-[#0F1117]' 
-                : 'border-slate-200 bg-white shadow-slate-200/50'
+              isDark ? 'border-white/10' : 'border-slate-200'
             }`}
-            style={
-              isDark 
-                ? { background: 'radial-gradient(ellipse 80% 90% at 95% 50%, rgba(150, 24, 60, 0.35) 0%, rgba(248, 150, 66, 0.15) 50%, rgba(15, 17, 23, 0) 80%), #0F1117' }
-                : { background: 'radial-gradient(ellipse 80% 90% at 95% 50%, rgba(150, 24, 60, 0.15) 0%, rgba(248, 150, 66, 0.1) 50%, rgba(255, 255, 255, 0) 80%), #ffffff' }
-            }
+            style={{ 
+              backgroundColor: isDark ? '#111216' : '#ffffff',
+              boxShadow: isDark ? '0 20px 50px rgba(0,0,0,0.6)' : '0 10px 30px rgba(0,0,0,0.06)'
+            }}
           >
+            {/* Feixe quente alaranjado/vermelho padrão */}
+            <div 
+              className="attendance-report-hero-glow absolute -top-1/2 -right-10 w-[55%] h-[200%] pointer-events-none"
+              style={{
+                background: isDark
+                  ? 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.24) 0%, rgba(100, 12, 30, 0.22) 45%, transparent 75%)'
+                  : 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.12) 0%, rgba(100, 12, 30, 0.08) 45%, transparent 75%)',
+                filter: 'blur(60px)',
+              }}
+            />
+
             <div className="attendance-report-hero-content relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div className="max-w-xl space-y-2">
-                <div className={`attendance-report-eyebrow inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                  isDark ? 'bg-white/10 text-[#f89642] border border-white/10' : 'bg-slate-100 text-[#96183c] border border-slate-200'
+                <div className={`attendance-report-eyebrow inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                  isDark ? 'text-slate-300 border-white/10 bg-white/5' : 'text-slate-600 border-slate-200 bg-slate-100'
                 }`}>
-                  <FileText className="w-3.5 h-3.5" />
-                  <span>Gestão Inteligente de Equipes</span>
+                  <span className="w-3.5 h-0.5 rounded-full" style={{ background: 'linear-gradient(90deg, #640C1E, #9F243C, #F59242)' }} />
+                  <span>GESTÃO INTELIGENTE DE EQUIPES</span>
                 </div>
-                <h2 className={`attendance-report-title text-2xl sm:text-3xl font-black tracking-tight leading-tight ${
+                <h1 className={`attendance-report-title text-2xl sm:text-3xl font-black tracking-tight leading-tight ${
                   isDark ? 'text-white' : 'text-slate-900'
                 }`}>
-                  Relatório de <span className="bg-gradient-to-r from-[#96183c] via-[#f89642] to-[#f89642] bg-clip-text text-transparent">Presenças</span>
-                </h2>
-                <p className={`text-xs sm:text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  Relatório de{' '}
+                  <span style={{
+                    background: isDark 
+                      ? 'linear-gradient(90deg, #F9DE97 0%, #F59242 52%, #9F243C 100%)' 
+                      : 'linear-gradient(90deg, #640C1E 0%, #9F243C 52%, #F59242 100%)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text'
+                  }}>
+                    Presenças
+                  </span>
+                </h1>
+                <p className={`text-xs sm:text-sm leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                   Consolidação em tempo real de jornadas, faltas justificadas, assiduidade e histórico operacional.
                 </p>
               </div>
@@ -2893,9 +3535,10 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               <div className="relative z-10 flex items-center gap-3 shrink-0">
                 <button
                   onClick={() => setIsExportModalOpen(true)}
-                  className="attendance-report-export px-5 py-2.5 font-bold text-xs rounded-2xl text-white flex items-center gap-2 shadow-xl hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                  className="attendance-report-export px-5 py-2.5 font-bold text-xs rounded-full text-white flex items-center gap-2 shadow-lg hover:scale-105 active:scale-95 transition-all cursor-pointer"
                   style={{ 
-                    background: 'linear-gradient(135deg, #96183c, #f89847)'
+                    background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)',
+                    boxShadow: '0 4px 18px rgba(100, 12, 30, 0.30)'
                   }}
                 >
                   <Download className="w-4 h-4" /> Exportar Relatório CSV
@@ -2904,7 +3547,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             </div>
           </div>
 
-                    {/* Micro-aviso Sutil e Condicional: Fechamento de Mês OU Retenção de 60 Dias */}
+          {/* Micro-aviso Sutil e Condicional: Fechamento de Mês OU Retenção de 60 Dias */}
           {(monthClosingInfo || expiringAttendanceInfo) && !isRetentionNoticeDismissed && (
             <div className={`px-3.5 py-2 rounded-xl border flex items-center justify-between gap-3 text-xs relative z-10 transition-colors animate-in fade-in duration-300 ${
               isDark 
@@ -2960,49 +3603,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             </div>
           )}
 
-          {/* Sub-Navegação: Visão Geral de Presenças vs. Banco de Horas & Extras */}
-          <div className="flex flex-wrap items-center justify-between gap-3 relative z-10">
-            <div className={`flex items-center gap-2 p-1.5 rounded-2xl border transition-colors ${
-              isDark ? 'bg-[#15161b] border-[#282a33]' : 'bg-white border-slate-200 shadow-xs'
-            }`}>
-              <button
-                type="button"
-                onClick={() => setRelatorioSubTab('geral')}
-                data-active={relatorioSubTab === 'geral' ? 'true' : 'false'}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                  relatorioSubTab === 'geral'
-                    ? 'bg-gradient-to-r from-[#640C1E] to-[#9F243C] text-[#F9DE97] shadow-md'
-                    : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>Visão Geral de Presenças</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setRelatorioSubTab('banco_horas')}
-                data-active={relatorioSubTab === 'banco_horas' ? 'true' : 'false'}
-                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                  relatorioSubTab === 'banco_horas'
-                    ? 'bg-gradient-to-r from-[#640C1E] to-[#9F243C] text-[#F9DE97] font-black border border-[#F59242]/40 shadow-md'
-                    : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Clock className="w-3.5 h-3.5" />
-                <span>Banco de Horas & Extras</span>
-                {bancoHorasData.filter(i => i.status === 'Pendente').length > 0 && (
-                  <span className="w-5 h-5 rounded-full text-[10px] font-mono bg-[#F59242] text-[#640C1E] flex items-center justify-center font-bold">
-                    {bancoHorasData.filter(i => i.status === 'Pendente').length}
-                  </span>
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* SUB-VIEW 1: VISÃO GERAL DE PRESENÇAS */}
-          {relatorioSubTab === 'geral' && (
-            <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Relatório de Presenças da Equipe */}
+          <div className="space-y-6 animate-in fade-in duration-200">
               {/* KPI Cards Estilo Widget da LP */}
               <div className="attendance-report-kpis grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
                 {[
@@ -3140,7 +3742,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       <th className="p-3.5 font-bold tracking-wider">DEPARTAMENTO</th>
                       <th className="p-3.5 font-bold tracking-wider">HORÁRIO</th>
                       <th className="p-3.5 font-bold tracking-wider">CARGA</th>
-                      <th className="p-3.5 font-bold tracking-wider">STATUS PRESENÇA</th>
+                      <th className="p-3.5 font-bold tracking-wider text-center">STATUS</th>
                       <th className="p-3.5 font-bold tracking-wider">TIPO</th>
                       <th className="p-3.5 font-bold tracking-wider">OBSERVAÇÕES</th>
                     </tr>
@@ -3216,70 +3818,36 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         <td className={`p-3.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{row.dept}</td>
                         <td className={`p-3.5 font-mono text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{row.time}</td>
                         <td className={`p-3.5 font-mono font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{row.hours}</td>
-                        <td className="p-3.5">
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1.5" style={
-                            row.status === 'Presente'
-                              ? (row.checkInLocation && !row.checkInLocation.gpsValidated
-                                  ? { background: 'rgba(249, 115, 22, 0.18)', color: '#fb923c', border: '1px solid rgba(249, 115, 22, 0.40)' }
-                                  : { background: 'rgba(73, 212, 123, 0.15)', color: '#49d982', border: '1px solid rgba(73, 212, 123, 0.30)' })
-                              : row.status === 'Atrasado'
-                              ? { background: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.40)' }
-                              : row.status === 'Ausente'
-                              ? { background: 'rgba(239, 68, 68, 0.18)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.40)' }
-                              : row.status === 'Justificado'
-                              ? { background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', border: '1px solid rgba(56, 189, 248, 0.30)' }
-                              : { background: 'rgba(148, 163, 184, 0.12)', color: '#94a3b8', border: '1px solid rgba(148, 163, 184, 0.30)' }
-                          }>
+                        <td className="p-3.5 text-center">
+                          <div className="flex items-center justify-center">
                             <span 
-                              className="w-1.5 h-1.5 rounded-full" 
+                              className="w-3 h-3 rounded-full inline-block cursor-help transition-transform hover:scale-125" 
                               style={{ 
                                 background: row.status === 'Presente' 
-                                  ? (row.checkInLocation && !row.checkInLocation.gpsValidated ? '#f97316' : '#49d982')
+                                  ? (row.isGpsOutside ? '#f97316' : '#49d982')
                                   : row.status === 'Atrasado' ? '#fbbf24' : row.status === 'Ausente' ? '#ef4444' : row.status === 'Justificado' ? '#38bdf8' : '#94a3b8',
-                                boxShadow: `0 0 6px ${row.status === 'Presente' ? (row.checkInLocation && !row.checkInLocation.gpsValidated ? '#f97316' : '#49d982') : row.status === 'Atrasado' ? '#fbbf24' : row.status === 'Ausente' ? '#ef4444' : row.status === 'Justificado' ? '#38bdf8' : '#94a3b8'}`
+                                boxShadow: `0 0 8px ${row.status === 'Presente' ? (row.isGpsOutside ? '#f97316' : '#49d982') : row.status === 'Atrasado' ? '#fbbf24' : row.status === 'Ausente' ? '#ef4444' : row.status === 'Justificado' ? '#38bdf8' : '#94a3b8'}`
                               }} 
+                              title={
+                                row.status === 'Presente' && row.isGpsOutside
+                                  ? `Presente (Fora do Posto${row.gpsDist ? ` • ${row.gpsDist}` : ''})`
+                                  : row.status === 'Presente'
+                                  ? 'Presente (No Posto)'
+                                  : row.status
+                              }
                             />
-                            {row.status === 'Presente' && row.checkInLocation && !row.checkInLocation.gpsValidated
-                              ? 'Presente (Fora do Raio)'
-                              : row.status === 'Presente' && row.checkInLocation?.gpsValidated
-                              ? 'Presente (GPS OK)'
-                              : row.status}
-                          </span>
+                          </div>
                         </td>
                         <td className={`p-3.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{row.type}</td>
-                        <td className={`p-3.5 text-[11px] max-w-[340px] ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {row.obs.split(' | ').map((part, pIdx) => {
-                              const isGpsFora = part.includes('Fora do Posto') || part.includes('Entrada Fora') || part.includes('Saída Fora') || part.includes('Fora do Raio');
-                              const isGpsOk = part.includes('no Posto') || part.includes('Entrada OK') || part.includes('Saída OK') || part.includes('GPS OK');
-                              const isEsquecimento = part.includes('Esquecimento');
-                              
-                              if (isGpsFora) {
-                                return (
-                                  <span key={pIdx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25">
-                                    <MapPin className="w-2.5 h-2.5 text-amber-500 shrink-0" />
-                                    <span>{part.replace(/^[🟢🟡]\s*/, '')}</span>
-                                  </span>
-                                );
-                              }
-                              if (isGpsOk) {
-                                return (
-                                  <span key={pIdx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25">
-                                    <MapPin className="w-2.5 h-2.5 text-emerald-500 shrink-0" />
-                                    <span>{part.replace(/^[🟢🟡]\s*/, '')}</span>
-                                  </span>
-                                );
-                              }
-                              if (isEsquecimento) {
-                                return (
-                                  <span key={pIdx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/25">
-                                    <Clock className="w-2.5 h-2.5 text-sky-500 shrink-0" />
-                                    <span>{part}</span>
-                                  </span>
-                                );
-                              }
-                              return <span key={pIdx} className="text-slate-400 italic text-[11px] truncate">{part}</span>;
-                            })}
+                        <td className={`p-3.5 text-[11px] max-w-[280px] ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                          <div className="flex items-center gap-2 truncate" title={row.obsFull || row.cleanObs}>
+                            {row.isGpsOutside && (
+                              <span className="inline-flex items-center gap-1 text-[10px] text-amber-500 font-medium shrink-0 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                                <MapPin className="w-2.5 h-2.5 text-amber-500 shrink-0" />
+                                <span>Fora do posto {row.gpsDist ? `(${row.gpsDist})` : ''}</span>
+                              </span>
+                            )}
+                            <span className="truncate text-slate-400 text-[11px]">{row.cleanObs}</span>
                           </div>
                         </td>
                       </tr>
@@ -3288,685 +3856,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 </table>
               </div>
             </div>
-          )}
-
-          {/* SUB-VIEW 2: BANCO DE HORAS & OCORRÊNCIAS DE JORNADA (ESPECÍFICO E DESCONGESTIONADO) */}
-          {relatorioSubTab === 'banco_horas' && (() => {
-            const bhPendingCount = bancoHorasData.filter(i => i.status === 'Pendente').length;
-            const bhHomologatedCount = bancoHorasData.filter(i => i.status === 'Homologado').length;
-            const bhAdjustedCount = bancoHorasData.filter(i => i.status === 'Ajustado').length;
-            const bhTotalExtraMin = bancoHorasData
-              .filter(i => i.status === 'Homologado' && i.diffMinutes > 0)
-              .reduce((acc, curr) => acc + curr.diffMinutes, 0);
-            const bhExtraHoursFormatted = bhTotalExtraMin > 0 ? `+${Math.floor(bhTotalExtraMin / 60)}h ${bhTotalExtraMin % 60}m` : '+39 min';
-
-            const filteredBancoHoras = bancoHorasData.filter(item => {
-              const formattedItemDate = formatDateToDDMMAAAA(item.date);
-
-              if (bancoHorasDate) {
-                if (normalizeDateToISO(item.date) !== normalizeDateToISO(bancoHorasDate)) {
-                  return false;
-                }
-              }
-
-              if (bancoHorasSearch.trim()) {
-                const q = bancoHorasSearch.toLowerCase().trim();
-                const matchName = item.employeeName.toLowerCase().includes(q);
-                const matchRole = item.employeeRole.toLowerCase().includes(q);
-                const matchDept = item.employeeDept.toLowerCase().includes(q);
-                const matchReason = item.reason.toLowerCase().includes(q);
-                const matchDateRaw = item.date.toLowerCase().includes(q);
-                const matchDateFormatted = formattedItemDate.toLowerCase().includes(q);
-                const matchDateSlash = formattedItemDate.replace(/-/g, '/').toLowerCase().includes(q);
-                if (!matchName && !matchRole && !matchDept && !matchReason && !matchDateRaw && !matchDateFormatted && !matchDateSlash) {
-                  return false;
-                }
-              }
-              if (bancoHorasDept !== 'all' && item.employeeDept !== bancoHorasDept) {
-                return false;
-              }
-              if (bancoHorasStatus === 'pending') return item.status === 'Pendente';
-              if (bancoHorasStatus === 'homologated') return item.status === 'Homologado';
-              if (bancoHorasStatus === 'adjusted') return item.status === 'Ajustado';
-              return true;
-            });
-
-            return (
-              <div className="space-y-6 animate-in fade-in duration-200">
-                {/* KPI Cards de Banco de Horas */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
-                  {[
-                    { label: 'Pendentes de Decisão', value: String(bhPendingCount).padStart(2, '0'), sub: 'Aguardando validação do gestor', dotColor: '#F59242', dotGlow: '#F59242' },
-                    { label: 'Horas Extras Homologadas', value: String(bhHomologatedCount).padStart(2, '0'), sub: 'Saldo creditado no Banco de Horas', dotColor: '#49d982', dotGlow: '#49d982' },
-                    { label: 'Ajustados p/ Horário Normal', value: String(bhAdjustedCount).padStart(2, '0'), sub: 'Sem passivo de HE indevida (Art. 4º)', dotColor: '#9F243C', dotGlow: '#9F243C' },
-                    { label: 'Saldo Extra em Folha', value: bhExtraHoursFormatted, sub: 'Total consolidado em Banco de Horas', dotColor: '#F9DE97', dotGlow: '#F9DE97' },
-                  ].map((kpi, i) => (
-                    <div 
-                      key={i} 
-                      className={`p-5 rounded-2xl border space-y-2 transition-transform hover:-translate-y-1 ${
-                        isDark 
-                          ? 'bg-[#15161b] border-[#282a33] hover:border-[#3b3e4c]' 
-                          : 'bg-white border-slate-200 shadow-sm hover:border-slate-300'
-                      }`}
-                      style={{ boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.4)' : '0 4px 16px rgba(0,0,0,0.04)' }}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className={`text-[11px] font-semibold uppercase tracking-wider block ${
-                          isDark ? 'text-slate-400' : 'text-slate-500'
-                        }`}>{kpi.label}</span>
-                        <span 
-                          className="w-2.5 h-2.5 rounded-full" 
-                          style={{ background: kpi.dotColor, boxShadow: `0 0 8px ${kpi.dotGlow}` }}
-                        />
-                      </div>
-                      <div className={`text-3xl font-extrabold font-sans ${isDark ? 'text-white' : 'text-slate-900'}`}>{kpi.value}</div>
-                      <span className={`text-[11px] font-medium block ${isDark ? 'text-slate-500' : 'text-slate-500'}`}>{kpi.sub}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Filter Bar do Banco de Horas */}
-                <div 
-                  className={`p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-3 relative z-10 transition-colors ${
-                    isDark ? 'bg-[#15161b] border-[#282a33]' : 'bg-white border-slate-200 shadow-xs'
-                  }`}
-                >
-                  <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[260px]">
-                    <div className="relative flex-1 min-w-[200px]">
-                      <Search className={`w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 ${
-                        isDark ? 'text-slate-500' : 'text-slate-400'
-                      }`} />
-                      <input
-                        type="text"
-                        value={bancoHorasSearch}
-                        onChange={(e) => setBancoHorasSearch(e.target.value)}
-                        placeholder="Buscar por colaborador, justificativa ou data (ex: 28/10/2026)..."
-                        className={`w-full pl-9 pr-3 py-2 text-xs rounded-full outline-none transition-colors ${
-                          isDark 
-                            ? 'bg-[#0e0f12] text-white placeholder:text-slate-500 border border-[#282a33] focus:border-[#F59242]' 
-                            : 'bg-slate-50 text-slate-900 placeholder:text-slate-400 border border-slate-200 focus:border-[#9F243C]'
-                        }`}
-                      />
-                    </div>
-
-                    {/* Filtro específico por data no Banco de Horas */}
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="date"
-                        value={bancoHorasDate}
-                        onChange={(e) => setBancoHorasDate(e.target.value)}
-                        className={`py-2 px-3 text-xs font-semibold rounded-full outline-none cursor-pointer transition-colors ${
-                          isDark 
-                            ? 'bg-[#0e0f12] text-white border border-[#282a33]' 
-                            : 'bg-slate-50 text-slate-900 border border-slate-200'
-                        }`}
-                        title="Filtrar por data específica"
-                      />
-                      {bancoHorasDate && (
-                        <button
-                          type="button"
-                          onClick={() => setBancoHorasDate('')}
-                          className={`px-2 py-1 text-[10px] font-bold rounded-full transition-colors cursor-pointer ${
-                            isDark ? 'text-slate-400 hover:text-white bg-white/5' : 'text-slate-500 hover:text-slate-900 bg-slate-100'
-                          }`}
-                          title="Limpar filtro de data"
-                        >
-                          ✕ Limpar data
-                        </button>
-                      )}
-                    </div>
-
-                    <select
-                      value={bancoHorasDept}
-                      onChange={(e) => setBancoHorasDept(e.target.value)}
-                      className={`py-2 px-4 text-xs font-semibold rounded-full outline-none cursor-pointer ${
-                        isDark 
-                          ? 'bg-[#0e0f12] text-white border border-[#282a33]' 
-                          : 'bg-slate-50 text-slate-900 border border-slate-200'
-                      }`}
-                    >
-                      <option value="all">Todos os Departamentos</option>
-                      {departments.map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
-                  </div>
-
-                  {/* Status Filter Pills com Badge Laranja Padronizado */}
-                  <div className={`flex items-center gap-1.5 p-1 rounded-full border transition-colors ${
-                    isDark ? 'bg-[#0e0f12] border-[#282a33]' : 'bg-slate-100 border-slate-200'
-                  }`}>
-                    <button
-                      type="button"
-                      onClick={() => setBancoHorasStatus('all')}
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                        bancoHorasStatus === 'all'
-                          ? 'bg-gradient-to-r from-[#640C1E] to-[#9F243C] text-[#F9DE97] shadow-md'
-                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      Todos
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setBancoHorasStatus('pending')}
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                        bancoHorasStatus === 'pending'
-                          ? isDark 
-                            ? 'bg-white/15 text-white font-black border border-white/20' 
-                            : 'bg-white text-slate-900 font-bold border border-slate-300 shadow-xs'
-                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      <span>Pendentes</span>
-                      {bhPendingCount > 0 && (
-                        <span className="w-4 h-4 rounded-full text-[9px] font-mono bg-[#F59242] text-[#640C1E] flex items-center justify-center font-bold">
-                          {bhPendingCount}
-                        </span>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setBancoHorasStatus('homologated')}
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                        bancoHorasStatus === 'homologated'
-                          ? isDark 
-                            ? 'bg-white/15 text-white font-black border border-white/20' 
-                            : 'bg-white text-slate-900 font-bold border border-slate-300 shadow-xs'
-                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      Homologados (Banco)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setBancoHorasStatus('adjusted')}
-                      className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                        bancoHorasStatus === 'adjusted'
-                          ? isDark 
-                            ? 'bg-white/15 text-white font-black border border-white/20' 
-                            : 'bg-white text-slate-900 font-bold border border-slate-300 shadow-xs'
-                          : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                      }`}
-                    >
-                      Ajustados (Normal)
-                    </button>
-                  </div>
-                </div>
-
-                {/* Tabela Espaçosa e Organizada de Banco de Horas */}
-                <div 
-                  className={`rounded-2xl border overflow-hidden overflow-x-auto relative z-10 shadow-xl transition-colors ${
-                    isDark ? 'bg-[#15161b] border-[#282a33]' : 'bg-white border-[#9F243C] shadow-sm'
-                  }`}
-                >
-                  <table className="w-full border-collapse text-left text-xs font-sans min-w-[1100px]">
-                    <thead>
-                      <tr className={`border-b font-mono text-[10px] uppercase transition-colors ${
-                        isDark ? 'border-[#282a33] bg-[#101115] text-slate-400' : 'border-[#9F243C]/20 bg-[#9F243C]/[0.03] text-slate-700'
-                      }`}>
-                        <th className="p-3.5">COLABORADOR</th>
-                        <th className="p-3.5">DATA</th>
-                        <th className="p-3.5">ESCALA PREVISTA</th>
-                        <th className="p-3.5">BATIDA REGISTRADA</th>
-                        <th className="p-3.5">VARIAÇÃO / SALDO</th>
-                        <th className="p-3.5">JUSTIFICATIVA DO COLABORADOR</th>
-                        <th className="p-3.5">STATUS</th>
-                        <th className="p-3.5">OBSERVAÇÃO DO GESTOR</th>
-                        <th className="p-3.5 text-right pr-5">AÇÕES DO GESTOR</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredBancoHoras.length === 0 ? (
-                        <tr>
-                          <td colSpan={9} className="p-8 text-center text-slate-500 text-xs">
-                            Nenhuma ocorrência de Banco de Horas encontrada para os filtros selecionados.
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredBancoHoras.map((row) => (
-                          <tr 
-                            key={row.id} 
-                            className={`border-b transition-colors ${
-                              isDark 
-                                ? 'border-white/5 hover:bg-white/[0.03] text-slate-200' 
-                                : 'border-slate-100 hover:bg-slate-50 text-slate-800'
-                            }`}
-                          >
-                            {/* Colaborador */}
-                            <td className="p-3.5 align-middle">
-                              <div className="flex items-center gap-3">
-                                <img 
-                                  src={row.employeeAvatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150'} 
-                                  alt={row.employeeName} 
-                                  className={`w-9 h-9 rounded-full object-cover ring-2 shrink-0 ${
-                                    isDark ? 'ring-white/10' : 'ring-slate-200'
-                                  }`} 
-                                />
-                                <div>
-                                  <span className={`font-bold block text-xs leading-tight ${
-                                    isDark ? 'text-white' : 'text-slate-900'
-                                  }`}>{row.employeeName}</span>
-                                  <span className={`block text-[11px] font-normal leading-tight mt-0.5 ${
-                                    isDark ? 'text-slate-400' : 'text-slate-500'
-                                  }`}>
-                                    {row.employeeRole} • {row.employeeDept}
-                                  </span>
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Data no formato DD/MM/AAAA (h-7 alinhado) */}
-                            <td className="p-3.5 whitespace-nowrap align-middle">
-                              <div className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg font-mono text-[11px] border ${
-                                isDark ? 'bg-white/5 border border-white/5 text-slate-300' : 'bg-slate-100 border border-slate-200 text-slate-700'
-                              }`}>
-                                <Calendar className={`w-3 h-3 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
-                                <span>{formatDateToDDMMAAAA(row.date)}</span>
-                              </div>
-                            </td>
-
-                            {/* Escala Prevista (h-7 alinhado) */}
-                            <td className="p-3.5 whitespace-nowrap align-middle">
-                              <div className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg font-mono text-[11px] border ${
-                                isDark ? 'bg-white/5 border border-white/5 text-slate-300' : 'bg-slate-100 border border-slate-200 text-slate-700'
-                              }`}>
-                                <Clock className={`w-3 h-3 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
-                                <span>{row.scheduledTime}</span>
-                              </div>
-                            </td>
-
-                            {/* Batida Registrada (h-7 alinhado) */}
-                            <td className="p-3.5 whitespace-nowrap align-middle">
-                              <span className={`h-7 px-2.5 rounded-lg font-mono text-[11px] font-bold inline-flex items-center gap-1.5 border ${
-                                isDark ? 'bg-[#0e0f12] text-white border-white/10' : 'bg-slate-100 text-slate-900 border-slate-200'
-                              }`}>
-                                <Clock className="w-3 h-3 text-[#F59242]" />
-                                <span>{row.punchTime}</span>
-                              </span>
-                            </td>
-
-                            {/* Variação / Saldo (h-7 alinhado e com alto contraste no claro e escuro) */}
-                            <td className="p-3.5 whitespace-nowrap align-middle">
-                              {row.type === 'hora_extra' && (
-                                <span 
-                                  className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg font-mono text-[11px] font-bold border whitespace-nowrap shadow-xs ${
-                                    isDark 
-                                      ? 'bg-[#F59242]/15 text-[#F9DE97] border-[#F59242]/40' 
-                                      : 'bg-amber-100/90 text-[#9a3412] border-amber-300 font-extrabold'
-                                  }`} 
-                                  title="Hora Extra além da tolerância CLT"
-                                >
-                                  <Sparkles className="w-3 h-3 text-[#ea580c] dark:text-[#F59242]" />
-                                  <span>{row.diffBadge}</span>
-                                  <span className="text-[9px] font-sans font-semibold opacity-90">• Extra</span>
-                                </span>
-                              )}
-                              {row.type === 'atraso' && (
-                                <span 
-                                  className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg font-mono text-[11px] font-bold border whitespace-nowrap shadow-xs ${
-                                    isDark 
-                                      ? 'bg-[#9F243C]/25 text-[#fca5a5] border-[#9F243C]/50' 
-                                      : 'bg-rose-100/90 text-[#9F243C] border-rose-300 font-extrabold'
-                                  }`} 
-                                  title="Atraso na Entrada (tolerância excedida)"
-                                >
-                                  <AlertCircle className="w-3 h-3 text-[#e90045]" />
-                                  <span>{row.diffBadge}</span>
-                                  <span className="text-[9px] font-sans font-semibold opacity-90">• Atraso</span>
-                                </span>
-                              )}
-                              {row.type === 'esquecimento' && (
-                                <span 
-                                  className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg font-mono text-[11px] font-bold border whitespace-nowrap shadow-xs ${
-                                    isDark 
-                                      ? 'bg-white/10 text-[#F9DE97] border-white/15' 
-                                      : 'bg-slate-100 text-slate-800 border-slate-300 font-bold'
-                                  }`} 
-                                  title="Esquecimento (CLT Art. 4º)"
-                                >
-                                  <Clock className="w-3 h-3 text-[#ea580c] dark:text-[#F9DE97]" />
-                                  <span>{row.diffBadge}</span>
-                                </span>
-                              )}
-                            </td>
-
-                            {/* Justificativa do Colaborador (h-7 alinhado e com alto contraste) */}
-                            <td className="p-3.5 whitespace-nowrap align-middle">
-                              <button
-                                type="button"
-                                onClick={() => setSelectedDetailBancoItem(row)}
-                                className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg text-[11px] font-bold border transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-xs whitespace-nowrap ${
-                                  isDark 
-                                    ? 'bg-[#F59242]/10 hover:bg-[#F59242]/20 text-[#F59242] border-[#F59242]/30' 
-                                    : 'bg-orange-100/80 hover:bg-orange-100 text-[#c2410c] border-orange-300 font-extrabold'
-                                }`}
-                                title="Clique para abrir a justificativa completa e histórico"
-                              >
-                                <Eye className="w-3 h-3 text-[#c2410c] dark:text-[#F59242]" />
-                                <span>Ver justificativa</span>
-                              </button>
-                            </td>
-
-                            {/* Status (h-7 alinhado e com alto contraste) */}
-                            <td className="p-3.5 whitespace-nowrap align-middle">
-                              {row.status === 'Pendente' && (
-                                <span className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg text-[11px] font-bold font-mono border whitespace-nowrap ${
-                                  isDark 
-                                    ? 'bg-amber-500/10 text-amber-300 border-amber-500/25' 
-                                    : 'bg-amber-100/90 text-amber-950 border-amber-300 font-bold'
-                                }`}>
-                                  <span className={`w-1.5 h-1.5 rounded-full ${isDark ? 'bg-amber-400 shadow-[0_0_6px_#fbbf24]' : 'bg-amber-600'} animate-pulse`} />
-                                  <span>Pendente</span>
-                                </span>
-                              )}
-                              {row.status === 'Homologado' && (
-                                <span className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg text-[11px] font-bold font-mono border whitespace-nowrap ${
-                                  isDark 
-                                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25' 
-                                    : 'bg-emerald-100/90 text-emerald-900 border-emerald-300 font-bold'
-                                }`}>
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                                  <span>Homologado Banco</span>
-                                </span>
-                              )}
-                              {row.status === 'Ajustado' && (
-                                <span className={`h-7 inline-flex items-center gap-1.5 px-2.5 rounded-lg text-[11px] font-bold font-mono border whitespace-nowrap ${
-                                  isDark 
-                                    ? 'bg-white/10 text-[#F9DE97] border-white/20' 
-                                    : 'bg-slate-100 text-slate-800 border-slate-300 font-bold'
-                                }`}>
-                                  <Check className="w-3 h-3" />
-                                  <span>Horário Normal</span>
-                                </span>
-                              )}
-                            </td>
-
-                            {/* Observação do Gestor (h-7 alinhado) */}
-                            <td className="p-3.5 align-middle">
-                              <input
-                                type="text"
-                                value={row.feedback || ''}
-                                onChange={(e) => handleUpdateBancoHorasFeedback(row.id, e.target.value)}
-                                placeholder="Observação do gestor (opcional)..."
-                                className={`h-7 w-full min-w-[170px] max-w-[220px] px-2.5 rounded-lg text-[11px] outline-none transition-colors border ${
-                                  isDark 
-                                    ? 'bg-[#0e0f12] border-[#282a33] text-slate-200 placeholder:text-slate-600 focus:border-[#F59242]' 
-                                    : 'bg-slate-50 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-[#9F243C]'
-                                }`}
-                              />
-                            </td>
-
-                            {/* Ações do Gestor com Tooltips Claros ao Passar o Mouse (h-7 alinhado) */}
-                            <td className="p-3.5 text-right pr-5 whitespace-nowrap align-middle">
-                              {row.status === 'Pendente' ? (
-                                <div className="flex items-center justify-end gap-2">
-                                  {row.type === 'ausencia' ? (
-                                    <>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleHomologarAusencia(row.shiftId, row.id)}
-                                        title="Abonar Falta: Justifica a falta e abona as horas, zerando o débito no banco de horas sem prejuízo salarial."
-                                        className="h-7 px-2.5 rounded-lg font-bold text-[11px] text-white transition-all shadow-sm flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95"
-                                        style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
-                                      >
-                                        <CheckCircle2 className="w-3 h-3" />
-                                        <span>Abonar Falta</span>
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleAjustarHorarioNormal(row.id)}
-                                        title="Descontar Falta: Confirma a ausência sem abono, mantendo o desconto de -8h no banco de horas / folha."
-                                        className={`h-7 px-2 border font-bold text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 ${
-                                          isDark 
-                                            ? 'border-rose-500/30 text-rose-300 hover:bg-rose-500/10' 
-                                            : 'border-rose-300 text-rose-700 hover:bg-rose-50 bg-white shadow-2xs'
-                                        }`}
-                                      >
-                                        <XCircle className="w-3 h-3 text-rose-500" />
-                                        <span>Descontar Falta</span>
-                                      </button>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleHomologarBanco(row.id)}
-                                        title="Homologar Banco: Aprova as horas extras além da tolerância (Art. 58 CLT) e credita o saldo no Banco de Horas / folha."
-                                        className="h-7 px-2.5 rounded-lg font-bold text-[11px] text-white transition-all shadow-sm flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95"
-                                        style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
-                                      >
-                                        <CheckCircle2 className="w-3 h-3" />
-                                        <span>Homologar Banco</span>
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleAjustarHorarioNormal(row.id)}
-                                        title="Ajustar Horário Normal: Nos casos de esquecimento de batida na saída sem trabalho efetivo, ajusta para a jornada contratual sem gerar hora extra indevida (CLT Art. 4º § 2º)."
-                                        className={`h-7 px-2 border font-bold text-[11px] rounded-lg transition-all flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 ${
-                                          isDark 
-                                            ? 'border-white/20 text-slate-300 hover:bg-white/10' 
-                                            : 'border-slate-300 text-slate-700 hover:bg-slate-100 bg-white shadow-2xs'
-                                        }`}
-                                      >
-                                        <Clock className="w-3 h-3" />
-                                        <span>Ajustar Horário Normal</span>
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              ) : row.status === 'Homologado' ? (
-                                <span className={`h-7 inline-flex items-center gap-1 font-mono text-[11px] font-semibold ${
-                                  row.type === 'ausencia' ? 'text-sky-500' : 'text-emerald-600 dark:text-emerald-500'
-                                }`}>
-                                  <CheckCircle2 className="w-3 h-3" /> {row.type === 'ausencia' ? 'Ausência Justificada' : 'Creditado no Banco'}
-                                </span>
-                              ) : (
-                                <span className={`h-7 inline-flex items-center gap-1 font-mono text-[11px] font-medium italic ${
-                                  isDark ? 'text-slate-400' : 'text-slate-600'
-                                }`}>
-                                  <Clock className="w-3 h-3 text-[#F59242]" /> {row.type === 'ausencia' ? 'Falta Confirmada' : 'Tratado no horário previsto'}
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Modal de Detalhes da Justificativa do Banco de Horas com Suporte a Light Mode */}
-                {selectedDetailBancoItem && (
-                  <div 
-                    className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in duration-200"
-                    onClick={() => setSelectedDetailBancoItem(null)}
-                  >
-                    <div 
-                      className={`w-full max-w-lg rounded-3xl border p-6 space-y-5 shadow-2xl relative my-auto animate-in zoom-in-95 transition-colors ${
-                        isDark 
-                          ? 'border-white/10 bg-[#15161b] text-white shadow-black/80' 
-                          : 'border-slate-200 bg-white text-slate-900 shadow-2xl'
-                      }`}
-                      style={{
-                        boxShadow: isDark 
-                          ? '0 25px 60px rgba(0, 0, 0, 0.85), 0 0 40px rgba(100, 12, 30, 0.25)' 
-                          : '0 20px 50px rgba(0, 0, 0, 0.15), 0 0 30px rgba(159, 36, 60, 0.08)'
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {/* Cabeçalho */}
-                      <div className={`flex items-center justify-between pb-4 border-b ${
-                        isDark ? 'border-white/10' : 'border-slate-200'
-                      }`}>
-                        <div className="flex items-center gap-3">
-                          <img 
-                            src={selectedDetailBancoItem.employeeAvatar || 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150'} 
-                            alt={selectedDetailBancoItem.employeeName} 
-                            className="w-10 h-10 rounded-full object-cover ring-2 ring-[#F59242]/40" 
-                          />
-                          <div>
-                            <h3 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{selectedDetailBancoItem.employeeName}</h3>
-                            <p className={`text-xs font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                              {selectedDetailBancoItem.employeeRole} • {selectedDetailBancoItem.employeeDept}
-                            </p>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedDetailBancoItem(null)}
-                          className={`p-1.5 rounded-xl transition-colors cursor-pointer ${
-                            isDark ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
-                          }`}
-                        >
-                          <X className="w-5 h-5" />
-                        </button>
-                      </div>
-
-                      {/* Informações da Jornada */}
-                      <div className="grid grid-cols-2 gap-3 text-xs">
-                        <div className={`p-3 rounded-xl border ${
-                          isDark ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-200'
-                        }`}>
-                          <span className={`text-[10px] uppercase font-mono block mb-1 ${
-                            isDark ? 'text-slate-400' : 'text-slate-500'
-                          }`}>Data</span>
-                          <span className={`font-bold font-mono ${
-                            isDark ? 'text-white' : 'text-slate-900'
-                          }`}>{formatDateToDDMMAAAA(selectedDetailBancoItem.date)}</span>
-                        </div>
-
-                        <div className={`p-3 rounded-xl border ${
-                          isDark ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-200'
-                        }`}>
-                          <span className={`text-[10px] uppercase font-mono block mb-1 ${
-                            isDark ? 'text-slate-400' : 'text-slate-500'
-                          }`}>Variação / Saldo</span>
-                          <span className="font-bold font-mono text-[#F9DE97]">{selectedDetailBancoItem.diffBadge} ({selectedDetailBancoItem.typeLabel})</span>
-                        </div>
-
-                        <div className={`p-3 rounded-xl border ${
-                          isDark ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-200'
-                        }`}>
-                          <span className={`text-[10px] uppercase font-mono block mb-1 ${
-                            isDark ? 'text-slate-400' : 'text-slate-500'
-                          }`}>Escala Prevista</span>
-                          <span className={`font-semibold font-mono ${
-                            isDark ? 'text-slate-300' : 'text-slate-700'
-                          }`}>{selectedDetailBancoItem.scheduledTime}</span>
-                        </div>
-
-                        <div className={`p-3 rounded-xl border ${
-                          isDark ? 'bg-white/5 border-white/5' : 'bg-slate-50 border-slate-200'
-                        }`}>
-                          <span className={`text-[10px] uppercase font-mono block mb-1 ${
-                            isDark ? 'text-slate-400' : 'text-slate-500'
-                          }`}>Batida Registrada</span>
-                          <span className="font-bold text-[#F59242] font-mono">{selectedDetailBancoItem.punchTime}</span>
-                        </div>
-                      </div>
-
-                      {/* Justificativa Completa */}
-                      <div className="space-y-1.5">
-                        <label className={`text-[11px] font-bold uppercase tracking-wider block font-mono ${
-                          isDark ? 'text-slate-400' : 'text-slate-600'
-                        }`}>
-                          Justificativa do Colaborador
-                        </label>
-                        <div className={`p-3.5 rounded-xl border text-xs leading-relaxed font-sans ${
-                          isDark ? 'bg-[#0e0f12] border-[#282a33] text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-800'
-                        }`}>
-                          {selectedDetailBancoItem.reason}
-                        </div>
-                      </div>
-
-                      {/* Observação / Feedback do Gestor */}
-                      <div className="space-y-1.5">
-                        <label className={`text-[11px] font-bold uppercase tracking-wider block font-mono ${
-                          isDark ? 'text-slate-400' : 'text-slate-600'
-                        }`}>
-                          Observação do Gestor
-                        </label>
-                        <input
-                          type="text"
-                          value={selectedDetailBancoItem.feedback || ''}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            handleUpdateBancoHorasFeedback(selectedDetailBancoItem.id, val);
-                            setSelectedDetailBancoItem(prev => prev ? { ...prev, feedback: val } : null);
-                          }}
-                          placeholder="Feedback ou anotação para o colaborador (opcional)..."
-                          className={`w-full px-3 py-2 border rounded-xl text-xs outline-none transition-colors ${
-                            isDark 
-                              ? 'bg-[#0e0f12] border-[#282a33] text-white placeholder:text-slate-600 focus:border-[#F59242]' 
-                              : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-[#9F243C]'
-                          }`}
-                        />
-                      </div>
-
-                      {/* Ações no Modal */}
-                      <div className={`flex items-center justify-between pt-3 border-t ${
-                        isDark ? 'border-white/10' : 'border-slate-200'
-                      }`}>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedDetailBancoItem(null)}
-                          className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
-                            isDark ? 'text-slate-400 hover:text-white hover:bg-white/5' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                          }`}
-                        >
-                          Fechar
-                        </button>
-
-                        {selectedDetailBancoItem.status === 'Pendente' ? (
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                handleAjustarHorarioNormal(selectedDetailBancoItem.id);
-                                setSelectedDetailBancoItem(prev => prev ? { ...prev, status: 'Ajustado' } : null);
-                              }}
-                              className={`px-3 py-2 rounded-xl border font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
-                                isDark 
-                                  ? 'border-white/20 text-slate-300 hover:bg-white/10' 
-                                  : 'border-slate-300 text-slate-700 hover:bg-slate-100 bg-white shadow-2xs'
-                              }`}
-                              title="Ajusta para o horário normal previsto sem hora extra (CLT Art. 4º § 2º)"
-                            >
-                              <Clock className="w-3.5 h-3.5" />
-                              <span>Ajustar Horário Normal</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                handleHomologarBanco(selectedDetailBancoItem.id);
-                                setSelectedDetailBancoItem(prev => prev ? { ...prev, status: 'Homologado' } : null);
-                              }}
-                              className="px-4 py-2 rounded-xl font-bold text-xs text-white flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:scale-105 active:scale-95"
-                              style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
-                              title="Aprova e credita hora extra no Banco de Horas (Art. 58 CLT)"
-                            >
-                              <CheckCircle2 className="w-4 h-4" />
-                              <span>Homologar Banco</span>
-                            </button>
-                          </div>
-                        ) : selectedDetailBancoItem.status === 'Homologado' ? (
-                          <span className="text-xs font-mono text-emerald-500 font-semibold inline-flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Homologado no Banco de Horas
-                          </span>
-                        ) : (
-                          <span className={`text-xs font-mono inline-flex items-center gap-1 italic ${
-                            isDark ? 'text-slate-400' : 'text-slate-600'
-                          }`}>
-                            <Clock className="w-3.5 h-3.5 text-[#F59242]" /> Ajustado para Horário Normal
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
         </div>
       )}
 
@@ -4091,7 +3980,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   <h1 className={`reminders-title text-2xl sm:text-3xl font-black tracking-tight leading-tight ${
                     isDark ? 'text-white' : 'text-slate-900'
                   }`}>
-                    Lembretes e  <br className="hidden sm:inline" />
+                    Lembretes e{' '}
                     <span className={`reminders-title-highlight inline-block bg-clip-text text-transparent ${
                       isDark
                         ? 'bg-gradient-to-r from-[#F9DE97] via-[#F59242] to-[#9F243C]'

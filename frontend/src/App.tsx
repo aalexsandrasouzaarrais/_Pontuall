@@ -732,7 +732,7 @@ function AppContent() {
           if (overtimeDiffMinutes > 0) {
             const heTag = isForgetfulness
               ? `[Esquecimento de Saída: Saída real no horário previsto (${s.endTime || '15:20'}) - Batida às ${timeStr}]`
-              : `[HE +${overtimeDiffMinutes}m: ${notesOrReason || 'Sem justificativa informada'}]`;
+              : `[HE +${overtimeDiffMinutes}m: ${notesOrReason || 'Aguardando justificativa'}]`;
             updatedNotes = updatedNotes ? `${updatedNotes} | ${heTag}` : heTag;
           }
           return {
@@ -752,8 +752,8 @@ function AppContent() {
           };
         } else {
           let updatedNotes = s.notes || '';
-          if (lateDiffMinutes > 0 && notesOrReason) {
-            const lateTag = `[Atraso ${lateDiffMinutes}m: ${notesOrReason}]`;
+          if (lateDiffMinutes > 0) {
+            const lateTag = `[Atraso ${lateDiffMinutes}m: ${notesOrReason || 'Aguardando justificativa'}]`;
             updatedNotes = updatedNotes ? `${updatedNotes} | ${lateTag}` : lateTag;
           }
           return {
