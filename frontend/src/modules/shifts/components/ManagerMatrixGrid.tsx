@@ -2034,11 +2034,14 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               <select
                 value={selectedDepartment}
                 onChange={(e) => setSelectedDepartment(e.target.value)}
-                className="py-1.5 px-3 bg-slate-50 border border-slate-200 text-slate-900 text-xs font-bold rounded-xl outline-none cursor-pointer"
+                className={`py-1.5 px-3 border text-xs font-bold rounded-xl outline-none cursor-pointer ${
+                  isDark ? 'bg-[#181A24] border-white/10 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
+                }`}
+                style={{ colorScheme: isDark ? 'dark' : 'light' }}
               >
-                <option value="all">Todos os Setores</option>
+                <option value="all" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>Todos os Setores</option>
                 {departments.map(d => (
-                  <option key={d} value={d}>{d}</option>
+                  <option key={d} value={d} className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>{d}</option>
                 ))}
               </select>
 
@@ -2313,31 +2316,41 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               }}
             />
 
-            {/* Hero Banner Dark com Luz Quente na Lateral Direita (Fiel à Imagem 1) */}
+            {/* Hero Banner (Suporta Dark e Light) */}
             <div 
-              className="approvals-hero approvals-light-hero rounded-3xl p-6 sm:p-8 border border-white/10 shadow-2xl relative overflow-hidden"
+              className={`approvals-hero approvals-light-hero rounded-3xl p-6 sm:p-8 border shadow-2xl relative overflow-hidden transition-all duration-300 ${
+                isDark 
+                  ? 'border-white/10' 
+                  : 'border-slate-200'
+              }`}
               style={{ 
-                backgroundColor: '#111216',
-                boxShadow: '0 20px 50px rgba(0,0,0,0.6)'
+                backgroundColor: isDark ? '#111216' : '#ffffff',
+                boxShadow: isDark ? '0 20px 50px rgba(0,0,0,0.6)' : '0 10px 30px rgba(0,0,0,0.06)'
               }}
             >
-              {/* Feixe quente alaranjado/vermelho da Landing Page */}
+              {/* Feixe quente alaranjado/vermelho */}
               <div 
                 className="approvals-light-hero-glow absolute -top-1/2 -right-10 w-[55%] h-[200%] pointer-events-none"
                 style={{
-                  background: 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.24) 0%, rgba(100, 12, 30, 0.22) 45%, transparent 75%)',
+                  background: isDark
+                    ? 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.24) 0%, rgba(100, 12, 30, 0.22) 45%, transparent 75%)'
+                    : 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.12) 0%, rgba(100, 12, 30, 0.08) 45%, transparent 75%)',
                   filter: 'blur(60px)',
                 }}
               />
 
               <div className="approvals-light-hero-content relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div className="approvals-light-hero-copy max-w-xl space-y-2">
-                  <div className="approvals-light-eyebrow inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-slate-300 border border-white/10 bg-white/5">
+                  <div className={`approvals-light-eyebrow inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                    isDark ? 'text-slate-300 border-white/10 bg-white/5' : 'text-slate-600 border-slate-200 bg-slate-100'
+                  }`}>
                     <span className="w-3.5 h-0.5 rounded-full" style={{ background: 'linear-gradient(90deg, #640C1E, #9F243C, #F59242)' }} />
                     CENTRAL DE GESTÃO & AUDITORIA DE PONTO
                   </div>
-                  <h1 className="approvals-light-title text-2xl sm:text-3xl font-black text-white tracking-tight leading-tight">
-                    Aprovações e <br className="hidden sm:inline" />
+                  <h1 className={`approvals-light-title text-2xl sm:text-3xl font-black tracking-tight leading-tight ${
+                    isDark ? 'text-white' : 'text-slate-900'
+                  }`}>
+                    Aprovações e{' '}
                     <span style={{
                       background: 'linear-gradient(90deg, #F9DE97 0%, #F59242 52%, #9F243C 100%)',
                       WebkitBackgroundClip: 'text',
@@ -2347,12 +2360,14 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     </span>
                   </h1>
                   
-                  <p className="approvals-light-description text-xs sm:text-sm text-slate-400 leading-relaxed">
+                  <p className={`approvals-light-description text-xs sm:text-sm leading-relaxed ${
+                    isDark ? 'text-slate-400' : 'text-slate-500'
+                  }`}>
                     Central unificada para análise de atestados médicos, gestão de ocorrências, homologação de justificativas e aprovação de trocas de escala em tempo real.
                   </p>
                 </div>
 
-                <div className="relative z-10 flex flex-wrap items-center gap-3 shrink-0">
+                <div className="relative z-10 flex items-center gap-3 shrink-0">
                   <button
                     onClick={() => handleExportBancoHorasCsv(bancoHorasData)}
                     className="approvals-light-export px-5 py-2.5 font-bold text-xs rounded-full text-white flex items-center gap-2 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer"
@@ -2360,27 +2375,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)',
                       boxShadow: '0 4px 18px rgba(100, 12, 30, 0.30)'
                     }}
-                    title="Exportar fechamento para a folha do RH com horas decimais"
-                  >
-                    <Download className="w-4 h-4" /> Exportar Fechamento p/ Folha (RH)
-                  </button>
-                  <button
-                    onClick={onExportCsv}
-                    className="approvals-light-secondary px-4 py-2.5 font-bold text-xs rounded-full text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-all flex items-center gap-1.5 cursor-pointer"
+                    title="Exportar relatório completo de aprovações, ocorrências e fechamento em CSV"
                   >
                     <Download className="w-4 h-4" /> Exportar Relatório CSV
-                  </button>
-                  <button
-                    onClick={() => onNavigateToOrbit ? onNavigateToOrbit() : setActiveTab('escala')}
-                    className="approvals-light-secondary px-4 py-2.5 font-bold text-xs rounded-full text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 transition-all flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <span>Ver Grade de Escalas →</span>
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* KPI Cards Estilo Widget da Imagem 1 com Métricas de Aprovações/Faltas da Imagem 2 */}
+            {/* KPI Cards Estilo Widget com suporte a Dark e Light */}
             <div className="approvals-light-kpis grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
               {[
                 { 
@@ -2418,18 +2421,28 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               ].map((kpi, i) => (
                 <div 
                   key={i} 
-                  className="approval-kpi approvals-light-kpi p-5 rounded-2xl border border-[#282a33] space-y-2 transition-transform hover:-translate-y-1 hover:border-[#3b3e4c]" 
-                  style={{ background: '#15161b', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}
+                  className={`approval-kpi approvals-light-kpi p-5 rounded-2xl border space-y-2 transition-transform hover:-translate-y-1 ${
+                    isDark 
+                      ? 'bg-[#15161b] border-[#282a33] hover:border-[#3b3e4c]' 
+                      : 'bg-white border-slate-200 shadow-sm hover:border-slate-300'
+                  }`}
+                  style={{ boxShadow: isDark ? '0 8px 24px rgba(0,0,0,0.4)' : '0 4px 16px rgba(0,0,0,0.04)' }}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="approvals-light-kpi-label text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">{kpi.label}</span>
+                    <span className={`approvals-light-kpi-label text-[11px] font-semibold uppercase tracking-wider block ${
+                      isDark ? 'text-slate-400' : 'text-slate-500'
+                    }`}>{kpi.label}</span>
                     <span 
                       className="approvals-light-kpi-dot w-2.5 h-2.5 rounded-full" 
                       style={{ background: kpi.dotColor, boxShadow: `0 0 8px ${kpi.dotGlow}` }}
                     />
                   </div>
-                  <div className="approvals-light-kpi-value text-3xl font-extrabold text-white font-sans">{kpi.value}</div>
-                  <span className="approvals-light-kpi-sub text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
+                  <div className={`approvals-light-kpi-value text-3xl font-extrabold font-sans ${
+                    isDark ? 'text-white' : 'text-slate-900'
+                  }`}>{kpi.value}</div>
+                  <span className={`approvals-light-kpi-sub text-[11px] font-medium flex items-center gap-1.5 ${
+                    isDark ? 'text-slate-500' : 'text-slate-500'
+                  }`}>
                     {kpi.hasDotInSub && (
                       <span className="w-1.5 h-1.5 rounded-full bg-[#F59242]" />
                     )}
@@ -2439,116 +2452,50 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               ))}
             </div>
 
-            {/* Filter Bar (Igual à da imagem 2 com os filtros e busca) */}
+            {/* Filter Bar (Busca e Departamentos com suporte a Dark e Light) */}
             <div 
-              className="approval-filter-bar approvals-light-filter p-4 rounded-2xl border border-[#282a33] flex flex-wrap items-center justify-between gap-3 relative z-10" 
-              style={{ background: '#15161b' }}
+              className={`approval-filter-bar approvals-light-filter p-4 rounded-2xl border flex flex-wrap items-center justify-between gap-3 relative z-10 transition-colors ${
+                isDark ? 'bg-[#15161b] border-[#282a33]' : 'bg-white border-slate-200 shadow-xs'
+              }`}
             >
-              {/* Search & Departamentos */}
               <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[260px]">
                 <div className="relative flex-1 min-w-[220px]">
-                  <Search className="approvals-light-search-icon w-3.5 h-3.5 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <Search className={`approvals-light-search-icon w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 ${
+                    isDark ? 'text-slate-500' : 'text-slate-400'
+                  }`} />
                   <input
                     type="text"
                     value={approvalsSearch}
                     onChange={(e) => setApprovalsSearch(e.target.value)}
                     placeholder="Buscar por colaborador..."
-                    className="approvals-light-search w-full pl-9 pr-3 py-2 text-xs rounded-full text-white placeholder:text-slate-500 outline-none transition-colors"
-                    style={{ background: '#0e0f12', border: '1px solid #282a33' }}
+                    className={`approvals-light-search w-full pl-9 pr-3 py-2 text-xs rounded-full outline-none transition-colors border ${
+                      isDark
+                        ? 'bg-[#0e0f12] text-white placeholder:text-slate-500 border-[#282a33] focus:border-[#F59242]'
+                        : 'bg-slate-50 text-slate-900 placeholder:text-slate-400 border-slate-200 focus:border-[#96183c]'
+                    }`}
                   />
                 </div>
                 <select
                   value={approvalsDept}
                   onChange={(e) => setApprovalsDept(e.target.value)}
-                  className="approvals-light-department py-2 px-4 text-xs font-semibold rounded-full text-white outline-none cursor-pointer"
-                  style={{ background: '#0e0f12', border: '1px solid #282a33', colorScheme: 'dark' }}
+                  className={`approvals-light-department py-2 px-4 text-xs font-semibold rounded-full outline-none cursor-pointer border ${
+                    isDark
+                      ? 'bg-[#0e0f12] text-white border-[#282a33]'
+                      : 'bg-slate-50 text-slate-800 border-slate-200'
+                  }`}
+                  style={{ colorScheme: isDark ? 'dark' : 'light' }}
                 >
-                  <option value="all">Todos os Departamentos</option>
-                  {departments.map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
-                <select
-                  value={approvalsTypeFilter}
-                  onChange={(e) => setApprovalsTypeFilter(e.target.value as any)}
-                  className="approvals-light-department py-2 px-4 text-xs font-semibold rounded-full text-white outline-none cursor-pointer"
-                  style={{ background: '#0e0f12', border: '1px solid #282a33', colorScheme: 'dark' }}
-                  title="Filtrar por tipo de solicitação"
-                >
-                  <option value="all">Todos os Tipos</option>
-                  <option value="medical">Atestados Médicos</option>
-                  <option value="absent">Faltas Não Justificadas</option>
-                  <option value="delay">Atrasos de Entrada</option>
-                  <option value="overtime">Horas Extras</option>
-                  <option value="swap">Trocas de Turno</option>
-                  <option value="time_off">Folgas / Dispensas</option>
+                  <option value="all" className={isDark ? "bg-[#0e0f12] text-white" : "bg-white text-slate-800"}>Todos os Departamentos</option>
+                  {departments.map(d => (
+                    <option key={d} value={d} className={isDark ? "bg-[#0e0f12] text-white" : "bg-white text-slate-800"}>
+                      {d}
+                    </option>
+                  ))}
                 </select>
               </div>
-
-              {/* Status Filter Pills da Imagem 2 */}
-              <div className="approvals-light-status-filter flex items-center gap-1.5 bg-[#0e0f12] p-1 rounded-full border border-[#282a33]">
-                <button
-                  onClick={() => setApprovalsFilterTab('all')}
-                  data-active={approvalsFilterTab === 'all' ? 'true' : 'false'}
-                  className={`approvals-light-status-button px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                    approvalsFilterTab === 'all'
-                      ? 'bg-gradient-to-r from-[#640C1E] to-[#9F243C] text-[#F9DE97] shadow-md'
-                      : 'text-slate-400 hover:text-[#F9DE97]'
-                  }`}
-                >
-                  Todos
-                </button>
-                <button
-                  onClick={() => setApprovalsFilterTab('pending')}
-                  data-active={approvalsFilterTab === 'pending' ? 'true' : 'false'}
-                  className={`approvals-light-status-button px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    approvalsFilterTab === 'pending'
-                      ? 'bg-white/15 text-white font-black border border-white/20'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  <span>Pendentes</span>
-                  {pendingCount > 0 && (
-                    <span className="w-4 h-4 rounded-full text-[9px] font-mono bg-[#F59242] text-[#640C1E] flex items-center justify-center font-bold">
-                      {pendingCount}
-                    </span>
-                  )}
-                </button>
-                <button
-                  onClick={() => setApprovalsFilterTab('approved')}
-                  data-active={approvalsFilterTab === 'approved' ? 'true' : 'false'}
-                  className={`approvals-light-status-button px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                    approvalsFilterTab === 'approved'
-                      ? 'bg-white/15 text-white font-black border border-white/20'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Aprovados
-                </button>
-                <button
-                  onClick={() => setApprovalsFilterTab('rejected')}
-                  data-active={approvalsFilterTab === 'rejected' ? 'true' : 'false'}
-                  className={`approvals-light-status-button px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                    approvalsFilterTab === 'rejected'
-                      ? 'bg-white/15 text-white font-black border border-white/20'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Faltas / Recusados
-                </button>
-              </div>
-
-              <button
-                onClick={() => setIsNewOccurrenceModalOpen(true)}
-                className="approvals-light-new-request px-5 py-2.5 font-bold text-xs rounded-full text-white flex items-center justify-center gap-2 shadow-lg transition-all hover:scale-105 active:scale-95 cursor-pointer shrink-0"
-                style={{ 
-                  background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)',
-                  boxShadow: '0 4px 18px rgba(100, 12, 30, 0.30)'
-                }}
-              >
-                <Plus className="w-4 h-4" /> Nova Solicitação / Lançar Falta
-              </button>
             </div>
 
-            {/* Pílulas de Categoria Rápida (Sem Emojis, Padrão Organizacional da Tabela) */}
+            {/* Pílulas de Categoria Rápida (Filtros da parte de baixo com Bordô no estado ativo) */}
             <div className="flex flex-wrap items-center gap-2 relative z-10">
               {[
                 { id: 'all', label: 'Todos' },
@@ -2578,16 +2525,21 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     onClick={() => setApprovalsTypeFilter(cat.id as any)}
                     className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
                       isActive
-                        ? 'bg-white/15 text-white border-white/25 shadow-xs font-black'
+                        ? 'text-white border-[#80142B] font-black'
                         : isDark
                         ? 'bg-[#15161b] text-slate-400 hover:text-white border-[#282a33] hover:border-[#3b3e4c]'
                         : 'bg-white text-slate-600 hover:text-slate-900 border-slate-200 hover:border-slate-300'
                     }`}
+                    style={
+                      isActive
+                        ? { background: 'linear-gradient(135deg, #640C1E 0%, #9F243C 100%)', boxShadow: '0 4px 14px rgba(100, 12, 30, 0.35)' }
+                        : undefined
+                    }
                   >
                     <span>{cat.label}</span>
                     <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
                       isActive
-                        ? 'bg-white/20 text-white'
+                        ? 'bg-black/25 text-[#F9DE97]'
                         : isDark ? 'bg-white/5 text-slate-400' : 'bg-slate-100 text-slate-600'
                     }`}>
                       {count}
@@ -2597,27 +2549,42 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               })}
             </div>
 
-            {/* Data Table igual à Imagem 2 + Coluna Adicional de Observação / Feedback para o Colaborador */}
+            {/* Data Table com suporte total a Light e Dark Mode */}
             <div 
-              className="approval-table-card approvals-light-table rounded-2xl border border-[#282a33] overflow-hidden overflow-x-auto relative z-10 shadow-xl" 
-              style={{ background: '#15161b' }}
+              className={`approval-table-card approvals-light-table rounded-2xl border overflow-hidden overflow-x-auto relative z-10 transition-colors ${
+                isDark 
+                  ? 'bg-[#15161b] border-[#282a33] shadow-xl' 
+                  : 'bg-white border-slate-200 shadow-md'
+              }`}
             >
               <table className="approvals-light-data w-full border-collapse text-left text-xs font-sans min-w-[780px]">
                 <thead>
-                  <tr className="border-b border-[#282a33] font-mono text-[10px] uppercase text-slate-400" style={{ background: '#101115' }}>
+                  <tr 
+                    className={`border-b font-mono text-[10px] uppercase ${
+                      isDark 
+                        ? 'border-[#282a33] text-slate-400 bg-[#101115]' 
+                        : 'border-slate-200 text-slate-500 bg-slate-50'
+                    }`}
+                  >
                     <th className="p-3">COLABORADOR</th>
                     <th className="p-3">TIPO & JUSTIFICATIVA</th>
                     <th className="p-3">DATA</th>
                     <th className="p-3 text-center">COMPROVANTE</th>
                     <th className="p-3 text-center">STATUS</th>
                     <th className="p-3">OBSERVAÇÃO / FEEDBACK</th>
-                    <th className="p-3 text-right pr-4 sticky right-0 z-20 shadow-[-6px_0_12px_rgba(0,0,0,0.25)]" style={{ background: '#101115' }}>AÇÕES</th>
+                    <th 
+                      className={`p-3 text-right pr-4 sticky right-0 z-20 shadow-[-6px_0_12px_rgba(0,0,0,0.08)] ${
+                        isDark ? 'bg-[#101115]' : 'bg-slate-50'
+                      }`}
+                    >
+                      AÇÕES
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredApprovals.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-slate-500 text-xs">
+                      <td colSpan={7} className={`p-8 text-center text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                         Nenhuma solicitação ou ocorrência encontrada para os filtros selecionados.
                       </td>
                     </tr>
@@ -2625,8 +2592,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     filteredApprovals.map((row) => (
                       <tr 
                         key={row.id} 
-                        className="approvals-light-row border-b border-white/5 transition-colors hover:bg-white/[0.03]" 
-                        style={{ color: '#e2e8f0' }}
+                        className={`approvals-light-row border-b transition-colors ${
+                          isDark 
+                            ? 'border-white/5 hover:bg-white/[0.03] text-slate-200' 
+                            : 'border-slate-100 hover:bg-slate-50/80 text-slate-800'
+                        }`}
                       >
                         {/* Colaborador */}
                         <td className="p-3">
@@ -2634,11 +2604,17 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             <img 
                               src={row.employeeAvatar} 
                               alt={row.employeeName} 
-                              className="w-8 h-8 rounded-full object-cover ring-2 ring-white/10 shrink-0" 
+                              className={`w-8 h-8 rounded-full object-cover shrink-0 ring-2 ${
+                                isDark ? 'ring-white/10' : 'ring-slate-200'
+                              }`} 
                             />
                             <div>
-                              <span className="font-bold text-white block text-xs leading-tight">{row.employeeName}</span>
-                              <span className="block text-[10.5px] text-slate-400 font-normal leading-tight mt-0.5">{row.employeeRole}</span>
+                              <span className={`font-bold block text-xs leading-tight ${
+                                isDark ? 'text-white' : 'text-slate-900'
+                              }`}>{row.employeeName}</span>
+                              <span className={`block text-[10.5px] font-normal leading-tight mt-0.5 ${
+                                isDark ? 'text-slate-400' : 'text-slate-500'
+                              }`}>{row.employeeRole}</span>
                             </div>
                           </div>
                         </td>
@@ -2647,14 +2623,16 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         <td className="p-3 align-top">
                           <div className="space-y-1">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-bold text-white block text-xs leading-tight">{row.type}</span>
+                              <span className={`font-bold block text-xs leading-tight ${
+                                isDark ? 'text-white' : 'text-slate-900'
+                              }`}>{row.type}</span>
                               {row.type === 'Atraso de Entrada' && (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/15 text-amber-500 dark:text-amber-300 border border-amber-500/30">
                                   -35 min
                                 </span>
                               )}
                               {row.type === 'Hora Extra' && (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30">
                                   +39 min
                                 </span>
                               )}
@@ -2684,8 +2662,12 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
                         {/* Data / Período */}
                         <td className="p-3 whitespace-nowrap">
-                          <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 border border-white/5 text-slate-300 font-mono text-[11px]">
-                            <Calendar className="w-3 h-3 text-slate-400" />
+                          <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border font-mono text-[11px] ${
+                            isDark 
+                              ? 'bg-white/5 border-white/5 text-slate-300' 
+                              : 'bg-slate-100 border-slate-200 text-slate-700'
+                          }`}>
+                            <Calendar className={`w-3 h-3 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
                             <span>{formatDateBR(row.date)}</span>
                           </div>
                         </td>
@@ -2696,13 +2678,17 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             <button
                               type="button"
                               onClick={() => openDocumentSafe(row.documentUrl, row.documentName)}
-                              className="approvals-light-proof p-1.5 rounded-lg text-[#f89847] bg-[#f89847]/10 border border-[#f89847]/25 hover:bg-[#f89847]/25 hover:scale-110 active:scale-95 transition-all cursor-pointer inline-flex items-center justify-center shadow-xs"
+                              className={`approvals-light-proof p-1.5 rounded-lg border hover:scale-110 active:scale-95 transition-all cursor-pointer inline-flex items-center justify-center shadow-xs ${
+                                isDark
+                                  ? 'text-[#f89847] bg-[#f89847]/10 border-[#f89847]/25 hover:bg-[#f89847]/25'
+                                  : 'text-[#96183c] bg-[#96183c]/10 border-[#96183c]/25 hover:bg-[#96183c]/20'
+                              }`}
                               title={`Abrir comprovante: ${row.documentName || 'Anexo'}`}
                             >
-                              <Paperclip className="w-4 h-4 text-[#f89847]" />
+                              <Paperclip className="w-4 h-4" />
                             </button>
                           ) : (
-                            <span className="text-slate-500 text-xs font-mono select-none" title="Sem anexo">—</span>
+                            <span className="text-slate-400 text-xs font-mono select-none" title="Sem anexo">—</span>
                           )}
                         </td>
 
@@ -2743,14 +2729,21 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             value={row.feedback}
                             onChange={(e) => handleUpdateFeedback(row.id, e.target.value)}
                             placeholder="Observação (opcional)..."
-                            className="approvals-light-feedback w-full min-w-[120px] max-w-[180px] px-2.5 py-1.5 bg-[#0e0f12] border border-[#282a33] focus:border-[#ff601f] rounded-xl text-xs text-slate-200 placeholder:text-slate-600 outline-none transition-colors"
+                            className={`approvals-light-feedback w-full min-w-[120px] max-w-[180px] px-2.5 py-1.5 rounded-xl text-xs outline-none transition-colors border ${
+                              isDark
+                                ? 'bg-[#0e0f12] border-[#282a33] focus:border-[#ff601f] text-slate-200 placeholder:text-slate-600'
+                                : 'bg-slate-50 border-slate-200 focus:border-[#96183c] text-slate-800 placeholder:text-slate-400'
+                            }`}
                           />
                         </td>
 
-                        {/* Ações (Fixa sticky à direita para nunca sumir) */}
+                        {/* Ações (Fixa sticky à direita com suporte a tema) */}
                         <td 
-                          className="p-3 text-right pr-4 sticky right-0 z-10 shadow-[-6px_0_12px_rgba(0,0,0,0.25)]" 
-                          style={{ background: isDark ? '#15161b' : '#ffffff' }}
+                          className={`p-3 text-right pr-4 sticky right-0 z-10 ${
+                            isDark 
+                              ? 'bg-[#15161b] shadow-[-6px_0_12px_rgba(0,0,0,0.35)]' 
+                              : 'bg-white shadow-[-6px_0_12px_rgba(0,0,0,0.06)]'
+                          }`}
                         >
                           {row.status === 'Pendente' ? (
                             <div className="flex items-center justify-end gap-1.5">
@@ -2759,9 +2752,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                   type="button"
                                   onClick={() => handleRejectOccurrence(row.id)}
                                   title="Descontar Falta: Confirma falta injustificada para desconto em folha (1 dia de salário + perda de DSR semanal)"
-                                  className="approvals-light-reject px-3 py-1.5 border border-rose-500/40 text-rose-300 hover:bg-rose-500/15 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0 shadow-xs"
+                                  className="approvals-light-reject px-3 py-1.5 border border-rose-500/40 text-rose-500 dark:text-rose-300 hover:bg-rose-500/15 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0 shadow-xs"
                                 >
-                                  <XCircle className="w-3.5 h-3.5 text-rose-400" />
+                                  <XCircle className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400" />
                                   <span>Descontar</span>
                                 </button>
                               ) : row.type === 'Atraso de Entrada' ? (
@@ -2780,7 +2773,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                     type="button"
                                     onClick={() => handleRejectOccurrence(row.id)}
                                     title="Debitar Atraso: Confirma débito de atraso para compensação no Banco de Horas"
-                                    className="approvals-light-reject px-2 py-1.5 border border-rose-500/30 text-rose-300 hover:bg-rose-500/10 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
+                                    className="approvals-light-reject px-2 py-1.5 border border-rose-500/30 text-rose-500 dark:text-rose-300 hover:bg-rose-500/10 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
                                   >
                                     <XCircle className="w-3.5 h-3.5" />
                                     <span>Debitar</span>
@@ -2802,7 +2795,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                     type="button"
                                     onClick={() => handleRejectOccurrence(row.id)}
                                     title="Ajustar Horário Normal: Trata para a jornada contratual sem gerar HE indevida (Art. 4º CLT)"
-                                    className="approvals-light-reject px-2 py-1.5 border border-amber-500/30 text-amber-300 hover:bg-amber-500/10 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
+                                    className="approvals-light-reject px-2 py-1.5 border border-amber-500/30 text-amber-600 dark:text-amber-300 hover:bg-amber-500/10 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
                                   >
                                     <Clock className="w-3.5 h-3.5" />
                                     <span>Ajustar</span>
@@ -2824,7 +2817,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                     type="button"
                                     onClick={() => handleRejectOccurrence(row.id)}
                                     title="Recusar Solicitação"
-                                    className="approvals-light-reject px-2 py-1.5 border border-rose-500/30 text-rose-300 hover:bg-rose-500/10 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
+                                    className="approvals-light-reject px-2 py-1.5 border border-rose-500/30 text-rose-500 dark:text-rose-300 hover:bg-rose-500/10 font-bold text-xs rounded-xl transition-all flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
                                   >
                                     <XCircle className="w-3.5 h-3.5" />
                                     <span>Recusar</span>
@@ -3344,33 +3337,51 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             }}
           />
 
-          {/* Hero Banner com Suporte Completo a Dark e Light Mode */}
+          {/* Hero Banner Padronizado com Suporte Completo a Dark e Light Mode */}
           <div 
             className={`approvals-hero attendance-report-hero rounded-3xl p-6 sm:p-8 border shadow-2xl relative overflow-hidden transition-all duration-300 ${
-              isDark 
-                ? 'border-white/10 bg-[#0F1117]' 
-                : 'border-slate-200 bg-white shadow-slate-200/50'
+              isDark ? 'border-white/10' : 'border-slate-200'
             }`}
-            style={
-              isDark 
-                ? { background: 'radial-gradient(ellipse 80% 90% at 95% 50%, rgba(150, 24, 60, 0.35) 0%, rgba(248, 150, 66, 0.15) 50%, rgba(15, 17, 23, 0) 80%), #0F1117' }
-                : { background: 'radial-gradient(ellipse 80% 90% at 95% 50%, rgba(150, 24, 60, 0.15) 0%, rgba(248, 150, 66, 0.1) 50%, rgba(255, 255, 255, 0) 80%), #ffffff' }
-            }
+            style={{ 
+              backgroundColor: isDark ? '#111216' : '#ffffff',
+              boxShadow: isDark ? '0 20px 50px rgba(0,0,0,0.6)' : '0 10px 30px rgba(0,0,0,0.06)'
+            }}
           >
+            {/* Feixe quente alaranjado/vermelho padrão */}
+            <div 
+              className="attendance-report-hero-glow absolute -top-1/2 -right-10 w-[55%] h-[200%] pointer-events-none"
+              style={{
+                background: isDark
+                  ? 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.24) 0%, rgba(100, 12, 30, 0.22) 45%, transparent 75%)'
+                  : 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.12) 0%, rgba(100, 12, 30, 0.08) 45%, transparent 75%)',
+                filter: 'blur(60px)',
+              }}
+            />
+
             <div className="attendance-report-hero-content relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div className="max-w-xl space-y-2">
-                <div className={`attendance-report-eyebrow inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                  isDark ? 'bg-white/10 text-[#f89642] border border-white/10' : 'bg-slate-100 text-[#96183c] border border-slate-200'
+                <div className={`attendance-report-eyebrow inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                  isDark ? 'text-slate-300 border-white/10 bg-white/5' : 'text-slate-600 border-slate-200 bg-slate-100'
                 }`}>
-                  <FileText className="w-3.5 h-3.5" />
-                  <span>Gestão Inteligente de Equipes</span>
+                  <span className="w-3.5 h-0.5 rounded-full" style={{ background: 'linear-gradient(90deg, #640C1E, #9F243C, #F59242)' }} />
+                  <span>GESTÃO INTELIGENTE DE EQUIPES</span>
                 </div>
-                <h2 className={`attendance-report-title text-2xl sm:text-3xl font-black tracking-tight leading-tight ${
+                <h1 className={`attendance-report-title text-2xl sm:text-3xl font-black tracking-tight leading-tight ${
                   isDark ? 'text-white' : 'text-slate-900'
                 }`}>
-                  Relatório de <span className="bg-gradient-to-r from-[#96183c] via-[#f89642] to-[#f89642] bg-clip-text text-transparent">Presenças</span>
-                </h2>
-                <p className={`text-xs sm:text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  Relatório de{' '}
+                  <span style={{
+                    background: isDark 
+                      ? 'linear-gradient(90deg, #F9DE97 0%, #F59242 52%, #9F243C 100%)' 
+                      : 'linear-gradient(90deg, #640C1E 0%, #9F243C 52%, #F59242 100%)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text'
+                  }}>
+                    Presenças
+                  </span>
+                </h1>
+                <p className={`text-xs sm:text-sm leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                   Consolidação em tempo real de jornadas, faltas justificadas, assiduidade e histórico operacional.
                 </p>
               </div>
@@ -3378,9 +3389,10 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               <div className="relative z-10 flex items-center gap-3 shrink-0">
                 <button
                   onClick={onExportCsv}
-                  className="attendance-report-export px-5 py-2.5 font-bold text-xs rounded-2xl text-white flex items-center gap-2 shadow-xl hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                  className="attendance-report-export px-5 py-2.5 font-bold text-xs rounded-full text-white flex items-center gap-2 shadow-lg hover:scale-105 active:scale-95 transition-all cursor-pointer"
                   style={{ 
-                    background: 'linear-gradient(135deg, #96183c, #f89847)'
+                    background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)',
+                    boxShadow: '0 4px 18px rgba(100, 12, 30, 0.30)'
                   }}
                 >
                   <Download className="w-4 h-4" /> Exportar Relatório CSV
@@ -3761,7 +3773,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   <h1 className={`reminders-title text-2xl sm:text-3xl font-black tracking-tight leading-tight ${
                     isDark ? 'text-white' : 'text-slate-900'
                   }`}>
-                    Lembretes e  <br className="hidden sm:inline" />
+                    Lembretes e{' '}
                     <span className={`reminders-title-highlight inline-block bg-clip-text text-transparent ${
                       isDark
                         ? 'bg-gradient-to-r from-[#F9DE97] via-[#F59242] to-[#9F243C]'

@@ -191,37 +191,60 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
 
       {/* Header Principal */}
       <div 
-        className={`relative overflow-hidden rounded-3xl border p-6 sm:p-7 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-2xl transition-all duration-300 ${
-          isDark 
-            ? 'border-white/10 bg-[#0F1117]' 
-            : 'border-slate-200 bg-white shadow-slate-200/50'
+        className={`relative overflow-hidden rounded-3xl border p-6 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-2xl transition-all duration-300 ${
+          isDark ? 'border-white/10' : 'border-slate-200'
         }`}
-        style={
-          isDark 
-            ? { background: 'radial-gradient(ellipse 80% 90% at 95% 50%, rgba(150, 24, 60, 0.35) 0%, rgba(248, 150, 66, 0.15) 50%, rgba(15, 17, 23, 0) 80%), #0F1117' }
-            : { background: 'radial-gradient(ellipse 80% 90% at 95% 50%, rgba(150, 24, 60, 0.15) 0%, rgba(248, 150, 66, 0.1) 50%, rgba(255, 255, 255, 0) 80%), #ffffff' }
-        }
+        style={{ 
+          backgroundColor: isDark ? '#111216' : '#ffffff',
+          boxShadow: isDark ? '0 20px 50px rgba(0,0,0,0.6)' : '0 10px 30px rgba(0,0,0,0.06)'
+        }}
       >
-        <div className="space-y-2 relative z-10">
-          <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-            isDark ? 'bg-white/10 text-[#f89642] border border-white/10' : 'bg-slate-100 text-[#96183c] border border-slate-200'
+        {/* Feixe quente alaranjado/vermelho padrão */}
+        <div 
+          className="absolute -top-1/2 -right-10 w-[55%] h-[200%] pointer-events-none"
+          style={{
+            background: isDark
+              ? 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.24) 0%, rgba(100, 12, 30, 0.22) 45%, transparent 75%)'
+              : 'radial-gradient(circle at 60% 50%, rgba(245, 146, 66, 0.12) 0%, rgba(100, 12, 30, 0.08) 45%, transparent 75%)',
+            filter: 'blur(60px)',
+          }}
+        />
+
+        <div className="space-y-2 relative z-10 max-w-xl">
+          <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+            isDark ? 'text-slate-300 border-white/10 bg-white/5' : 'text-slate-600 border-slate-200 bg-slate-100'
           }`}>
-            <Users className="w-3.5 h-3.5" />
-            <span>Quadro Geral da Empresa</span>
+            <span className="w-3.5 h-0.5 rounded-full" style={{ background: 'linear-gradient(90deg, #640C1E, #9F243C, #F59242)' }} />
+            <span>QUADRO GERAL DA EMPRESA</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
-            Gestão de <span className="bg-gradient-to-r from-[#96183c] via-[#f89642] to-[#f89642] bg-clip-text text-transparent">Colaboradores</span>
+          <h1 className={`text-2xl sm:text-3xl font-black tracking-tight leading-tight ${
+            isDark ? 'text-white' : 'text-slate-900'
+          }`}>
+            Gestão de{' '}
+            <span style={{
+              background: isDark 
+                ? 'linear-gradient(90deg, #F9DE97 0%, #F59242 52%, #9F243C 100%)' 
+                : 'linear-gradient(90deg, #640C1E 0%, #9F243C 52%, #F59242 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text'
+            }}>
+              Colaboradores
+            </span>
           </h1>
-          <p className={`text-xs sm:text-sm max-w-xl ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+          <p className={`text-xs sm:text-sm max-w-xl leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
             Cadastre, edite cargos, gerencie jornadas de trabalho e desative colaboradores da sua equipe com conformidade e segurança auditável.
           </p>
         </div>
 
-        <div className="flex items-center gap-3 relative z-10">
+        <div className="flex items-center gap-3 relative z-10 shrink-0">
           <button
             onClick={onAddEmployee}
-            className="px-5 py-3 rounded-2xl font-black text-xs sm:text-sm text-white shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
-            style={{ background: 'linear-gradient(135deg, #96183c, #f89847)' }}
+            className="px-5 py-2.5 font-bold text-xs rounded-full text-white flex items-center gap-2 shadow-lg hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+            style={{ 
+              background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)',
+              boxShadow: '0 4px 18px rgba(100, 12, 30, 0.30)'
+            }}
           >
             <Plus className="w-4 h-4" />
             <span>Novo Colaborador</span>

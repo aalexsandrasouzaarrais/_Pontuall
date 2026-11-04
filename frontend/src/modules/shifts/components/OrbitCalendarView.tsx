@@ -913,10 +913,11 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                       ? 'bg-[#1A1C24] border-white/10 text-slate-200 hover:border-[#F59242]/40 focus:border-[#F59242]'
                       : 'bg-slate-50 border-slate-200 text-slate-800 hover:border-slate-300 focus:bg-white focus:border-[#96183c]'
                   }`}
+                  style={{ colorScheme: isDark ? 'dark' : 'light' }}
                 >
-                  <option value="all" className="text-slate-800">Todos os Setores</option>
+                  <option value="all" className={isDark ? "bg-[#1A1C24] text-white" : "bg-white text-slate-800"}>Todos os Setores</option>
                   {departments.map((dept) => (
-                    <option key={dept} value={dept} className="text-slate-800">
+                    <option key={dept} value={dept} className={isDark ? "bg-[#1A1C24] text-white" : "bg-white text-slate-800"}>
                       {dept}
                     </option>
                   ))}
