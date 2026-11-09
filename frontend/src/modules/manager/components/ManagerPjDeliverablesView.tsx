@@ -554,7 +554,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                           <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-center">Horário</th>
                           <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-center">Duração</th>
                           <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Evidências</th>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-right">Status</th>
+                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-center">Status</th>
                         </tr>
                       </thead>
                       <tbody className={`divide-y ${isDark ? 'divide-white/5' : 'divide-slate-200'}`}>
@@ -641,31 +641,27 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                                 )}
                               </div>
                             </td>
-                            <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                            <td className="py-2.5 px-3 text-center whitespace-nowrap">
                               {entry.reportStatus === 'approved' ? (
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                  isDark ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                                }`}>
-                                  Homologado
-                                </span>
+                                <span
+                                  className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500"
+                                  title="Homologado"
+                                />
                               ) : entry.reportStatus === 'rejected' ? (
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                  isDark ? 'bg-rose-500/20 text-rose-400 border-rose-500/30' : 'bg-rose-100 text-rose-700 border-rose-200'
-                                }`}>
-                                  Com Ajuste
-                                </span>
+                                <span
+                                  className="inline-block w-2.5 h-2.5 rounded-full bg-rose-500"
+                                  title="Com Ajuste"
+                                />
                               ) : entry.reportStatus === 'pending' ? (
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                  isDark ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-amber-100 text-amber-700 border-amber-200'
-                                }`}>
-                                  Aguardando
-                                </span>
+                                <span
+                                  className="inline-block w-2.5 h-2.5 rounded-full bg-amber-400"
+                                  title="Aguardando"
+                                />
                               ) : (
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                  isDark ? 'bg-white/10 text-slate-300 border-white/15' : 'bg-slate-200 text-slate-700 border-slate-300'
-                                }`}>
-                                  Em Aberto
-                                </span>
+                                <span
+                                  className="inline-block w-2.5 h-2.5 rounded-full bg-slate-400"
+                                  title="Em Aberto"
+                                />
                               )}
                             </td>
                           </tr>
