@@ -44,7 +44,8 @@ export async function getPjReportsSupabase(employeeId?: string): Promise<PjDeliv
 
     if (!error && data) {
       const localCache = getLocalReports();
-      const mapped: PjDeliverableReport[] = data.map((row: any) => {
+      const validRows = data.filter((row: any) => row.Des_Periodo_Referencia !== "__PJ_CONTRACT_PARAMS__");
+      const mapped: PjDeliverableReport[] = validRows.map((row: any) => {
         let timesheetParsed: PjTimesheetEntry[] = [];
         if (Array.isArray(row.Des_Timesheet_Json)) {
           timesheetParsed = row.Des_Timesheet_Json;
@@ -104,7 +105,7 @@ export async function getPjReportsSupabase(employeeId?: string): Promise<PjDeliv
   }
 
   // Fallback local
-  const local = getLocalReports();
+  const local = getLocalReports().filter(r => r.period !== "__PJ_CONTRACT_PARAMS__");
   if (employeeId) {
     return local.filter(r => r.employeeId === employeeId);
   }
