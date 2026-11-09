@@ -930,7 +930,7 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                     content = (
                       <span
                         className="w-8 h-8 rounded-full text-white font-black flex items-center justify-center mx-auto shadow-md"
-                        style={{ background: 'linear-gradient(135deg, #96183c, #f89847)' }}
+                        style={{ backgroundColor: '#B01F46' }}
                       >
                         {cell.dayNumber}
                       </span>
