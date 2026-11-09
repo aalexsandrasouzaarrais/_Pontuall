@@ -416,13 +416,6 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
     return () => clearTimeout(timer);
   }, [isOpen, newWorkplaceAddress, isAddingNewWorkplace]);
 
-  // Atualiza o tipo e sincroniza automaticamente a cor correspondente
-  const handleShiftTypeChange = (newType: string) => {
-    setShiftType(newType);
-    const newColor = getColorForShiftType(newType);
-    setSelectedColor(newColor);
-  };
-
   // Ao clicar diretamente numa cor da paleta, sincroniza também o tipo se houver categoria correspondente
   const handleColorChange = (c: ShiftColor) => {
     setSelectedColor(c);
@@ -1144,45 +1137,24 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
               </select>
             </div>
 
-            {/* Shift type + Title */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-semibold" style={labelStyle}>
-                    TIPO DE TURNO
-                  </label>
-                </div>
-                <select
-                  value={shiftType}
-                  onChange={e => handleShiftTypeChange(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all cursor-pointer"
-                  style={inputStyle}
-                >
-                  {SHIFT_TYPES.map(t => (
-                    <option key={t} value={t} style={optionStyle}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-semibold mb-1.5 block" style={labelStyle}>
-                  TÍTULO / IDENTIFICADOR
-                </label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={e => setTitle(e.target.value)}
-                  placeholder="Ex: Sprint Planning"
-                  required
-                  className={`w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all ${
-                    isLight ? 'placeholder:text-slate-400' : 'placeholder:text-white/25'
-                  }`}
-                  style={inputStyle}
-                  onFocus={e => e.target.style.borderColor = "rgba(248,152,71,0.8)"}
-                  onBlur={e => e.target.style.borderColor = isLight ? "#cbd5e1" : "rgba(255,255,255,0.12)"}
-                />
-              </div>
+            {/* Title */}
+            <div>
+              <label className="text-xs font-semibold mb-1.5 block" style={labelStyle}>
+                TÍTULO / IDENTIFICADOR
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                placeholder="Ex: Sprint Planning"
+                required
+                className={`w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all ${
+                  isLight ? 'placeholder:text-slate-400' : 'placeholder:text-white/25'
+                }`}
+                style={inputStyle}
+                onFocus={e => e.target.style.borderColor = "rgba(248,152,71,0.8)"}
+                onBlur={e => e.target.style.borderColor = isLight ? "#cbd5e1" : "rgba(255,255,255,0.12)"}
+              />
             </div>
 
             {/* Date + Times */}
