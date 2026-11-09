@@ -44,8 +44,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
   const [contractEndDateError, setContractEndDateError] = useState(false);
 
   // Campos de Contrato PJ (Valor da Hora e Quantidade de Horas Mensais)
-  const [pjHourlyRate, setPjHourlyRate] = useState<string>('85');
-  const [pjMonthlyHoursQuota, setPjMonthlyHoursQuota] = useState<string>('160');
+  const [pjHourlyRate, setPjHourlyRate] = useState<string>('');
+  const [pjMonthlyHoursQuota, setPjMonthlyHoursQuota] = useState<string>('');
 
   // Função para gerar uma matrícula aleatória única
   const generateRandomId = () => {
@@ -151,8 +151,8 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       setStartDate(getTodayDateString());
       setContractEndDate('');
       setContractEndDateError(false);
-      setPjHourlyRate('85');
-      setPjMonthlyHoursQuota('160');
+      setPjHourlyRate('');
+      setPjMonthlyHoursQuota('');
       setSendWelcomeEmail(true);
       setFirstNameError(false);
       setLastNameError(false);
@@ -1014,7 +1014,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                             min="0"
                             value={pjHourlyRate}
                             onChange={(e) => setPjHourlyRate(e.target.value)}
-                            placeholder="85.00"
+                            placeholder="0.00"
                             className={`w-full pl-9 pr-12 py-2.5 rounded-xl text-sm font-semibold outline-none border transition-all ${
                               isDark
                                 ? 'bg-[#181A24] border-white/10 text-white focus:border-[#f89847]'
@@ -1043,7 +1043,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                             min="1"
                             value={pjMonthlyHoursQuota}
                             onChange={(e) => setPjMonthlyHoursQuota(e.target.value)}
-                            placeholder="160"
+                            placeholder="0"
                             className={`w-full pl-3.5 pr-20 py-2.5 rounded-xl text-sm font-semibold outline-none border transition-all ${
                               isDark
                                 ? 'bg-[#181A24] border-white/10 text-white focus:border-[#f89847]'

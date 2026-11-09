@@ -65,8 +65,8 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
     contractType: 'CLT' as 'CLT' | 'PJ' | 'TEMPORARIO',
     contractStartDate: '',
     contractEndDate: '',
-    hourlyRate: '85',
-    monthlyHoursQuota: '160',
+    hourlyRate: '',
+    monthlyHoursQuota: '',
   });
 
   // Lista de gestores únicos e disponíveis para vinculação
@@ -139,8 +139,8 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
       contractType: (emp.contractType || 'CLT') as 'CLT' | 'PJ' | 'TEMPORARIO',
       contractStartDate: emp.contractStartDate || '',
       contractEndDate: emp.contractEndDate || '',
-      hourlyRate: emp.hourlyRate !== undefined ? String(emp.hourlyRate) : '85',
-      monthlyHoursQuota: emp.monthlyHoursQuota !== undefined ? String(emp.monthlyHoursQuota) : '160',
+      hourlyRate: emp.hourlyRate !== undefined ? String(emp.hourlyRate) : '',
+      monthlyHoursQuota: emp.monthlyHoursQuota !== undefined ? String(emp.monthlyHoursQuota) : '',
     });
   };
 
@@ -838,7 +838,7 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                         min="0"
                         value={editForm.hourlyRate}
                         onChange={e => setEditForm({ ...editForm, hourlyRate: e.target.value })}
-                        placeholder="Ex: 85.00"
+                        placeholder="0.00"
                         className={`w-full px-3 py-2 rounded-xl border outline-none ${
                           isDark ? 'bg-[#0b0c10] border-[#252A3A] text-white' : 'bg-white border-slate-200 text-slate-900'
                         }`}
@@ -854,7 +854,7 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                         min="1"
                         value={editForm.monthlyHoursQuota}
                         onChange={e => setEditForm({ ...editForm, monthlyHoursQuota: e.target.value })}
-                        placeholder="Ex: 160"
+                        placeholder="0"
                         className={`w-full px-3 py-2 rounded-xl border outline-none ${
                           isDark ? 'bg-[#0b0c10] border-[#252A3A] text-white' : 'bg-white border-slate-200 text-slate-900'
                         }`}
