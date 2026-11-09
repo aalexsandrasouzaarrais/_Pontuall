@@ -1147,14 +1147,12 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                   </div>
                 </div>
 
-                {/* 7 Colunas dos Dias da Semana com Cabeçalho e Contador Discreto */}
-                <div className="grid grid-cols-7 gap-2 sm:gap-2.5">
+                {/* 7 Colunas dos Dias da Semana com Cabeçalho */}
+                <div className="grid grid-cols-7 gap-2.5 sm:gap-3">
                   {weekDays.map((d) => {
                     const dateStr = formatDate(d);
                     const isSelected = dateStr === formatDate(currentDate);
                     const dayNameShort = DAYS_SHORT[d.getDay()];
-                    const monthShort = MONTHS_SHORT_PT[d.getMonth()];
-                    const dayEventsCount = (eventsByDate[dateStr] || []).length;
 
                     return (
                       <div
@@ -1162,37 +1160,38 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                         onClick={() => {
                           setCurrentDate(d);
                         }}
-                        className={`flex flex-col items-center justify-center py-2 px-1.5 rounded-2xl transition-all cursor-pointer ${
+                        className={`flex flex-col items-center justify-center py-2.5 sm:py-3 px-1.5 rounded-2xl transition-all cursor-pointer ${
                           isSelected
                             ? isDark
-                              ? 'bg-[#7a1428] text-white shadow-md shadow-[#7a1428]/30 border border-[#96183c]/60 scale-[1.01]'
-                              : 'bg-[#96183c] text-white shadow-sm border border-[#96183c] scale-[1.01]'
+                              ? 'bg-[#96183C] text-white shadow-lg shadow-[#96183C]/35 border border-[#96183c] scale-[1.01]'
+                              : 'bg-white text-slate-900 shadow-md border-2 border-[#e65a37] scale-[1.01]'
                             : isDark
                               ? 'bg-[#181a22] text-slate-300 border border-white/5 hover:border-white/15 hover:text-white'
-                              : 'bg-slate-100/90 text-slate-800 border border-slate-200/80 hover:bg-slate-100'
+                              : 'bg-[#fce5dc]/95 text-slate-800 border border-white/40 hover:bg-[#fff0e8]'
                         }`}
                       >
                         <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                          isSelected ? 'text-white/90' : isDark ? 'text-slate-400' : 'text-slate-500'
+                          isSelected
+                            ? !isDark
+                              ? 'text-[#e65a37]'
+                              : 'text-white/90'
+                            : isDark
+                              ? 'text-slate-400'
+                              : 'text-slate-500'
                         }`}>
                           {dayNameShort}
                         </span>
-                        <span className="text-xl sm:text-2xl font-black tracking-tight my-0.5">
+                        <span className={`text-xl sm:text-2xl font-black tracking-tight my-0.5 ${
+                          isSelected
+                            ? !isDark
+                              ? 'text-black'
+                              : 'text-white'
+                            : isDark
+                              ? 'text-white'
+                              : 'text-slate-900'
+                        }`}>
                           {d.getDate()}
                         </span>
-                        <div className={`mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-semibold transition-all ${
-                          isSelected
-                            ? 'bg-white/20 text-white'
-                            : dayEventsCount > 0
-                              ? isDark
-                                ? 'bg-white/10 text-slate-300'
-                                : 'bg-black/5 text-slate-700'
-                              : isDark
-                                ? 'text-slate-500 opacity-60'
-                                : 'text-slate-400 opacity-60'
-                        }`}>
-                          {dayEventsCount === 0 ? '0 escalas' : `${dayEventsCount} ${dayEventsCount === 1 ? 'escala' : 'escalas'}`}
-                        </div>
                       </div>
                     );
                   })}
