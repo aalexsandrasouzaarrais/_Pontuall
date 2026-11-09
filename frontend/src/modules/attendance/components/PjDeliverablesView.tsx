@@ -142,7 +142,7 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
 
   useEffect(() => {
     loadData();
-  }, [employee.id]);
+  }, [employee.id, activeSubView]);
 
   // Atualiza rascunhos quando uma nova entrada é adicionada via PjTimesheetTracker
   const handleEntryAdded = (newEntry: PjTimesheetEntry) => {
@@ -660,6 +660,63 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                 </p>
                               </div>
             </div>
+
+            {/* AVISO DE PEDIDOS DE AJUSTE DO GESTOR NA VISÃO GERAL */}
+            {adjustmentItems.length > 0 && (
+              <div className={`p-4 sm:p-5 rounded-3xl border space-y-2.5 transition-all ${
+                isDark ? 'bg-[#151822] border-rose-500/30' : 'bg-rose-50/70 border-rose-200 shadow-xs'
+              }`}>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className={`w-4 h-4 shrink-0 ${isDark ? 'text-rose-400' : 'text-rose-600'}`} />
+                    <h3 className={`text-xs sm:text-sm font-bold ${isDark ? 'text-rose-200' : 'text-rose-900'}`}>
+                      Pedidos de Ajuste do Gestor ({adjustmentItems.length})
+                    </h3>
+                  </div>
+                  {onNavigateToTimesheet && (
+                    <button
+                      type="button"
+                      onClick={onNavigateToTimesheet}
+                      className={`text-xs font-semibold underline cursor-pointer ${isDark ? 'text-rose-300 hover:text-white' : 'text-rose-700 hover:text-rose-900'}`}
+                    >
+                      Ir para Timesheet
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {adjustmentItems.map(item => (
+                    <div
+                      key={item.id}
+                      className={`p-3 rounded-2xl border text-xs space-y-1 ${
+                        isDark ? 'bg-[#0e1017] border-white/10' : 'bg-white border-rose-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`font-mono font-bold text-[10px] px-2 py-0.5 rounded border ${
+                          isDark ? 'bg-white/5 text-slate-200 border-white/10' : 'bg-slate-100 text-slate-700 border-slate-200'
+                        }`}>
+                          {item.taskCode}
+                        </span>
+                        <span className={`font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                          {item.project}
+                        </span>
+                        {item.date && (
+                          <span className="text-[11px] text-slate-400 font-mono">
+                            • {formatDateBR(item.date)}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`truncate ${isDark ? 'text-slate-400' : 'text-slate-600'}`} title={item.description}>
+                        {item.description}
+                      </p>
+                      <div className={`pt-0.5 font-medium ${isDark ? 'text-rose-300' : 'text-rose-700'}`}>
+                        <strong>Comentário do Gestor:</strong> {item.feedback}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* 2. MEU FATURAMENTO & CALCULADORA DE HORAS PJ */}
             <div
