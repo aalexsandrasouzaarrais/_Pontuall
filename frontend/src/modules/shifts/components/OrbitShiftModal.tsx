@@ -560,8 +560,8 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
       || editingShift?.workplaceLocation
       || (editingShift?.workplace ? { name: editingShift.workplace, address: editingShift.workplace } : null);
 
-    const wpName = currentWp?.name || 'Sede Principal / Matriz';
-    const wpAddress = currentWp?.address || 'Endereço Principal da Empresa';
+    const wpName = currentWp?.name || 'Home Office / Remoto';
+    const wpAddress = currentWp?.address || 'Trabalho Remoto / Domiciliar';
     const mapsLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${wpName} ${wpAddress}`)}`;
 
     // Formatação da data no cabeçalho: "Terça-feira, 03/11/2026"
