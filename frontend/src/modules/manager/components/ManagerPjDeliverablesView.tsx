@@ -645,8 +645,10 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
               </div>
 
               {/* CABEÇALHO DO COLABORADOR PJ + BOTÕES DE EXPORTAR PLANILHA */}
-              <div className={`flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b ${
-                isDark ? 'border-white/10' : 'border-slate-200'
+              <div className={`flex flex-col lg:flex-row lg:items-center justify-between gap-4 ${
+                statusFilter !== 'all' && group.reports.length > 0
+                  ? `pb-4 border-b ${isDark ? 'border-white/10' : 'border-slate-200'}`
+                  : ''
               }`}>
                 <div className="flex items-center gap-3.5">
                   <img
@@ -724,7 +726,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
               </div>
 
               {/* BARRA DE FECHAMENTOS SUBMETIDOS (Para Aprovar ou Solicitar Ajustes) */}
-              {group.reports.length > 0 && (
+              {statusFilter !== 'all' && group.reports.length > 0 && (
                 <div className="space-y-3">
                   {group.reports.map(rep => {
                     const isDetailsOpen = Boolean(expandedReportDetails[rep.id]);
