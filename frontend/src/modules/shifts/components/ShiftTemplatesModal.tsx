@@ -168,7 +168,7 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
     return list[0]?.id || '';
   });
 
-  // Filtra colaboradores excluindo gestores da alocação de escalas em lote
+  // Filtra colaboradores excluindo gestores e PJ da alocação de escalas em lote
   const schedulableEmployees = useMemo(() => {
     return getSchedulableEmployees(employees);
   }, [employees]);
@@ -177,6 +177,19 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>(() => 
     getSchedulableEmployees(employees).map(e => e.id)
   );
+
+  const hasInitializedSelectionRef = React.useRef(schedulableEmployees.length > 0);
+  React.useEffect(() => {
+    const validIds = new Set(schedulableEmployees.map(e => e.id));
+    setSelectedEmployeeIds(prev => {
+      const filtered = prev.filter(id => validIds.has(id));
+      if (!hasInitializedSelectionRef.current && schedulableEmployees.length > 0) {
+        hasInitializedSelectionRef.current = true;
+        return schedulableEmployees.map(e => e.id);
+      }
+      return filtered;
+    });
+  }, [schedulableEmployees]);
 
   // New Template Form States
   const [newTemplateName, setNewTemplateName] = useState('');
@@ -680,7 +693,6 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
                   boxShadow: '0 4px 18px rgba(100, 12, 30, 0.45)'
                 }}
               >
-                <Sparkles className="w-4 h-4 fill-[#F9DE97]/30" />
                 <span>Aplicar na Semana</span>
               </button>
             </div>
