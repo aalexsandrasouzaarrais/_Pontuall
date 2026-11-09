@@ -4,6 +4,7 @@ function isUuid(id?: string): boolean {
 }
 
 import { supabase } from '@/shared/services/supabase';
+import { createNotificationSupabase } from '@/modules/notifications/services/notificationService';
 import { safeStorage } from '@/shared/utils/safeStorage';
 import { PjDeliverableReport, PjReportLink, PjTimesheetEntry, PjActiveTimerState } from '@/types';
 
@@ -81,20 +82,19 @@ export async function getPjReportsSupabase(employeeId?: string): Promise<PjDeliv
 
       const validRows = data.filter((row: any) => !isInternalPjMetaRow(row.Des_Periodo_Referencia, row.Tpo_Status));
       const mapped: PjDeliverableReport[] = validRows.map((row: any) => {
-        let timesheetParsed: PjTimesheetEntry[] = [];
-        if (Array.isArray(row.Des_Timesheet_Json)) {
-          timesheetParsed = row.Des_Timesheet_Json;
-        } else if (typeof row.Des_Timesheet_Json === 'string') {
-          try {
-            timesheetParsed = JSON.parse(row.Des_Timesheet_Json);
-          } catch {}
-        }
-
         const rawLinks: any[] = Array.isArray(row.Des_Links_Json) ? row.Des_Links_Json : [];
         const metaItem = rawLinks.find(l => l && l.title === '__TIMESHEET_META__');
-        if ((!timesheetParsed || timesheetParsed.length === 0) && metaItem?.url) {
+        let timesheetParsed: PjTimesheetEntry[] = [];
+        if (metaItem?.url) {
           try {
             timesheetParsed = JSON.parse(metaItem.url);
+          } catch {}
+        }
+        if ((!timesheetParsed || timesheetParsed.length === 0) && Array.isArray(row.Des_Timesheet_Json)) {
+          timesheetParsed = row.Des_Timesheet_Json;
+        } else if ((!timesheetParsed || timesheetParsed.length === 0) && typeof row.Des_Timesheet_Json === 'string') {
+          try {
+            timesheetParsed = JSON.parse(row.Des_Timesheet_Json);
           } catch {}
         }
         const cleanLinks: PjReportLink[] = rawLinks.filter(l => l && l.title !== '__TIMESHEET_META__');
@@ -283,18 +283,25 @@ export async function updatePjReportStatusSupabase(
 export async function updatePjTimesheetTaskStatus(params: {
   employeeId: string;
   taskId: string;
+  taskCode?: string;
+  taskDescription?: string;
   reportId?: string;
   status: 'approved' | 'rejected';
   managerFeedback?: string;
 }): Promise<void> {
-  const { employeeId, taskId, reportId, status, managerFeedback } = params;
+  const { employeeId, taskId, taskCode, taskDescription, reportId, status, managerFeedback } = params;
+  let matchedTaskLabel = taskCode || '';
 
   // 1. Atualiza no rascunho em aberto do colaborador (se a tarefa estiver lá)
   const draft = getDraftTimesheet(employeeId);
   if (draft.some(t => t.id === taskId)) {
-    const updatedDraft = draft.map(t =>
-      t.id === taskId ? { ...t, status, managerFeedback: managerFeedback || undefined } : t
-    );
+    const updatedDraft = draft.map(t => {
+      if (t.id === taskId) {
+        if (!matchedTaskLabel) matchedTaskLabel = t.taskCode || t.project || '';
+        return { ...t, status, managerFeedback: managerFeedback || undefined };
+      }
+      return t;
+    });
     await saveDraftTimesheetToSupabase(employeeId, updatedDraft);
   }
 
@@ -303,9 +310,13 @@ export async function updatePjTimesheetTaskStatus(params: {
     const currentReports = getLocalReports();
     const targetReport = currentReports.find(r => r.id === reportId);
     if (targetReport && Array.isArray(targetReport.timesheetEntries) && targetReport.timesheetEntries.length > 0) {
-      const updatedEntries = targetReport.timesheetEntries.map(t =>
-        t.id === taskId ? { ...t, status, managerFeedback: managerFeedback || undefined } : t
-      );
+      const updatedEntries = targetReport.timesheetEntries.map(t => {
+        if (t.id === taskId) {
+          if (!matchedTaskLabel) matchedTaskLabel = t.taskCode || t.project || '';
+          return { ...t, status, managerFeedback: managerFeedback || undefined };
+        }
+        return t;
+      });
       const allApproved = updatedEntries.every(t => t.status === 'approved');
       const anyRejected = updatedEntries.some(t => t.status === 'rejected');
       const newReportStatus: 'pending' | 'approved' | 'rejected' = allApproved
@@ -332,15 +343,24 @@ export async function updatePjTimesheetTaskStatus(params: {
           ...cleanLinks,
           { title: '__TIMESHEET_META__', url: JSON.stringify(updatedEntries) },
         ];
-        await supabase
+        const updatePayload: any = {
+          Des_Timesheet_Json: updatedEntries,
+          Des_Links_Json: linksWithMeta,
+          Tpo_Status: newReportStatus,
+          Des_Parecer_Gestor: managerFeedback || targetReport.managerFeedback || null,
+        };
+        const { error } = await supabase
           .from('TAB_Relatorio_Pj')
-          .update({
-            Des_Timesheet_Json: updatedEntries,
-            Des_Links_Json: linksWithMeta,
-            Tpo_Status: newReportStatus,
-            Des_Parecer_Gestor: managerFeedback || targetReport.managerFeedback || null,
-          })
+          .update(updatePayload)
           .eq('Idf_Relatorio_Pj', reportId);
+
+        if (error && (error.message?.includes('Des_Timesheet_Json') || error.code === 'PGRST204')) {
+          delete updatePayload.Des_Timesheet_Json;
+          await supabase
+            .from('TAB_Relatorio_Pj')
+            .update(updatePayload)
+            .eq('Idf_Relatorio_Pj', reportId);
+        }
       } catch (err) {
         console.warn('Aviso ao atualizar tarefa individual no relatório PJ:', err);
       }
@@ -348,6 +368,19 @@ export async function updatePjTimesheetTaskStatus(params: {
       // Relatório sem sub-itens (linha única representativa)
       await updatePjReportStatusSupabase(reportId, status, managerFeedback);
     }
+  }
+
+  // 3. Envia notificação direta ao colaborador PJ quando houver pedido de ajuste ou homologação
+  if (employeeId && status === 'rejected') {
+    const label = matchedTaskLabel ? ` ${matchedTaskLabel}` : '';
+    const descPreview = taskDescription ? ` ("${taskDescription.slice(0, 60)}")` : '';
+    await createNotificationSupabase({
+      targetEmployeeId: employeeId,
+      title: `Ajuste Solicitado na Tarefa${label}`,
+      message: `O gestor solicitou ajuste na sua tarefa${label}${descPreview}. Comentário do gestor: "${managerFeedback || 'Verificar tarefa'}"`,
+      type: 'approval',
+      actionRequired: true,
+    });
   }
 }
 
