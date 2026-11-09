@@ -638,20 +638,22 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
 
           {/* Conteúdo */}
           <div className="hero-content">
-            <div className="badge">Junte-se a nós</div>
+            <div className="badge">
+              {viewMode === 'register' ? 'Cadastro Corporativo' : 'Junte-se a nós'}
+            </div>
 
             <h1 id="heroTitle">
               {viewMode === 'register' ? (
                 <>
-                  Comece sua
+                  Cadastre sua
                   <br />
-                  <span>jornada</span>
+                  <span>empresa & RH</span>
                 </>
               ) : currentRole === 'gestor' ? (
                 <>
-                  Painel do
+                  Painel de
                   <br />
-                  <span>gestor</span>
+                  <span>gestão & RH</span>
                 </>
               ) : (
                 <>
@@ -664,9 +666,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
 
             <p className="hero-description" id="heroDesc">
               {viewMode === 'register'
-                ? 'Siga estes passos simples para configurar sua conta de gestor.'
+                ? 'Siga estes passos simples para cadastrar sua empresa e configurar a conta de RH.'
                 : currentRole === 'gestor'
-                ? 'Informe seus dados para acessar o painel de gestão.'
+                ? 'Informe seus dados para acessar o painel de RH e gestão.'
                 : 'Siga estes passos simples para acessar sua conta.'}
             </p>
 
@@ -697,9 +699,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
                 <div className="step-text" id="stepText1">
                   {viewMode === 'register' ? (
                     <>
-                      Informe seus
+                      Dados da
                       <br />
-                      dados
+                      empresa & RH
                     </>
                   ) : (
                     <>
@@ -966,16 +968,16 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
                       <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
                       <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
                     </svg>
-                    <span>Gestor</span>
+                    <span>Gestor / RH</span>
                   </button>
                 </div>
 
                 <h2 id="formTitle">
-                  {currentRole === 'gestor' ? 'Entrar como Gestor' : 'Entrar como Colaborador'}
+                  {currentRole === 'gestor' ? 'Entrar como RH / Gestor' : 'Entrar como Colaborador'}
                 </h2>
                 <p className="form-subtitle" id="formSubtitle">
                   {currentRole === 'gestor'
-                    ? 'Acesse o painel de controle e acompanhamento de ponto.'
+                    ? 'Acesse o painel de controle, RH e gestão de pontos.'
                     : 'Acesse com seu email corporativo (ou ID) e senha.'}
                 </p>
 
@@ -1333,10 +1335,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
                   >
                     <span>
                       {isRegLoading
-                        ? 'Criando sua conta...'
+                        ? 'Criando conta corporativa...'
                         : regSuccess
                         ? '✓ Conta criada com sucesso!'
-                        : 'Criar conta de Gestor'}
+                        : 'Criar conta de RH & Empresa'}
                     </span>
                   </button>
                 </form>
