@@ -1,6 +1,6 @@
 import { getTodayDateString } from '@/shared/utils/dateUtils';
 import React, { useState, useEffect } from 'react';
-import { User, X, Check, Sparkles, RefreshCw, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, Clock, DollarSign } from 'lucide-react';
+import { User, X, Check, Sparkles, RefreshCw, ArrowRight, ArrowLeft, AlertCircle, CheckCircle2, Clock, DollarSign, Plus } from 'lucide-react';
 import { Employee } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
 import { safeStorage } from '@/shared/utils/safeStorage';
@@ -53,8 +53,44 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     return `PNT-${randomNum}`;
   };
 
+  const DEFAULT_DEPARTMENTS = ['Atendimento', 'Suporte Técnico', 'Operações', 'Comercial', 'Tecnologia'];
+  const CUSTOM_DEPTS_KEY = 'pontual_custom_departments_v1';
+
+  const getAvailableDepartments = (): string[] => {
+    const set = new Set<string>(DEFAULT_DEPARTMENTS);
+    try {
+      const raw = safeStorage.getItem(CUSTOM_DEPTS_KEY) || localStorage.getItem(CUSTOM_DEPTS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) parsed.forEach(d => d && typeof d === 'string' && set.add(d.trim()));
+      }
+    } catch {}
+    (employees || []).forEach(e => {
+      if (e?.department && e.department.trim()) set.add(e.department.trim());
+    });
+    return Array.from(set);
+  };
+
   const [role, setRole] = useState('');
+  const [departmentsList, setDepartmentsList] = useState<string[]>(() => getAvailableDepartments());
   const [department, setDepartment] = useState('Atendimento');
+  const [isCreatingDepartment, setIsCreatingDepartment] = useState(false);
+  const [newDepartmentName, setNewDepartmentName] = useState('');
+
+  const handleSaveNewDepartment = () => {
+    const trimmed = newDepartmentName.trim();
+    if (!trimmed) return;
+    const updated = Array.from(new Set([...departmentsList, trimmed]));
+    setDepartmentsList(updated);
+    setDepartment(trimmed);
+    setNewDepartmentName('');
+    setIsCreatingDepartment(false);
+    try {
+      const customOnly = updated.filter(d => !DEFAULT_DEPARTMENTS.includes(d));
+      safeStorage.setItem(CUSTOM_DEPTS_KEY, JSON.stringify(customOnly));
+      localStorage.setItem(CUSTOM_DEPTS_KEY, JSON.stringify(customOnly));
+    } catch {}
+  };
   const [userRole, setUserRole] = useState('Colaborador');
   const [employmentType, setEmploymentType] = useState('CLT');
 
@@ -105,7 +141,11 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       setPhone('');
       setEmployeeId(generateRandomId());
       setRole('');
-      setDepartment('Atendimento');
+      const availDepts = getAvailableDepartments();
+      setDepartmentsList(availDepts);
+      setDepartment(availDepts[0] || 'Atendimento');
+      setIsCreatingDepartment(false);
+      setNewDepartmentName('');
       setUserRole('Colaborador');
       setEmploymentType('CLT');
       setStartDate(getTodayDateString());
@@ -334,6 +374,17 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       } catch {}
     }
 
+    if (isCreatingDepartment && newDepartmentName.trim()) {
+      const trimmedDept = newDepartmentName.trim();
+      const updatedDepts = Array.from(new Set([...departmentsList, trimmedDept]));
+      setDepartmentsList(updatedDepts);
+      setDepartment(trimmedDept);
+      try {
+        const customOnly = updatedDepts.filter(d => !DEFAULT_DEPARTMENTS.includes(d));
+        safeStorage.setItem(CUSTOM_DEPTS_KEY, JSON.stringify(customOnly));
+        localStorage.setItem(CUSTOM_DEPTS_KEY, JSON.stringify(customOnly));
+      } catch {}
+    }
     const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
     const cleanId = employeeId.trim() || generateRandomId();
     const isRhSelected = userRole === 'Administrador' || userRole === 'RH';
@@ -348,7 +399,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
       registrationId: cleanId,
       name: fullName,
       role: role.trim(),
-      department: department.trim() || 'Operações',
+      department: (isCreatingDepartment && newDepartmentName.trim() ? newDepartmentName.trim() : department.trim()) || 'Operações',
       avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName || 'Colaborador')}&background=96183c&color=fff&size=150`,
       email: email.trim() || `${firstName.toLowerCase().replace(/\s+/g, '')}@pontual.com.br`,
       phone: phone.trim() || '(11) 98765-4321',
@@ -438,12 +489,6 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
           isDark ? 'border-white/10' : 'border-slate-150 bg-slate-50/50'
         }`}>
           <div className="flex items-center gap-3.5">
-            <div
-              className="w-10 h-10 rounded-2xl flex items-center justify-center shadow-md shrink-0"
-              style={{ background: 'linear-gradient(135deg, #96183c, #f89847)' }}
-            >
-              <User className="w-5 h-5 text-white" />
-            </div>
             <div>
               <h2 className={`text-base sm:text-lg font-bold tracking-tight ${
                 isDark ? 'text-white' : 'text-slate-900'
@@ -776,26 +821,81 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                   </div>
 
                   <div>
-                    <label className={`text-xs font-semibold mb-1.5 block ${
-                      isDark ? 'text-slate-300' : 'text-slate-700'
-                    }`}>
-                      Departamento / Setor*
-                    </label>
-                    <select
-                      value={department}
-                      onChange={(e) => setDepartment(e.target.value)}
-                      className={`w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all cursor-pointer border ${
-                        isDark
-                          ? 'bg-[#181A24] border-white/10 text-white focus:border-[#f89847]'
-                          : 'bg-slate-50 border-slate-200 text-slate-800 focus:bg-white focus:border-[#96183c]'
-                      }`}
-                    >
-                      <option value="Atendimento" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>Atendimento</option>
-                      <option value="Suporte Técnico" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>Suporte Técnico</option>
-                      <option value="Operações" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>Operações</option>
-                      <option value="Comercial" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>Comercial</option>
-                      <option value="Tecnologia" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>Tecnologia</option>
-                    </select>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className={`text-xs font-semibold block ${
+                        isDark ? 'text-slate-300' : 'text-slate-700'
+                      }`}>
+                        Departamento / Setor*
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCreatingDepartment(prev => !prev);
+                          setNewDepartmentName('');
+                        }}
+                        className="text-[11px] flex items-center gap-1 font-semibold text-[#f89847] hover:underline cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>{isCreatingDepartment ? 'Selecionar existente' : 'Novo Setor'}</span>
+                      </button>
+                    </div>
+
+                    {isCreatingDepartment ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={newDepartmentName}
+                          onChange={(e) => setNewDepartmentName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleSaveNewDepartment();
+                            }
+                          }}
+                          placeholder="Digite o nome do novo setor..."
+                          autoFocus
+                          className={`flex-1 px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all border ${
+                            isDark
+                              ? 'bg-[#181A24] border-[#f89847]/60 text-white placeholder:text-slate-500 focus:border-[#f89847]'
+                              : 'bg-white border-[#96183c]/60 text-slate-800 placeholder:text-slate-400 focus:border-[#96183c]'
+                          }`}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSaveNewDepartment}
+                          className="px-3.5 py-2.5 rounded-xl text-xs font-bold text-white shrink-0 cursor-pointer transition-all hover:opacity-90"
+                          style={{ background: 'linear-gradient(135deg, #96183c, #f89847)' }}
+                        >
+                          Criar
+                        </button>
+                      </div>
+                    ) : (
+                      <select
+                        value={department}
+                        onChange={(e) => {
+                          if (e.target.value === '__NEW_SECTOR__') {
+                            setIsCreatingDepartment(true);
+                            setNewDepartmentName('');
+                          } else {
+                            setDepartment(e.target.value);
+                          }
+                        }}
+                        className={`w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all cursor-pointer border ${
+                          isDark
+                            ? 'bg-[#181A24] border-white/10 text-white focus:border-[#f89847]'
+                            : 'bg-slate-50 border-slate-200 text-slate-800 focus:bg-white focus:border-[#96183c]'
+                        }`}
+                      >
+                        {departmentsList.map(dept => (
+                          <option key={dept} value={dept} className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>
+                            {dept}
+                          </option>
+                        ))}
+                        <option value="__NEW_SECTOR__" className={isDark ? "bg-[#181A24] text-[#f89847] font-bold" : "bg-white text-[#96183c] font-bold"}>
+                          + Criar novo setor...
+                        </option>
+                      </select>
+                    )}
                   </div>
                 </div>
 

@@ -85,9 +85,16 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
     });
   }, [employees]);
 
-  // Lista de departamentos únicos
+  // Lista de departamentos únicos (incluindo setores criados pelo gestor)
   const departments = useMemo(() => {
-    const set = new Set<string>();
+    const set = new Set<string>(['Atendimento', 'Suporte Técnico', 'Operações', 'Comercial', 'Tecnologia']);
+    try {
+      const raw = localStorage.getItem('pontual_custom_departments_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) parsed.forEach(d => d && typeof d === 'string' && set.add(d.trim()));
+      }
+    } catch {}
     (employees || []).forEach(e => {
       if (e?.department) set.add(e.department);
     });
@@ -681,9 +688,6 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
           }`}>
             <div className="flex items-center justify-between pb-4 border-b border-white/10">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#96183c] to-[#f89642] flex items-center justify-center text-white font-bold">
-                  <Edit3 className="w-5 h-5" />
-                </div>
                 <div>
                   <h3 className="font-extrabold text-lg">Editar Colaborador</h3>
                   <span className="text-xs text-slate-400 block">{editingEmployee.name}</span>
