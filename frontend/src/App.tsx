@@ -490,6 +490,15 @@ function AppContent() {
   };
 
   const handleUpdateRequest = async (id: string, updates: Partial<TimeOffRequest>) => {
+    if (updates.type === 'swap' && updates.targetEmployeeId) {
+      const targetColab = employees.find(e => e.id === updates.targetEmployeeId);
+      const myDept = (activeEmployee.department || '').trim().toLowerCase();
+      const theirDept = (targetColab?.department || '').trim().toLowerCase();
+      if (!targetColab || !myDept || !theirDept || myDept !== theirDept) {
+        showToast('Setor Diferente', 'Só é permitido solicitar troca de turno com colegas do mesmo setor.', 'error');
+        return;
+      }
+    }
     setRequests(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
     await updateSolicitacaoSupabase(id, updates);
     setEditingRequest(null);
@@ -924,6 +933,15 @@ function AppContent() {
 
   // Submit swap or time-off request
   const handleSubmitRequest = async (req: Partial<TimeOffRequest>) => {
+    if ((req.type || 'swap') === 'swap' && req.targetEmployeeId) {
+      const targetColab = employees.find(e => e.id === req.targetEmployeeId);
+      const myDept = (activeEmployee.department || '').trim().toLowerCase();
+      const theirDept = (targetColab?.department || '').trim().toLowerCase();
+      if (!targetColab || !myDept || !theirDept || myDept !== theirDept) {
+        showToast('Setor Diferente', 'Só é permitido solicitar troca de turno com colegas do mesmo setor.', 'error');
+        return;
+      }
+    }
     const tempId = `req-${Date.now()}`;
     const newRequest: TimeOffRequest = {
       id: tempId,

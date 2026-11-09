@@ -101,6 +101,14 @@ export const ShiftSwapModal: React.FC<ShiftSwapModalProps> = ({
     e.preventDefault();
     if (!reason.trim()) return;
 
+    if (requestType === 'swap') {
+      const myDept = (currentEmployee.department || '').trim().toLowerCase();
+      const theirDept = (targetEmp?.department || '').trim().toLowerCase();
+      if (!targetEmp || !myDept || !theirDept || myDept !== theirDept) {
+        return;
+      }
+    }
+
     if (editingRequest && onUpdateRequest) {
       onUpdateRequest(editingRequest.id, {
         type: requestType,
@@ -167,6 +175,13 @@ export const ShiftSwapModal: React.FC<ShiftSwapModalProps> = ({
     if (myManagers.length > 0) {
       const sharesManager = myManagers.some(mId => theirManagers.includes(mId));
       if (!sharesManager) return false;
+    }
+
+    // 6. Deve pertencer ao mesmo setor (department) que o colaborador solicitante
+    const myDept = (currentEmployee.department || '').trim().toLowerCase();
+    const theirDept = (e.department || '').trim().toLowerCase();
+    if (!myDept || !theirDept || myDept !== theirDept) {
+      return false;
     }
 
     return true;
@@ -318,7 +333,7 @@ export const ShiftSwapModal: React.FC<ShiftSwapModalProps> = ({
                   required
                 >
                   <option value="" className={isLightTheme ? 'bg-white text-slate-900' : 'bg-[#1a0010] text-white'}>
-                    {otherEmployees.length === 0 ? 'Nenhum colega da mesma equipe/gestor disponível para troca' : 'Selecione o colega...'}
+                    {otherEmployees.length === 0 ? `Nenhum colega do setor "${currentEmployee.department || 'atual'}" disponível para troca` : 'Selecione o colega...'}
                   </option>
                   {otherEmployees.map(emp => {
                     const conflict = getEmployeeShiftOnDate(emp.id);

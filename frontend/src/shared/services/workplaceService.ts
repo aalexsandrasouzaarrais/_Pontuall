@@ -84,16 +84,22 @@ export function getStoredWorkplaces(): WorkplaceLocation[] {
     if (!raw) return DEFAULT_WORKPLACES;
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      // Filtra e limpa resquícios antigos de postos fictícios
-      const filtered = parsed.filter(w => 
-        w &&
-        w.id !== 'wp-sede-sp' && 
-        w.name !== 'Sede Central - SP' &&
-        w.id !== 'wp-matriz' &&
-        w.name !== 'Sede Principal / Matriz' &&
-        w.id !== 'wp-externo-temporario' &&
-        w.name !== 'Posto Externo / Temporário'
-      );
+      // Filtra e limpa resquícios antigos de postos fictícios e formatações
+      const filtered = parsed
+        .filter(w => 
+          w &&
+          w.id !== 'wp-sede-sp' && 
+          w.name !== 'Sede Central - SP' &&
+          w.id !== 'wp-matriz' &&
+          w.name !== 'Sede Principal / Matriz' &&
+          w.id !== 'wp-externo-temporario' &&
+          w.name !== 'Posto Externo / Temporário'
+        )
+        .map(w => ({
+          ...w,
+          name: typeof w.name === 'string' ? w.name.replace(/📍\s*/g, '').trim() : w.name,
+          address: typeof w.address === 'string' ? w.address.replace(/📍\s*/g, '').trim() : w.address,
+        }));
       return filtered.length > 0 ? filtered : DEFAULT_WORKPLACES;
     }
   } catch (err) {

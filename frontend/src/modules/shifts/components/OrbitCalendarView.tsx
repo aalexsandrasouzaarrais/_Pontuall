@@ -197,7 +197,6 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
 
   // Checklist filters
   const [filterDaily, setFilterDaily] = useState(true);
-  const [filterBirthdays, setFilterBirthdays] = useState(false);
   const [filterTasks, setFilterTasks] = useState(true);
 
   const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
@@ -726,15 +725,6 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                   className={`w-3.5 h-3.5 rounded cursor-pointer ${isDark ? 'accent-[#f89847]' : 'accent-[#96183c]'}`}
                 />
                 <span>Turnos Regulares</span>
-              </label>
-              <label className={`flex items-center gap-2 cursor-pointer ${isDark ? 'hover:text-white' : 'hover:text-slate-900'}`}>
-                <input
-                  type="checkbox"
-                  checked={filterBirthdays}
-                  onChange={(e) => setFilterBirthdays(e.target.checked)}
-                  className={`w-3.5 h-3.5 rounded cursor-pointer ${isDark ? 'accent-[#f89847]' : 'accent-[#96183c]'}`}
-                />
-                <span>Aniversários da Equipe</span>
               </label>
               <label className={`flex items-center gap-2 cursor-pointer ${isDark ? 'hover:text-white' : 'hover:text-slate-900'}`}>
                 <input

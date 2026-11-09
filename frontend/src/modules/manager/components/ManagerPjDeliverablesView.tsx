@@ -29,8 +29,64 @@ import {
   getPjReportsSupabase, 
   getDraftTimesheet, 
   exportPjTimesheetSpreadsheet,
+  updatePjTimesheetTaskStatus,
   ExportTimesheetRow 
 } from '@/modules/attendance/services/pjReportService';
+
+const PT_MONTHS: Record<string, string> = {
+  janeiro: '01',
+  fevereiro: '02',
+  marco: '03',
+  'março': '03',
+  abril: '04',
+  maio: '05',
+  junho: '06',
+  julho: '07',
+  agosto: '08',
+  setembro: '09',
+  outubro: '10',
+  novembro: '11',
+  dezembro: '12',
+};
+
+const MONTH_NAMES_PT = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+];
+
+function extractYearMonth(dateStr?: string, periodLabel?: string): string | null {
+  if (dateStr) {
+    const clean = dateStr.trim();
+    if (/^\d{4}-\d{2}/.test(clean)) {
+      return clean.slice(0, 7);
+    }
+    const brMatch = clean.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    if (brMatch) {
+      return `${brMatch[3]}-${brMatch[2]}`;
+    }
+  }
+  if (periodLabel) {
+    const lower = periodLabel.toLowerCase();
+    const yearMatch = lower.match(/\b(20\d{2})\b/);
+    if (yearMatch) {
+      for (const [mName, mNum] of Object.entries(PT_MONTHS)) {
+        if (lower.includes(mName)) {
+          return `${yearMatch[1]}-${mNum}`;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function formatYearMonthLabel(ym: string): string {
+  const [y, m] = ym.split('-');
+  const mIdx = parseInt(m, 10) - 1;
+  if (mIdx >= 0 && mIdx < 12) {
+    return `${MONTH_NAMES_PT[mIdx]} de ${y}`;
+  }
+  return ym;
+}
 
 interface ManagerPjDeliverablesViewProps {
   employees: Employee[];
@@ -49,18 +105,21 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
   isDark = true,
   isRh = false,
 }) => {
-  const [localReports, setLocalReports] = useState<PjDeliverableReport[]>(pjReports);
+  const [localReports, setLocalReports] = useState<PjDeliverableReport[]>(() => pjReports.filter(r => r.period && !r.period.startsWith("__") && (r.status as string) !== "draft"));
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('all');
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [rejectionModalId, setRejectionModalId] = useState<string | null>(null);
+  const [taskRejectionTarget, setTaskRejectionTarget] = useState<{ employeeId: string; taskId: string; reportId?: string; taskCode?: string; taskDescription?: string } | null>(null);
   const [rejectionFeedback, setRejectionFeedback] = useState('');
+  const [draftRefreshTick, setDraftRefreshTick] = useState(0);
   const [expandedReportDetails, setExpandedReportDetails] = useState<Record<string, boolean>>({});
 
   // Sincroniza relatórios com o serviço ao montar ou quando pjReports mudar
   useEffect(() => {
-    setLocalReports(pjReports);
+    setLocalReports(pjReports.filter(r => r.period && !r.period.startsWith("__") && (r.status as string) !== "draft"));
   }, [pjReports]);
 
   useEffect(() => {
@@ -79,9 +138,10 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
               map.set(r.id, { ...existing, timesheetEntries: r.timesheetEntries });
             }
           });
-          return Array.from(map.values());
+          return Array.from(map.values()).filter(r => r.period && !r.period.startsWith("__") && (r.status as string) !== "draft");
         });
       }
+      if (active) setDraftRefreshTick(t => t + 1);
     });
     return () => { active = false; };
   }, []);
@@ -108,30 +168,31 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
         ? `CC-${emp.department.toUpperCase().slice(0, 4)}-01 • ${emp.department}`
         : 'CC-TI-01 • Tecnologia & Dev';
 
-      // Consolida todas as tarefas do timesheet (dos relatórios enviados + rascunhos em aberto no navegador)
+      // Consolida todas as tarefas do timesheet sem duplicatas
       const allTimesheetRows: (ExportTimesheetRow & { reportId?: string })[] = [];
+      const seenTaskKeys = new Set<string>();
 
-      // 1. Entradas em aberto (se o colaborador registrou no timesheet e ainda não fechou o mês)
-      draftEntries.forEach((d, idx) => {
-        allTimesheetRows.push({
-          ...d,
-          taskCode: d.taskCode || `TK-${String(draftEntries.length - idx).padStart(3, '0')}`,
-          costCenter: d.costCenter || defaultCC,
-          periodLabel: 'Em Aberto (Atual)',
-          reportStatus: 'open',
-        });
-      });
+      const getTaskDedupKey = (item: Partial<PjTimesheetEntry>) => {
+        if (item.id && !String(item.id).startsWith('rep-row-')) return `id:${item.id}`;
+        return `sig:${item.date || ''}|${item.startTime || ''}|${item.endTime || ''}|${item.project || ''}|${item.taskDescription || ''}`;
+      };
 
-      // 2. Entradas submetidas dentro de relatórios de fechamento
+      // 1. Entradas submetidas dentro de relatórios de fechamento válidos (prioridade sobre rascunho)
       empReports.forEach(rep => {
+        if (rep.period?.startsWith('__') || (rep.status as string) === 'draft') return;
+
         if (rep.timesheetEntries && rep.timesheetEntries.length > 0) {
           rep.timesheetEntries.forEach((ts, idx) => {
+            const key = getTaskDedupKey(ts);
+            if (seenTaskKeys.has(key)) return;
+            seenTaskKeys.add(key);
+
             allTimesheetRows.push({
               ...ts,
               taskCode: ts.taskCode || `TK-${String(idx + 1).padStart(3, '0')}`,
               costCenter: ts.costCenter || defaultCC,
               periodLabel: rep.period,
-              reportStatus: rep.status,
+              reportStatus: ts.status || rep.status || 'pending',
               reportId: rep.id,
             });
           });
@@ -158,14 +219,29 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
         }
       });
 
+      // 2. Entradas em aberto (apenas as que ainda não constam em relatórios submetidos)
+      draftEntries.forEach((d, idx) => {
+        const key = getTaskDedupKey(d);
+        if (seenTaskKeys.has(key)) return;
+        seenTaskKeys.add(key);
+
+        allTimesheetRows.push({
+          ...d,
+          taskCode: d.taskCode || `TK-${String(draftEntries.length - idx).padStart(3, '0')}`,
+          costCenter: d.costCenter || defaultCC,
+          periodLabel: 'Em Aberto (Atual)',
+          reportStatus: d.status || 'pending',
+        });
+      });
+
       const totalHoursLogged = Number(
         allTimesheetRows.reduce((acc, r) => acc + (Number(r.durationHours) || 0), 0).toFixed(2)
       );
 
       const approvedHours = Number(
-        empReports
-          .filter(r => r.status === 'approved')
-          .reduce((acc, r) => acc + (Number(r.hoursWorked) || 0), 0)
+        allTimesheetRows
+          .filter(r => r.reportStatus === 'approved')
+          .reduce((acc, r) => acc + (Number(r.durationHours) || 0), 0)
           .toFixed(2)
       );
 
@@ -188,9 +264,29 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
         approvedHours,
       };
     });
-  }, [pjEmployees, employees, localReports]);
+  }, [pjEmployees, employees, localReports, draftRefreshTick]);
 
-  // Filtro de busca, colaborador e status
+  // Meses disponíveis para filtro (baseado nas datas das tarefas e períodos de fechamento + mês atual)
+  const availableMonths = useMemo(() => {
+    const monthSet = new Set<string>();
+    const now = new Date();
+    monthSet.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+
+    collaboratorGroups.forEach(group => {
+      group.timesheetRows.forEach(row => {
+        const ym = extractYearMonth(row.date, row.periodLabel);
+        if (ym) monthSet.add(ym);
+      });
+      group.reports.forEach(rep => {
+        const ym = extractYearMonth(rep.submittedAt, rep.period);
+        if (ym) monthSet.add(ym);
+      });
+    });
+
+    return Array.from(monthSet).sort((a, b) => b.localeCompare(a));
+  }, [collaboratorGroups]);
+
+  // Filtro de busca, colaborador, mês e status
   const filteredGroups = useMemo(() => {
     return collaboratorGroups
       .map(group => {
@@ -198,15 +294,23 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
           return null;
         }
 
-        // Filtra relatórios pelo statusFilter
-        const matchingReports =
-          statusFilter === 'all'
-            ? group.reports
-            : group.reports.filter(r => r.status === statusFilter);
+        // Filtra relatórios pelo statusFilter e selectedMonth
+        const matchingReports = group.reports.filter(r => {
+          if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+          if (selectedMonth !== 'all') {
+            const repYm = extractYearMonth(r.submittedAt, r.period);
+            if (repYm !== selectedMonth) return false;
+          }
+          return true;
+        });
 
-        // Filtra linhas do timesheet pela busca e status
+        // Filtra linhas do timesheet pela busca, mês e status
         const matchingRows = group.timesheetRows.filter(row => {
           if (statusFilter !== 'all' && row.reportStatus !== statusFilter) return false;
+          if (selectedMonth !== 'all') {
+            const rowYm = extractYearMonth(row.date, row.periodLabel);
+            if (rowYm !== selectedMonth) return false;
+          }
           if (!searchQuery.trim()) return true;
           const q = searchQuery.toLowerCase();
           return (
@@ -218,7 +322,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
           );
         });
 
-        if (statusFilter !== 'all' && matchingReports.length === 0 && matchingRows.length === 0) {
+        if ((statusFilter !== 'all' || selectedMonth !== 'all') && matchingReports.length === 0 && matchingRows.length === 0) {
           return null;
         }
 
@@ -228,35 +332,147 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
           if (!nameMatches && matchingRows.length === 0) return null;
         }
 
+        const filteredHoursLogged = Number(
+          matchingRows.reduce((acc, r) => acc + (Number(r.durationHours) || 0), 0).toFixed(2)
+        );
+        const filteredApprovedHours = Number(
+          matchingRows
+            .filter(r => r.reportStatus === 'approved')
+            .reduce((acc, r) => acc + (Number(r.durationHours) || 0), 0)
+            .toFixed(2)
+        );
+
         return {
           ...group,
           reports: matchingReports,
           timesheetRows: matchingRows,
+          totalHoursLogged: filteredHoursLogged,
+          approvedHours: filteredApprovedHours,
         };
       })
       .filter(Boolean) as typeof collaboratorGroups;
-  }, [collaboratorGroups, selectedEmployeeId, statusFilter, searchQuery]);
+  }, [collaboratorGroups, selectedEmployeeId, selectedMonth, statusFilter, searchQuery]);
 
-  // Contadores Globais
-  const pendingCount = localReports.filter(r => r.status === 'pending').length;
-  const approvedCount = localReports.filter(r => r.status === 'approved').length;
+  // Contadores Globais (baseados nas tarefas para refletir homologação por tarefa e por fechamento)
+  const allTasksFlat = useMemo(
+    () => collaboratorGroups.flatMap(g => g.timesheetRows),
+    [collaboratorGroups]
+  );
+  const pendingCount = allTasksFlat.filter(t => t.reportStatus === 'pending' || t.reportStatus === 'open').length;
+  const approvedCount = allTasksFlat.filter(t => t.reportStatus === 'approved').length;
   const totalApprovedHours = Number(
-    localReports
-      .filter(r => r.status === 'approved')
-      .reduce((acc, curr) => acc + (Number(curr.hoursWorked) || 0), 0)
+    allTasksFlat
+      .filter(t => t.reportStatus === 'approved')
+      .reduce((acc, curr) => acc + (Number(curr.durationHours) || 0), 0)
       .toFixed(2)
   );
 
   const handleApprove = (reportId: string) => {
-    setLocalReports(prev => prev.map(r => (r.id === reportId ? { ...r, status: 'approved' } : r)));
+    setLocalReports(prev =>
+      prev.map(r =>
+        r.id === reportId
+          ? {
+              ...r,
+              status: 'approved',
+              timesheetEntries: r.timesheetEntries?.map(t => ({ ...t, status: 'approved' })),
+            }
+          : r
+      )
+    );
     if (onApproveReport) onApproveReport(reportId);
   };
 
-  const handleConfirmRejection = () => {
-    if (rejectionModalId) {
-      const reason = rejectionFeedback.trim() || 'Ajustes solicitados pelo gestor.';
+  const handleApproveTask = async (
+    employeeId: string,
+    entry: ExportTimesheetRow & { reportId?: string }
+  ) => {
+    // Se for uma linha sintética de relatório sem sub-itens
+    if (entry.reportId && String(entry.id).startsWith('rep-row-')) {
+      handleApprove(entry.reportId);
+      return;
+    }
+
+    await updatePjTimesheetTaskStatus({
+      employeeId,
+      taskId: entry.id,
+      reportId: entry.reportId,
+      status: 'approved',
+    });
+
+    if (entry.reportId) {
       setLocalReports(prev =>
-        prev.map(r => (r.id === rejectionModalId ? { ...r, status: 'rejected', managerFeedback: reason } : r))
+        prev.map(r => {
+          if (r.id !== entry.reportId) return r;
+          const updatedEntries = r.timesheetEntries?.map(t =>
+            t.id === entry.id ? { ...t, status: 'approved' as const } : t
+          );
+          const allApp = updatedEntries?.every(t => t.status === 'approved');
+          return {
+            ...r,
+            timesheetEntries: updatedEntries,
+            status: allApp ? 'approved' : r.status,
+          };
+        })
+      );
+    }
+    setDraftRefreshTick(t => t + 1);
+  };
+
+  const handleConfirmRejection = async () => {
+    const reason = rejectionFeedback.trim() || 'Ajustes solicitados pelo gestor.';
+
+    if (taskRejectionTarget) {
+      const { employeeId, taskId, reportId, taskCode, taskDescription } = taskRejectionTarget;
+      if (reportId && String(taskId).startsWith('rep-row-')) {
+        setLocalReports(prev =>
+          prev.map(r => (r.id === reportId ? { ...r, status: 'rejected', managerFeedback: reason } : r))
+        );
+        if (onRejectReport) onRejectReport(reportId, reason);
+      } else {
+        await updatePjTimesheetTaskStatus({
+          employeeId,
+          taskId,
+          taskCode,
+          taskDescription,
+          reportId,
+          status: 'rejected',
+          managerFeedback: reason,
+        });
+        if (reportId) {
+          setLocalReports(prev =>
+            prev.map(r => {
+              if (r.id !== reportId) return r;
+              const updatedEntries = r.timesheetEntries?.map(t =>
+                t.id === taskId ? { ...t, status: 'rejected' as const, managerFeedback: reason } : t
+              );
+              return {
+                ...r,
+                timesheetEntries: updatedEntries,
+                status: 'rejected',
+                managerFeedback: reason,
+              };
+            })
+          );
+        }
+        setDraftRefreshTick(t => t + 1);
+      }
+      setTaskRejectionTarget(null);
+      setRejectionFeedback('');
+      return;
+    }
+
+    if (rejectionModalId) {
+      setLocalReports(prev =>
+        prev.map(r =>
+          r.id === rejectionModalId
+            ? {
+                ...r,
+                status: 'rejected',
+                managerFeedback: reason,
+                timesheetEntries: r.timesheetEntries?.map(t => ({ ...t, status: 'rejected', managerFeedback: reason })),
+              }
+            : r
+        )
       );
       if (onRejectReport) onRejectReport(rejectionModalId, reason);
       setRejectionModalId(null);
@@ -332,7 +548,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
               </span>
             </h1>
             <p className={`text-xs sm:text-sm leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-              Acompanhe de forma organizada todas as tarefas de cada prestador PJ com <strong>ID da Tarefa</strong>, <strong>Centro de Custo</strong>, <strong>Projeto/Cliente</strong>, horários e evidências. Homologue fechamentos e exporte a planilha individual em Excel (`.xls`) ou `.csv`.
+              Acompanhe as entregas e horas registradas por cada prestador PJ e exporte planilhas individuais em Excel (`.xls`) ou `.csv`.
             </p>
           </div>
 
@@ -412,6 +628,24 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
               </option>
             ))}
           </select>
+
+          {/* Seletor de Mês */}
+          <select
+            value={selectedMonth}
+            onChange={e => setSelectedMonth(e.target.value)}
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold border outline-none cursor-pointer ${
+              isDark 
+                ? 'bg-[#0b0d13] border-[#252A3A] text-white focus:border-[#f89847]' 
+                : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-[#96183c]'
+            }`}
+          >
+            <option value="all">Todos os Meses</option>
+            {availableMonths.map(ym => (
+              <option key={ym} value={ym}>
+                {formatYearMonthLabel(ym)}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Botões de Status */}
@@ -468,203 +702,18 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                 isDark ? 'bg-[#151822] border-[#252A3A]' : 'bg-white border-slate-200 shadow-sm'
               }`}
             >
-              {/* TABELA DE ATIVIDADES NO TIMESHEET (Idêntica à organização limpa da visão do Colaborador) */}
-              <div className={`p-4 sm:p-5 rounded-2xl border ${
-                isDark ? 'bg-[#0e1017] border-white/10' : 'bg-slate-50/70 border-slate-200'
-              }`}>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
-                      isDark ? 'bg-[#9F243C]/20 text-[#f89847]' : 'bg-[#96183c]/10 text-[#96183c]'
-                    }`}>
-                      <FolderGit2 className="w-4 h-4" />
-                    </div>
-                    <h3 className="text-xs sm:text-sm font-extrabold flex items-center gap-2">
-                      <span>Atividades Registradas no Timesheet</span>
-                      <span className={`text-[11px] font-mono px-2 py-0.5 rounded-full border ${
-                        isDark
-                          ? 'bg-[#9F243C]/20 text-[#F9DE97] border-[#F59242]/30'
-                          : 'bg-[#96183c]/10 text-[#96183c] border-[#96183c]/25'
-                      }`}>
-                        {group.timesheetRows.length} tarefas ({group.totalHoursLogged}h)
-                      </span>
-                    </h3>
-                  </div>
-                </div>
-
-                {group.timesheetRows.length === 0 ? (
-                  <div className="text-center py-6 text-xs text-slate-500">
-                    Nenhuma tarefa detalhada registrada por este prestador PJ até o momento.
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead>
-                        <tr className={`border-b ${isDark ? 'border-white/10 text-slate-400' : 'border-slate-200 text-slate-500'}`}>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">ID Tarefa</th>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Data</th>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Centro de Custo</th>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Projeto / Cliente</th>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Descrição da Tarefa</th>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-center">Horário</th>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-center">Pausas</th>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-center">Duração</th>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Evidências</th>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-right">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className={`divide-y ${isDark ? 'divide-white/5' : 'divide-slate-200'}`}>
-                        {group.timesheetRows.map((entry, idx) => (
-                          <tr key={entry.id || idx} className={`${isDark ? 'hover:bg-white/5' : 'hover:bg-white'} transition-colors`}>
-                            <td className="py-3 px-3 whitespace-nowrap">
-                              <span className={`font-mono font-bold text-[11px] px-2 py-0.5 rounded-md border ${
-                                isDark
-                                  ? 'bg-white/5 text-[#F9DE97] border-[#F59242]/30'
-                                  : 'bg-[#96183c]/10 text-[#96183c] border-[#96183c]/25'
-                              }`}>
-                                {entry.taskCode || `TK-${String(idx + 1).padStart(3, '0')}`}
-                              </span>
-                            </td>
-                            <td className={`py-3 px-3 font-mono whitespace-nowrap ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                              {entry.date ? formatDateBR(entry.date) : '-'}
-                            </td>
-                            <td className="py-3 px-3 whitespace-nowrap">
-                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
-                                isDark
-                                  ? 'bg-white/5 text-slate-300 border-white/10'
-                                  : 'bg-slate-100 text-slate-700 border-slate-200'
-                              }`}>
-                                {entry.costCenter || group.defaultCostCenter}
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 whitespace-nowrap">
-                              <span className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
-                                isDark
-                                  ? 'bg-[#9F243C]/20 text-[#F9DE97] border-[#F59242]/30'
-                                  : 'bg-[#96183c]/10 text-[#96183c] border-[#96183c]/25'
-                              }`}>
-                                {entry.project}
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 max-w-xs sm:max-w-md">
-                              <span className={`font-medium block truncate ${isDark ? 'text-slate-200' : 'text-slate-800'}`} title={entry.taskDescription}>
-                                {entry.taskDescription}
-                              </span>
-                              {entry.isLiveTracked ? (
-                                <span className={`inline-flex items-center gap-1 text-[10px] mt-0.5 ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
-                                  <Check className="w-3 h-3" /> Cronometrado em tempo real
-                                </span>
-                              ) : (
-                                <span className={`inline-flex items-center gap-1 text-[10px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                  Registro manual
-                                </span>
-                              )}
-                            </td>
-                            <td className={`py-3 px-3 font-mono text-center whitespace-nowrap ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                              {entry.startTime} → {entry.endTime}
-                            </td>
-                            <td className={`py-3 px-3 text-center font-mono whitespace-nowrap ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>
-                              {entry.breakMinutes > 0 ? `${entry.breakMinutes}m` : '-'}
-                            </td>
-                            <td className="py-3 px-3 text-center whitespace-nowrap">
-                              <span className={`font-mono font-bold text-sm ${isDark ? 'text-[#f89847]' : 'text-[#96183c]'}`}>
-                                {entry.durationHours}h
-                              </span>
-                            </td>
-                            <td className="py-3 px-3">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                {entry.links?.map((link, lIdx) => (
-                                  <a
-                                    key={lIdx}
-                                    href={link.url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className={`p-1 rounded-md ${
-                                      isDark
-                                        ? 'bg-[#9F243C]/20 text-[#F9DE97] hover:bg-[#9F243C]/35'
-                                        : 'bg-[#96183c]/10 text-[#96183c] hover:bg-[#96183c]/20'
-                                    }`}
-                                    title={link.title || link.url}
-                                  >
-                                    <ExternalLink className="w-3.5 h-3.5" />
-                                  </a>
-                                ))}
-                                {entry.images?.map((img, iIdx) => (
-                                  <button
-                                    key={iIdx}
-                                    type="button"
-                                    onClick={() => setSelectedImage(img)}
-                                    className={`p-1 rounded-md cursor-pointer ${
-                                      isDark
-                                        ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30'
-                                        : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-                                    }`}
-                                    title="Ver print comprobatório"
-                                  >
-                                    <ImageIcon className="w-3.5 h-3.5" />
-                                  </button>
-                                ))}
-                                {!entry.links?.length && !entry.images?.length && (
-                                  <span className="text-slate-500 text-[11px]">-</span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="py-3 px-3 text-right whitespace-nowrap">
-                              {entry.reportStatus === 'approved' ? (
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                  isDark ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                                }`}>
-                                  Homologado
-                                </span>
-                              ) : entry.reportStatus === 'rejected' ? (
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                  isDark ? 'bg-rose-500/20 text-rose-400 border-rose-500/30' : 'bg-rose-100 text-rose-700 border-rose-200'
-                                }`}>
-                                  Com Ajuste
-                                </span>
-                              ) : entry.reportStatus === 'pending' ? (
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                  isDark ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-amber-100 text-amber-700 border-amber-200'
-                                }`}>
-                                  Aguardando
-                                </span>
-                              ) : (
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                  isDark ? 'bg-white/10 text-slate-300 border-white/15' : 'bg-slate-200 text-slate-700 border-slate-300'
-                                }`}>
-                                  Em Aberto
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-
               {/* CABEÇALHO DO COLABORADOR PJ + BOTÕES DE EXPORTAR PLANILHA */}
-              <div className={`flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b ${
-                isDark ? 'border-white/10' : 'border-slate-200'
-              }`}>
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div className="flex items-center gap-3.5">
                   <img
                     src={group.employeeAvatar}
                     alt={group.employeeName}
-                    className="w-12 h-12 rounded-2xl object-cover border border-[#F59242]/30 shrink-0"
+                    className="w-11 h-11 rounded-2xl object-cover border border-white/10 shrink-0"
                   />
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="text-base sm:text-lg font-black">{group.employeeName}</h2>
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                        isDark
-                          ? 'bg-[#9F243C]/20 text-[#F9DE97] border-[#F59242]/30'
-                          : 'bg-[#96183c]/10 text-[#96183c] border-[#96183c]/25'
-                      }`}>
-                        Prestador PJ
-                      </span>
-                      <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-semibold border ${
+                      <h2 className="text-base font-bold">{group.employeeName}</h2>
+                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
                         isDark
                           ? 'bg-white/5 text-slate-300 border-white/10'
                           : 'bg-slate-100 text-slate-700 border-slate-200'
@@ -672,20 +721,16 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                         {group.defaultCostCenter}
                       </span>
                     </div>
-                    <div className={`flex items-center gap-3 text-xs mt-1 flex-wrap ${
-                      isDark ? 'text-slate-400' : 'text-slate-600'
+                    <div className={`flex items-center gap-2.5 text-xs mt-0.5 flex-wrap ${
+                      isDark ? 'text-slate-400' : 'text-slate-500'
                     }`}>
                       <span>{group.employeeRole}</span>
                       <span>•</span>
                       <span>
-                        Atividades no Timesheet:{' '}
-                        <strong className={`font-mono ${isDark ? 'text-[#f89847]' : 'text-[#96183c]'}`}>
-                          {group.timesheetRows.length} tarefa(s) ({group.totalHoursLogged}h)
+                        <strong className={`font-mono ${isDark ? 'text-white' : 'text-slate-800'}`}>
+                          {group.totalHoursLogged}h
                         </strong>
-                      </span>
-                      <span>•</span>
-                      <span>
-                        Cota Mensal: <strong className={`font-mono ${isDark ? 'text-white' : 'text-slate-900'}`}>{group.quota}h</strong>
+                        {group.quota > 0 ? ` / ${group.quota}h` : ''} ({group.timesheetRows.length} {group.timesheetRows.length === 1 ? 'tarefa' : 'tarefas'})
                       </span>
                     </div>
                   </div>
@@ -696,21 +741,20 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                   <button
                     type="button"
                     onClick={() => handleExportCollaboratorSheet(group, 'xls')}
-                    className="px-4 py-2.5 rounded-xl text-xs font-bold text-white transition-all cursor-pointer flex items-center gap-2 shadow-md hover:scale-[1.02] active:scale-95"
+                    className="px-3.5 py-2 rounded-xl text-xs font-bold text-white transition-all cursor-pointer flex items-center gap-2 shadow-sm hover:opacity-95"
                     style={{
                       background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)',
-                      boxShadow: '0 4px 16px rgba(100, 12, 30, 0.30)'
                     }}
                     title={`Baixar planilha Excel (.xls) de ${group.employeeName}`}
                   >
                     <FileSpreadsheet className="w-4 h-4" />
-                    <span>Exportar Planilha (.XLS)</span>
+                    <span>Exportar (.XLS)</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handleExportCollaboratorSheet(group, 'csv')}
-                    className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                    className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer flex items-center gap-1.5 ${
                       isDark
                         ? 'bg-white/5 hover:bg-white/10 text-slate-300 border-white/10'
                         : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
@@ -723,145 +767,338 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                 </div>
               </div>
 
+              {/* TABELA DE ATIVIDADES NO TIMESHEET */}
+              <div className={`p-4 rounded-2xl border ${
+                isDark ? 'bg-[#0e1017] border-white/10' : 'bg-slate-50/70 border-slate-200'
+              }`}>
+                {group.timesheetRows.length === 0 ? (
+                  <div className="text-center py-6 text-xs text-slate-500">
+                    Nenhuma tarefa registrada por este prestador PJ até o momento.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className={`border-b ${isDark ? 'border-white/10 text-slate-400' : 'border-slate-200 text-slate-500'}`}>
+                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">ID</th>
+                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Data</th>
+                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Centro de Custo</th>
+                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Projeto / Cliente</th>
+                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Descrição da Tarefa</th>
+                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-center">Horário</th>
+                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-center">Duração</th>
+                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Evidências</th>
+                          <th className={`py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] ${statusFilter === 'all' ? 'text-center' : 'text-right'}`}>
+                            {statusFilter === 'all' ? 'Status' : 'Homologação'}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className={`divide-y ${isDark ? 'divide-white/5' : 'divide-slate-200'}`}>
+                        {group.timesheetRows.map((entry, idx) => (
+                          <tr key={entry.id || idx} className={`${isDark ? 'hover:bg-white/5' : 'hover:bg-white'} transition-colors`}>
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              <span className={`font-mono font-semibold text-[10px] px-2 py-0.5 rounded-md border ${
+                                isDark
+                                  ? 'bg-white/5 text-slate-300 border-white/10'
+                                  : 'bg-slate-100 text-slate-700 border-slate-200'
+                              }`}>
+                                {entry.taskCode || `TK-${String(idx + 1).padStart(3, '0')}`}
+                              </span>
+                            </td>
+                            <td className={`py-2.5 px-3 font-mono whitespace-nowrap ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                              {entry.date ? formatDateBR(entry.date) : '-'}
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
+                                isDark
+                                  ? 'bg-white/5 text-slate-300 border-white/10'
+                                  : 'bg-slate-100 text-slate-700 border-slate-200'
+                              }`}>
+                                {entry.costCenter || group.defaultCostCenter}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${
+                                isDark
+                                  ? 'bg-white/5 text-slate-300 border-white/10'
+                                  : 'bg-slate-100 text-slate-700 border-slate-200'
+                              }`}>
+                                {entry.project}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3 max-w-xs sm:max-w-md">
+                              <span className={`font-medium block truncate ${isDark ? 'text-slate-200' : 'text-slate-800'}`} title={entry.taskDescription}>
+                                {entry.taskDescription}
+                              </span>
+                              {entry.managerFeedback && (
+                                <span className={`block text-[10px] mt-0.5 truncate ${isDark ? 'text-rose-400' : 'text-rose-600'}`} title={entry.managerFeedback}>
+                                  Ajuste: {entry.managerFeedback}
+                                </span>
+                              )}
+                            </td>
+                            <td className={`py-2.5 px-3 font-mono text-center whitespace-nowrap ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                              {entry.startTime} → {entry.endTime}
+                            </td>
+                            <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                              <span className={`font-mono font-bold text-xs ${isDark ? 'text-[#f89847]' : 'text-[#96183c]'}`}>
+                                {entry.durationHours}h
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {entry.links?.map((link, lIdx) => (
+                                  <a
+                                    key={lIdx}
+                                    href={link.url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={`p-1 rounded-md border ${
+                                      isDark
+                                        ? 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
+                                        : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                                    }`}
+                                    title={link.title || link.url}
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                  </a>
+                                ))}
+                                {entry.images?.map((img, iIdx) => (
+                                  <button
+                                    key={iIdx}
+                                    type="button"
+                                    onClick={() => setSelectedImage(img)}
+                                    className={`p-1 rounded-md border cursor-pointer ${
+                                      isDark
+                                        ? 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
+                                        : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                                    }`}
+                                    title="Ver print comprobatório"
+                                  >
+                                    <ImageIcon className="w-3.5 h-3.5" />
+                                  </button>
+                                ))}
+                                {!entry.links?.length && !entry.images?.length && (
+                                  <span className="text-slate-500 text-[11px]">-</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className={`py-2.5 px-3 whitespace-nowrap ${statusFilter === 'all' ? 'text-center' : 'text-right'}`}>
+                              {statusFilter === 'all' ? (
+                                entry.reportStatus === 'approved' ? (
+                                  <span
+                                    className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500"
+                                    title="Homologado"
+                                  />
+                                ) : entry.reportStatus === 'rejected' ? (
+                                  <span
+                                    className="inline-block w-2.5 h-2.5 rounded-full bg-rose-500"
+                                    title="Com Ajuste"
+                                  />
+                                ) : (
+                                  <span
+                                    className="inline-block w-2.5 h-2.5 rounded-full bg-amber-400"
+                                    title="Pendente de Homologação"
+                                  />
+                                )
+                              ) : isRh ? (
+                                <span className="inline-block w-2.5 h-2.5 rounded-full bg-amber-400" title="Modo Consulta RH" />
+                              ) : (
+                                <div className="inline-flex items-center justify-end gap-1.5">
+                                  {entry.reportStatus !== 'rejected' && (
+                                    <div className="relative group inline-flex">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setTaskRejectionTarget({
+                                            employeeId: group.employeeId,
+                                            taskId: entry.id,
+                                            reportId: entry.reportId,
+                                            taskCode: entry.taskCode,
+                                            taskDescription: entry.taskDescription,
+                                          });
+                                          setRejectionFeedback(entry.managerFeedback || '');
+                                        }}
+                                        className={`p-1.5 rounded-lg border transition-all cursor-pointer flex items-center justify-center ${
+                                          isDark
+                                            ? 'bg-rose-500/10 hover:bg-rose-500/25 text-rose-300 border-rose-500/25'
+                                            : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                                        }`}
+                                        title="Pedir ajuste"
+                                        aria-label="Pedir ajuste"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                      <span
+                                        className={`pointer-events-none absolute bottom-full right-0 mb-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-30 border ${
+                                          isDark
+                                            ? 'bg-[#1a1d27] text-rose-200 border-rose-500/30'
+                                            : 'bg-slate-900 text-white border-slate-700'
+                                        }`}
+                                      >
+                                        Pedir ajuste
+                                      </span>
+                                    </div>
+                                  )}
+                                  {entry.reportStatus !== 'approved' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleApproveTask(group.employeeId, entry)}
+                                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer flex items-center gap-1 ${
+                                        isDark
+                                          ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/30'
+                                          : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                                      }`}
+                                      title="Homologar esta tarefa"
+                                    >
+                                      <Check className="w-3 h-3" />
+                                      <span>Homologar</span>
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
               {/* BARRA DE FECHAMENTOS SUBMETIDOS (Para Aprovar ou Solicitar Ajustes) */}
-              {group.reports.length > 0 && (
-                <div className="space-y-3">
+              {statusFilter !== 'all' && group.reports.length > 0 && (
+                <div className="space-y-2.5">
                   {group.reports.map(rep => {
                     const isDetailsOpen = Boolean(expandedReportDetails[rep.id]);
+                    const hasExtraDetails = Boolean(
+                      (rep.links && rep.links.length > 0) ||
+                      (rep.images && rep.images.length > 0) ||
+                      rep.managerFeedback
+                    );
                     return (
                       <div
                         key={rep.id}
-                        className={`p-4 rounded-2xl border transition-all ${
-                          rep.status === 'pending'
-                            ? isDark
-                              ? 'bg-[#640C1E]/20 border-[#F59242]/30'
-                              : 'bg-amber-50/60 border-amber-200'
-                            : isDark
-                            ? 'bg-black/25 border-white/10'
+                        className={`px-4 py-3 rounded-2xl border transition-all ${
+                          isDark
+                            ? 'bg-[#0e1017] border-white/10'
                             : 'bg-slate-50 border-slate-200'
                         }`}
                       >
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${
-                              isDark ? 'bg-[#9F243C]/20 text-[#f89847] border-[#F59242]/30' : 'bg-[#96183c]/10 text-[#96183c] border-[#96183c]/25'
+                          <div className="flex items-center gap-2.5 flex-wrap">
+                            <span className="font-bold text-xs sm:text-sm">
+                              Fechamento: {rep.period}
+                            </span>
+                            <span className={`font-mono text-[11px] font-semibold px-2 py-0.5 rounded-md border ${
+                              isDark
+                                ? 'bg-white/5 text-slate-300 border-white/10'
+                                : 'bg-white text-slate-700 border-slate-200'
                             }`}>
-                              <Calendar className="w-4 h-4" />
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-extrabold text-xs sm:text-sm">
-                                  Fechamento: {rep.period}
-                                </span>
-                                <span className={`font-mono text-xs font-bold px-2.5 py-0.5 rounded-full border ${
-                                  isDark
-                                    ? 'bg-[#9F243C]/20 text-[#F9DE97] border-[#F59242]/30'
-                                    : 'bg-[#96183c]/10 text-[#96183c] border-[#96183c]/25'
-                                }`}>
-                                  {rep.hoursWorked}h enviadas
-                                </span>
-                                <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                  • Enviado em{' '}
-                                  {formatDateTimeBR(rep.submittedAt)}
-                                </span>
-                              </div>
-                              <p className={`text-xs mt-1 line-clamp-1 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                                {rep.activitiesDescription}
-                              </p>
-                            </div>
+                              {rep.hoursWorked}h
+                            </span>
+                            <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                              • {formatDateTimeBR(rep.submittedAt)}
+                            </span>
                           </div>
 
                           <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setExpandedReportDetails(prev => ({
-                                  ...prev,
-                                  [rep.id]: !prev[rep.id],
-                                }))
-                              }
-                              className={`px-2.5 py-1.5 rounded-xl text-[11px] font-semibold border flex items-center gap-1 cursor-pointer ${
-                                isDark
-                                  ? 'bg-white/5 hover:bg-white/10 text-slate-300 border-white/10'
-                                  : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
-                              }`}
-                            >
-                              <span>Resumo & Anexos</span>
-                              {isDetailsOpen ? (
-                                <ChevronUp className="w-3.5 h-3.5" />
-                              ) : (
-                                <ChevronDown className="w-3.5 h-3.5" />
-                              )}
-                            </button>
+                            {hasExtraDetails && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedReportDetails(prev => ({
+                                    ...prev,
+                                    [rep.id]: !prev[rep.id],
+                                  }))
+                                }
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border flex items-center gap-1 cursor-pointer ${
+                                  isDark
+                                    ? 'bg-white/5 hover:bg-white/10 text-slate-300 border-white/10'
+                                    : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                                }`}
+                              >
+                                <span>Anexos</span>
+                                {isDetailsOpen ? (
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                ) : (
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            )}
 
                             {rep.status === 'approved' ? (
-                              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border ${
-                                isDark ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border ${
+                                isDark ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                               }`}>
                                 <CheckCircle2 className="w-3.5 h-3.5" />
                                 Homologado
                               </span>
                             ) : rep.status === 'rejected' ? (
-                              <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border ${
-                                isDark ? 'bg-rose-500/20 text-rose-400 border-rose-500/30' : 'bg-rose-100 text-rose-700 border-rose-200'
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border ${
+                                isDark ? 'bg-rose-500/15 text-rose-400 border-rose-500/30' : 'bg-rose-50 text-rose-700 border-rose-200'
                               }`}>
                                 <AlertCircle className="w-3.5 h-3.5" />
-                                Ajustes Solicitados
+                                Com Ajuste
                               </span>
                             ) : isRh ? (
-                              /* Restrição RH: Apenas Gestor homologa entregas PJ */
                               <span
-                                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border ${
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border ${
                                   isDark ? 'bg-amber-500/10 text-amber-300 border-amber-500/25' : 'bg-amber-50 text-amber-800 border-amber-200'
                                 }`}
-                                title="A homologação de entregas PJ cabe exclusivamente ao Gestor responsável"
                               >
                                 <Clock className="w-3.5 h-3.5 text-amber-500" />
                                 <span>Aguardando Gestor</span>
                               </span>
                             ) : (
-                              /* Perfil Gestor: Botões de homologação e pedido de ajuste */
                               <>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setRejectionModalId(rep.id);
-                                    setRejectionFeedback('');
-                                  }}
-                                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1 ${
-                                    isDark
-                                      ? 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border-rose-500/30'
-                                      : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
-                                  }`}
-                                >
-                                  <X className="w-3.5 h-3.5" />
-                                  <span>Pedir Ajuste</span>
-                                </button>
+                                <div className="relative group inline-flex">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setRejectionModalId(rep.id);
+                                      setRejectionFeedback('');
+                                    }}
+                                    className={`p-1.5 rounded-lg border transition-all cursor-pointer flex items-center justify-center ${
+                                      isDark
+                                        ? 'bg-rose-500/10 hover:bg-rose-500/25 text-rose-300 border-rose-500/25'
+                                        : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                                    }`}
+                                    title="Pedir ajuste"
+                                    aria-label="Pedir ajuste"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                  <span
+                                    className={`pointer-events-none absolute bottom-full right-0 mb-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-30 border ${
+                                      isDark
+                                        ? 'bg-[#1a1d27] text-rose-200 border-rose-500/30'
+                                        : 'bg-slate-900 text-white border-slate-700'
+                                    }`}
+                                  >
+                                    Pedir ajuste
+                                  </span>
+                                </div>
                                 <button
                                   type="button"
                                   onClick={() => handleApprove(rep.id)}
-                                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-white shadow-lg transition-all cursor-pointer flex items-center gap-1.5 hover:scale-[1.02]"
-                                  style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
+                                  className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer flex items-center gap-1 ${
+                                    isDark
+                                      ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/30'
+                                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                                  }`}
                                 >
-                                  <Check className="w-3.5 h-3.5 stroke-[3]" />
-                                  <span>Homologar ({rep.hoursWorked}h)</span>
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Homologar Tudo ({rep.hoursWorked}h)</span>
                                 </button>
                               </>
                             )}
                           </div>
                         </div>
 
-                        {/* Detalhes Expandidos do Fechamento (Síntese, Links Gerais e Galeria de Prints) */}
-                        {isDetailsOpen && (
-                          <div className={`mt-3 pt-3 border-t space-y-3 animate-in fade-in ${
+                        {isDetailsOpen && hasExtraDetails && (
+                          <div className={`mt-3 pt-3 border-t space-y-2.5 animate-in fade-in ${
                             isDark ? 'border-white/10' : 'border-slate-200'
                           }`}>
-                            <p className={`text-xs whitespace-pre-line p-3 rounded-xl border ${
-                              isDark ? 'text-slate-200 bg-black/30 border-white/5' : 'text-slate-700 bg-white border-slate-200'
-                            }`}>
-                              {rep.activitiesDescription}
-                            </p>
-
                             {rep.links && rep.links.length > 0 && (
                               <div className="flex items-center gap-2 flex-wrap">
                                 {rep.links.map((link, lIdx) => (
@@ -870,10 +1107,10 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                                     href={link.url}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold border ${
+                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border ${
                                       isDark
-                                        ? 'bg-[#9F243C]/20 hover:bg-[#9F243C]/30 text-[#F9DE97] border-[#F59242]/30'
-                                        : 'bg-[#96183c]/10 hover:bg-[#96183c]/20 text-[#96183c] border-[#96183c]/25'
+                                        ? 'bg-white/5 hover:bg-white/10 text-slate-300 border-white/10'
+                                        : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
                                     }`}
                                   >
                                     <LinkIcon className="w-3 h-3" />
@@ -917,47 +1154,55 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                   })}
                 </div>
               )}
-
-
-
             </div>
           ))}
         </div>
       )}
 
-      {/* MODAL PARA SOLICITAR AJUSTES / REJEIÇÃO */}
-      {rejectionModalId && (
+      {/* MODAL PARA SOLICITAR AJUSTES / COMENTÁRIO DO GESTOR */}
+      {(rejectionModalId || taskRejectionTarget) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in">
-          <div className={`w-full max-w-md rounded-3xl border p-6 shadow-2xl space-y-4 ${
+          <div className={`w-full max-w-lg rounded-3xl border p-6 shadow-2xl space-y-4 ${
             isDark ? 'bg-[#10121A] border-[#252A3A] text-white' : 'bg-white border-slate-200 text-slate-900'
           }`}>
-            <div className={`flex items-center justify-between pb-2 border-b ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
+            <div className={`flex items-center justify-between pb-3 border-b ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
               <h3 className={`font-bold text-base flex items-center gap-2 ${isDark ? 'text-rose-400' : 'text-rose-600'}`}>
                 <AlertCircle className="w-5 h-5" />
-                <span>Solicitar Ajustes no Fechamento PJ</span>
+                <span>{taskRejectionTarget ? `Pedir Ajuste — Tarefa ${taskRejectionTarget.taskCode || ""}` : "Pedir Ajuste no Fechamento PJ"}</span>
               </h3>
-              <button onClick={() => setRejectionModalId(null)} className={`cursor-pointer ${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'}`}>
+              <button onClick={() => { setRejectionModalId(null); setTaskRejectionTarget(null); }} className={`cursor-pointer ${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'}`}>
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-              Descreva abaixo o motivo da devolução ou quais comprovações/links o prestador PJ precisa complementar:
-            </p>
+            {taskRejectionTarget?.taskDescription && (
+              <div className={`p-3 rounded-xl border text-xs ${
+                isDark ? 'bg-white/5 border-white/10 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'
+              }`}>
+                <span className="font-bold block text-[10px] uppercase tracking-wider opacity-70 mb-0.5">Tarefa Selecionada:</span>
+                <span className="font-medium">{taskRejectionTarget.taskDescription}</span>
+              </div>
+            )}
 
-            <textarea
-              rows={4}
-              value={rejectionFeedback}
-              onChange={e => setRejectionFeedback(e.target.value)}
-              placeholder="Ex: Favor anexar o link da PR do módulo de relatórios e especificar o centro de custo..."
-              className={`w-full p-3 rounded-xl border text-xs outline-none ${
-                isDark ? 'bg-[#0b0d13] border-[#252A3A] text-white focus:border-rose-500' : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-rose-600'
-              }`}
-            />
+            <div className="space-y-1.5">
+              <label className={`text-xs font-semibold block ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                Comentário para o colaborador (motivo do pedido de ajuste):
+              </label>
+              <textarea
+                rows={4}
+                autoFocus
+                value={rejectionFeedback}
+                onChange={e => setRejectionFeedback(e.target.value)}
+                placeholder="Explique o que precisa ser ajustado ou complementado pelo colaborador PJ..."
+                className={`w-full p-3.5 rounded-xl border text-xs outline-none transition-all ${
+                  isDark ? 'bg-[#0b0d13] border-[#252A3A] text-white focus:border-rose-500' : 'bg-slate-50 border-slate-300 text-slate-900 focus:border-rose-600'
+                }`}
+              />
+            </div>
 
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
-                onClick={() => setRejectionModalId(null)}
+                onClick={() => { setRejectionModalId(null); setTaskRejectionTarget(null); }}
                 className={`px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer ${
                   isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                 }`}
@@ -968,7 +1213,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                 onClick={handleConfirmRejection}
                 className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg cursor-pointer"
               >
-                Confirmar Devolução
+                Enviar Pedido de Ajuste
               </button>
             </div>
           </div>

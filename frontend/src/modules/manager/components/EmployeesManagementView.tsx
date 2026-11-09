@@ -65,8 +65,8 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
     contractType: 'CLT' as 'CLT' | 'PJ' | 'TEMPORARIO',
     contractStartDate: '',
     contractEndDate: '',
-    hourlyRate: '85',
-    monthlyHoursQuota: '160',
+    hourlyRate: '',
+    monthlyHoursQuota: '',
   });
 
   // Lista de gestores únicos e disponíveis para vinculação
@@ -85,9 +85,16 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
     });
   }, [employees]);
 
-  // Lista de departamentos únicos
+  // Lista de departamentos únicos (incluindo setores criados pelo gestor)
   const departments = useMemo(() => {
-    const set = new Set<string>();
+    const set = new Set<string>(['Atendimento', 'Suporte Técnico', 'Operações', 'Comercial', 'Tecnologia']);
+    try {
+      const raw = localStorage.getItem('pontual_custom_departments_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) parsed.forEach(d => d && typeof d === 'string' && set.add(d.trim()));
+      }
+    } catch {}
     (employees || []).forEach(e => {
       if (e?.department) set.add(e.department);
     });
@@ -132,8 +139,8 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
       contractType: (emp.contractType || 'CLT') as 'CLT' | 'PJ' | 'TEMPORARIO',
       contractStartDate: emp.contractStartDate || '',
       contractEndDate: emp.contractEndDate || '',
-      hourlyRate: emp.hourlyRate !== undefined ? String(emp.hourlyRate) : '85',
-      monthlyHoursQuota: emp.monthlyHoursQuota !== undefined ? String(emp.monthlyHoursQuota) : '160',
+      hourlyRate: emp.hourlyRate !== undefined ? String(emp.hourlyRate) : '',
+      monthlyHoursQuota: emp.monthlyHoursQuota !== undefined ? String(emp.monthlyHoursQuota) : '',
     });
   };
 
@@ -704,9 +711,6 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
           }`}>
             <div className="flex items-center justify-between pb-4 border-b border-white/10">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#96183c] to-[#f89642] flex items-center justify-center text-white font-bold">
-                  <Edit3 className="w-5 h-5" />
-                </div>
                 <div>
                   <h3 className="font-extrabold text-lg">Editar Colaborador</h3>
                   <span className="text-xs text-slate-400 block">{editingEmployee.name}</span>
@@ -857,7 +861,7 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                         min="0"
                         value={editForm.hourlyRate}
                         onChange={e => setEditForm({ ...editForm, hourlyRate: e.target.value })}
-                        placeholder="Ex: 85.00"
+                        placeholder="0.00"
                         className={`w-full px-3 py-2 rounded-xl border outline-none ${
                           isDark ? 'bg-[#0b0c10] border-[#252A3A] text-white' : 'bg-white border-slate-200 text-slate-900'
                         }`}
@@ -873,7 +877,7 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                         min="1"
                         value={editForm.monthlyHoursQuota}
                         onChange={e => setEditForm({ ...editForm, monthlyHoursQuota: e.target.value })}
-                        placeholder="Ex: 160"
+                        placeholder="0"
                         className={`w-full px-3 py-2 rounded-xl border outline-none ${
                           isDark ? 'bg-[#0b0c10] border-[#252A3A] text-white' : 'bg-white border-slate-200 text-slate-900'
                         }`}

@@ -115,9 +115,6 @@ export const DeleteShiftsModal: React.FC<DeleteShiftsModalProps> = ({
           }`}
         >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-500 shrink-0">
-              <Trash2 className="w-5 h-5" />
-            </div>
             <div>
               <h2 className={`text-base sm:text-lg font-bold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
                 Excluir Escalas em Lote
