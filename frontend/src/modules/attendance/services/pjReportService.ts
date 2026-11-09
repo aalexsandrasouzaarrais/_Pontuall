@@ -11,10 +11,19 @@ const STORAGE_KEY_PJ_REPORTS = 'pontual_pj_reports';
 const STORAGE_KEY_PJ_DRAFT_PREFIX = 'pontual_pj_draft_timesheet_';
 const STORAGE_KEY_PJ_TIMER_PREFIX = 'pontual_pj_active_timer_';
 
+function isInternalPjMetaRow(period?: string, status?: string): boolean {
+  if (!period) return false;
+  const p = String(period).trim();
+  return p.startsWith('__') || status === 'draft';
+}
+
 function getLocalReports(): PjDeliverableReport[] {
   try {
     const raw = safeStorage.getItem(STORAGE_KEY_PJ_REPORTS);
-    return raw ? JSON.parse(raw) : [];
+    const parsed: PjDeliverableReport[] = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter(r => !isInternalPjMetaRow(r.period, r.status as string))
+      : [];
   } catch {
     return [];
   }
@@ -44,7 +53,33 @@ export async function getPjReportsSupabase(employeeId?: string): Promise<PjDeliv
 
     if (!error && data) {
       const localCache = getLocalReports();
-      const validRows = data.filter((row: any) => row.Des_Periodo_Referencia !== "__PJ_CONTRACT_PARAMS__");
+      // Sincroniza apenas o rascunho mais recente (__DRAFT_TIMESHEET__) de cada colaborador e limpa duplicatas antigas
+      const seenDraftEmpIds = new Set<string>();
+      const duplicateDraftRowIds: string[] = [];
+      for (const row of data) {
+        if (row.Des_Periodo_Referencia === '__DRAFT_TIMESHEET__' && row.Idf_Colaborador) {
+          if (!seenDraftEmpIds.has(row.Idf_Colaborador)) {
+            seenDraftEmpIds.add(row.Idf_Colaborador);
+            const rawLinks: any[] = Array.isArray(row.Des_Links_Json) ? row.Des_Links_Json : [];
+            const meta = rawLinks.find(l => l && l.title === '__TIMESHEET_META__');
+            if (meta?.url) {
+              try {
+                const parsedDraft = JSON.parse(meta.url);
+                if (Array.isArray(parsedDraft)) {
+                  saveDraftTimesheet(row.Idf_Colaborador, parsedDraft);
+                }
+              } catch {}
+            }
+          } else if (row.Idf_Relatorio_Pj) {
+            duplicateDraftRowIds.push(row.Idf_Relatorio_Pj);
+          }
+        }
+      }
+      if (duplicateDraftRowIds.length > 0) {
+        supabase.from('TAB_Relatorio_Pj').delete().in('Idf_Relatorio_Pj', duplicateDraftRowIds).then(() => {});
+      }
+
+      const validRows = data.filter((row: any) => !isInternalPjMetaRow(row.Des_Periodo_Referencia, row.Tpo_Status));
       const mapped: PjDeliverableReport[] = validRows.map((row: any) => {
         let timesheetParsed: PjTimesheetEntry[] = [];
         if (Array.isArray(row.Des_Timesheet_Json)) {
@@ -105,7 +140,7 @@ export async function getPjReportsSupabase(employeeId?: string): Promise<PjDeliv
   }
 
   // Fallback local
-  const local = getLocalReports().filter(r => r.period !== "__PJ_CONTRACT_PARAMS__");
+  const local = getLocalReports();
   if (employeeId) {
     return local.filter(r => r.employeeId === employeeId);
   }
@@ -266,13 +301,15 @@ export async function syncDraftTimesheetFromSupabase(employeeId: string): Promis
   if (!isUuid(employeeId)) return local;
 
   try {
-    const { data, error } = await supabase
+    const { data: rows, error } = await supabase
       .from('TAB_Relatorio_Pj')
       .select('*')
       .eq('Idf_Colaborador', employeeId)
       .eq('Des_Periodo_Referencia', '__DRAFT_TIMESHEET__')
-      .maybeSingle();
+      .order('Dta_Envio', { ascending: false })
+      .limit(1);
 
+    const data = rows?.[0];
     if (!error && data) {
       let entries: PjTimesheetEntry[] = [];
       const rawLinks: any[] = Array.isArray(data.Des_Links_Json) ? data.Des_Links_Json : [];
@@ -312,18 +349,28 @@ export async function saveDraftTimesheetToSupabase(
       Tpo_Status: 'draft',
     };
 
-    const { data: existing } = await supabase
+    const { data: existingRows } = await supabase
       .from('TAB_Relatorio_Pj')
       .select('Idf_Relatorio_Pj')
       .eq('Idf_Colaborador', employeeId)
       .eq('Des_Periodo_Referencia', key)
-      .maybeSingle();
+      .order('Dta_Envio', { ascending: false });
 
-    if (existing?.Idf_Relatorio_Pj) {
+    if (existingRows && existingRows.length > 0) {
+      const primaryId = existingRows[0].Idf_Relatorio_Pj;
       await supabase
         .from('TAB_Relatorio_Pj')
         .update(payload)
-        .eq('Idf_Relatorio_Pj', existing.Idf_Relatorio_Pj);
+        .eq('Idf_Relatorio_Pj', primaryId);
+
+      // Remove eventuais duplicatas antigas de rascunho
+      if (existingRows.length > 1) {
+        const extraIds = existingRows.slice(1).map((r: any) => r.Idf_Relatorio_Pj);
+        await supabase
+          .from('TAB_Relatorio_Pj')
+          .delete()
+          .in('Idf_Relatorio_Pj', extraIds);
+      }
     } else {
       await supabase
         .from('TAB_Relatorio_Pj')

@@ -49,7 +49,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
   isDark = true,
   isRh = false,
 }) => {
-  const [localReports, setLocalReports] = useState<PjDeliverableReport[]>(() => pjReports.filter(r => r.period !== "__PJ_CONTRACT_PARAMS__"));
+  const [localReports, setLocalReports] = useState<PjDeliverableReport[]>(() => pjReports.filter(r => r.period && !r.period.startsWith("__") && (r.status as string) !== "draft"));
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('all');
@@ -60,7 +60,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
 
   // Sincroniza relatórios com o serviço ao montar ou quando pjReports mudar
   useEffect(() => {
-    setLocalReports(pjReports.filter(r => r.period !== "__PJ_CONTRACT_PARAMS__"));
+    setLocalReports(pjReports.filter(r => r.period && !r.period.startsWith("__") && (r.status as string) !== "draft"));
   }, [pjReports]);
 
   useEffect(() => {
@@ -79,7 +79,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
               map.set(r.id, { ...existing, timesheetEntries: r.timesheetEntries });
             }
           });
-          return Array.from(map.values()).filter(r => r.period !== "__PJ_CONTRACT_PARAMS__");
+          return Array.from(map.values()).filter(r => r.period && !r.period.startsWith("__") && (r.status as string) !== "draft");
         });
       }
     });
@@ -108,24 +108,25 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
         ? `CC-${emp.department.toUpperCase().slice(0, 4)}-01 • ${emp.department}`
         : 'CC-TI-01 • Tecnologia & Dev';
 
-      // Consolida todas as tarefas do timesheet (dos relatórios enviados + rascunhos em aberto no navegador)
+      // Consolida todas as tarefas do timesheet sem duplicatas
       const allTimesheetRows: (ExportTimesheetRow & { reportId?: string })[] = [];
+      const seenTaskKeys = new Set<string>();
 
-      // 1. Entradas em aberto (se o colaborador registrou no timesheet e ainda não fechou o mês)
-      draftEntries.forEach((d, idx) => {
-        allTimesheetRows.push({
-          ...d,
-          taskCode: d.taskCode || `TK-${String(draftEntries.length - idx).padStart(3, '0')}`,
-          costCenter: d.costCenter || defaultCC,
-          periodLabel: 'Em Aberto (Atual)',
-          reportStatus: 'open',
-        });
-      });
+      const getTaskDedupKey = (item: Partial<PjTimesheetEntry>) => {
+        if (item.id && !String(item.id).startsWith('rep-row-')) return `id:${item.id}`;
+        return `sig:${item.date || ''}|${item.startTime || ''}|${item.endTime || ''}|${item.project || ''}|${item.taskDescription || ''}`;
+      };
 
-      // 2. Entradas submetidas dentro de relatórios de fechamento
+      // 1. Entradas submetidas dentro de relatórios de fechamento válidos (prioridade sobre rascunho)
       empReports.forEach(rep => {
+        if (rep.period?.startsWith('__') || (rep.status as string) === 'draft') return;
+
         if (rep.timesheetEntries && rep.timesheetEntries.length > 0) {
           rep.timesheetEntries.forEach((ts, idx) => {
+            const key = getTaskDedupKey(ts);
+            if (seenTaskKeys.has(key)) return;
+            seenTaskKeys.add(key);
+
             allTimesheetRows.push({
               ...ts,
               taskCode: ts.taskCode || `TK-${String(idx + 1).padStart(3, '0')}`,
@@ -156,6 +157,21 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
             reportId: rep.id,
           });
         }
+      });
+
+      // 2. Entradas em aberto (apenas as que ainda não constam em relatórios submetidos)
+      draftEntries.forEach((d, idx) => {
+        const key = getTaskDedupKey(d);
+        if (seenTaskKeys.has(key)) return;
+        seenTaskKeys.add(key);
+
+        allTimesheetRows.push({
+          ...d,
+          taskCode: d.taskCode || `TK-${String(draftEntries.length - idx).padStart(3, '0')}`,
+          costCenter: d.costCenter || defaultCC,
+          periodLabel: 'Em Aberto (Atual)',
+          reportStatus: 'open',
+        });
       });
 
       const totalHoursLogged = Number(
