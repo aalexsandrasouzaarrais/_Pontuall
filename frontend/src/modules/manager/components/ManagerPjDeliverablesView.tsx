@@ -33,6 +33,61 @@ import {
   ExportTimesheetRow 
 } from '@/modules/attendance/services/pjReportService';
 
+const PT_MONTHS: Record<string, string> = {
+  janeiro: '01',
+  fevereiro: '02',
+  marco: '03',
+  'março': '03',
+  abril: '04',
+  maio: '05',
+  junho: '06',
+  julho: '07',
+  agosto: '08',
+  setembro: '09',
+  outubro: '10',
+  novembro: '11',
+  dezembro: '12',
+};
+
+const MONTH_NAMES_PT = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+];
+
+function extractYearMonth(dateStr?: string, periodLabel?: string): string | null {
+  if (dateStr) {
+    const clean = dateStr.trim();
+    if (/^\d{4}-\d{2}/.test(clean)) {
+      return clean.slice(0, 7);
+    }
+    const brMatch = clean.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    if (brMatch) {
+      return `${brMatch[3]}-${brMatch[2]}`;
+    }
+  }
+  if (periodLabel) {
+    const lower = periodLabel.toLowerCase();
+    const yearMatch = lower.match(/\b(20\d{2})\b/);
+    if (yearMatch) {
+      for (const [mName, mNum] of Object.entries(PT_MONTHS)) {
+        if (lower.includes(mName)) {
+          return `${yearMatch[1]}-${mNum}`;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function formatYearMonthLabel(ym: string): string {
+  const [y, m] = ym.split('-');
+  const mIdx = parseInt(m, 10) - 1;
+  if (mIdx >= 0 && mIdx < 12) {
+    return `${MONTH_NAMES_PT[mIdx]} de ${y}`;
+  }
+  return ym;
+}
+
 interface ManagerPjDeliverablesViewProps {
   employees: Employee[];
   pjReports: PjDeliverableReport[];
@@ -54,6 +109,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('all');
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [rejectionModalId, setRejectionModalId] = useState<string | null>(null);
   const [taskRejectionTarget, setTaskRejectionTarget] = useState<{ employeeId: string; taskId: string; reportId?: string; taskCode?: string; taskDescription?: string } | null>(null);
@@ -210,7 +266,27 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
     });
   }, [pjEmployees, employees, localReports, draftRefreshTick]);
 
-  // Filtro de busca, colaborador e status
+  // Meses disponíveis para filtro (baseado nas datas das tarefas e períodos de fechamento + mês atual)
+  const availableMonths = useMemo(() => {
+    const monthSet = new Set<string>();
+    const now = new Date();
+    monthSet.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+
+    collaboratorGroups.forEach(group => {
+      group.timesheetRows.forEach(row => {
+        const ym = extractYearMonth(row.date, row.periodLabel);
+        if (ym) monthSet.add(ym);
+      });
+      group.reports.forEach(rep => {
+        const ym = extractYearMonth(rep.submittedAt, rep.period);
+        if (ym) monthSet.add(ym);
+      });
+    });
+
+    return Array.from(monthSet).sort((a, b) => b.localeCompare(a));
+  }, [collaboratorGroups]);
+
+  // Filtro de busca, colaborador, mês e status
   const filteredGroups = useMemo(() => {
     return collaboratorGroups
       .map(group => {
@@ -218,15 +294,23 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
           return null;
         }
 
-        // Filtra relatórios pelo statusFilter
-        const matchingReports =
-          statusFilter === 'all'
-            ? group.reports
-            : group.reports.filter(r => r.status === statusFilter);
+        // Filtra relatórios pelo statusFilter e selectedMonth
+        const matchingReports = group.reports.filter(r => {
+          if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+          if (selectedMonth !== 'all') {
+            const repYm = extractYearMonth(r.submittedAt, r.period);
+            if (repYm !== selectedMonth) return false;
+          }
+          return true;
+        });
 
-        // Filtra linhas do timesheet pela busca e status
+        // Filtra linhas do timesheet pela busca, mês e status
         const matchingRows = group.timesheetRows.filter(row => {
           if (statusFilter !== 'all' && row.reportStatus !== statusFilter) return false;
+          if (selectedMonth !== 'all') {
+            const rowYm = extractYearMonth(row.date, row.periodLabel);
+            if (rowYm !== selectedMonth) return false;
+          }
           if (!searchQuery.trim()) return true;
           const q = searchQuery.toLowerCase();
           return (
@@ -238,7 +322,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
           );
         });
 
-        if (statusFilter !== 'all' && matchingReports.length === 0 && matchingRows.length === 0) {
+        if ((statusFilter !== 'all' || selectedMonth !== 'all') && matchingReports.length === 0 && matchingRows.length === 0) {
           return null;
         }
 
@@ -248,14 +332,26 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
           if (!nameMatches && matchingRows.length === 0) return null;
         }
 
+        const filteredHoursLogged = Number(
+          matchingRows.reduce((acc, r) => acc + (Number(r.durationHours) || 0), 0).toFixed(2)
+        );
+        const filteredApprovedHours = Number(
+          matchingRows
+            .filter(r => r.reportStatus === 'approved')
+            .reduce((acc, r) => acc + (Number(r.durationHours) || 0), 0)
+            .toFixed(2)
+        );
+
         return {
           ...group,
           reports: matchingReports,
           timesheetRows: matchingRows,
+          totalHoursLogged: filteredHoursLogged,
+          approvedHours: filteredApprovedHours,
         };
       })
       .filter(Boolean) as typeof collaboratorGroups;
-  }, [collaboratorGroups, selectedEmployeeId, statusFilter, searchQuery]);
+  }, [collaboratorGroups, selectedEmployeeId, selectedMonth, statusFilter, searchQuery]);
 
   // Contadores Globais (baseados nas tarefas para refletir homologação por tarefa e por fechamento)
   const allTasksFlat = useMemo(
@@ -529,6 +625,24 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
             {collaboratorGroups.map(g => (
               <option key={g.employeeId} value={g.employeeId}>
                 {g.employeeName} — {g.totalHoursLogged}h registradas
+              </option>
+            ))}
+          </select>
+
+          {/* Seletor de Mês */}
+          <select
+            value={selectedMonth}
+            onChange={e => setSelectedMonth(e.target.value)}
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold border outline-none cursor-pointer ${
+              isDark 
+                ? 'bg-[#0b0d13] border-[#252A3A] text-white focus:border-[#f89847]' 
+                : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-[#96183c]'
+            }`}
+          >
+            <option value="all">Todos os Meses</option>
+            {availableMonths.map(ym => (
+              <option key={ym} value={ym}>
+                {formatYearMonthLabel(ym)}
               </option>
             ))}
           </select>
