@@ -277,6 +277,80 @@ export async function updatePjReportStatusSupabase(
   return true;
 }
 
+/**
+ * Atualiza o status de homologação (Aprovado / Com Ajuste) de uma tarefa individual do Timesheet PJ
+ */
+export async function updatePjTimesheetTaskStatus(params: {
+  employeeId: string;
+  taskId: string;
+  reportId?: string;
+  status: 'approved' | 'rejected';
+  managerFeedback?: string;
+}): Promise<void> {
+  const { employeeId, taskId, reportId, status, managerFeedback } = params;
+
+  // 1. Atualiza no rascunho em aberto do colaborador (se a tarefa estiver lá)
+  const draft = getDraftTimesheet(employeeId);
+  if (draft.some(t => t.id === taskId)) {
+    const updatedDraft = draft.map(t =>
+      t.id === taskId ? { ...t, status, managerFeedback: managerFeedback || undefined } : t
+    );
+    await saveDraftTimesheetToSupabase(employeeId, updatedDraft);
+  }
+
+  // 2. Se pertencer a um relatório enviado, atualiza a tarefa dentro do relatório no cache local e no Supabase
+  if (reportId) {
+    const currentReports = getLocalReports();
+    const targetReport = currentReports.find(r => r.id === reportId);
+    if (targetReport && Array.isArray(targetReport.timesheetEntries) && targetReport.timesheetEntries.length > 0) {
+      const updatedEntries = targetReport.timesheetEntries.map(t =>
+        t.id === taskId ? { ...t, status, managerFeedback: managerFeedback || undefined } : t
+      );
+      const allApproved = updatedEntries.every(t => t.status === 'approved');
+      const anyRejected = updatedEntries.some(t => t.status === 'rejected');
+      const newReportStatus: 'pending' | 'approved' | 'rejected' = allApproved
+        ? 'approved'
+        : anyRejected
+        ? 'rejected'
+        : 'pending';
+
+      const updatedReports = currentReports.map(r =>
+        r.id === reportId
+          ? {
+              ...r,
+              timesheetEntries: updatedEntries,
+              status: newReportStatus,
+              managerFeedback: managerFeedback || r.managerFeedback,
+            }
+          : r
+      );
+      saveLocalReports(updatedReports);
+
+      try {
+        const cleanLinks = (targetReport.links || []).filter(l => l && l.title !== '__TIMESHEET_META__');
+        const linksWithMeta = [
+          ...cleanLinks,
+          { title: '__TIMESHEET_META__', url: JSON.stringify(updatedEntries) },
+        ];
+        await supabase
+          .from('TAB_Relatorio_Pj')
+          .update({
+            Des_Timesheet_Json: updatedEntries,
+            Des_Links_Json: linksWithMeta,
+            Tpo_Status: newReportStatus,
+            Des_Parecer_Gestor: managerFeedback || targetReport.managerFeedback || null,
+          })
+          .eq('Idf_Relatorio_Pj', reportId);
+      } catch (err) {
+        console.warn('Aviso ao atualizar tarefa individual no relatório PJ:', err);
+      }
+    } else if (!targetReport?.timesheetEntries?.length) {
+      // Relatório sem sub-itens (linha única representativa)
+      await updatePjReportStatusSupabase(reportId, status, managerFeedback);
+    }
+  }
+}
+
 // ============================================================================
 // GERENCIAMENTO LOCAL DE TIMESHEET RASCUNHO / ATIVIDADES PENDENTES DE ENVIO
 // ============================================================================

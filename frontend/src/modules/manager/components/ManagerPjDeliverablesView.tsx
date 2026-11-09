@@ -29,6 +29,7 @@ import {
   getPjReportsSupabase, 
   getDraftTimesheet, 
   exportPjTimesheetSpreadsheet,
+  updatePjTimesheetTaskStatus,
   ExportTimesheetRow 
 } from '@/modules/attendance/services/pjReportService';
 
@@ -55,7 +56,9 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('all');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [rejectionModalId, setRejectionModalId] = useState<string | null>(null);
+  const [taskRejectionTarget, setTaskRejectionTarget] = useState<{ employeeId: string; taskId: string; reportId?: string; taskCode?: string } | null>(null);
   const [rejectionFeedback, setRejectionFeedback] = useState('');
+  const [draftRefreshTick, setDraftRefreshTick] = useState(0);
   const [expandedReportDetails, setExpandedReportDetails] = useState<Record<string, boolean>>({});
 
   // Sincroniza relatórios com o serviço ao montar ou quando pjReports mudar
@@ -82,6 +85,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
           return Array.from(map.values()).filter(r => r.period && !r.period.startsWith("__") && (r.status as string) !== "draft");
         });
       }
+      if (active) setDraftRefreshTick(t => t + 1);
     });
     return () => { active = false; };
   }, []);
@@ -132,7 +136,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
               taskCode: ts.taskCode || `TK-${String(idx + 1).padStart(3, '0')}`,
               costCenter: ts.costCenter || defaultCC,
               periodLabel: rep.period,
-              reportStatus: rep.status,
+              reportStatus: ts.status || rep.status || 'pending',
               reportId: rep.id,
             });
           });
@@ -170,7 +174,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
           taskCode: d.taskCode || `TK-${String(draftEntries.length - idx).padStart(3, '0')}`,
           costCenter: d.costCenter || defaultCC,
           periodLabel: 'Em Aberto (Atual)',
-          reportStatus: 'open',
+          reportStatus: d.status || 'pending',
         });
       });
 
@@ -179,9 +183,9 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
       );
 
       const approvedHours = Number(
-        empReports
-          .filter(r => r.status === 'approved')
-          .reduce((acc, r) => acc + (Number(r.hoursWorked) || 0), 0)
+        allTimesheetRows
+          .filter(r => r.reportStatus === 'approved')
+          .reduce((acc, r) => acc + (Number(r.durationHours) || 0), 0)
           .toFixed(2)
       );
 
@@ -204,7 +208,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
         approvedHours,
       };
     });
-  }, [pjEmployees, employees, localReports]);
+  }, [pjEmployees, employees, localReports, draftRefreshTick]);
 
   // Filtro de busca, colaborador e status
   const filteredGroups = useMemo(() => {
@@ -253,26 +257,124 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
       .filter(Boolean) as typeof collaboratorGroups;
   }, [collaboratorGroups, selectedEmployeeId, statusFilter, searchQuery]);
 
-  // Contadores Globais
-  const pendingCount = localReports.filter(r => r.status === 'pending').length;
-  const approvedCount = localReports.filter(r => r.status === 'approved').length;
+  // Contadores Globais (baseados nas tarefas para refletir homologação por tarefa e por fechamento)
+  const allTasksFlat = useMemo(
+    () => collaboratorGroups.flatMap(g => g.timesheetRows),
+    [collaboratorGroups]
+  );
+  const pendingCount = allTasksFlat.filter(t => t.reportStatus === 'pending' || t.reportStatus === 'open').length;
+  const approvedCount = allTasksFlat.filter(t => t.reportStatus === 'approved').length;
   const totalApprovedHours = Number(
-    localReports
-      .filter(r => r.status === 'approved')
-      .reduce((acc, curr) => acc + (Number(curr.hoursWorked) || 0), 0)
+    allTasksFlat
+      .filter(t => t.reportStatus === 'approved')
+      .reduce((acc, curr) => acc + (Number(curr.durationHours) || 0), 0)
       .toFixed(2)
   );
 
   const handleApprove = (reportId: string) => {
-    setLocalReports(prev => prev.map(r => (r.id === reportId ? { ...r, status: 'approved' } : r)));
+    setLocalReports(prev =>
+      prev.map(r =>
+        r.id === reportId
+          ? {
+              ...r,
+              status: 'approved',
+              timesheetEntries: r.timesheetEntries?.map(t => ({ ...t, status: 'approved' })),
+            }
+          : r
+      )
+    );
     if (onApproveReport) onApproveReport(reportId);
   };
 
-  const handleConfirmRejection = () => {
-    if (rejectionModalId) {
-      const reason = rejectionFeedback.trim() || 'Ajustes solicitados pelo gestor.';
+  const handleApproveTask = async (
+    employeeId: string,
+    entry: ExportTimesheetRow & { reportId?: string }
+  ) => {
+    // Se for uma linha sintética de relatório sem sub-itens
+    if (entry.reportId && String(entry.id).startsWith('rep-row-')) {
+      handleApprove(entry.reportId);
+      return;
+    }
+
+    await updatePjTimesheetTaskStatus({
+      employeeId,
+      taskId: entry.id,
+      reportId: entry.reportId,
+      status: 'approved',
+    });
+
+    if (entry.reportId) {
       setLocalReports(prev =>
-        prev.map(r => (r.id === rejectionModalId ? { ...r, status: 'rejected', managerFeedback: reason } : r))
+        prev.map(r => {
+          if (r.id !== entry.reportId) return r;
+          const updatedEntries = r.timesheetEntries?.map(t =>
+            t.id === entry.id ? { ...t, status: 'approved' as const } : t
+          );
+          const allApp = updatedEntries?.every(t => t.status === 'approved');
+          return {
+            ...r,
+            timesheetEntries: updatedEntries,
+            status: allApp ? 'approved' : r.status,
+          };
+        })
+      );
+    }
+    setDraftRefreshTick(t => t + 1);
+  };
+
+  const handleConfirmRejection = async () => {
+    const reason = rejectionFeedback.trim() || 'Ajustes solicitados pelo gestor.';
+
+    if (taskRejectionTarget) {
+      const { employeeId, taskId, reportId } = taskRejectionTarget;
+      if (reportId && String(taskId).startsWith('rep-row-')) {
+        setLocalReports(prev =>
+          prev.map(r => (r.id === reportId ? { ...r, status: 'rejected', managerFeedback: reason } : r))
+        );
+        if (onRejectReport) onRejectReport(reportId, reason);
+      } else {
+        await updatePjTimesheetTaskStatus({
+          employeeId,
+          taskId,
+          reportId,
+          status: 'rejected',
+          managerFeedback: reason,
+        });
+        if (reportId) {
+          setLocalReports(prev =>
+            prev.map(r => {
+              if (r.id !== reportId) return r;
+              const updatedEntries = r.timesheetEntries?.map(t =>
+                t.id === taskId ? { ...t, status: 'rejected' as const, managerFeedback: reason } : t
+              );
+              return {
+                ...r,
+                timesheetEntries: updatedEntries,
+                status: 'rejected',
+                managerFeedback: reason,
+              };
+            })
+          );
+        }
+        setDraftRefreshTick(t => t + 1);
+      }
+      setTaskRejectionTarget(null);
+      setRejectionFeedback('');
+      return;
+    }
+
+    if (rejectionModalId) {
+      setLocalReports(prev =>
+        prev.map(r =>
+          r.id === rejectionModalId
+            ? {
+                ...r,
+                status: 'rejected',
+                managerFeedback: reason,
+                timesheetEntries: r.timesheetEntries?.map(t => ({ ...t, status: 'rejected', managerFeedback: reason })),
+              }
+            : r
+        )
       );
       if (onRejectReport) onRejectReport(rejectionModalId, reason);
       setRejectionModalId(null);
@@ -570,7 +672,9 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                           <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-center">Horário</th>
                           <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-center">Duração</th>
                           <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Evidências</th>
-                          <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-center">Status</th>
+                          <th className={`py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] ${statusFilter === 'all' ? 'text-center' : 'text-right'}`}>
+                            {statusFilter === 'all' ? 'Status' : 'Homologação'}
+                          </th>
                         </tr>
                       </thead>
                       <tbody className={`divide-y ${isDark ? 'divide-white/5' : 'divide-slate-200'}`}>
@@ -610,6 +714,11 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                               <span className={`font-medium block truncate ${isDark ? 'text-slate-200' : 'text-slate-800'}`} title={entry.taskDescription}>
                                 {entry.taskDescription}
                               </span>
+                              {entry.managerFeedback && (
+                                <span className={`block text-[10px] mt-0.5 truncate ${isDark ? 'text-rose-400' : 'text-rose-600'}`} title={entry.managerFeedback}>
+                                  Ajuste: {entry.managerFeedback}
+                                </span>
+                              )}
                             </td>
                             <td className={`py-2.5 px-3 font-mono text-center whitespace-nowrap ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                               {entry.startTime} → {entry.endTime}
@@ -657,27 +766,67 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                                 )}
                               </div>
                             </td>
-                            <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                              {entry.reportStatus === 'approved' ? (
-                                <span
-                                  className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500"
-                                  title="Homologado"
-                                />
-                              ) : entry.reportStatus === 'rejected' ? (
-                                <span
-                                  className="inline-block w-2.5 h-2.5 rounded-full bg-rose-500"
-                                  title="Com Ajuste"
-                                />
-                              ) : entry.reportStatus === 'pending' ? (
-                                <span
-                                  className="inline-block w-2.5 h-2.5 rounded-full bg-amber-400"
-                                  title="Aguardando"
-                                />
+                            <td className={`py-2.5 px-3 whitespace-nowrap ${statusFilter === 'all' ? 'text-center' : 'text-right'}`}>
+                              {statusFilter === 'all' ? (
+                                entry.reportStatus === 'approved' ? (
+                                  <span
+                                    className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500"
+                                    title="Homologado"
+                                  />
+                                ) : entry.reportStatus === 'rejected' ? (
+                                  <span
+                                    className="inline-block w-2.5 h-2.5 rounded-full bg-rose-500"
+                                    title="Com Ajuste"
+                                  />
+                                ) : (
+                                  <span
+                                    className="inline-block w-2.5 h-2.5 rounded-full bg-amber-400"
+                                    title="Pendente de Homologação"
+                                  />
+                                )
+                              ) : isRh ? (
+                                <span className="inline-block w-2.5 h-2.5 rounded-full bg-amber-400" title="Modo Consulta RH" />
                               ) : (
-                                <span
-                                  className="inline-block w-2.5 h-2.5 rounded-full bg-slate-400"
-                                  title="Em Aberto"
-                                />
+                                <div className="inline-flex items-center justify-end gap-1.5">
+                                  {entry.reportStatus !== 'rejected' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setTaskRejectionTarget({
+                                          employeeId: group.employeeId,
+                                          taskId: entry.id,
+                                          reportId: entry.reportId,
+                                          taskCode: entry.taskCode,
+                                        });
+                                        setRejectionFeedback(entry.managerFeedback || '');
+                                      }}
+                                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer flex items-center gap-1 ${
+                                        isDark
+                                          ? 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border-rose-500/25'
+                                          : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                                      }`}
+                                      title="Recusar ou pedir ajuste nesta tarefa"
+                                    >
+                                      <X className="w-3 h-3" />
+                                      <span>Pedir Ajuste</span>
+                                    </button>
+                                  )}
+                                  {entry.reportStatus !== 'approved' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleApproveTask(group.employeeId, entry)}
+                                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer flex items-center gap-1 ${
+                                        isDark
+                                          ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/30'
+                                          : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
+                                      }`}
+                                      title="Homologar esta tarefa"
+                                    >
+                                      <Check className="w-3 h-3" />
+                                      <span>Homologar</span>
+                                    </button>
+                                  )}
+                                </div>
                               )}
                             </td>
                           </tr>
@@ -891,7 +1040,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
       )}
 
       {/* MODAL PARA SOLICITAR AJUSTES / REJEIÇÃO */}
-      {rejectionModalId && (
+      {(rejectionModalId || taskRejectionTarget) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs animate-in fade-in">
           <div className={`w-full max-w-md rounded-3xl border p-6 shadow-2xl space-y-4 ${
             isDark ? 'bg-[#10121A] border-[#252A3A] text-white' : 'bg-white border-slate-200 text-slate-900'
@@ -899,9 +1048,9 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
             <div className={`flex items-center justify-between pb-2 border-b ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
               <h3 className={`font-bold text-base flex items-center gap-2 ${isDark ? 'text-rose-400' : 'text-rose-600'}`}>
                 <AlertCircle className="w-5 h-5" />
-                <span>Solicitar Ajustes no Fechamento PJ</span>
+                <span>{taskRejectionTarget ? `Solicitar Ajuste na Tarefa ${taskRejectionTarget.taskCode || ""}` : "Solicitar Ajustes no Fechamento PJ"}</span>
               </h3>
-              <button onClick={() => setRejectionModalId(null)} className={`cursor-pointer ${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'}`}>
+              <button onClick={() => { setRejectionModalId(null); setTaskRejectionTarget(null); }} className={`cursor-pointer ${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'}`}>
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -922,7 +1071,7 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
 
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
-                onClick={() => setRejectionModalId(null)}
+                onClick={() => { setRejectionModalId(null); setTaskRejectionTarget(null); }}
                 className={`px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer ${
                   isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                 }`}
