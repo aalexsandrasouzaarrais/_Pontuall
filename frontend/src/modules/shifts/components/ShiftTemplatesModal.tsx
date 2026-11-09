@@ -578,7 +578,7 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
               >
                 {workplacesList.map(w => (
                   <option key={w.id} value={w.id} className={isDark ? 'bg-[#181922] text-white' : 'bg-white text-slate-900'}>
-                    📍 {w.name} {w.isRemote ? '(Remoto/Flexível)' : `— ${w.address}`} ({w.radiusMeters || 200}m)
+                    {w.name} {w.isRemote ? '(Remoto/Flexível)' : `— ${w.address}`} ({w.radiusMeters || 200}m)
                   </option>
                 ))}
               </select>

@@ -71,7 +71,13 @@ export function getStoredWorkplaces(): WorkplaceLocation[] {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
       // Filtra e limpa resquícios antigos de 'wp-sede-sp' se o usuário ainda tiver em cache antigo
-      const filtered = parsed.filter(w => w.id !== 'wp-sede-sp' && w.name !== 'Sede Central - SP');
+      const filtered = parsed
+        .filter(w => w.id !== 'wp-sede-sp' && w.name !== 'Sede Central - SP')
+        .map(w => ({
+          ...w,
+          name: typeof w.name === 'string' ? w.name.replace(/📍\s*/g, '').trim() : w.name,
+          address: typeof w.address === 'string' ? w.address.replace(/📍\s*/g, '').trim() : w.address,
+        }));
       return filtered.length > 0 ? filtered : DEFAULT_WORKPLACES;
     }
   } catch (err) {
