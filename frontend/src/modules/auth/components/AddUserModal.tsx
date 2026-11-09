@@ -872,14 +872,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                     ) : (
                       <select
                         value={department}
-                        onChange={(e) => {
-                          if (e.target.value === '__NEW_SECTOR__') {
-                            setIsCreatingDepartment(true);
-                            setNewDepartmentName('');
-                          } else {
-                            setDepartment(e.target.value);
-                          }
-                        }}
+                        onChange={(e) => setDepartment(e.target.value)}
                         className={`w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all cursor-pointer border ${
                           isDark
                             ? 'bg-[#181A24] border-white/10 text-white focus:border-[#f89847]'
@@ -891,9 +884,6 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                             {dept}
                           </option>
                         ))}
-                        <option value="__NEW_SECTOR__" className={isDark ? "bg-[#181A24] text-[#f89847] font-bold" : "bg-white text-[#96183c] font-bold"}>
-                          + Criar novo setor...
-                        </option>
                       </select>
                     )}
                   </div>
