@@ -233,7 +233,7 @@ export async function searchAddressSuggestions(query: string): Promise<AddressSu
       return [{
         latitude: lat,
         longitude: lon,
-        displayName: `📍 Coordenadas do Maps: ${rev.formattedAddress}`,
+        displayName: `Coordenadas do Maps: ${rev.formattedAddress}`,
         road: rev.road,
         neighbourhood: rev.neighbourhood,
         city: rev.city,
