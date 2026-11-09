@@ -1057,7 +1057,7 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
 
           {/* ─── WEEK VIEW (DEFAULT) ─── */}
           {view === 'Semana' && (
-            <div className={`rounded-[32px] overflow-hidden font-sans transition-all duration-300 relative border ${
+            <div className={`rounded-t-[32px] rounded-b-none font-sans transition-all duration-300 relative border border-b-0 min-h-[calc(100vh-240px)] flex flex-col ${
               isDark ? 'bg-[#0f1115] border-white/5 shadow-2xl text-white' : 'bg-white border-slate-200/80 shadow-xl text-slate-800'
             }`}>
 
@@ -1190,11 +1190,13 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                 </div>
               </div>
 
-              {/* Corpo da Grade Semanal: 7 Colunas com Lista Direta de Escalas (Sem rolagem horária vazia) */}
-              <div className={`w-full p-4 sm:p-6 transition-all relative ${
+              {/* Corpo da Grade Semanal: 7 Colunas com Fundo Infinito e Lanes Verticais */}
+              <div className={`w-full flex-1 transition-all relative min-h-[calc(100vh-280px)] ${
                 isDark ? 'bg-[#0f1115] border-t border-white/5' : 'bg-white border-t border-slate-100'
               }`}>
-                <div className="grid grid-cols-7 gap-2.5 sm:gap-3 items-stretch relative">
+                <div className={`grid grid-cols-7 divide-x ${
+                  isDark ? 'divide-white/5' : 'divide-slate-100'
+                } min-h-[calc(100vh-280px)] items-stretch relative`}>
                   {weekDays.map((date, dayIdx) => {
                     const dateStr = formatDate(date);
                     const isSelected = dateStr === formatDate(currentDate);
@@ -1210,37 +1212,26 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                     return (
                       <div
                         key={dayIdx}
-                        onClick={() => setCurrentDate(date)}
-                        className={`flex flex-col gap-2.5 p-2 sm:p-2.5 rounded-2xl transition-all min-h-[460px] relative ${
+                        onClick={() => {
+                          setCurrentDate(date);
+                          setModalInitialDate(dateStr);
+                          setEditingShift(null);
+                          setIsShiftModalOpen(true);
+                        }}
+                        className={`flex flex-col gap-2.5 p-2 sm:p-2.5 transition-all min-h-full cursor-pointer relative group ${
                           isSelected
                             ? isDark
-                              ? 'bg-[#15181e] border-2 border-[#7a1428] shadow-lg shadow-[#7a1428]/15'
-                              : 'bg-[#fff5f7]/70 border-2 border-[#96183c]/40 shadow-sm'
+                              ? 'bg-[#96183c]/5'
+                              : 'bg-[#96183c]/5'
                             : isDark
-                              ? 'bg-[#12141a]/60 border border-white/5 hover:border-white/10'
-                              : 'bg-slate-50/60 border border-slate-200/60 hover:border-slate-300'
+                              ? 'hover:bg-white/[0.015]'
+                              : 'hover:bg-slate-50/50'
                         }`}
+                        title="Clique no espaço vazio para adicionar escala neste dia"
                       >
-                        {/* Se não houver escalas no dia */}
+                        {/* Se não houver escalas no dia: totalmente limpo/vazio */}
                         {dayEvents.length === 0 ? (
-                          <div
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setModalInitialDate(dateStr);
-                              setEditingShift(null);
-                              setIsShiftModalOpen(true);
-                            }}
-                            className={`flex-1 flex flex-col items-center justify-center p-3 rounded-xl border border-dashed text-center cursor-pointer transition-all ${
-                              isDark
-                                ? 'border-white/10 hover:border-white/20 text-slate-500 hover:text-slate-300 hover:bg-white/[0.02]'
-                                : 'border-slate-200 hover:border-slate-300 text-slate-400 hover:text-slate-600 hover:bg-white'
-                            }`}
-                            title="Clique para adicionar escala neste dia"
-                          >
-                            <Plus className="w-5 h-5 mb-1 opacity-50" />
-                            <span className="text-[11px] font-medium">Sem escalas</span>
-                            <span className="text-[10px] opacity-60 mt-0.5">+ Adicionar</span>
-                          </div>
+                          <div className="flex-1 w-full min-h-[200px]" />
                         ) : (
                           <>
                             {/* Cartões de Escalas Visíveis */}
@@ -1257,9 +1248,9 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                                       e.stopPropagation();
                                       handleOpenEditShift(ev);
                                     }}
-                                    className={`p-2.5 rounded-xl border transition-all cursor-pointer shadow-sm hover:scale-[1.02] hover:shadow-md text-left flex flex-col gap-1.5 relative overflow-hidden group/card ${
+                                    className={`p-2.5 rounded-xl border transition-all cursor-pointer shadow-xs hover:scale-[1.01] hover:shadow-md text-left flex flex-col gap-1.5 relative overflow-hidden group/card ${
                                       isDark
-                                        ? 'bg-[#1c1f27] border-white/10 hover:border-white/20'
+                                        ? 'bg-[#181a22] border-white/10 hover:border-white/20'
                                         : 'bg-white border-slate-200 hover:border-slate-300'
                                     }`}
                                     style={{
@@ -1298,7 +1289,7 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                               })}
                             </div>
 
-                            {/* Badge "+N escalas neste horário" */}
+                            {/* Badge Discreto "+N escalas neste horário" (sem gradiente chamativo) */}
                             {remainingCount > 0 && (
                               <button
                                 type="button"
@@ -1312,33 +1303,20 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                                     dayIdx,
                                   });
                                 }}
-                                className="w-full py-1.5 px-2 mt-0.5 rounded-full text-[11px] font-bold text-white shadow-md transition-all text-center cursor-pointer hover:scale-105 active:scale-95 flex items-center justify-center gap-1"
-                                style={{
-                                  background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 100%)',
-                                  boxShadow: '0 2px 8px rgba(100, 12, 30, 0.35)'
-                                }}
+                                className={`w-full py-1.5 px-2 mt-0.5 rounded-lg text-[11px] font-semibold transition-all text-center cursor-pointer flex items-center justify-center gap-1.5 border ${
+                                  isDark
+                                    ? 'bg-[#22161b] hover:bg-[#2d1b23] text-[#fca5a5] border-[#96183c]/35 hover:border-[#96183c]/60 shadow-xs'
+                                    : 'bg-[#fdf2f4] hover:bg-[#fce7eb] text-[#96183c] border-[#96183c]/25 hover:border-[#96183c]/45 shadow-xs'
+                                }`}
+                                title="Clique para ver todos os colaboradores deste horário"
                               >
-                                +{remainingCount} {remainingCount === 1 ? 'escala neste horário' : 'escalas neste horário'}
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#96183c] inline-block shrink-0" />
+                                <span>+{remainingCount} {remainingCount === 1 ? 'escala neste horário' : 'escalas neste horário'}</span>
                               </button>
                             )}
 
-                            {/* Ação rápida de adicionar mais escalas no dia */}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setModalInitialDate(dateStr);
-                                setEditingShift(null);
-                                setIsShiftModalOpen(true);
-                              }}
-                              className={`w-full py-1.5 text-[10px] font-semibold rounded-lg border border-dashed transition-all cursor-pointer mt-auto text-center ${
-                                isDark
-                                  ? 'border-white/5 text-slate-500 hover:text-slate-300 hover:border-white/20 hover:bg-white/[0.02]'
-                                  : 'border-slate-200 text-slate-400 hover:text-slate-600 hover:border-slate-300 hover:bg-slate-50'
-                              }`}
-                            >
-                              + Adicionar
-                            </button>
+                            {/* Espaço vazio restante clicável na coluna */}
+                            <div className="flex-1 w-full min-h-[100px]" />
                           </>
                         )}
                       </div>
@@ -1355,13 +1333,13 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                       />
 
                       <div
-                        className={`absolute z-40 w-72 sm:w-80 rounded-2xl border p-4 shadow-2xl transition-all animate-in fade-in zoom-in-95 duration-150 ${
+                        className={`absolute z-40 w-72 sm:w-80 rounded-2xl border p-4 shadow-2xl transition-all animate-in fade-in zoom-in-95 duration-150 max-h-[85vh] overflow-y-auto ${
                           isDark
                             ? 'bg-[#1a1d24] border-white/10 text-white shadow-black/80'
                             : 'bg-white border-slate-200 text-slate-800 shadow-slate-300/60'
                         }`}
                         style={{
-                          top: '20px',
+                          top: '16px',
                           left: weekFlyout.dayIdx <= 3
                             ? `calc(${(weekFlyout.dayIdx + 1) * (100 / 7)}% + 8px)`
                             : 'auto',
@@ -1394,7 +1372,7 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                         </div>
 
                         {/* Lista de Colaboradores na Escala */}
-                        <div className="flex flex-col gap-2 max-h-[340px] overflow-y-auto pr-1">
+                        <div className="flex flex-col gap-2 max-h-[45vh] overflow-y-auto pr-1">
                           {weekFlyout.shifts.map((ev) => {
                             const emp = employees.find((e) => e.id === ev.employeeId);
                             const mutedStyle = getMutedShiftColor(ev, isDark);
@@ -1458,7 +1436,7 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                               setIsShiftModalOpen(true);
                               setWeekFlyout(null);
                             }}
-                            className="w-full py-2 px-3 rounded-xl text-xs font-bold text-white shadow-sm hover:scale-[1.02] active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                            className="w-full py-2 px-3 rounded-xl text-xs font-bold text-white shadow-sm hover:scale-[1.01] active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
                             style={{
                               background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 100%)',
                             }}
