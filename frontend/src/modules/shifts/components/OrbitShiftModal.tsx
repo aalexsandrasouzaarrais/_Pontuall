@@ -94,7 +94,7 @@ export const ORBIT_COLORS: ShiftColor[] = [
     bg: "#501d33", 
     border: "#732c4b", 
     text: "#ffffff",
-    category: "Evento / Extraordinário",
+    category: "Evento",
     description: "Eventos institucionais, convenções da empresa, celebrações ou missões pontuais."
   },
 ];
@@ -127,7 +127,7 @@ export const getColorForShiftType = (type: string): ShiftColor => {
     return ORBIT_COLORS[3]; // Azul Oceano (Treinamento / Onboarding)
   }
   if (lower.includes('evento') || lower.includes('extraordinário')) {
-    return ORBIT_COLORS[5]; // Rosa Magenta (Evento / Extraordinário)
+    return ORBIT_COLORS[5]; // Rosa Magenta (Evento)
   }
   return ORBIT_COLORS[0];
 };

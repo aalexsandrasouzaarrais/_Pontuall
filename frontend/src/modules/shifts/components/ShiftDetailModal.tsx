@@ -32,7 +32,7 @@ const FALLBACK_ORBIT_COLORS: ShiftColor[] = [
   { label: "Esmeralda", bg: "#163a2a", border: "#235840", text: "#ffffff", category: "Home Office / Remoto" },
   { label: "Azul Oceano", bg: "#18324a", border: "#284e72", text: "#ffffff", category: "Treinamento / Onboarding" },
   { label: "Violeta / Roxo", bg: "#3a2250", border: "#563476", text: "#ffffff", category: "Reunião / Alinhamento" },
-  { label: "Rosa Magenta", bg: "#501d33", border: "#732c4b", text: "#ffffff", category: "Evento / Extraordinário" },
+  { label: "Rosa Magenta", bg: "#501d33", border: "#732c4b", text: "#ffffff", category: "Evento" },
 ];
 
 export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
