@@ -44,6 +44,7 @@ const MONTHS_PT = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 ];
+const MONTHS_SHORT_PT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 const DAYS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
 function formatDate(d: Date): string {
@@ -61,7 +62,7 @@ function addDays(d: Date, n: number): Date {
 
 function startOfWeek(d: Date): Date {
   const day = d.getDay();
-  return addDays(d, -day);
+  return addDays(d, day === 0 ? -6 : 1 - day);
 }
 
 /**
@@ -210,6 +211,15 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
   // Day Summary Panel (month view: show all collaborators for a day)
   const [dayPanelDate, setDayPanelDate] = useState<string | null>(null);
 
+  // Flyout Popover para exibição compacta de escalas da semana (+N escalas neste horário)
+  const [weekFlyout, setWeekFlyout] = useState<{
+    dateStr: string;
+    dayLabel: string;
+    timeSlot: string;
+    shifts: Shift[];
+    dayIdx: number;
+  } | null>(null);
+
   // Mini Calendar Navigation
   const [miniMonthDate, setMiniMonthDate] = useState<Date>(new Date(today.getFullYear(), today.getMonth(), 1));
 
@@ -244,6 +254,7 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
 
   // Navigation handlers
   const navPrev = () => {
+    setWeekFlyout(null);
     if (view === 'Mês') {
       const prevMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
       setCurrentDate(prevMonth);
@@ -257,6 +268,7 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
   };
 
   const navNext = () => {
+    setWeekFlyout(null);
     if (view === 'Mês') {
       const nextMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
       setCurrentDate(nextMonth);
@@ -270,6 +282,7 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
   };
 
   const navToday = () => {
+    setWeekFlyout(null);
     const now = new Date();
     setCurrentDate(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
     setWeekStart(startOfWeek(now));
@@ -1134,134 +1147,105 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                   </div>
                 </div>
 
-                {/* 7 Cartões Flutuantes dos Dias da Semana (alinhados com a grade de horas abaixo) */}
-                <div className="grid grid-cols-[48px_1fr] sm:grid-cols-[56px_1fr] gap-3">
-                  {/* Espaçador transparente para alinhar perfeitamente com a coluna de horas */}
-                  <div className="w-12 sm:w-14 shrink-0" aria-hidden="true" />
+                {/* 7 Colunas dos Dias da Semana com Cabeçalho e Lista Compacta de Escalas */}
+                <div className="grid grid-cols-7 gap-2.5 sm:gap-3">
+                  {weekDays.map((d) => {
+                    const dateStr = formatDate(d);
+                    const isSelected = dateStr === formatDate(currentDate);
+                    const dayNameShort = DAYS_SHORT[d.getDay()];
+                    const monthShort = MONTHS_SHORT_PT[d.getMonth()];
 
-                  <div className="grid grid-cols-7 gap-2.5">
-                    {weekDays.map((d) => {
-                      const dateStr = formatDate(d);
-                      const isSelected = dateStr === formatDate(currentDate);
-                      const dayNameShort = DAYS_SHORT[d.getDay()];
-
-                      return (
-                        <div
-                          key={dateStr}
-                          onClick={() => {
-                            setCurrentDate(d);
-                          }}
-                          className={`flex flex-col items-center justify-center py-3 px-2 rounded-2xl transition-all cursor-pointer ${
-                            isSelected
-                              ? !isDark
-                                ? 'bg-white text-slate-900 shadow-sm border-2 border-[#e65a37] scale-[1.01]'
-                                : 'bg-[#96183c] text-white shadow-lg shadow-[#96183c]/30 border border-white/20 scale-[1.01]'
-                              : !isDark
-                                ? 'bg-[#fce5dc]/95 hover:bg-[#fff0e8] border border-white/40 text-slate-800 shadow-2xs hover:scale-[1.01]'
-                                : 'bg-[#1a1d24] text-white/70 border border-white/5 hover:border-[#96183c] hover:bg-[#96183c]/25 hover:text-white'
-                          }`}
-                        >
-                          <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                            isSelected
-                              ? !isDark ? 'text-[#e65a37]' : 'opacity-90'
-                              : !isDark ? 'text-slate-500' : 'opacity-80'
-                          }`}>
-                            {dayNameShort}
-                          </span>
-                          <span className={`text-2xl font-black tracking-tight ${
-                            isSelected
-                              ? !isDark ? 'text-black' : 'text-white'
-                              : !isDark ? 'text-slate-900' : 'text-white'
-                          }`}>
-                            {d.getDate()}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
+                    return (
+                      <div
+                        key={dateStr}
+                        onClick={() => {
+                          setCurrentDate(d);
+                        }}
+                        className={`flex flex-col items-center justify-center py-2.5 px-1.5 rounded-2xl transition-all cursor-pointer ${
+                          isSelected
+                            ? isDark
+                              ? 'bg-[#7a1428] text-white shadow-lg shadow-[#7a1428]/40 border border-[#96183c] scale-[1.01]'
+                              : 'bg-[#96183c] text-white shadow-md border border-[#96183c] scale-[1.01]'
+                            : isDark
+                              ? 'bg-[#1a1d24] text-white/70 border border-white/5 hover:border-white/20 hover:text-white'
+                              : 'bg-[#fce5dc]/90 text-slate-800 border border-white/40 hover:bg-[#fff0e8]'
+                        }`}
+                      >
+                        <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                          isSelected ? 'text-white/80' : isDark ? 'text-slate-400' : 'text-slate-500'
+                        }`}>
+                          {dayNameShort}
+                        </span>
+                        <span className="text-xl sm:text-2xl font-black tracking-tight my-0.5">
+                          {d.getDate()}
+                        </span>
+                        <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                          isSelected ? 'text-white/80' : isDark ? 'text-slate-400' : 'text-slate-500'
+                        }`}>
+                          {monthShort}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Timetable Grid — Fundo Branco Puro conforme Imagem */}
-              <div className={`w-full p-5 sm:p-6 transition-all relative ${
+              {/* Corpo da Grade Semanal: 7 Colunas com Lista Direta de Escalas (Sem rolagem horária vazia) */}
+              <div className={`w-full p-4 sm:p-6 transition-all relative ${
                 isDark ? 'bg-[#0f1115] border-t border-white/5' : 'bg-white border-t border-slate-100'
               }`}>
-                <div className="grid grid-cols-[48px_1fr] sm:grid-cols-[56px_1fr] gap-3">
+                <div className="grid grid-cols-7 gap-2.5 sm:gap-3 items-stretch relative">
+                  {weekDays.map((date, dayIdx) => {
+                    const dateStr = formatDate(date);
+                    const isSelected = dateStr === formatDate(currentDate);
+                    const dayEvents = (eventsByDate[dateStr] || []).slice().sort((a, b) => a.startTime.localeCompare(b.startTime));
+                    const dayNameShort = DAYS_SHORT[date.getDay()];
+                    const formattedDayLabel = `${dayNameShort}, ${date.getDate()} de ${MONTHS_PT[date.getMonth()]}`;
 
-                  {/* Hour labels column */}
-                  <div className="space-y-11 pt-2 text-right pr-2">
-                    {hours.map((h) => {
-                      const label = h === 0 ? '12 am' : h < 12 ? `${h} am` : h === 12 ? '12 pm' : `${h}:00`;
-                      return (
-                        <div key={h} className={`text-xs font-mono font-medium h-5 ${
-                          isDark ? 'text-slate-500' : 'text-slate-400'
-                        }`}>
-                          {label}
-                        </div>
-                      );
-                    })}
-                  </div>
+                    // Máximo de cartões visíveis na coluna antes do botão "+N escalas"
+                    const MAX_VISIBLE = 2;
+                    const visibleEvents = dayEvents.slice(0, MAX_VISIBLE);
+                    const remainingCount = dayEvents.length - MAX_VISIBLE;
 
-                  {/* 7 Days Columns with Events */}
-                  <div className="grid grid-cols-7 gap-2.5 relative" style={{ minHeight: `${hours.length * 64}px` }}>
-
-                    {/* Linhas sutis de fundo */}
-                    <div className="absolute inset-0 pointer-events-none flex flex-col justify-between opacity-40">
-                      {hours.map((h) => (
-                        <div
-                          key={h}
-                          className={`border-b h-16 ${isDark ? 'border-white/5' : 'border-slate-100'}`}
-                        />
-                      ))}
-                    </div>
-
-                    {weekDays.map((date, dayIdx) => {
-                      const dateStr = formatDate(date);
-                      const dayEvents = eventsByDate[dateStr] || [];
-
-                      return (
-                        <div
-                          key={dayIdx}
-                          className="flex flex-col relative z-10"
-                          style={{ minHeight: `${hours.length * 64}px` }}
-                        >
-                          {/* Hour slot background lines for click to create */}
-                          <div className="absolute inset-0 flex flex-col pointer-events-auto">
-                            {hours.map((h) => {
-                              return (
-                                <div
-                                  key={h}
-                                  onClick={() => {
-                                    setCurrentDate(date);
-                                    setDayPanelDate(dateStr);
-                                  }}
-                                  className={`h-16 cursor-pointer transition-colors ${
-                                    isDark ? 'hover:bg-white/[0.02]' : 'hover:bg-[#fff8f6]/60'
-                                  }`}
-                                  title={`Abrir resumo do dia ${dateStr}`}
-                                />
-                              );
-                            })}
+                    return (
+                      <div
+                        key={dayIdx}
+                        onClick={() => setCurrentDate(date)}
+                        className={`flex flex-col gap-2.5 p-2 sm:p-2.5 rounded-2xl transition-all min-h-[460px] relative ${
+                          isSelected
+                            ? isDark
+                              ? 'bg-[#15181e] border-2 border-[#7a1428] shadow-lg shadow-[#7a1428]/15'
+                              : 'bg-[#fff5f7]/70 border-2 border-[#96183c]/40 shadow-sm'
+                            : isDark
+                              ? 'bg-[#12141a]/60 border border-white/5 hover:border-white/10'
+                              : 'bg-slate-50/60 border border-slate-200/60 hover:border-slate-300'
+                        }`}
+                      >
+                        {/* Se não houver escalas no dia */}
+                        {dayEvents.length === 0 ? (
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setModalInitialDate(dateStr);
+                              setEditingShift(null);
+                              setIsShiftModalOpen(true);
+                            }}
+                            className={`flex-1 flex flex-col items-center justify-center p-3 rounded-xl border border-dashed text-center cursor-pointer transition-all ${
+                              isDark
+                                ? 'border-white/10 hover:border-white/20 text-slate-500 hover:text-slate-300 hover:bg-white/[0.02]'
+                                : 'border-slate-200 hover:border-slate-300 text-slate-400 hover:text-slate-600 hover:bg-white'
+                            }`}
+                            title="Clique para adicionar escala neste dia"
+                          >
+                            <Plus className="w-5 h-5 mb-1 opacity-50" />
+                            <span className="text-[11px] font-medium">Sem escalas</span>
+                            <span className="text-[10px] opacity-60 mt-0.5">+ Adicionar</span>
                           </div>
-
-                          {/* Placed Event Cards — Absolute positioned with guaranteed minimum height */}
-                          <div className="absolute inset-0 p-1 pointer-events-none">
-                            {(() => {
-                              const baseH = hours[0] ?? 0;
-                              const CARD_HEIGHT = 84;
-                              const sortedEvents = [...dayEvents].sort((a, b) => a.startTime.localeCompare(b.startTime));
-                              let lastBottom = 0;
-
-                              return sortedEvents.map((ev, idx) => {
-                                const [sH, sM] = ev.startTime.split(':').map(Number);
-                                const startH = isNaN(sH) ? baseH : sH;
-                                const startM = isNaN(sM) ? 0 : sM;
-                                const idealTop = Math.max(0, ((startH - baseH) + (startM / 60)) * 64);
-
-                                // Posiciona verticalmente logo abaixo do turno anterior para evitar sobreposição em baralho
-                                const topOffset = Math.max(idealTop, lastBottom);
-                                lastBottom = topOffset + CARD_HEIGHT + 6;
-
+                        ) : (
+                          <>
+                            {/* Cartões de Escalas Visíveis */}
+                            <div className="flex flex-col gap-2">
+                              {visibleEvents.map((ev) => {
                                 const emp = employees.find((e) => e.id === ev.employeeId);
                                 const isDraft = ev.status === 'draft';
                                 const mutedStyle = getMutedShiftColor(ev, isDark);
@@ -1273,73 +1257,219 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                                       e.stopPropagation();
                                       handleOpenEditShift(ev);
                                     }}
-                                    className="pointer-events-auto rounded-xl p-2.5 cursor-pointer shadow-md transition-all duration-150 hover:scale-[1.02] hover:z-30 hover:shadow-xl text-left absolute overflow-hidden group/shift flex flex-col justify-between shrink-0"
+                                    className={`p-2.5 rounded-xl border transition-all cursor-pointer shadow-sm hover:scale-[1.02] hover:shadow-md text-left flex flex-col gap-1.5 relative overflow-hidden group/card ${
+                                      isDark
+                                        ? 'bg-[#1c1f27] border-white/10 hover:border-white/20'
+                                        : 'bg-white border-slate-200 hover:border-slate-300'
+                                    }`}
                                     style={{
-                                      top: `${topOffset}px`,
-                                      left: '4px',
-                                      width: 'calc(100% - 8px)',
-                                      minHeight: `${CARD_HEIGHT}px`,
-                                      background: isDraft ? (isDark ? 'rgba(217, 119, 6, 0.18)' : 'rgba(217, 119, 6, 0.12)') : mutedStyle.bg,
-                                      border: isDraft ? '2px dashed #f59e0b' : `1px solid ${mutedStyle.border}`,
-                                      borderLeft: isDraft ? '2px dashed #f59e0b' : `3.5px solid ${mutedStyle.accent}`,
-                                      backdropFilter: 'blur(6px)',
-                                      boxShadow: isDraft
-                                        ? '0 0 14px rgba(245, 158, 11, 0.18)'
-                                        : isDark ? '0 4px 14px rgba(0,0,0,0.35)' : '0 2px 8px rgba(0,0,0,0.06)',
-                                      zIndex: 10 + idx,
+                                      borderLeft: isDraft ? '3px dashed #f59e0b' : `3.5px solid ${mutedStyle.accent}`
                                     }}
                                   >
-                                    {/* Draft background stripes */}
-                                    {isDraft && (
-                                      <div
-                                        className="absolute inset-0 pointer-events-none opacity-20"
-                                        style={{
-                                          backgroundImage: 'repeating-linear-gradient(45deg, #f59e0b 0, #f59e0b 8px, transparent 8px, transparent 16px)',
-                                        }}
-                                      />
-                                    )}
-
-                                    {/* Top row: Title */}
-                                    <div className="flex items-center justify-between gap-1 mb-1 relative z-10">
-                                      <span className={`font-bold text-xs truncate ${isDark ? 'text-white' : 'text-slate-800'}`}>
-                                        {ev.title || 'Turno'}
-                                      </span>
-                                    </div>
-
-                                    {/* Time Row */}
-                                    <div className={`text-[11px] font-mono font-medium mb-1 relative z-10 ${
-                                      isDark ? 'text-slate-300 opacity-90' : 'text-slate-600'
-                                    }`}>
-                                      {ev.startTime} - {ev.endTime}
-                                    </div>
-
-                                    {/* Assigned Collaborator Avatar + Name */}
-                                    <div className="flex items-center gap-1.5 mt-auto relative z-10">
-                                      {emp && (
+                                    <div className="flex items-center gap-2">
+                                      {emp?.avatar ? (
                                         <img
                                           src={emp.avatar}
                                           alt={emp.name}
-                                          title={emp.name}
-                                          className={`w-5 h-5 rounded-full object-cover ring-1 ${
-                                            isDark ? 'ring-white/20' : 'ring-slate-300'
-                                          }`}
+                                          className="w-7 h-7 rounded-full object-cover shrink-0 ring-1 ring-white/10"
                                         />
+                                      ) : (
+                                        <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold text-white shrink-0">
+                                          {emp?.name?.charAt(0) || 'C'}
+                                        </div>
                                       )}
-                                      <span className={`text-[10px] font-medium truncate ${
-                                        isDark ? 'text-slate-300' : 'text-slate-700'
-                                      }`}>
-                                        {emp?.name || 'Não atribuído'}
-                                      </span>
+                                      <div className="min-w-0 flex-1">
+                                        <h4 className={`font-bold text-xs truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                          {emp?.name || ev.title || 'Colaborador'}
+                                        </h4>
+                                        <p className={`text-[10px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                          {emp?.role || ev.workplace || 'Turno'}
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    <div className={`text-[11px] font-mono font-semibold pt-0.5 ${
+                                      isDark ? 'text-slate-300' : 'text-slate-700'
+                                    }`}>
+                                      {ev.startTime} - {ev.endTime}
                                     </div>
                                   </div>
                                 );
-                              });
-                            })()}
+                              })}
+                            </div>
+
+                            {/* Badge "+N escalas neste horário" */}
+                            {remainingCount > 0 && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setWeekFlyout({
+                                    dateStr,
+                                    dayLabel: formattedDayLabel,
+                                    timeSlot: `${dayEvents[0].startTime} - ${dayEvents[0].endTime}`,
+                                    shifts: dayEvents,
+                                    dayIdx,
+                                  });
+                                }}
+                                className="w-full py-1.5 px-2 mt-0.5 rounded-full text-[11px] font-bold text-white shadow-md transition-all text-center cursor-pointer hover:scale-105 active:scale-95 flex items-center justify-center gap-1"
+                                style={{
+                                  background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 100%)',
+                                  boxShadow: '0 2px 8px rgba(100, 12, 30, 0.35)'
+                                }}
+                              >
+                                +{remainingCount} {remainingCount === 1 ? 'escala neste horário' : 'escalas neste horário'}
+                              </button>
+                            )}
+
+                            {/* Ação rápida de adicionar mais escalas no dia */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setModalInitialDate(dateStr);
+                                setEditingShift(null);
+                                setIsShiftModalOpen(true);
+                              }}
+                              className={`w-full py-1.5 text-[10px] font-semibold rounded-lg border border-dashed transition-all cursor-pointer mt-auto text-center ${
+                                isDark
+                                  ? 'border-white/5 text-slate-500 hover:text-slate-300 hover:border-white/20 hover:bg-white/[0.02]'
+                                  : 'border-slate-200 text-slate-400 hover:text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                              }`}
+                            >
+                              + Adicionar
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Flyout Popover Flutuante estilo Imagem */}
+                  {weekFlyout && (
+                    <>
+                      {/* Backdrop transparente para fechar ao clicar fora */}
+                      <div
+                        className="fixed inset-0 z-30"
+                        onClick={() => setWeekFlyout(null)}
+                      />
+
+                      <div
+                        className={`absolute z-40 w-72 sm:w-80 rounded-2xl border p-4 shadow-2xl transition-all animate-in fade-in zoom-in-95 duration-150 ${
+                          isDark
+                            ? 'bg-[#1a1d24] border-white/10 text-white shadow-black/80'
+                            : 'bg-white border-slate-200 text-slate-800 shadow-slate-300/60'
+                        }`}
+                        style={{
+                          top: '20px',
+                          left: weekFlyout.dayIdx <= 3
+                            ? `calc(${(weekFlyout.dayIdx + 1) * (100 / 7)}% + 8px)`
+                            : 'auto',
+                          right: weekFlyout.dayIdx > 3
+                            ? `calc(${(7 - weekFlyout.dayIdx) * (100 / 7)}% + 8px)`
+                            : 'auto',
+                          maxWidth: '90vw'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {/* Header do Popover */}
+                        <div className="flex items-center justify-between gap-2 pb-3 mb-3 border-b border-white/10">
+                          <div>
+                            <h3 className="text-sm font-bold tracking-tight">
+                              {weekFlyout.timeSlot}
+                            </h3>
+                            <p className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                              {weekFlyout.dayLabel} ({weekFlyout.shifts.length} {weekFlyout.shifts.length === 1 ? 'escala' : 'escalas'})
+                            </p>
                           </div>
+                          <button
+                            type="button"
+                            onClick={() => setWeekFlyout(null)}
+                            className={`p-1 rounded-lg transition-colors cursor-pointer ${
+                              isDark ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
                         </div>
-                      );
-                    })}
-                  </div>
+
+                        {/* Lista de Colaboradores na Escala */}
+                        <div className="flex flex-col gap-2 max-h-[340px] overflow-y-auto pr-1">
+                          {weekFlyout.shifts.map((ev) => {
+                            const emp = employees.find((e) => e.id === ev.employeeId);
+                            const mutedStyle = getMutedShiftColor(ev, isDark);
+                            const isDraft = ev.status === 'draft';
+
+                            return (
+                              <div
+                                key={ev.id}
+                                onClick={() => {
+                                  handleOpenEditShift(ev);
+                                  setWeekFlyout(null);
+                                }}
+                                className={`p-2.5 rounded-xl border transition-all cursor-pointer shadow-xs hover:scale-[1.01] flex items-center justify-between gap-3 text-left ${
+                                  isDark
+                                    ? 'bg-[#14161c] border-white/10 hover:border-white/25 hover:bg-[#1f222b]'
+                                    : 'bg-slate-50 border-slate-200 hover:border-slate-300 hover:bg-white'
+                                }`}
+                                style={{
+                                  borderLeft: isDraft ? '3px dashed #f59e0b' : `3px solid ${mutedStyle.accent}`
+                                }}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                  {emp?.avatar ? (
+                                    <img
+                                      src={emp.avatar}
+                                      alt={emp.name}
+                                      className="w-8 h-8 rounded-full object-cover shrink-0 ring-1 ring-white/10"
+                                    />
+                                  ) : (
+                                    <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-white shrink-0">
+                                      {emp?.name?.charAt(0) || 'C'}
+                                    </div>
+                                  )}
+                                  <div className="min-w-0 flex-1">
+                                    <h4 className={`font-bold text-xs truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                      {emp?.name || ev.title || 'Colaborador'}
+                                    </h4>
+                                    <p className={`text-[10px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                      {emp?.role || ev.workplace || 'Turno'}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <span className={`text-[11px] font-mono font-semibold shrink-0 ${
+                                  isDark ? 'text-slate-300' : 'text-slate-700'
+                                }`}>
+                                  {ev.startTime} - {ev.endTime}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Rodapé: Botão adicionar escala */}
+                        <div className="pt-3 mt-3 border-t border-white/10 flex items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModalInitialDate(weekFlyout.dateStr);
+                              setEditingShift(null);
+                              setIsShiftModalOpen(true);
+                              setWeekFlyout(null);
+                            }}
+                            className="w-full py-2 px-3 rounded-xl text-xs font-bold text-white shadow-sm hover:scale-[1.02] active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                            style={{
+                              background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 100%)',
+                            }}
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Adicionar Escala neste Dia</span>
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
