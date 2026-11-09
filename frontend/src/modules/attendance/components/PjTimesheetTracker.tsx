@@ -1254,6 +1254,67 @@ export const PjTimesheetTracker: React.FC<PjTimesheetTrackerProps> = ({
                           isDark ? 'border-white/10 bg-black/20 text-white' : 'border-slate-300 bg-slate-50 text-slate-900'
                         }`}
                       />
+                      {modalLinks.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setModalLinks(modalLinks.filter((_, i) => i !== idx))}
+                          className="text-rose-500 p-1.5 hover:bg-rose-500/20 rounded-lg cursor-pointer"
+                          title="Remover link"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Imagens e Prints de Comprovação */}
+              <div>
+                <label className={`text-xs sm:text-sm font-bold flex items-center gap-1.5 mb-2 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                  <ImageIcon className={`w-4 h-4 ${isDark ? 'text-[#f89847]' : 'text-[#96183c]'}`} />
+                  <span>Imagens ou Capturas de Tela (Opcional)</span>
+                </label>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleImageUpload}
+                />
+
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold border border-dashed flex items-center gap-1.5 cursor-pointer transition-all ${
+                      isDark
+                        ? 'border-[#F59242]/40 hover:bg-[#9F243C]/15 text-[#F9DE97]'
+                        : 'border-[#96183c]/40 hover:bg-[#96183c]/10 text-[#96183c]'
+                    }`}
+                  >
+                    <Upload className={`w-4 h-4 ${isDark ? 'text-[#f89847]' : 'text-[#96183c]'}`} />
+                    <span>Anexar Imagem / Print</span>
+                  </button>
+
+                  {modalImages.map((img, iIdx) => (
+                    <div
+                      key={iIdx}
+                      className={`relative w-14 h-14 rounded-xl overflow-hidden border group ${
+                        isDark ? 'border-white/10' : 'border-slate-300'
+                      }`}
+                    >
+                      <img src={img} alt="Anexo" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setModalImages(modalImages.filter((_, i) => i !== iIdx))}
+                        className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-rose-400 transition-opacity cursor-pointer"
+                        title="Remover imagem"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
                     </div>
                   ))}
                 </div>

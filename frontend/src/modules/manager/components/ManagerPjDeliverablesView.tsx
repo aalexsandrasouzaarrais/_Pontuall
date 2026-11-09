@@ -1211,9 +1211,13 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
               </button>
               <button
                 onClick={handleConfirmRejection}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg cursor-pointer"
+                className={`px-4 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                  isDark
+                    ? 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-200 border-rose-500/30'
+                    : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                }`}
               >
-                Enviar Pedido de Ajuste
+                Enviar
               </button>
             </div>
           </div>
