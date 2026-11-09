@@ -1057,13 +1057,13 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
 
           {/* ─── WEEK VIEW (DEFAULT) ─── */}
           {view === 'Semana' && (
-            <div className={`rounded-t-[32px] rounded-b-none font-sans transition-all duration-300 relative border border-b-0 min-h-[calc(100vh-240px)] flex flex-col ${
+            <div className={`rounded-[32px] font-sans transition-all duration-300 relative border ${
               isDark ? 'bg-[#0f1115] border-white/5 shadow-2xl text-white' : 'bg-white border-slate-200/80 shadow-xl text-slate-800'
             }`}>
 
               {/* Top Header & Days Bar with Employee Calendar Gradient Style */}
               <div
-                className="p-5 sm:p-6 pb-5 transition-all duration-300"
+                className="p-5 sm:p-6 pb-5 rounded-t-[32px] transition-all duration-300"
                 style={
                   isDark
                     ? { background: '#15181e' }
@@ -1190,13 +1190,13 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                 </div>
               </div>
 
-              {/* Corpo da Grade Semanal: 7 Colunas com Fundo Infinito e Lanes Verticais */}
-              <div className={`w-full flex-1 transition-all relative min-h-[calc(100vh-280px)] ${
+              {/* Corpo da Grade Semanal: 7 Colunas com Borda Inferior Arredondada */}
+              <div className={`w-full flex-1 transition-all relative rounded-b-[32px] ${
                 isDark ? 'bg-[#0f1115] border-t border-white/5' : 'bg-white border-t border-slate-100'
               }`}>
                 <div className={`grid grid-cols-7 divide-x ${
                   isDark ? 'divide-white/5' : 'divide-slate-100'
-                } min-h-[calc(100vh-280px)] items-stretch relative`}>
+                } min-h-[480px] items-stretch relative rounded-b-[32px]`}>
                   {weekDays.map((date, dayIdx) => {
                     const dateStr = formatDate(date);
                     const isSelected = dateStr === formatDate(currentDate);
@@ -1218,7 +1218,11 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                           setEditingShift(null);
                           setIsShiftModalOpen(true);
                         }}
-                        className={`flex flex-col gap-2.5 p-2 sm:p-2.5 transition-all min-h-full cursor-pointer relative group ${
+                        className={`flex flex-col gap-2.5 p-2 sm:p-2.5 pb-4 transition-all min-h-full cursor-pointer relative group ${
+                          dayIdx === 0 ? 'rounded-bl-[30px]' : ''
+                        } ${
+                          dayIdx === 6 ? 'rounded-br-[30px]' : ''
+                        } ${
                           isSelected
                             ? isDark
                               ? 'bg-[#96183c]/5'
