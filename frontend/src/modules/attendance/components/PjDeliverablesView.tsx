@@ -1929,13 +1929,6 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
           }`}>
             <div className={`flex items-center justify-between pb-4 border-b ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
               <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-xl border flex items-center justify-center ${
-                  isDark
-                    ? 'bg-[#9F243C]/20 border-[#F59242]/30 text-[#f89847]'
-                    : 'bg-[#96183c]/10 border-[#96183c]/25 text-[#96183c]'
-                }`}>
-                  <History className="w-5 h-5" />
-                </div>
                 <div>
                   <h2 className="text-base sm:text-lg font-extrabold flex items-center gap-2 flex-wrap">
                     <span>Histórico de Fechamentos Enviados</span>
@@ -2000,13 +1993,6 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                         isDark ? 'border-white/5' : 'border-slate-200'
                       }`}>
                         <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-xl border flex items-center justify-center font-bold ${
-                            isDark
-                              ? 'bg-[#9F243C]/20 text-[#f89847] border-[#F59242]/30'
-                              : 'bg-[#96183c]/10 text-[#96183c] border-[#96183c]/25'
-                          }`}>
-                            <Calendar className="w-5 h-5" />
-                          </div>
                           <div>
                             <h3 className="font-extrabold text-sm sm:text-base flex items-center gap-2 flex-wrap">
                               <span>Período: {rep.period}</span>
