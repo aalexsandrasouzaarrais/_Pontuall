@@ -2253,19 +2253,11 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
             isDark ? 'bg-[#10121A] border-[#252A3A] text-white' : 'bg-white border-slate-200 text-slate-900'
           }`}>
             <div className={`flex items-center justify-between pb-3 border-b ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold shadow-md"
-                  style={{ background: 'linear-gradient(135deg, #640C1E, #9F243C, #F59242)' }}
-                >
-                  <Briefcase className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-lg">Fechar Período e Enviar ao Gestor</h3>
-                  <span className={`text-xs block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    Consolida {draftEntries.length} atividade(s) do seu timesheet para homologação
-                  </span>
-                </div>
+              <div>
+                <h3 className="font-extrabold text-lg">Fechar Período e Enviar ao Gestor</h3>
+                <span className={`text-xs block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  Consolida {draftEntries.length} atividade(s) do seu timesheet para homologação
+                </span>
               </div>
               <button onClick={() => setIsModalOpen(false)} className={`cursor-pointer ${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'}`}>
                 <X className="w-5 h-5" />
