@@ -163,6 +163,67 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
     return Number(draftEntries.reduce((acc, curr) => acc + (Number(curr.durationHours) || 0), 0).toFixed(2));
   }, [draftEntries]);
 
+  // Tarefas ou fechamentos com pedido de ajuste pelo gestor
+  const adjustmentItems = useMemo(() => {
+    const items: Array<{
+      id: string;
+      taskCode: string;
+      date?: string;
+      project: string;
+      description: string;
+      feedback: string;
+      periodLabel: string;
+    }> = [];
+    const seenIds = new Set<string>();
+
+    draftEntries.forEach((d, idx) => {
+      if (d.status === 'rejected' || d.managerFeedback) {
+        seenIds.add(d.id);
+        items.push({
+          id: d.id,
+          taskCode: d.taskCode || `TK-${String(draftEntries.length - idx).padStart(3, '0')}`,
+          date: d.date,
+          project: d.project,
+          description: d.taskDescription,
+          feedback: d.managerFeedback || 'Ajustes solicitados pelo gestor.',
+          periodLabel: 'Timesheet em Aberto',
+        });
+      }
+    });
+
+    reports.forEach(rep => {
+      if (rep.timesheetEntries && rep.timesheetEntries.length > 0) {
+        rep.timesheetEntries.forEach((ts, idx) => {
+          const isTaskRejected = ts.status === 'rejected' || Boolean(ts.managerFeedback);
+          if (isTaskRejected && !seenIds.has(ts.id)) {
+            seenIds.add(ts.id);
+            items.push({
+              id: ts.id || `${rep.id}-${idx}`,
+              taskCode: ts.taskCode || `TK-${String(idx + 1).padStart(3, '0')}`,
+              date: ts.date,
+              project: ts.project,
+              description: ts.taskDescription,
+              feedback: ts.managerFeedback || rep.managerFeedback || 'Ajustes solicitados pelo gestor.',
+              periodLabel: rep.period,
+            });
+          }
+        });
+      } else if (rep.status === 'rejected') {
+        items.push({
+          id: rep.id,
+          taskCode: `FECH-${rep.id.slice(-3).toUpperCase()}`,
+          date: rep.submittedAt?.slice(0, 10),
+          project: rep.period,
+          description: rep.activitiesDescription,
+          feedback: rep.managerFeedback || 'Ajustes solicitados pelo gestor.',
+          periodLabel: rep.period,
+        });
+      }
+    });
+
+    return items;
+  }, [draftEntries, reports]);
+
   // Métricas de relatórios enviados
   const totalHoursApproved = Number(
     reports
@@ -930,7 +991,7 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                     content = (
                       <span
                         className="w-8 h-8 rounded-full text-white font-black flex items-center justify-center mx-auto shadow-md"
-                        style={{ background: 'linear-gradient(135deg, #96183c, #f89847)' }}
+                        style={{ backgroundColor: '#B01F46' }}
                       >
                         {cell.dayNumber}
                       </span>
@@ -1292,6 +1353,63 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
               </div>
             </div>
 
+          {/* AVISO DE PEDIDOS DE AJUSTE DO GESTOR */}
+          {adjustmentItems.length > 0 && (
+            <div className={`p-5 rounded-3xl border space-y-3 transition-all ${
+              isDark ? 'bg-rose-950/20 border-rose-500/30' : 'bg-rose-50 border-rose-200 shadow-xs'
+            }`}>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className={`w-4 h-4 shrink-0 ${isDark ? 'text-rose-400' : 'text-rose-600'}`} />
+                  <h3 className={`text-sm font-bold ${isDark ? 'text-rose-200' : 'text-rose-900'}`}>
+                    Pedidos de Ajuste do Gestor ({adjustmentItems.length})
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsHistoryModalOpen(true)}
+                  className={`text-xs font-semibold underline cursor-pointer ${isDark ? 'text-rose-300 hover:text-white' : 'text-rose-700 hover:text-rose-900'}`}
+                >
+                  Ver no Histórico
+                </button>
+              </div>
+              <div className="space-y-2">
+                {adjustmentItems.map(item => (
+                  <div
+                    key={item.id}
+                    className={`p-3 rounded-2xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                      isDark ? 'bg-[#0e1017]/90 border-white/10' : 'bg-white border-rose-200'
+                    }`}
+                  >
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`font-mono font-bold text-[10px] px-2 py-0.5 rounded border ${
+                          isDark ? 'bg-white/5 text-slate-200 border-white/10' : 'bg-slate-100 text-slate-700 border-slate-200'
+                        }`}>
+                          {item.taskCode}
+                        </span>
+                        <span className={`font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                          {item.project}
+                        </span>
+                        {item.date && (
+                          <span className="text-[11px] text-slate-400 font-mono">
+                            • {formatDateBR(item.date)}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`truncate ${isDark ? 'text-slate-400' : 'text-slate-600'}`} title={item.description}>
+                        {item.description}
+                      </p>
+                      <div className={`pt-0.5 font-medium ${isDark ? 'text-rose-300' : 'text-rose-700'}`}>
+                        <strong>Comentário do Gestor:</strong> {item.feedback}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Cronômetro Interativo Play / Pause & Entrada Manual */}
           <PjTimesheetTracker 
             employee={employee}
@@ -1412,6 +1530,11 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                           <span className={`font-medium block truncate ${isDark ? 'text-slate-200' : 'text-slate-800'}`} title={entry.taskDescription}>
                             {entry.taskDescription}
                           </span>
+                          {entry.managerFeedback && (
+                            <span className={`block text-[11px] mt-0.5 font-medium ${isDark ? 'text-rose-400' : 'text-rose-600'}`} title={entry.managerFeedback}>
+                              Comentário do Gestor: {entry.managerFeedback}
+                            </span>
+                          )}
                           {entry.isLiveTracked && (
                             <span className={`inline-flex items-center gap-1 text-[10px] mt-0.5 font-semibold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
                               <Check className="w-3 h-3" /> Cronometrado em tempo real
@@ -1957,8 +2080,13 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                                         {ts.project}
                                       </span>
                                     </td>
-                                    <td className={`py-2.5 px-2.5 max-w-xs truncate ${isDark ? 'text-slate-200' : 'text-slate-800'}`} title={ts.taskDescription}>
-                                      {ts.taskDescription}
+                                    <td className={`py-2.5 px-2.5 max-w-xs ${isDark ? 'text-slate-200' : 'text-slate-800'}`} title={ts.taskDescription}>
+                                      <span className="block truncate">{ts.taskDescription}</span>
+                                      {ts.managerFeedback && (
+                                        <span className={`block text-[10px] mt-0.5 font-medium ${isDark ? 'text-rose-400' : 'text-rose-600'}`} title={ts.managerFeedback}>
+                                          Ajuste solicitado: {ts.managerFeedback}
+                                        </span>
+                                      )}
                                     </td>
                                     <td className={`py-2.5 px-2.5 font-mono text-center whitespace-nowrap ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>
                                       {ts.startTime} → {ts.endTime}

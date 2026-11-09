@@ -18,15 +18,29 @@ export function isManagerProfile(emp?: Employee | null): boolean {
 }
 
 /**
- * Filtra a lista de colaboradores mantendo apenas aqueles aptos a serem escalados (excluindo gestores e RH).
+ * Verifica se um colaborador possui regime PJ (Prestador de Serviços),
+ * que atua por entregas/timesheet e não por escala de horários fixa.
+ */
+export function isPjEmployee(emp?: Employee | null): boolean {
+  if (!emp) return false;
+  if ((emp.contractType || '').toUpperCase() === 'PJ') return true;
+  if (emp.hourlyRate !== undefined && emp.hourlyRate > 0) return true;
+  const nameLower = (emp.name || '').toLowerCase();
+  const roleLower = (emp.role || '').toLowerCase();
+  if (/\bpj\b/i.test(nameLower) || /\bpj\b/i.test(roleLower)) return true;
+  return false;
+}
+
+/**
+ * Filtra a lista de colaboradores mantendo apenas aqueles aptos a serem escalados
+ * (excluindo gestores, RH e prestadores PJ).
  */
 export function getSchedulableEmployees(employees: Employee[], currentEditingEmployeeId?: string): Employee[] {
   if (!employees || !Array.isArray(employees)) return [];
-  const filtered = employees.filter(emp => {
+  return employees.filter(emp => {
+    if (isPjEmployee(emp)) return false;
     // Se for o colaborador que já é dono da escala sendo editada, mantém para não quebrar a edição
     if (currentEditingEmployeeId && emp.id === currentEditingEmployeeId) return true;
     return !isManagerProfile(emp);
   });
-  // Fallback de segurança: se não houver colaboradores operacionais cadastrados, mantém lista original
-  return filtered.length > 0 ? filtered : employees;
 }

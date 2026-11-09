@@ -829,8 +829,8 @@ export const PjTimesheetTracker: React.FC<PjTimesheetTrackerProps> = ({
     const breakMins = Math.round(breakSeconds / 60);
 
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in">
-        <div className={`w-full max-w-lg rounded-3xl border shadow-2xl p-6 overflow-hidden ${
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in">
+        <div className={`w-full max-w-2xl max-h-[90vh] flex flex-col rounded-3xl border shadow-2xl p-6 sm:p-7 overflow-hidden ${
           isDark ? 'bg-[#151822] border-[#F59242]/30 text-white' : 'bg-white border-slate-200 text-slate-900'
         }`}>
           <div className={`flex items-center justify-between pb-4 border-b ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
@@ -846,7 +846,7 @@ export const PjTimesheetTracker: React.FC<PjTimesheetTrackerProps> = ({
             </button>
           </div>
 
-          <div className="py-4 space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+          <div className="py-4 space-y-4 flex-1 overflow-y-auto pr-1">
             {/* Edição rápida de ID da Tarefa e Centro de Custo */}
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -1052,216 +1052,219 @@ export const PjTimesheetTracker: React.FC<PjTimesheetTrackerProps> = ({
     const computedHours = Number((Math.max(0.01, totalMins / 60)).toFixed(2));
 
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in">
-        <div className={`w-full max-w-lg rounded-3xl border shadow-2xl p-6 overflow-hidden ${
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in">
+        <div className={`w-full max-w-2xl max-h-[92vh] flex flex-col rounded-3xl border shadow-2xl p-6 sm:p-8 overflow-hidden ${
           isDark ? 'bg-[#151822] border-[#F59242]/30 text-white' : 'bg-white border-slate-200 text-slate-900'
         }`}>
-          <div className={`flex items-center justify-between pb-4 border-b ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
-            <div className="flex items-center gap-2">
+          <div className={`flex items-center justify-between pb-4 border-b shrink-0 ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
+            <div className="flex items-center gap-2.5">
               <Plus className={`w-5 h-5 ${isDark ? 'text-[#f89847]' : 'text-[#96183c]'}`} />
-              <h3 className="font-extrabold text-base">Novo Registro Manual de Timesheet</h3>
+              <h3 className="font-extrabold text-lg sm:text-xl">Novo Registro Manual de Timesheet</h3>
             </div>
             <button 
+              type="button"
               onClick={() => setIsManualModalOpen(false)}
-              className={`p-1 rounded-lg cursor-pointer ${isDark ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
+              className={`p-1.5 rounded-xl cursor-pointer transition-colors ${isDark ? 'hover:bg-white/10 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-500 hover:text-slate-900'}`}
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          <form onSubmit={handleSaveManualEntry} className="py-4 space-y-4 max-h-[70vh] overflow-y-auto pr-1">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={`text-xs font-bold flex items-center gap-1 mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                  <Hash className={`w-3.5 h-3.5 ${isDark ? 'text-[#f89847]' : 'text-[#96183c]'}`} />
-                  <span>ID da Tarefa*:</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ex: TK-001, JIRA-402"
-                  value={manualTaskCode}
-                  onChange={e => setManualTaskCode(e.target.value)}
-                  required
-                  className={`w-full px-3 py-2 rounded-xl text-xs font-mono font-bold border outline-none ${
-                    isDark ? 'border-white/10 bg-black/20 text-[#F9DE97]' : 'border-slate-300 bg-slate-50 text-[#96183c]'
-                  }`}
-                />
-              </div>
-
-              <div>
-                <label className={`text-xs font-bold flex items-center gap-1 mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                  <Building2 className={`w-3.5 h-3.5 ${isDark ? 'text-[#f89847]' : 'text-[#96183c]'}`} />
-                  <span>Centro de Custo*:</span>
-                </label>
-                <input
-                  type="text"
-                  list="cost-centers-list"
-                  placeholder="Ex: CC-TI-01 • Tecnologia"
-                  value={manualCostCenter}
-                  onChange={e => setManualCostCenter(e.target.value)}
-                  required
-                  className={`w-full px-3 py-2 rounded-xl text-xs border outline-none ${
-                    isDark ? 'border-white/10 bg-black/20 text-white' : 'border-slate-300 bg-slate-50 text-slate-900'
-                  }`}
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={`text-xs font-bold block mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Data da Atividade:</label>
-                <input
-                  type="date"
-                  value={entryDate}
-                  onChange={e => setEntryDate(e.target.value)}
-                  required
-                  className={`w-full px-3 py-2 rounded-xl text-xs border outline-none ${
-                    isDark ? 'border-white/10 bg-black/20 text-white' : 'border-slate-300 bg-slate-50 text-slate-900'
-                  }`}
-                />
-              </div>
-
-              <div>
-                <label className={`text-xs font-bold block mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Projeto ou Cliente*:</label>
-                <input
-                  type="text"
-                  placeholder="Ex: Cliente Alfa, Projeto Web"
-                  value={manualProject}
-                  onChange={e => setManualProject(e.target.value)}
-                  required
-                  className={`w-full px-3 py-2 rounded-xl text-xs border outline-none ${
-                    isDark ? 'border-white/10 bg-black/20 text-white' : 'border-slate-300 bg-slate-50 text-slate-900'
-                  }`}
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className={`text-xs font-bold block mb-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Descrição da Tarefa Realizada*:</label>
-              <textarea
-                placeholder="Descreva detalhadamente a entrega técnica ou atividade desempenhada..."
-                value={manualTask}
-                onChange={e => setManualTask(e.target.value)}
-                rows={2}
-                required
-                className={`w-full px-3 py-2 rounded-xl text-xs border outline-none resize-none ${
-                  isDark ? 'border-white/10 bg-black/20 text-white' : 'border-slate-300 bg-slate-50 text-slate-900'
-                }`}
-              />
-            </div>
-
-            {/* Horários e Pausa */}
-            <div className={`p-3 rounded-2xl border space-y-3 ${
-              isDark ? 'bg-black/25 border-white/5' : 'bg-slate-50 border-slate-200'
-            }`}>
-              <div className="grid grid-cols-3 gap-3">
+          <form onSubmit={handleSaveManualEntry} className="flex flex-col flex-1 min-h-0">
+            <div className="py-5 space-y-5 flex-1 overflow-y-auto pr-1.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className={`text-[11px] font-bold block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Horário Início:</label>
+                  <label className={`text-xs sm:text-sm font-bold flex items-center gap-1.5 mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    <Hash className={`w-4 h-4 ${isDark ? 'text-[#f89847]' : 'text-[#96183c]'}`} />
+                    <span>ID da Tarefa*:</span>
+                  </label>
                   <input
-                    type="time"
-                    value={manualStartTime}
-                    onChange={e => setManualStartTime(e.target.value)}
+                    type="text"
+                    placeholder="Ex: TK-001, JIRA-402"
+                    value={manualTaskCode}
+                    onChange={e => setManualTaskCode(e.target.value)}
                     required
-                    className={`w-full px-2.5 py-1.5 rounded-xl text-xs border outline-none ${
-                      isDark ? 'border-white/10 bg-black/20 text-white' : 'border-slate-300 bg-white text-slate-900'
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-mono font-bold border outline-none ${
+                      isDark ? 'border-white/10 bg-black/20 text-[#F9DE97] focus:border-[#f89847]' : 'border-slate-300 bg-slate-50 text-[#96183c] focus:border-[#96183c]'
                     }`}
                   />
                 </div>
 
                 <div>
-                  <label className={`text-[11px] font-bold block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Horário Término:</label>
+                  <label className={`text-xs sm:text-sm font-bold flex items-center gap-1.5 mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    <Building2 className={`w-4 h-4 ${isDark ? 'text-[#f89847]' : 'text-[#96183c]'}`} />
+                    <span>Centro de Custo*:</span>
+                  </label>
                   <input
-                    type="time"
-                    value={manualEndTime}
-                    onChange={e => setManualEndTime(e.target.value)}
+                    type="text"
+                    list="cost-centers-list"
+                    placeholder="Ex: CC-TI-01 • Tecnologia"
+                    value={manualCostCenter}
+                    onChange={e => setManualCostCenter(e.target.value)}
                     required
-                    className={`w-full px-2.5 py-1.5 rounded-xl text-xs border outline-none ${
-                      isDark ? 'border-white/10 bg-black/20 text-white' : 'border-slate-300 bg-white text-slate-900'
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-sm border outline-none ${
+                      isDark ? 'border-white/10 bg-black/20 text-white focus:border-[#f89847]' : 'border-slate-300 bg-slate-50 text-slate-900 focus:border-[#96183c]'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={`text-xs sm:text-sm font-bold block mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Data da Atividade:</label>
+                  <input
+                    type="date"
+                    value={entryDate}
+                    onChange={e => setEntryDate(e.target.value)}
+                    required
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-sm border outline-none ${
+                      isDark ? 'border-white/10 bg-black/20 text-white focus:border-[#f89847]' : 'border-slate-300 bg-slate-50 text-slate-900 focus:border-[#96183c]'
                     }`}
                   />
                 </div>
 
                 <div>
-                  <label className={`text-[11px] font-bold block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Pausa (minutos):</label>
+                  <label className={`text-xs sm:text-sm font-bold block mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Projeto ou Cliente*:</label>
                   <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={manualBreakMinutes}
-                    onChange={e => setManualBreakMinutes(Number(e.target.value))}
-                    className={`w-full px-2.5 py-1.5 rounded-xl text-xs border outline-none ${
-                      isDark ? 'border-white/10 bg-black/20 text-white' : 'border-slate-300 bg-white text-slate-900'
+                    type="text"
+                    placeholder="Ex: Cliente Alfa, Projeto Web"
+                    value={manualProject}
+                    onChange={e => setManualProject(e.target.value)}
+                    required
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-sm border outline-none ${
+                      isDark ? 'border-white/10 bg-black/20 text-white focus:border-[#f89847]' : 'border-slate-300 bg-slate-50 text-slate-900 focus:border-[#96183c]'
                     }`}
                   />
                 </div>
               </div>
 
-              <div className={`flex items-center justify-between text-xs pt-2 border-t ${isDark ? 'border-white/5' : 'border-slate-200'}`}>
-                <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>Total Líquido Calculado:</span>
-                <span className={`font-mono font-extrabold text-sm ${isDark ? 'text-[#f89847]' : 'text-[#96183c]'}`}>
-                  {computedHours} horas líquidas
-                </span>
-              </div>
-            </div>
-
-            {/* Links e Evidências */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className={`text-xs font-bold flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                  <LinkIcon className={`w-3.5 h-3.5 ${isDark ? 'text-[#f89847]' : 'text-[#96183c]'}`} />
-                  <span>Links de Evidência</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setModalLinks([...modalLinks, { title: '', url: '' }])}
-                  className={`text-[11px] font-bold flex items-center gap-1 cursor-pointer ${
-                    isDark ? 'text-[#f89847] hover:text-amber-300' : 'text-[#96183c] hover:text-[#640C1E]'
+              <div>
+                <label className={`text-xs sm:text-sm font-bold block mb-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Descrição da Tarefa Realizada*:</label>
+                <textarea
+                  placeholder="Descreva detalhadamente a entrega técnica ou atividade desempenhada..."
+                  value={manualTask}
+                  onChange={e => setManualTask(e.target.value)}
+                  rows={3}
+                  required
+                  className={`w-full px-3.5 py-2.5 rounded-xl text-sm border outline-none resize-none ${
+                    isDark ? 'border-white/10 bg-black/20 text-white focus:border-[#f89847]' : 'border-slate-300 bg-slate-50 text-slate-900 focus:border-[#96183c]'
                   }`}
-                >
-                  <Plus className="w-3 h-3" />
-                  <span>Adicionar Link</span>
-                </button>
+                />
               </div>
 
-              <div className="space-y-2">
-                {modalLinks.map((link, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
+              {/* Horários e Pausa */}
+              <div className={`p-4 rounded-2xl border space-y-3.5 ${
+                isDark ? 'bg-black/25 border-white/5' : 'bg-slate-50 border-slate-200'
+              }`}>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className={`text-xs font-bold block mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Horário Início:</label>
                     <input
-                      type="text"
-                      placeholder="Título (ex: Figma)"
-                      value={link.title}
-                      onChange={e => {
-                        const updated = [...modalLinks];
-                        updated[idx].title = e.target.value;
-                        setModalLinks(updated);
-                      }}
-                      className={`w-1/3 px-3 py-1.5 rounded-xl text-xs border outline-none ${
-                        isDark ? 'border-white/10 bg-black/20 text-white' : 'border-slate-300 bg-slate-50 text-slate-900'
-                      }`}
-                    />
-                    <input
-                      type="url"
-                      placeholder="URL (https://...)"
-                      value={link.url}
-                      onChange={e => {
-                        const updated = [...modalLinks];
-                        updated[idx].url = e.target.value;
-                        setModalLinks(updated);
-                      }}
-                      className={`flex-1 px-3 py-1.5 rounded-xl text-xs border outline-none ${
-                        isDark ? 'border-white/10 bg-black/20 text-white' : 'border-slate-300 bg-slate-50 text-slate-900'
+                      type="time"
+                      value={manualStartTime}
+                      onChange={e => setManualStartTime(e.target.value)}
+                      required
+                      className={`w-full px-3 py-2 rounded-xl text-sm border outline-none ${
+                        isDark ? 'border-white/10 bg-black/20 text-white' : 'border-slate-300 bg-white text-slate-900'
                       }`}
                     />
                   </div>
-                ))}
+
+                  <div>
+                    <label className={`text-xs font-bold block mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Horário Término:</label>
+                    <input
+                      type="time"
+                      value={manualEndTime}
+                      onChange={e => setManualEndTime(e.target.value)}
+                      required
+                      className={`w-full px-3 py-2 rounded-xl text-sm border outline-none ${
+                        isDark ? 'border-white/10 bg-black/20 text-white' : 'border-slate-300 bg-white text-slate-900'
+                      }`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className={`text-xs font-bold block mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Pausa (minutos):</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={manualBreakMinutes}
+                      onChange={e => setManualBreakMinutes(Number(e.target.value))}
+                      className={`w-full px-3 py-2 rounded-xl text-sm border outline-none ${
+                        isDark ? 'border-white/10 bg-black/20 text-white' : 'border-slate-300 bg-white text-slate-900'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                <div className={`flex items-center justify-between text-xs sm:text-sm pt-2.5 border-t ${isDark ? 'border-white/5' : 'border-slate-200'}`}>
+                  <span className={isDark ? 'text-slate-400' : 'text-slate-600'}>Total Líquido Calculado:</span>
+                  <span className={`font-mono font-extrabold text-base ${isDark ? 'text-[#f89847]' : 'text-[#96183c]'}`}>
+                    {computedHours} horas líquidas
+                  </span>
+                </div>
+              </div>
+
+              {/* Links e Evidências */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className={`text-xs sm:text-sm font-bold flex items-center gap-1.5 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                    <LinkIcon className={`w-4 h-4 ${isDark ? 'text-[#f89847]' : 'text-[#96183c]'}`} />
+                    <span>Links de Evidência</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setModalLinks([...modalLinks, { title: '', url: '' }])}
+                    className={`text-xs font-bold flex items-center gap-1 cursor-pointer ${
+                      isDark ? 'text-[#f89847] hover:text-amber-300' : 'text-[#96183c] hover:text-[#640C1E]'
+                    }`}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Adicionar Link</span>
+                  </button>
+                </div>
+
+                <div className="space-y-2.5">
+                  {modalLinks.map((link, idx) => (
+                    <div key={idx} className="flex items-center gap-2.5">
+                      <input
+                        type="text"
+                        placeholder="Título (ex: Figma)"
+                        value={link.title}
+                        onChange={e => {
+                          const updated = [...modalLinks];
+                          updated[idx].title = e.target.value;
+                          setModalLinks(updated);
+                        }}
+                        className={`w-1/3 px-3.5 py-2 rounded-xl text-sm border outline-none ${
+                          isDark ? 'border-white/10 bg-black/20 text-white' : 'border-slate-300 bg-slate-50 text-slate-900'
+                        }`}
+                      />
+                      <input
+                        type="url"
+                        placeholder="URL (https://...)"
+                        value={link.url}
+                        onChange={e => {
+                          const updated = [...modalLinks];
+                          updated[idx].url = e.target.value;
+                          setModalLinks(updated);
+                        }}
+                        className={`flex-1 px-3.5 py-2 rounded-xl text-sm border outline-none ${
+                          isDark ? 'border-white/10 bg-black/20 text-white' : 'border-slate-300 bg-slate-50 text-slate-900'
+                        }`}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
-            <div className={`flex items-center justify-end gap-3 pt-4 border-t ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
+            <div className={`flex items-center justify-end gap-3 pt-4 border-t shrink-0 ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
               <button
                 type="button"
                 onClick={() => setIsManualModalOpen(false)}
-                className={`px-4 py-2.5 rounded-xl text-xs font-bold cursor-pointer ${
+                className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold cursor-pointer ${
                   isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
@@ -1269,7 +1272,7 @@ export const PjTimesheetTracker: React.FC<PjTimesheetTrackerProps> = ({
               </button>
               <button
                 type="submit"
-                className="px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-lg cursor-pointer transition-all hover:scale-[1.02]"
+                className="px-6 py-2.5 rounded-xl text-xs sm:text-sm font-bold text-white shadow-lg cursor-pointer transition-all hover:scale-[1.02]"
                 style={{
                   background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)',
                   boxShadow: '0 4px 16px rgba(100, 12, 30, 0.30)',
