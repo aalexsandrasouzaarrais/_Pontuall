@@ -1147,13 +1147,14 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                   </div>
                 </div>
 
-                {/* 7 Colunas dos Dias da Semana com Cabeçalho e Lista Compacta de Escalas */}
-                <div className="grid grid-cols-7 gap-2.5 sm:gap-3">
+                {/* 7 Colunas dos Dias da Semana com Cabeçalho e Contador Discreto */}
+                <div className="grid grid-cols-7 gap-2 sm:gap-2.5">
                   {weekDays.map((d) => {
                     const dateStr = formatDate(d);
                     const isSelected = dateStr === formatDate(currentDate);
                     const dayNameShort = DAYS_SHORT[d.getDay()];
                     const monthShort = MONTHS_SHORT_PT[d.getMonth()];
+                    const dayEventsCount = (eventsByDate[dateStr] || []).length;
 
                     return (
                       <div
@@ -1161,29 +1162,37 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                         onClick={() => {
                           setCurrentDate(d);
                         }}
-                        className={`flex flex-col items-center justify-center py-2.5 px-1.5 rounded-2xl transition-all cursor-pointer ${
+                        className={`flex flex-col items-center justify-center py-2 px-1.5 rounded-2xl transition-all cursor-pointer ${
                           isSelected
                             ? isDark
-                              ? 'bg-[#7a1428] text-white shadow-lg shadow-[#7a1428]/40 border border-[#96183c] scale-[1.01]'
-                              : 'bg-[#96183c] text-white shadow-md border border-[#96183c] scale-[1.01]'
+                              ? 'bg-[#7a1428] text-white shadow-md shadow-[#7a1428]/30 border border-[#96183c]/60 scale-[1.01]'
+                              : 'bg-[#96183c] text-white shadow-sm border border-[#96183c] scale-[1.01]'
                             : isDark
-                              ? 'bg-[#1a1d24] text-white/70 border border-white/5 hover:border-white/20 hover:text-white'
-                              : 'bg-[#fce5dc]/90 text-slate-800 border border-white/40 hover:bg-[#fff0e8]'
+                              ? 'bg-[#181a22] text-slate-300 border border-white/5 hover:border-white/15 hover:text-white'
+                              : 'bg-slate-100/90 text-slate-800 border border-slate-200/80 hover:bg-slate-100'
                         }`}
                       >
                         <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                          isSelected ? 'text-white/80' : isDark ? 'text-slate-400' : 'text-slate-500'
+                          isSelected ? 'text-white/90' : isDark ? 'text-slate-400' : 'text-slate-500'
                         }`}>
                           {dayNameShort}
                         </span>
                         <span className="text-xl sm:text-2xl font-black tracking-tight my-0.5">
                           {d.getDate()}
                         </span>
-                        <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                          isSelected ? 'text-white/80' : isDark ? 'text-slate-400' : 'text-slate-500'
+                        <div className={`mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-semibold transition-all ${
+                          isSelected
+                            ? 'bg-white/20 text-white'
+                            : dayEventsCount > 0
+                              ? isDark
+                                ? 'bg-white/10 text-slate-300'
+                                : 'bg-black/5 text-slate-700'
+                              : isDark
+                                ? 'text-slate-500 opacity-60'
+                                : 'text-slate-400 opacity-60'
                         }`}>
-                          {monthShort}
-                        </span>
+                          {dayEventsCount === 0 ? '0 escalas' : `${dayEventsCount} ${dayEventsCount === 1 ? 'escala' : 'escalas'}`}
+                        </div>
                       </div>
                     );
                   })}
@@ -1218,15 +1227,15 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                           setEditingShift(null);
                           setIsShiftModalOpen(true);
                         }}
-                        className={`flex flex-col gap-2.5 p-2 sm:p-2.5 pb-4 transition-all min-h-full cursor-pointer relative group ${
+                        className={`flex flex-col gap-2 p-2 sm:p-2.5 pb-4 transition-all min-h-full cursor-pointer relative group ${
                           dayIdx === 0 ? 'rounded-bl-[30px]' : ''
                         } ${
                           dayIdx === 6 ? 'rounded-br-[30px]' : ''
                         } ${
                           isSelected
                             ? isDark
-                              ? 'bg-[#96183c]/5'
-                              : 'bg-[#96183c]/5'
+                              ? 'bg-[#7a1428]/5 border-x border-[#7a1428]/25'
+                              : 'bg-[#96183c]/5 border-x border-[#96183c]/20'
                             : isDark
                               ? 'hover:bg-white/[0.015]'
                               : 'hover:bg-slate-50/50'
@@ -1238,7 +1247,7 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                           <div className="flex-1 w-full min-h-[200px]" />
                         ) : (
                           <>
-                            {/* Cartões de Escalas Visíveis */}
+                            {/* Cartões Individuais dos Colaboradores (Compactos e Elegantes) */}
                             <div className="flex flex-col gap-2">
                               {visibleEvents.map((ev) => {
                                 const emp = employees.find((e) => e.id === ev.employeeId);
@@ -1252,16 +1261,17 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                                       e.stopPropagation();
                                       handleOpenEditShift(ev);
                                     }}
-                                    className={`p-2.5 rounded-xl border transition-all cursor-pointer shadow-xs hover:scale-[1.01] hover:shadow-md text-left flex flex-col gap-1.5 relative overflow-hidden group/card ${
+                                    className={`p-2.5 rounded-xl border transition-all cursor-pointer shadow-2xs hover:scale-[1.01] hover:shadow-xs text-left flex flex-col gap-1 relative overflow-hidden group/card ${
                                       isDark
-                                        ? 'bg-[#181a22] border-white/10 hover:border-white/20'
-                                        : 'bg-white border-slate-200 hover:border-slate-300'
+                                        ? 'bg-[#1a1d26] border-white/10 hover:border-white/25 hover:bg-[#202430]'
+                                        : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/60'
                                     }`}
                                     style={{
                                       borderLeft: isDraft ? '3px dashed #f59e0b' : `3.5px solid ${mutedStyle.accent}`
                                     }}
+                                    title={`${emp?.name || ev.title || 'Colaborador'} (${ev.startTime} - ${ev.endTime})`}
                                   >
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 min-w-0">
                                       {emp?.avatar ? (
                                         <img
                                           src={emp.avatar}
@@ -1269,31 +1279,34 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                                           className="w-7 h-7 rounded-full object-cover shrink-0 ring-1 ring-white/10"
                                         />
                                       ) : (
-                                        <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold text-white shrink-0">
+                                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${
+                                          isDark ? 'bg-slate-700' : 'bg-slate-500'
+                                        }`}>
                                           {emp?.name?.charAt(0) || 'C'}
                                         </div>
                                       )}
                                       <div className="min-w-0 flex-1">
-                                        <h4 className={`font-bold text-xs truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                        <h4 className={`font-bold text-xs truncate leading-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
                                           {emp?.name || ev.title || 'Colaborador'}
                                         </h4>
-                                        <p className={`text-[10px] truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                        <p className={`text-[10px] truncate leading-tight mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                                           {emp?.role || ev.workplace || 'Turno'}
                                         </p>
                                       </div>
                                     </div>
 
-                                    <div className={`text-[11px] font-mono font-semibold pt-0.5 ${
-                                      isDark ? 'text-slate-300' : 'text-slate-700'
+                                    <div className={`flex items-center gap-1.5 text-[11px] font-mono font-medium pt-1 border-t ${
+                                      isDark ? 'border-white/5 text-slate-300' : 'border-slate-100 text-slate-600'
                                     }`}>
-                                      {ev.startTime} - {ev.endTime}
+                                      <Clock className="w-3 h-3 opacity-60 shrink-0" />
+                                      <span>{ev.startTime} - {ev.endTime}</span>
                                     </div>
                                   </div>
                                 );
                               })}
                             </div>
 
-                            {/* Badge Discreto "+N escalas neste horário" (sem gradiente chamativo) */}
+                            {/* Indicador de Escalas Adicionais (+N escalas) */}
                             {remainingCount > 0 && (
                               <button
                                 type="button"
@@ -1307,15 +1320,14 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                                     dayIdx,
                                   });
                                 }}
-                                className={`w-full py-1.5 px-2 mt-0.5 rounded-lg text-[11px] font-semibold transition-all text-center cursor-pointer flex items-center justify-center gap-1.5 border ${
+                                className={`w-full py-1.5 px-2 mt-0.5 rounded-full text-xs font-semibold text-white transition-all text-center cursor-pointer flex items-center justify-center gap-1.5 border shadow-2xs hover:scale-[1.02] active:scale-95 ${
                                   isDark
-                                    ? 'bg-[#22161b] hover:bg-[#2d1b23] text-[#fca5a5] border-[#96183c]/35 hover:border-[#96183c]/60 shadow-xs'
-                                    : 'bg-[#fdf2f4] hover:bg-[#fce7eb] text-[#96183c] border-[#96183c]/25 hover:border-[#96183c]/45 shadow-xs'
+                                    ? 'bg-[#4a0e19] border-[#7a1428]/70 hover:border-[#96183c] hover:bg-[#5a1120]'
+                                    : 'bg-[#96183c] border-[#96183c] hover:bg-[#801433]'
                                 }`}
-                                title="Clique para ver todos os colaboradores deste horário"
+                                title={`Ver todas as ${dayEvents.length} escalas deste dia`}
                               >
-                                <span className="w-1.5 h-1.5 rounded-full bg-[#96183c] inline-block shrink-0" />
-                                <span>+{remainingCount} {remainingCount === 1 ? 'escala neste horário' : 'escalas neste horário'}</span>
+                                <span>+{remainingCount} {remainingCount === 1 ? 'escala' : 'escalas'}</span>
                               </button>
                             )}
 
@@ -1327,7 +1339,7 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                     );
                   })}
 
-                  {/* Flyout Popover Flutuante estilo Imagem */}
+                  {/* Flyout Popover Flutuante estilo Imagem de Referência */}
                   {weekFlyout && (
                     <>
                       {/* Backdrop transparente para fechar ao clicar fora */}
@@ -1339,7 +1351,7 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                       <div
                         className={`absolute z-40 w-72 sm:w-80 rounded-2xl border p-4 shadow-2xl transition-all animate-in fade-in zoom-in-95 duration-150 max-h-[85vh] overflow-y-auto ${
                           isDark
-                            ? 'bg-[#1a1d24] border-white/10 text-white shadow-black/80'
+                            ? 'bg-[#181a24] border-white/10 text-white shadow-black/90'
                             : 'bg-white border-slate-200 text-slate-800 shadow-slate-300/60'
                         }`}
                         style={{
@@ -1358,25 +1370,26 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                         <div className="flex items-center justify-between gap-2 pb-3 mb-3 border-b border-white/10">
                           <div>
                             <h3 className="text-sm font-bold tracking-tight">
-                              {weekFlyout.timeSlot}
+                              {weekFlyout.dayLabel}
                             </h3>
-                            <p className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                              {weekFlyout.dayLabel} ({weekFlyout.shifts.length} {weekFlyout.shifts.length === 1 ? 'escala' : 'escalas'})
+                            <p className={`text-[11px] font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                              {weekFlyout.shifts.length} {weekFlyout.shifts.length === 1 ? 'escala registrada' : 'escalas registradas'}
                             </p>
                           </div>
                           <button
                             type="button"
                             onClick={() => setWeekFlyout(null)}
-                            className={`p-1 rounded-lg transition-colors cursor-pointer ${
+                            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
                               isDark ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
                             }`}
+                            title="Fechar painel"
                           >
                             <X className="w-4 h-4" />
                           </button>
                         </div>
 
-                        {/* Lista de Colaboradores na Escala */}
-                        <div className="flex flex-col gap-2 max-h-[45vh] overflow-y-auto pr-1">
+                        {/* Lista de Colaboradores na Escala com Estilo Horizontal Compacto */}
+                        <div className="flex flex-col gap-2 max-h-[48vh] overflow-y-auto pr-1">
                           {weekFlyout.shifts.map((ev) => {
                             const emp = employees.find((e) => e.id === ev.employeeId);
                             const mutedStyle = getMutedShiftColor(ev, isDark);
@@ -1389,14 +1402,15 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                                   handleOpenEditShift(ev);
                                   setWeekFlyout(null);
                                 }}
-                                className={`p-2.5 rounded-xl border transition-all cursor-pointer shadow-xs hover:scale-[1.01] flex items-center justify-between gap-3 text-left ${
+                                className={`p-2.5 rounded-xl border transition-all cursor-pointer shadow-2xs hover:scale-[1.01] flex items-center justify-between gap-2.5 text-left ${
                                   isDark
-                                    ? 'bg-[#14161c] border-white/10 hover:border-white/25 hover:bg-[#1f222b]'
+                                    ? 'bg-[#14161f] border-white/5 hover:border-white/20 hover:bg-[#1c1f2b]'
                                     : 'bg-slate-50 border-slate-200 hover:border-slate-300 hover:bg-white'
                                 }`}
                                 style={{
-                                  borderLeft: isDraft ? '3px dashed #f59e0b' : `3px solid ${mutedStyle.accent}`
+                                  borderLeft: isDraft ? '3px dashed #f59e0b' : `3.5px solid ${mutedStyle.accent}`
                                 }}
+                                title="Clique para abrir detalhes da escala"
                               >
                                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
                                   {emp?.avatar ? (
@@ -1420,11 +1434,12 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
                                   </div>
                                 </div>
 
-                                <span className={`text-[11px] font-mono font-semibold shrink-0 ${
+                                <div className={`flex items-center gap-1 text-[11px] font-mono font-medium shrink-0 ${
                                   isDark ? 'text-slate-300' : 'text-slate-700'
                                 }`}>
-                                  {ev.startTime} - {ev.endTime}
-                                </span>
+                                  <Clock className="w-3 h-3 opacity-60" />
+                                  <span>{ev.startTime} - {ev.endTime}</span>
+                                </div>
                               </div>
                             );
                           })}
