@@ -46,6 +46,8 @@ export interface PjTimesheetEntry {
   links?: PjReportLink[]; // Links de comprovação (PR, Figma, etc.)
   images?: string[]; // Prints de tela / comprovantes
   isLiveTracked?: boolean; // Se foi registrado com o cronômetro Play/Pause
+  status?: 'pending' | 'approved' | 'rejected'; // Status de homologação individual da tarefa
+  managerFeedback?: string; // Parecer/ajuste solicitado pelo gestor na tarefa
 }
 
 export interface PjActiveTimerState {

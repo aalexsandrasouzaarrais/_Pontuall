@@ -47,6 +47,24 @@ requestRoutes.post('/', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    const isSwap = ['troca', 'swap'].includes(String(tpo_solicitacao).toLowerCase());
+    if (isSwap && idf_colaborador_destino) {
+      const { data: colabs } = await supabaseAdmin
+        .from('TAB_Colaborador')
+        .select('Idf_Colaborador, Des_Departamento')
+        .in('Idf_Colaborador', [idf_colaborador_solicitante, idf_colaborador_destino]);
+
+      const solicitante = colabs?.find(c => c.Idf_Colaborador === idf_colaborador_solicitante);
+      const destino = colabs?.find(c => c.Idf_Colaborador === idf_colaborador_destino);
+      const deptSolicitante = (solicitante?.Des_Departamento || '').trim().toLowerCase();
+      const deptDestino = (destino?.Des_Departamento || '').trim().toLowerCase();
+
+      if (!deptSolicitante || !deptDestino || deptSolicitante !== deptDestino) {
+        res.status(400).json({ error: 'Só é permitido solicitar troca de turno com alguém do mesmo setor.' });
+        return;
+      }
+    }
+
     const { data, error } = await supabaseAdmin
       .from('TAB_Solicitacao_Colaborador')
       .insert({

@@ -94,7 +94,7 @@ export const ORBIT_COLORS: ShiftColor[] = [
     bg: "#501d33", 
     border: "#732c4b", 
     text: "#ffffff",
-    category: "Evento / Extraordinário",
+    category: "Evento",
     description: "Eventos institucionais, convenções da empresa, celebrações ou missões pontuais."
   },
 ];
@@ -127,7 +127,7 @@ export const getColorForShiftType = (type: string): ShiftColor => {
     return ORBIT_COLORS[3]; // Azul Oceano (Treinamento / Onboarding)
   }
   if (lower.includes('evento') || lower.includes('extraordinário')) {
-    return ORBIT_COLORS[5]; // Rosa Magenta (Evento / Extraordinário)
+    return ORBIT_COLORS[5]; // Rosa Magenta (Evento)
   }
   return ORBIT_COLORS[0];
 };
@@ -416,13 +416,6 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
     return () => clearTimeout(timer);
   }, [isOpen, newWorkplaceAddress, isAddingNewWorkplace]);
 
-  // Atualiza o tipo e sincroniza automaticamente a cor correspondente
-  const handleShiftTypeChange = (newType: string) => {
-    setShiftType(newType);
-    const newColor = getColorForShiftType(newType);
-    setSelectedColor(newColor);
-  };
-
   // Ao clicar diretamente numa cor da paleta, sincroniza também o tipo se houver categoria correspondente
   const handleColorChange = (c: ShiftColor) => {
     setSelectedColor(c);
@@ -560,8 +553,8 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
       || editingShift?.workplaceLocation
       || (editingShift?.workplace ? { name: editingShift.workplace, address: editingShift.workplace } : null);
 
-    const wpName = currentWp?.name || 'Sede Principal / Matriz';
-    const wpAddress = currentWp?.address || 'Endereço Principal da Empresa';
+    const wpName = currentWp?.name || 'Home Office / Remoto';
+    const wpAddress = currentWp?.address || 'Trabalho Remoto / Domiciliar';
     const mapsLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${wpName} ${wpAddress}`)}`;
 
     // Formatação da data no cabeçalho: "Terça-feira, 03/11/2026"
@@ -1055,39 +1048,6 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium" style={labelStyle}>Presença:</span>
-            <button
-              type="button"
-              onClick={() => {
-                const cycle: AttendanceStatus[] = ["pending", "present", "absent"];
-                const next = cycle[(cycle.indexOf(presence) + 1) % cycle.length];
-                setPresence(next);
-              }}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer hover:scale-105"
-              style={presence === "present" ? {
-                background: isLight ? "#ecfdf5" : "rgba(72,187,120,0.2)",
-                color: isLight ? "#047857" : "#48bb78",
-                border: isLight ? "1px solid #a7f3d0" : "1px solid rgba(72,187,120,0.35)"
-              } : presence === "absent" ? {
-                background: isLight ? "#fef2f2" : "rgba(245,101,101,0.2)",
-                color: isLight ? "#b91c1c" : "#f56565",
-                border: isLight ? "1px solid #fecaca" : "1px solid rgba(245,101,101,0.35)"
-              } : {
-                background: isLight ? "#f1f5f9" : "rgba(255,255,255,0.05)",
-                color: isLight ? "#475569" : "rgba(255,255,255,0.5)",
-                border: isLight ? "1px solid #cbd5e1" : "1px solid rgba(255,255,255,0.12)"
-              }}
-            >
-              <span
-                className="w-1.5 h-1.5 rounded-full"
-                style={{
-                  background: presence === "present" ? "#48bb78" : presence === "absent" ? "#f56565" : isLight ? "#94a3b8" : "rgba(255,255,255,0.3)"
-                }}
-              />
-              {presence === "present" ? "Presente" : presence === "absent" ? "Ausente" : "Pendente"}
-            </button>
-          </div>
         </div>
 
         {/* Form */}
@@ -1177,45 +1137,24 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
               </select>
             </div>
 
-            {/* Shift type + Title */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-semibold" style={labelStyle}>
-                    TIPO DE TURNO
-                  </label>
-                </div>
-                <select
-                  value={shiftType}
-                  onChange={e => handleShiftTypeChange(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all cursor-pointer"
-                  style={inputStyle}
-                >
-                  {SHIFT_TYPES.map(t => (
-                    <option key={t} value={t} style={optionStyle}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-semibold mb-1.5 block" style={labelStyle}>
-                  TÍTULO / IDENTIFICADOR
-                </label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={e => setTitle(e.target.value)}
-                  placeholder="Ex: Sprint Planning"
-                  required
-                  className={`w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all ${
-                    isLight ? 'placeholder:text-slate-400' : 'placeholder:text-white/25'
-                  }`}
-                  style={inputStyle}
-                  onFocus={e => e.target.style.borderColor = "rgba(248,152,71,0.8)"}
-                  onBlur={e => e.target.style.borderColor = isLight ? "#cbd5e1" : "rgba(255,255,255,0.12)"}
-                />
-              </div>
+            {/* Title */}
+            <div>
+              <label className="text-xs font-semibold mb-1.5 block" style={labelStyle}>
+                TÍTULO / IDENTIFICADOR
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                placeholder="Ex: Sprint Planning"
+                required
+                className={`w-full px-3.5 py-2.5 rounded-xl text-sm outline-none transition-all ${
+                  isLight ? 'placeholder:text-slate-400' : 'placeholder:text-white/25'
+                }`}
+                style={inputStyle}
+                onFocus={e => e.target.style.borderColor = "rgba(248,152,71,0.8)"}
+                onBlur={e => e.target.style.borderColor = isLight ? "#cbd5e1" : "rgba(255,255,255,0.12)"}
+              />
             </div>
 
             {/* Date + Times */}
@@ -1476,7 +1415,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                       setIsManagingWorkplaces(prev => !prev);
                       setIsAddingNewWorkplace(false);
                     }}
-                    className="text-[11px] font-bold text-rose-500 hover:text-rose-600 dark:hover:text-rose-400 flex items-center gap-1 cursor-pointer underline"
+                    className={`text-[11px] font-medium flex items-center gap-1 cursor-pointer transition-colors ${isLight ? "text-slate-500 hover:text-slate-800" : "text-slate-400 hover:text-slate-200"}`}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     <span>{isManagingWorkplaces ? 'Fechar Gerenciador' : `Gerenciar / Excluir Postos (${workplacesList.length})`}</span>
@@ -1516,7 +1455,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                       <button
                         type="button"
                         onClick={() => handleDeleteWorkplace(selectedWorkplaceId)}
-                        className="px-3.5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold shrink-0 shadow-sm"
+                        className={`px-3 py-2.5 rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 text-xs font-medium shrink-0 ${isLight ? "bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-900" : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:text-white"}`}
                         title="Excluir o posto selecionado da lista"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -1535,7 +1474,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                           Lista de Postos Cadastrados ({workplacesList.length})
                         </span>
                         <span className="text-[11px] text-slate-400">
-                          Clique no botão vermelho para remover postos desnecessários
+                          Remova postos desnecessários da lista
                         </span>
                       </div>
 
@@ -1559,7 +1498,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                             <button
                               type="button"
                               onClick={() => handleDeleteWorkplace(wp.id)}
-                              className="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1 shrink-0 cursor-pointer shadow-xs transition-all"
+                              className={`px-2.5 py-1.5 rounded-lg border font-medium text-xs flex items-center gap-1 shrink-0 cursor-pointer transition-all ${isLight ? "bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-900" : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:text-white"}`}
                               title={`Excluir ${wp.name}`}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -1732,7 +1671,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-xs font-semibold" style={labelStyle}>
-                  ✨ LEMBRETES & ATIVIDADES
+                  LEMBRETES & ATIVIDADES
                 </label>
                 <input
                   type="text"

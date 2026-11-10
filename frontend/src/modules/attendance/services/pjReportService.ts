@@ -4,6 +4,7 @@ function isUuid(id?: string): boolean {
 }
 
 import { supabase } from '@/shared/services/supabase';
+import { createNotificationSupabase } from '@/modules/notifications/services/notificationService';
 import { safeStorage } from '@/shared/utils/safeStorage';
 import { PjDeliverableReport, PjReportLink, PjTimesheetEntry, PjActiveTimerState } from '@/types';
 
@@ -11,10 +12,19 @@ const STORAGE_KEY_PJ_REPORTS = 'pontual_pj_reports';
 const STORAGE_KEY_PJ_DRAFT_PREFIX = 'pontual_pj_draft_timesheet_';
 const STORAGE_KEY_PJ_TIMER_PREFIX = 'pontual_pj_active_timer_';
 
+function isInternalPjMetaRow(period?: string, status?: string): boolean {
+  if (!period) return false;
+  const p = String(period).trim();
+  return p.startsWith('__') || status === 'draft';
+}
+
 function getLocalReports(): PjDeliverableReport[] {
   try {
     const raw = safeStorage.getItem(STORAGE_KEY_PJ_REPORTS);
-    return raw ? JSON.parse(raw) : [];
+    const parsed: PjDeliverableReport[] = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter(r => !isInternalPjMetaRow(r.period, r.status as string))
+      : [];
   } catch {
     return [];
   }
@@ -44,21 +54,47 @@ export async function getPjReportsSupabase(employeeId?: string): Promise<PjDeliv
 
     if (!error && data) {
       const localCache = getLocalReports();
-      const mapped: PjDeliverableReport[] = data.map((row: any) => {
-        let timesheetParsed: PjTimesheetEntry[] = [];
-        if (Array.isArray(row.Des_Timesheet_Json)) {
-          timesheetParsed = row.Des_Timesheet_Json;
-        } else if (typeof row.Des_Timesheet_Json === 'string') {
-          try {
-            timesheetParsed = JSON.parse(row.Des_Timesheet_Json);
-          } catch {}
+      // Sincroniza apenas o rascunho mais recente (__DRAFT_TIMESHEET__) de cada colaborador e limpa duplicatas antigas
+      const seenDraftEmpIds = new Set<string>();
+      const duplicateDraftRowIds: string[] = [];
+      for (const row of data) {
+        if (row.Des_Periodo_Referencia === '__DRAFT_TIMESHEET__' && row.Idf_Colaborador) {
+          if (!seenDraftEmpIds.has(row.Idf_Colaborador)) {
+            seenDraftEmpIds.add(row.Idf_Colaborador);
+            const rawLinks: any[] = Array.isArray(row.Des_Links_Json) ? row.Des_Links_Json : [];
+            const meta = rawLinks.find(l => l && l.title === '__TIMESHEET_META__');
+            if (meta?.url) {
+              try {
+                const parsedDraft = JSON.parse(meta.url);
+                if (Array.isArray(parsedDraft)) {
+                  saveDraftTimesheet(row.Idf_Colaborador, parsedDraft);
+                }
+              } catch {}
+            }
+          } else if (row.Idf_Relatorio_Pj) {
+            duplicateDraftRowIds.push(row.Idf_Relatorio_Pj);
+          }
         }
+      }
+      if (duplicateDraftRowIds.length > 0) {
+        supabase.from('TAB_Relatorio_Pj').delete().in('Idf_Relatorio_Pj', duplicateDraftRowIds).then(() => {});
+      }
 
+      const validRows = data.filter((row: any) => !isInternalPjMetaRow(row.Des_Periodo_Referencia, row.Tpo_Status));
+      const mapped: PjDeliverableReport[] = validRows.map((row: any) => {
         const rawLinks: any[] = Array.isArray(row.Des_Links_Json) ? row.Des_Links_Json : [];
         const metaItem = rawLinks.find(l => l && l.title === '__TIMESHEET_META__');
-        if ((!timesheetParsed || timesheetParsed.length === 0) && metaItem?.url) {
+        let timesheetParsed: PjTimesheetEntry[] = [];
+        if (metaItem?.url) {
           try {
             timesheetParsed = JSON.parse(metaItem.url);
+          } catch {}
+        }
+        if ((!timesheetParsed || timesheetParsed.length === 0) && Array.isArray(row.Des_Timesheet_Json)) {
+          timesheetParsed = row.Des_Timesheet_Json;
+        } else if ((!timesheetParsed || timesheetParsed.length === 0) && typeof row.Des_Timesheet_Json === 'string') {
+          try {
+            timesheetParsed = JSON.parse(row.Des_Timesheet_Json);
           } catch {}
         }
         const cleanLinks: PjReportLink[] = rawLinks.filter(l => l && l.title !== '__TIMESHEET_META__');
@@ -241,6 +277,113 @@ export async function updatePjReportStatusSupabase(
   return true;
 }
 
+/**
+ * Atualiza o status de homologação (Aprovado / Com Ajuste) de uma tarefa individual do Timesheet PJ
+ */
+export async function updatePjTimesheetTaskStatus(params: {
+  employeeId: string;
+  taskId: string;
+  taskCode?: string;
+  taskDescription?: string;
+  reportId?: string;
+  status: 'approved' | 'rejected';
+  managerFeedback?: string;
+}): Promise<void> {
+  const { employeeId, taskId, taskCode, taskDescription, reportId, status, managerFeedback } = params;
+  let matchedTaskLabel = taskCode || '';
+
+  // 1. Atualiza no rascunho em aberto do colaborador (se a tarefa estiver lá)
+  const draft = getDraftTimesheet(employeeId);
+  if (draft.some(t => t.id === taskId)) {
+    const updatedDraft = draft.map(t => {
+      if (t.id === taskId) {
+        if (!matchedTaskLabel) matchedTaskLabel = t.taskCode || t.project || '';
+        return { ...t, status, managerFeedback: managerFeedback || undefined };
+      }
+      return t;
+    });
+    await saveDraftTimesheetToSupabase(employeeId, updatedDraft);
+  }
+
+  // 2. Se pertencer a um relatório enviado, atualiza a tarefa dentro do relatório no cache local e no Supabase
+  if (reportId) {
+    const currentReports = getLocalReports();
+    const targetReport = currentReports.find(r => r.id === reportId);
+    if (targetReport && Array.isArray(targetReport.timesheetEntries) && targetReport.timesheetEntries.length > 0) {
+      const updatedEntries = targetReport.timesheetEntries.map(t => {
+        if (t.id === taskId) {
+          if (!matchedTaskLabel) matchedTaskLabel = t.taskCode || t.project || '';
+          return { ...t, status, managerFeedback: managerFeedback || undefined };
+        }
+        return t;
+      });
+      const allApproved = updatedEntries.every(t => t.status === 'approved');
+      const anyRejected = updatedEntries.some(t => t.status === 'rejected');
+      const newReportStatus: 'pending' | 'approved' | 'rejected' = allApproved
+        ? 'approved'
+        : anyRejected
+        ? 'rejected'
+        : 'pending';
+
+      const updatedReports = currentReports.map(r =>
+        r.id === reportId
+          ? {
+              ...r,
+              timesheetEntries: updatedEntries,
+              status: newReportStatus,
+              managerFeedback: managerFeedback || r.managerFeedback,
+            }
+          : r
+      );
+      saveLocalReports(updatedReports);
+
+      try {
+        const cleanLinks = (targetReport.links || []).filter(l => l && l.title !== '__TIMESHEET_META__');
+        const linksWithMeta = [
+          ...cleanLinks,
+          { title: '__TIMESHEET_META__', url: JSON.stringify(updatedEntries) },
+        ];
+        const updatePayload: any = {
+          Des_Timesheet_Json: updatedEntries,
+          Des_Links_Json: linksWithMeta,
+          Tpo_Status: newReportStatus,
+          Des_Parecer_Gestor: managerFeedback || targetReport.managerFeedback || null,
+        };
+        const { error } = await supabase
+          .from('TAB_Relatorio_Pj')
+          .update(updatePayload)
+          .eq('Idf_Relatorio_Pj', reportId);
+
+        if (error && (error.message?.includes('Des_Timesheet_Json') || error.code === 'PGRST204')) {
+          delete updatePayload.Des_Timesheet_Json;
+          await supabase
+            .from('TAB_Relatorio_Pj')
+            .update(updatePayload)
+            .eq('Idf_Relatorio_Pj', reportId);
+        }
+      } catch (err) {
+        console.warn('Aviso ao atualizar tarefa individual no relatório PJ:', err);
+      }
+    } else if (!targetReport?.timesheetEntries?.length) {
+      // Relatório sem sub-itens (linha única representativa)
+      await updatePjReportStatusSupabase(reportId, status, managerFeedback);
+    }
+  }
+
+  // 3. Envia notificação direta ao colaborador PJ quando houver pedido de ajuste ou homologação
+  if (employeeId && status === 'rejected') {
+    const label = matchedTaskLabel ? ` ${matchedTaskLabel}` : '';
+    const descPreview = taskDescription ? ` ("${taskDescription.slice(0, 60)}")` : '';
+    await createNotificationSupabase({
+      targetEmployeeId: employeeId,
+      title: `Ajuste Solicitado na Tarefa${label}`,
+      message: `O gestor solicitou ajuste na sua tarefa${label}${descPreview}. Comentário do gestor: "${managerFeedback || 'Verificar tarefa'}"`,
+      type: 'approval',
+      actionRequired: true,
+    });
+  }
+}
+
 // ============================================================================
 // GERENCIAMENTO LOCAL DE TIMESHEET RASCUNHO / ATIVIDADES PENDENTES DE ENVIO
 // ============================================================================
@@ -265,13 +408,15 @@ export async function syncDraftTimesheetFromSupabase(employeeId: string): Promis
   if (!isUuid(employeeId)) return local;
 
   try {
-    const { data, error } = await supabase
+    const { data: rows, error } = await supabase
       .from('TAB_Relatorio_Pj')
       .select('*')
       .eq('Idf_Colaborador', employeeId)
       .eq('Des_Periodo_Referencia', '__DRAFT_TIMESHEET__')
-      .maybeSingle();
+      .order('Dta_Envio', { ascending: false })
+      .limit(1);
 
+    const data = rows?.[0];
     if (!error && data) {
       let entries: PjTimesheetEntry[] = [];
       const rawLinks: any[] = Array.isArray(data.Des_Links_Json) ? data.Des_Links_Json : [];
@@ -311,18 +456,28 @@ export async function saveDraftTimesheetToSupabase(
       Tpo_Status: 'draft',
     };
 
-    const { data: existing } = await supabase
+    const { data: existingRows } = await supabase
       .from('TAB_Relatorio_Pj')
       .select('Idf_Relatorio_Pj')
       .eq('Idf_Colaborador', employeeId)
       .eq('Des_Periodo_Referencia', key)
-      .maybeSingle();
+      .order('Dta_Envio', { ascending: false });
 
-    if (existing?.Idf_Relatorio_Pj) {
+    if (existingRows && existingRows.length > 0) {
+      const primaryId = existingRows[0].Idf_Relatorio_Pj;
       await supabase
         .from('TAB_Relatorio_Pj')
         .update(payload)
-        .eq('Idf_Relatorio_Pj', existing.Idf_Relatorio_Pj);
+        .eq('Idf_Relatorio_Pj', primaryId);
+
+      // Remove eventuais duplicatas antigas de rascunho
+      if (existingRows.length > 1) {
+        const extraIds = existingRows.slice(1).map((r: any) => r.Idf_Relatorio_Pj);
+        await supabase
+          .from('TAB_Relatorio_Pj')
+          .delete()
+          .in('Idf_Relatorio_Pj', extraIds);
+      }
     } else {
       await supabase
         .from('TAB_Relatorio_Pj')

@@ -35,6 +35,7 @@ import { useUnreadChatCount } from '@/shared/hooks/useUnreadChatCount';
 import { 
   LoginView 
 } from '@/modules/auth/components/LoginView';
+import { LandingView } from '@/modules/auth/components/LandingView';
 import { 
   ProfileEditModal 
 } from '@/shared/components/ProfileEditModal';
@@ -101,6 +102,7 @@ import {
 import { 
   CheckCircle2, 
   Clock, 
+  Calendar,
   CalendarDays, 
   FileText, 
   ArrowLeftRight, 
@@ -183,6 +185,56 @@ function AppContent() {
   }, []);
 
   const [authFeedback, setAuthFeedback] = useState<{ message: string; type: 'error' | 'warning' | 'success' } | null>(null);
+
+  const [showLogin, setShowLogin] = useState<boolean>(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const search = window.location.search.toLowerCase();
+        const hash = window.location.hash.toLowerCase();
+        const pathname = window.location.pathname.toLowerCase();
+        if (
+          search.includes('login=true') ||
+          search.includes('reset=true') ||
+          search.includes('type=recovery') ||
+          search.includes('primeiro_acesso=true') ||
+          search.includes('matricula=') ||
+          search.includes('code=') ||
+          hash.includes('access_token=') ||
+          pathname.includes('/login') ||
+          pathname.includes('/colaborador') ||
+          pathname.includes('/gestor') ||
+          pathname.includes('/redefinir-senha')
+        ) {
+          return true;
+        }
+      }
+    } catch {}
+    return false;
+  });
+
+  useEffect(() => {
+    if (authFeedback) {
+      setShowLogin(true);
+    }
+  }, [authFeedback]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      try {
+        const search = window.location.search.toLowerCase();
+        const pathname = window.location.pathname.toLowerCase();
+        const isLoginUrl =
+          search.includes('login=true') ||
+          pathname.includes('/login') ||
+          pathname.includes('/colaborador') ||
+          pathname.includes('/gestor') ||
+          pathname.includes('/redefinir-senha');
+        setShowLogin(isLoginUrl);
+      } catch {}
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Global Role Mode: 'manager' (Visual requested in photo) vs 'employee'
   const [currentRole, setCurrentRole] = useState<'manager' | 'employee'>(() => {
@@ -438,6 +490,15 @@ function AppContent() {
   };
 
   const handleUpdateRequest = async (id: string, updates: Partial<TimeOffRequest>) => {
+    if (updates.type === 'swap' && updates.targetEmployeeId) {
+      const targetColab = employees.find(e => e.id === updates.targetEmployeeId);
+      const myDept = (activeEmployee.department || '').trim().toLowerCase();
+      const theirDept = (targetColab?.department || '').trim().toLowerCase();
+      if (!targetColab || !myDept || !theirDept || myDept !== theirDept) {
+        showToast('Setor Diferente', 'Só é permitido solicitar troca de turno com colegas do mesmo setor.', 'error');
+        return;
+      }
+    }
     setRequests(prev => prev.map(r => r.id === id ? { ...r, ...updates } : r));
     await updateSolicitacaoSupabase(id, updates);
     setEditingRequest(null);
@@ -732,7 +793,7 @@ function AppContent() {
           if (overtimeDiffMinutes > 0) {
             const heTag = isForgetfulness
               ? `[Esquecimento de Saída: Saída real no horário previsto (${s.endTime || '15:20'}) - Batida às ${timeStr}]`
-              : `[HE +${overtimeDiffMinutes}m: ${notesOrReason || 'Sem justificativa informada'}]`;
+              : `[HE +${overtimeDiffMinutes}m: ${notesOrReason || 'Aguardando justificativa'}]`;
             updatedNotes = updatedNotes ? `${updatedNotes} | ${heTag}` : heTag;
           }
           return {
@@ -752,8 +813,8 @@ function AppContent() {
           };
         } else {
           let updatedNotes = s.notes || '';
-          if (lateDiffMinutes > 0 && notesOrReason) {
-            const lateTag = `[Atraso ${lateDiffMinutes}m: ${notesOrReason}]`;
+          if (lateDiffMinutes > 0) {
+            const lateTag = `[Atraso ${lateDiffMinutes}m: ${notesOrReason || 'Aguardando justificativa'}]`;
             updatedNotes = updatedNotes ? `${updatedNotes} | ${lateTag}` : lateTag;
           }
           return {
@@ -872,6 +933,15 @@ function AppContent() {
 
   // Submit swap or time-off request
   const handleSubmitRequest = async (req: Partial<TimeOffRequest>) => {
+    if ((req.type || 'swap') === 'swap' && req.targetEmployeeId) {
+      const targetColab = employees.find(e => e.id === req.targetEmployeeId);
+      const myDept = (activeEmployee.department || '').trim().toLowerCase();
+      const theirDept = (targetColab?.department || '').trim().toLowerCase();
+      if (!targetColab || !myDept || !theirDept || myDept !== theirDept) {
+        showToast('Setor Diferente', 'Só é permitido solicitar troca de turno com colegas do mesmo setor.', 'error');
+        return;
+      }
+    }
     const tempId = `req-${Date.now()}`;
     const newRequest: TimeOffRequest = {
       id: tempId,
@@ -1399,6 +1469,7 @@ function AppContent() {
       }
     } catch {}
     setIsAuthenticated(false);
+    setShowLogin(true);
   };
 
   const handleAddEmployee = async (newEmp: Employee) => {
@@ -1475,7 +1546,31 @@ function AppContent() {
 
   // Se o usuário não estiver autenticado, exibe a tela de Login oficial integrada ao Supabase
   if (!isAuthenticated) {
-    return <LoginView onLoginSuccess={handleLoginSuccess} externalFeedback={authFeedback} />;
+    if (!showLogin) {
+      return (
+        <LandingView
+          onGoToLogin={() => {
+            try {
+              window.history.pushState({ page: 'login' }, '', '/?login=true');
+            } catch {}
+            setShowLogin(true);
+          }}
+        />
+      );
+    }
+
+    return (
+      <LoginView
+        onLoginSuccess={handleLoginSuccess}
+        externalFeedback={authFeedback}
+        onBackToLanding={() => {
+          try {
+            window.history.pushState({ page: 'landing' }, '', '/');
+          } catch {}
+          setShowLogin(false);
+        }}
+      />
+    );
   }
 
   return (
@@ -1918,174 +2013,78 @@ function AppContent() {
                       const isPendingPeer = req.type === 'swap' && req.peerStatus === 'pending';
                       const isAcceptedPeer = req.type === 'swap' && req.peerStatus === 'accepted';
                       const isRejectedPeer = req.type === 'swap' && req.peerStatus === 'rejected';
+                      const accentColor = req.type === 'swap' ? '#F59242' : '#96183c';
+
+                      const statusLabel =
+                        req.status === 'approved'
+                          ? 'Homologado'
+                          : isRejectedPeer
+                          ? 'Recusado pelo Colega'
+                          : req.status === 'rejected'
+                          ? 'Recusado'
+                          : isAcceptedPeer
+                          ? 'Aguardando Gestor'
+                          : isPendingPeer
+                          ? 'Aguardando Colega'
+                          : 'Em Análise';
 
                       return (
                       <div
                         key={req.id}
-                        className={`relative rounded-xl border overflow-hidden shadow-lg flex flex-col transition-all duration-300 ${
+                        className={`group relative rounded-2xl p-5 border transition-all duration-200 flex flex-col justify-between overflow-hidden ${
                           !isDark
-                            ? 'bg-white border-slate-200 shadow-slate-200/60'
-                            : 'bg-[#0d0d10] border-white/10'
+                            ? 'bg-white border-slate-200 shadow-sm hover:border-slate-300 hover:shadow-md'
+                            : 'bg-[#15161b] border-[#282a33] hover:border-white/20'
                         }`}
                         style={{
-                          borderLeft: `3px solid ${
-                            req.type === 'swap' ? '#f89642' : '#96183c'
-                          }`,
+                          boxShadow: !isDark ? '0 2px 10px rgba(0,0,0,0.04)' : '0 4px 16px rgba(0,0,0,0.35)',
+                          borderLeft: `3px solid ${accentColor}`,
                         }}
                       >
-                        {/* Card Header */}
-                        <div className="flex items-start justify-between gap-2 px-4 pt-4 pb-2">
-                          <div className="flex flex-col gap-1.5">
+                        {/* Top Header: Badge, Status Tag & Actions */}
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span
-                              className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full w-fit ${
+                              className="inline-flex items-center gap-1.5 text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full uppercase tracking-wider"
+                              style={
                                 req.type === 'swap'
-                                  ? !isDark
-                                    ? 'bg-orange-50 text-orange-600 border border-orange-200'
-                                    : 'bg-[#f89642]/15 text-[#f89642] border border-[#f89642]/30'
-                                  : !isDark
-                                  ? 'bg-rose-50 text-[#96183c] border border-rose-200'
-                                  : 'bg-[#96183c]/20 text-[#faf0ac] border border-[#96183c]/30'
-                              }`}
-                            >
-                              {req.type === 'swap'
-                                ? 'Troca de Turno'
-                                : 'Folga Compensatória'}
-                            </span>
-
-                            <span
-                              className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full w-fit ${
-                                req.status === 'approved'
-                                  ? !isDark
-                                    ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-                                    : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                  : req.status === 'rejected' || isRejectedPeer
-                                  ? !isDark
-                                    ? 'bg-rose-50 text-rose-600 border border-rose-200'
-                                    : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                                  : isAcceptedPeer
-                                  ? !isDark
-                                    ? 'bg-indigo-50 text-indigo-600 border border-indigo-200'
-                                    : 'bg-indigo-500/10 text-indigo-300 border border-indigo-500/20'
-                                  : !isDark
-                                  ? 'bg-amber-50 text-amber-600 border border-amber-200'
-                                  : 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
-                              }`}
+                                  ? {
+                                      background: !isDark ? '#fff7ed' : 'rgba(245, 146, 66, 0.14)',
+                                      color: !isDark ? '#c2410c' : '#F59242',
+                                      border: !isDark ? '1px solid #fed7aa' : '1px solid rgba(245, 146, 66, 0.3)',
+                                    }
+                                  : {
+                                      background: !isDark ? '#fff1f2' : 'rgba(150, 24, 60, 0.22)',
+                                      color: !isDark ? '#96183c' : '#F9DE97',
+                                      border: !isDark ? '1px solid #fecdd3' : '1px solid rgba(150, 24, 60, 0.4)',
+                                    }
+                              }
                             >
                               <span
-                                className={`w-1.5 h-1.5 rounded-full ${
-                                  req.status === 'approved'
-                                    ? 'bg-emerald-400'
-                                    : req.status === 'rejected' || isRejectedPeer
-                                    ? 'bg-rose-400'
-                                    : isAcceptedPeer
-                                    ? 'bg-indigo-400'
-                                    : 'bg-amber-300'
-                                }`}
+                                className="w-1.5 h-1.5 rounded-full"
+                                style={{ background: accentColor }}
                               />
-                              {req.status === 'approved'
-                                ? 'Homologado pelo Gestor'
-                                : isRejectedPeer
-                                ? 'Recusado pelo Colega'
-                                : req.status === 'rejected'
-                                ? 'Recusado pelo Gestor'
-                                : isAcceptedPeer
-                                ? 'Colega Aceitou • Aguardando Gestor'
-                                : isPendingPeer
-                                ? 'Aguardando Aceite do Colega'
-                                : 'Em Análise pelo Gestor'}
+                              {req.type === 'swap' ? 'Troca de Turno' : 'Folga'}
                             </span>
-                          </div>
 
-                          <div
-                            className={`flex items-center gap-1 text-[11px] font-mono px-2 py-1 rounded-lg shrink-0 ${
-                              !isDark
-                                ? 'text-slate-500 bg-slate-100 border border-slate-200'
-                                : 'text-slate-400 bg-white/5 border border-white/10'
-                            }`}
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                              <rect x="3" y="4" width="18" height="18" rx="2" />
-                              <path d="M16 2v4M8 2v4M3 10h18" />
-                            </svg>
-                            {formatDateBR(req.date)}
-                          </div>
-                        </div>
-
-                        <div
-                          className={`mx-4 border-t ${
-                            !isDark ? 'border-slate-200' : 'border-white/5'
-                          }`}
-                        />
-
-                        <div className="px-4 py-3 flex-1 space-y-2">
-                          {req.targetEmployeeName && (
-                            <div
-                              className={`flex items-center gap-2 text-[11px] ${
-                                !isDark ? 'text-slate-600' : 'text-slate-300'
+                            <span
+                              className={`text-[11px] font-mono px-2.5 py-0.5 rounded-lg border ${
+                                req.status === 'approved'
+                                  ? !isDark
+                                    ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                                    : 'text-emerald-400 bg-[#0e0f12] border-emerald-500/30'
+                                  : req.status === 'rejected' || isRejectedPeer
+                                  ? !isDark
+                                    ? 'text-rose-700 bg-rose-50 border-rose-200'
+                                    : 'text-rose-400 bg-[#0e0f12] border-rose-500/30'
+                                  : !isDark
+                                  ? 'text-slate-600 bg-slate-100 border-slate-200'
+                                  : 'text-slate-400 bg-[#0e0f12] border-[#282a33]'
                               }`}
                             >
-                              <svg className="w-3.5 h-3.5 text-[#f89642] shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                                <circle cx="9" cy="7" r="4" />
-                                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                              </svg>
-                              <span>
-                                Troca com{' '}
-                                <strong className={!isDark ? 'text-slate-900' : 'text-white'}>
-                                  {req.targetEmployeeName}
-                                </strong>
-                              </span>
-                            </div>
-                          )}
-
-                          <p
-                            className={`text-xs leading-relaxed line-clamp-3 ${
-                              !isDark ? 'text-slate-600' : 'text-slate-300'
-                            }`}
-                          >
-                            "{req.reason}"
-                          </p>
-                        </div>
-
-                        {req.managerNotes && (
-                          <div
-                            className={`mx-4 mb-2.5 p-2.5 rounded-xl border flex items-start gap-2 text-xs ${
-                              req.status === 'approved'
-                                ? !isDark
-                                  ? 'bg-emerald-50/90 border-emerald-200 text-emerald-800'
-                                  : 'bg-emerald-950/30 border-emerald-500/30 text-emerald-300'
-                                : req.status === 'rejected'
-                                ? !isDark
-                                  ? 'bg-rose-50/90 border-rose-200 text-rose-800'
-                                  : 'bg-rose-950/30 border-rose-500/30 text-rose-300'
-                                : !isDark
-                                ? 'bg-amber-50/90 border-amber-200 text-amber-800'
-                                : 'bg-amber-950/30 border-amber-500/30 text-amber-300'
-                            }`}
-                          >
-                            <MessageSquare className="w-3.5 h-3.5 shrink-0 mt-0.5 opacity-80" />
-                            <div className="min-w-0 flex-1">
-                              <span className="text-[10px] font-bold font-mono uppercase block tracking-wider opacity-75">
-                                Parecer / Feedback da Gestão
-                              </span>
-                              <p className="leading-snug mt-0.5">{req.managerNotes}</p>
-                            </div>
+                              {statusLabel}
+                            </span>
                           </div>
-                        )}
-
-                        <div
-                          className={`px-4 pb-3 flex items-center justify-between gap-2 border-t pt-2 ${
-                            !isDark ? 'border-slate-200' : 'border-white/5'
-                          }`}
-                        >
-                          <span
-                            className={`text-[10px] font-mono ${
-                              !isDark ? 'text-slate-400' : 'text-slate-500'
-                            }`}
-                          >
-                            Enviado: {req.createdAt}
-                          </span>
 
                           <div className="flex items-center gap-1 shrink-0">
                             <button
@@ -2094,8 +2093,10 @@ function AppContent() {
                                 setEditingRequest(req);
                                 setIsSwapModalOpen(true);
                               }}
-                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                                !isDark ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50' : 'text-slate-400 hover:text-amber-400 hover:bg-white/10'
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer border ${
+                                !isDark
+                                  ? 'text-slate-400 hover:text-[#9F243C] hover:bg-slate-100 border-transparent hover:border-slate-300'
+                                  : 'text-slate-400 hover:text-[#F59242] hover:bg-white/5 border-transparent hover:border-[#F59242]/20'
                               }`}
                               title="Editar solicitação"
                               aria-label="Editar solicitação"
@@ -2105,8 +2106,10 @@ function AppContent() {
                             <button
                               type="button"
                               onClick={() => handleDeleteRequest(req.id)}
-                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                                !isDark ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50' : 'text-slate-400 hover:text-rose-400 hover:bg-white/10'
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer border ${
+                                !isDark
+                                  ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 border-transparent hover:border-rose-300'
+                                  : 'text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border-transparent hover:border-rose-500/25'
                               }`}
                               title="Excluir solicitação"
                               aria-label="Excluir solicitação"
@@ -2114,6 +2117,68 @@ function AppContent() {
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
+                        </div>
+
+                        {/* Content: Title & Description */}
+                        <div className="space-y-1.5 mb-2">
+                          <h3 className={`font-bold text-sm tracking-tight leading-snug ${
+                            !isDark ? 'text-slate-900' : 'text-white'
+                          }`}>
+                            {req.type === 'swap' && req.targetEmployeeName
+                              ? `Troca com ${req.targetEmployeeName}`
+                              : req.type === 'swap'
+                              ? 'Solicitação de Troca de Turno'
+                              : 'Solicitação de Folga Compensatória'}
+                          </h3>
+                          <p className={`text-xs leading-relaxed line-clamp-2 ${
+                            !isDark ? 'text-slate-600' : 'text-slate-400'
+                          }`}>
+                            {req.reason}
+                          </p>
+                        </div>
+
+                        {/* Inner Box (Baseado no card de lembretes, sem foto) */}
+                        <div className={`my-2.5 p-2.5 rounded-xl border flex items-center justify-between gap-2.5 ${
+                          !isDark ? 'bg-slate-50 border-slate-200' : 'bg-[#0e0f12] border-[#282a33]'
+                        }`}>
+                          <div className="min-w-0 flex-1">
+                            <span className={`text-[9px] uppercase font-bold tracking-wider block font-mono ${
+                              !isDark ? 'text-slate-500' : 'text-slate-400'
+                            }`}>
+                              {req.managerNotes ? 'Parecer da Gestão' : 'Status do Pedido'}
+                            </span>
+                            <span className={`font-medium truncate block text-xs ${
+                              !isDark ? 'text-slate-900' : 'text-white'
+                            }`}>
+                              {req.managerNotes || statusLabel}
+                            </span>
+                          </div>
+
+                          <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-md font-mono border ${
+                            !isDark
+                              ? 'text-amber-800 bg-amber-50 border-amber-200'
+                              : 'text-[#F9DE97] bg-[#F59242]/10 border-[#F59242]/20'
+                          }`}>
+                            {req.type === 'swap' ? 'Troca' : 'Folga'}
+                          </span>
+                        </div>
+
+                        {/* Footer Row: Date Pill & CreatedAt */}
+                        <div className={`pt-3 border-t flex flex-wrap items-center justify-between gap-2 text-xs ${
+                          !isDark ? 'border-slate-100' : 'border-white/5'
+                        }`}>
+                          <div className={`flex items-center gap-2 font-mono ${!isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                            <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${
+                              !isDark ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-[#0e0f12] border-[#282a33] text-slate-300'
+                            }`}>
+                              <Calendar className={`w-3.5 h-3.5 ${!isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+                              <span>{formatDateBR(req.date)}</span>
+                            </div>
+                          </div>
+
+                          <span className={`text-[11px] font-mono ${!isDark ? 'text-slate-400' : 'text-slate-400'}`}>
+                            Enviado: {req.createdAt}
+                          </span>
                         </div>
                       </div>
                     );
@@ -2217,163 +2282,60 @@ function AppContent() {
                       Nenhuma justificativa ou atestado registrado para este perfil.
                     </div>
                   ) : (
-                    myJustifications.map(just => (
+                    myJustifications.map(just => {
+                      const statusLabel =
+                        just.status === 'approved'
+                          ? 'Homologado'
+                          : just.status === 'rejected'
+                          ? 'Recusado'
+                          : 'Em Análise';
+
+                      return (
                       <div
                         key={just.id}
-                        className={`relative rounded-xl border overflow-hidden shadow-lg flex flex-col transition-all duration-300 ${
+                        className={`group relative rounded-2xl p-5 border transition-all duration-200 flex flex-col justify-between overflow-hidden ${
                           !isDark
-                            ? 'bg-white border-slate-200 shadow-slate-200/60'
-                            : 'bg-[#0d0d10] border-white/10'
+                            ? 'bg-white border-slate-200 shadow-sm hover:border-slate-300 hover:shadow-md'
+                            : 'bg-[#15161b] border-[#282a33] hover:border-white/20'
                         }`}
                         style={{
+                          boxShadow: !isDark ? '0 2px 10px rgba(0,0,0,0.04)' : '0 4px 16px rgba(0,0,0,0.35)',
                           borderLeft: '3px solid #96183c',
                         }}
                       >
-                        {/* Card Header */}
-                        <div className="flex items-start justify-between gap-2 px-4 pt-4 pb-2">
-                          <div className="flex flex-col gap-1.5">
+                        {/* Top Header: Badge, Status Tag & Actions */}
+                        <div className="flex items-center justify-between gap-2 mb-3">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span
-                              className={`inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full w-fit ${
-                                !isDark
-                                  ? 'bg-rose-50 text-[#96183c] border border-rose-200'
-                                  : 'bg-[#96183c]/20 text-[#faf0ac] border border-[#96183c]/30'
-                              }`}
+                              className="inline-flex items-center gap-1.5 text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full uppercase tracking-wider"
+                              style={{
+                                background: !isDark ? '#fff1f2' : 'rgba(150, 24, 60, 0.22)',
+                                color: !isDark ? '#96183c' : '#F9DE97',
+                                border: !isDark ? '1px solid #fecdd3' : '1px solid rgba(150, 24, 60, 0.4)',
+                              }}
                             >
-                              📄 Atestado / Declaração
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#96183c]" />
+                              Atestado
                             </span>
 
                             <span
-                              className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full w-fit ${
+                              className={`text-[11px] font-mono px-2.5 py-0.5 rounded-lg border ${
                                 just.status === 'approved'
                                   ? !isDark
-                                    ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-                                    : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                    ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                                    : 'text-emerald-400 bg-[#0e0f12] border-emerald-500/30'
                                   : just.status === 'rejected'
                                   ? !isDark
-                                    ? 'bg-rose-50 text-rose-600 border border-rose-200'
-                                    : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                    ? 'text-rose-700 bg-rose-50 border-rose-200'
+                                    : 'text-rose-400 bg-[#0e0f12] border-rose-500/30'
                                   : !isDark
-                                  ? 'bg-amber-50 text-amber-600 border border-amber-200'
-                                  : 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
+                                  ? 'text-slate-600 bg-slate-100 border-slate-200'
+                                  : 'text-slate-400 bg-[#0e0f12] border-[#282a33]'
                               }`}
                             >
-                              <span
-                                className={`w-1.5 h-1.5 rounded-full ${
-                                  just.status === 'approved'
-                                    ? 'bg-emerald-400'
-                                    : just.status === 'rejected'
-                                    ? 'bg-rose-400'
-                                    : 'bg-amber-300'
-                                }`}
-                              />
-                              {just.status === 'approved'
-                                ? 'Homologado'
-                                : just.status === 'rejected'
-                                ? 'Recusado'
-                                : 'Em Análise pelo RH'}
+                              {statusLabel}
                             </span>
                           </div>
-
-                          <div
-                            className={`flex items-center gap-1 text-[11px] font-mono px-2 py-1 rounded-lg shrink-0 ${
-                              !isDark
-                                ? 'text-slate-500 bg-slate-100 border border-slate-200'
-                                : 'text-slate-400 bg-white/5 border border-white/10'
-                            }`}
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                              <rect x="3" y="4" width="18" height="18" rx="2" />
-                              <path d="M16 2v4M8 2v4M3 10h18" />
-                            </svg>
-                            {formatDateBR(just.date)}
-                          </div>
-                        </div>
-
-                        <div
-                          className={`mx-4 border-t ${
-                            !isDark ? 'border-slate-200' : 'border-white/5'
-                          }`}
-                        />
-
-                        <div className="px-4 py-3 flex-1 space-y-2">
-                          <p
-                            className={`text-xs leading-relaxed line-clamp-3 ${
-                              !isDark ? 'text-slate-600' : 'text-slate-300'
-                            }`}
-                          >
-                            "{just.reason}"
-                          </p>
-
-                          {just.documentName && (
-                            <button
-                              type="button"
-                              onClick={() => openDocumentSafe(just.documentUrl, just.documentName)}
-                              title="Clique para visualizar o atestado"
-                              className={`w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-left transition-all cursor-pointer ${
-                                !isDark
-                                  ? 'bg-rose-50 hover:bg-rose-100 border border-rose-200 text-[#96183c]'
-                                  : 'bg-[#96183c]/10 hover:bg-[#96183c]/20 border border-[#96183c]/25 text-[#f89642]'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <FileText
-                                  className={`w-3.5 h-3.5 shrink-0 ${
-                                    !isDark ? 'text-[#96183c]' : 'text-[#f89642]'
-                                  }`}
-                                />
-                                <span
-                                  className={`text-[11px] font-semibold truncate ${
-                                    !isDark ? 'text-[#96183c]' : 'text-[#faf0ac]'
-                                  }`}
-                                >
-                                  {just.documentName}
-                                </span>
-                              </div>
-                              <span className="text-[10px] font-medium underline opacity-80 shrink-0">
-                                Visualizar
-                              </span>
-                            </button>
-                          )}
-                        </div>
-
-                        {just.managerNotes && (
-                          <div
-                            className={`mx-4 mb-2.5 p-2.5 rounded-xl border flex items-start gap-2 text-xs ${
-                              just.status === 'approved'
-                                ? !isDark
-                                  ? 'bg-emerald-50/90 border-emerald-200 text-emerald-800'
-                                  : 'bg-emerald-950/30 border-emerald-500/30 text-emerald-300'
-                                : just.status === 'rejected'
-                                ? !isDark
-                                  ? 'bg-rose-50/90 border-rose-200 text-rose-800'
-                                  : 'bg-rose-950/30 border-rose-500/30 text-rose-300'
-                                : !isDark
-                                ? 'bg-amber-50/90 border-amber-200 text-amber-800'
-                                : 'bg-amber-950/30 border-amber-500/30 text-amber-300'
-                            }`}
-                          >
-                            <MessageSquare className="w-3.5 h-3.5 shrink-0 mt-0.5 opacity-80" />
-                            <div className="min-w-0 flex-1">
-                              <span className="text-[10px] font-bold font-mono uppercase block tracking-wider opacity-75">
-                                Parecer / Feedback da Gestão
-                              </span>
-                              <p className="leading-snug mt-0.5">{just.managerNotes}</p>
-                            </div>
-                          </div>
-                        )}
-
-                        <div
-                          className={`px-4 pb-3 flex items-center justify-between gap-2 border-t pt-2 ${
-                            !isDark ? 'border-slate-200' : 'border-white/5'
-                          }`}
-                        >
-                          <span
-                            className={`text-[10px] font-mono ${
-                              !isDark ? 'text-slate-400' : 'text-slate-500'
-                            }`}
-                          >
-                            Enviado: {just.submittedAt}
-                          </span>
 
                           <div className="flex items-center gap-1 shrink-0">
                             <button
@@ -2382,8 +2344,10 @@ function AppContent() {
                                 setEditingJustification(just);
                                 setIsJustificationModalOpen(true);
                               }}
-                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                                !isDark ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50' : 'text-slate-400 hover:text-amber-400 hover:bg-white/10'
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer border ${
+                                !isDark
+                                  ? 'text-slate-400 hover:text-[#9F243C] hover:bg-slate-100 border-transparent hover:border-slate-300'
+                                  : 'text-slate-400 hover:text-[#F59242] hover:bg-white/5 border-transparent hover:border-[#F59242]/20'
                               }`}
                               title="Editar atestado"
                               aria-label="Editar atestado"
@@ -2393,8 +2357,10 @@ function AppContent() {
                             <button
                               type="button"
                               onClick={() => handleDeleteJustification(just.id)}
-                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                                !isDark ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50' : 'text-slate-400 hover:text-rose-400 hover:bg-white/10'
+                              className={`p-1.5 rounded-lg transition-colors cursor-pointer border ${
+                                !isDark
+                                  ? 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 border-transparent hover:border-rose-300'
+                                  : 'text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 border-transparent hover:border-rose-500/25'
                               }`}
                               title="Excluir atestado"
                               aria-label="Excluir atestado"
@@ -2403,8 +2369,81 @@ function AppContent() {
                             </button>
                           </div>
                         </div>
+
+                        {/* Content: Title & Description */}
+                        <div className="space-y-1.5 mb-2">
+                          <h3 className={`font-bold text-sm tracking-tight leading-snug ${
+                            !isDark ? 'text-slate-900' : 'text-white'
+                          }`}>
+                            Atestado / Declaração de Ausência
+                          </h3>
+                          <p className={`text-xs leading-relaxed line-clamp-2 ${
+                            !isDark ? 'text-slate-600' : 'text-slate-400'
+                          }`}>
+                            {just.reason}
+                          </p>
+                        </div>
+
+                        {/* Inner Box (Baseado no card de lembretes, sem foto) */}
+                        <div className={`my-2.5 p-2.5 rounded-xl border flex items-center justify-between gap-2.5 ${
+                          !isDark ? 'bg-slate-50 border-slate-200' : 'bg-[#0e0f12] border-[#282a33]'
+                        }`}>
+                          <div className="min-w-0 flex-1">
+                            <span className={`text-[9px] uppercase font-bold tracking-wider block font-mono ${
+                              !isDark ? 'text-slate-500' : 'text-slate-400'
+                            }`}>
+                              {just.documentName ? 'Comprovante Anexado' : 'Parecer da Gestão'}
+                            </span>
+                            <span className={`font-medium truncate block text-xs ${
+                              !isDark ? 'text-slate-900' : 'text-white'
+                            }`}>
+                              {just.documentName || just.managerNotes || statusLabel}
+                            </span>
+                          </div>
+
+                          {just.documentName ? (
+                            <button
+                              type="button"
+                              onClick={() => openDocumentSafe(just.documentUrl, just.documentName)}
+                              className={`shrink-0 text-[10px] font-semibold px-2.5 py-1 rounded-md font-mono border cursor-pointer transition-opacity hover:opacity-80 ${
+                                !isDark
+                                  ? 'text-amber-800 bg-amber-50 border-amber-200'
+                                  : 'text-[#F9DE97] bg-[#F59242]/10 border-[#F59242]/20'
+                              }`}
+                            >
+                              Visualizar
+                            </button>
+                          ) : (
+                            <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-md font-mono border ${
+                              !isDark
+                                ? 'text-slate-600 bg-slate-200 border-slate-300'
+                                : 'text-slate-400 bg-white/5 border-white/10'
+                            }`}>
+                              {statusLabel}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Footer Row: Date Pill & SubmittedAt */}
+                        <div className={`pt-3 border-t flex flex-wrap items-center justify-between gap-2 text-xs ${
+                          !isDark ? 'border-slate-100' : 'border-white/5'
+                        }`}>
+                          <div className={`flex items-center gap-2 font-mono ${!isDark ? 'text-slate-600' : 'text-slate-400'}`}>
+                            <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${
+                              !isDark ? 'bg-slate-100 border-slate-200 text-slate-700' : 'bg-[#0e0f12] border-[#282a33] text-slate-300'
+                            }`}>
+                              <Calendar className={`w-3.5 h-3.5 ${!isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+                              <span>{formatDateBR(just.date)}</span>
+                            </div>
+                          </div>
+
+                          <span className={`text-[11px] font-mono ${!isDark ? 'text-slate-400' : 'text-slate-400'}`}>
+                            Enviado: {just.submittedAt}
+                          </span>
+                        </div>
                       </div>
-                    ))
+                    );
+                    })
                   )}
                 </div>
               </div>

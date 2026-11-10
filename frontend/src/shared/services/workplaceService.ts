@@ -11,30 +11,32 @@ export type { WorkplaceLocation };
 
 const STORAGE_KEY = 'pontuall_workplaces_v1';
 
-// Locais padrão iniciais do sistema (neutros e personalizáveis pelo gestor)
+/**
+ * Retorna a chave de armazenamento isolada por empresa/gestor ativo
+ */
+function getWorkplaceStorageKey(): string {
+  try {
+    const rawUser = safeStorage.getItem('pontual_active_user');
+    if (rawUser) {
+      const user = JSON.parse(rawUser);
+      const companyKey = user.companyId || user.company_id || user.empresa_id || user.cnpj || user.email;
+      if (companyKey) {
+        const sanitized = String(companyKey).replace(/[^a-zA-Z0-9_-]/g, '_');
+        return `pontuall_workplaces_${sanitized}`;
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+  return STORAGE_KEY;
+}
+
+// Locais padrão iniciais do sistema (apenas neutro Home Office / Remoto, sem sedes físicas fictícias)
 export const DEFAULT_WORKPLACES: WorkplaceLocation[] = [
-  {
-    id: 'wp-matriz',
-    name: 'Sede Principal / Matriz',
-    address: 'Endereço Principal da Empresa',
-    latitude: 0,
-    longitude: 0,
-    radiusMeters: 200,
-    isRemote: false,
-  },
   {
     id: 'wp-home-office',
     name: 'Home Office / Remoto',
     address: 'Trabalho Remoto / Domiciliar',
-    latitude: 0,
-    longitude: 0,
-    radiusMeters: 0,
-    isRemote: true,
-  },
-  {
-    id: 'wp-externo-temporario',
-    name: 'Posto Externo / Temporário',
-    address: 'Local definido no momento do check-in',
     latitude: 0,
     longitude: 0,
     radiusMeters: 0,
@@ -47,6 +49,17 @@ export const DEFAULT_WORKPLACES: WorkplaceLocation[] = [
  */
 export function registerWorkplaceIfNew(wp: WorkplaceLocation): void {
   if (!wp || !wp.name) return;
+  // Não reintroduzir postos fictícios de mock antigos
+  if (
+    wp.id === 'wp-matriz' || 
+    wp.name === 'Sede Principal / Matriz' ||
+    wp.id === 'wp-externo-temporario' || 
+    wp.name === 'Posto Externo / Temporário' ||
+    wp.id === 'wp-sede-sp' ||
+    wp.name === 'Sede Central - SP'
+  ) {
+    return;
+  }
   try {
     const list = getStoredWorkplaces();
     const exists = list.some(w => 
@@ -66,12 +79,27 @@ export function registerWorkplaceIfNew(wp: WorkplaceLocation): void {
  */
 export function getStoredWorkplaces(): WorkplaceLocation[] {
   try {
-    const raw = safeStorage.getItem(STORAGE_KEY);
+    const key = getWorkplaceStorageKey();
+    const raw = safeStorage.getItem(key);
     if (!raw) return DEFAULT_WORKPLACES;
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      // Filtra e limpa resquícios antigos de 'wp-sede-sp' se o usuário ainda tiver em cache antigo
-      const filtered = parsed.filter(w => w.id !== 'wp-sede-sp' && w.name !== 'Sede Central - SP');
+      // Filtra e limpa resquícios antigos de postos fictícios e formatações
+      const filtered = parsed
+        .filter(w => 
+          w &&
+          w.id !== 'wp-sede-sp' && 
+          w.name !== 'Sede Central - SP' &&
+          w.id !== 'wp-matriz' &&
+          w.name !== 'Sede Principal / Matriz' &&
+          w.id !== 'wp-externo-temporario' &&
+          w.name !== 'Posto Externo / Temporário'
+        )
+        .map(w => ({
+          ...w,
+          name: typeof w.name === 'string' ? w.name.replace(/📍\s*/g, '').trim() : w.name,
+          address: typeof w.address === 'string' ? w.address.replace(/📍\s*/g, '').trim() : w.address,
+        }));
       return filtered.length > 0 ? filtered : DEFAULT_WORKPLACES;
     }
   } catch (err) {
@@ -84,7 +112,8 @@ export function getStoredWorkplaces(): WorkplaceLocation[] {
  * Salva a lista de postos de trabalho
  */
 export function saveWorkplaces(workplaces: WorkplaceLocation[]): void {
-  safeStorage.setItem(STORAGE_KEY, JSON.stringify(workplaces));
+  const key = getWorkplaceStorageKey();
+  safeStorage.setItem(key, JSON.stringify(workplaces));
 }
 
 /**

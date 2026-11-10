@@ -8,7 +8,8 @@ import {
   Sparkles, 
   Lightbulb,
   CheckSquare,
-  MapPin
+  MapPin,
+  Trash2
 } from 'lucide-react';
 import { Employee, Shift, ShiftTemplate, ShiftType } from '@/types';
 import { getStoredWorkplaces, WorkplaceLocation } from '@/shared/services/workplaceService';
@@ -37,20 +38,6 @@ export const INITIAL_SHIFT_TEMPLATES: ShiftTemplate[] = [
       { dayOfWeek: 3, startTime: '08:00', endTime: '17:00', type: 'regular', breakMinutes: 60, title: 'Comercial (5x2)' },
       { dayOfWeek: 4, startTime: '08:00', endTime: '17:00', type: 'regular', breakMinutes: 60, title: 'Comercial (5x2)' },
       { dayOfWeek: 5, startTime: '08:00', endTime: '17:00', type: 'regular', breakMinutes: 60, title: 'Comercial (5x2)' },
-    ],
-  },
-  {
-    id: 'tpl-2',
-    name: 'Operacional 6x1 (Manhã)',
-    category: 'Escala 6x1',
-    description: 'Segunda a Sábado das 07:00 às 15:20 com 1h de almoço (44h semanais)',
-    days: [
-      { dayOfWeek: 1, startTime: '07:00', endTime: '15:20', type: 'regular', breakMinutes: 60, title: 'Operacional 6x1' },
-      { dayOfWeek: 2, startTime: '07:00', endTime: '15:20', type: 'regular', breakMinutes: 60, title: 'Operacional 6x1' },
-      { dayOfWeek: 3, startTime: '07:00', endTime: '15:20', type: 'regular', breakMinutes: 60, title: 'Operacional 6x1' },
-      { dayOfWeek: 4, startTime: '07:00', endTime: '15:20', type: 'regular', breakMinutes: 60, title: 'Operacional 6x1' },
-      { dayOfWeek: 5, startTime: '07:00', endTime: '15:20', type: 'regular', breakMinutes: 60, title: 'Operacional 6x1' },
-      { dayOfWeek: 6, startTime: '07:00', endTime: '15:20', type: 'regular', breakMinutes: 60, title: 'Operacional 6x1' },
     ],
   },
   {
@@ -127,9 +114,52 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
   // Active Tab: 'apply' | 'save'
   const [activeTab, setActiveTab] = useState<'apply' | 'save'>('apply');
 
-  // Templates list
-  const [templates, setTemplates] = useState<ShiftTemplate[]>(INITIAL_SHIFT_TEMPLATES);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('tpl-4');
+  const STORAGE_TEMPLATES_KEY = 'pontual_shift_templates_v1';
+  const STORAGE_DELETED_IDS_KEY = 'pontual_deleted_template_ids_v1';
+
+  // Templates list com persistência de exclusões e novos modelos
+  const [templates, setTemplates] = useState<ShiftTemplate[]>(() => {
+    try {
+      const deletedRaw = localStorage.getItem(STORAGE_DELETED_IDS_KEY);
+      const deletedIds: string[] = deletedRaw ? JSON.parse(deletedRaw) : [];
+      const savedRaw = localStorage.getItem(STORAGE_TEMPLATES_KEY);
+      if (savedRaw) {
+        const parsed: ShiftTemplate[] = JSON.parse(savedRaw);
+        return parsed.filter(
+          t => t.id !== 'tpl-2' && !t.name?.toLowerCase().includes('6x1') && !t.category?.toLowerCase().includes('6x1') && !deletedIds.includes(t.id)
+        );
+      }
+      return INITIAL_SHIFT_TEMPLATES.filter(t => !deletedIds.includes(t.id));
+    } catch {
+      return INITIAL_SHIFT_TEMPLATES;
+    }
+  });
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(() => {
+    return INITIAL_SHIFT_TEMPLATES[0]?.id || 'tpl-1';
+  });
+
+  const handleDeleteTemplate = (e: React.MouseEvent, idToDelete: string, tplName: string) => {
+    e.stopPropagation();
+    setTemplates(prev => {
+      const updated = prev.filter(t => t.id !== idToDelete);
+      try {
+        localStorage.setItem(STORAGE_TEMPLATES_KEY, JSON.stringify(updated));
+        const deletedRaw = localStorage.getItem(STORAGE_DELETED_IDS_KEY);
+        const deletedIds: string[] = deletedRaw ? JSON.parse(deletedRaw) : [];
+        if (!deletedIds.includes(idToDelete)) {
+          localStorage.setItem(STORAGE_DELETED_IDS_KEY, JSON.stringify([...deletedIds, idToDelete]));
+        }
+      } catch {}
+      if (selectedTemplateId === idToDelete) {
+        setSelectedTemplateId(updated[0]?.id || '');
+      }
+      return updated;
+    });
+    setFeedbackMessage(`Template "${tplName}" excluído com sucesso.`);
+    setTimeout(() => {
+      setFeedbackMessage(null);
+    }, 2000);
+  };
 
   // Gestão de Posto de Trabalho do Template
   const [workplacesList] = useState<WorkplaceLocation[]>(() => getStoredWorkplaces());
@@ -138,7 +168,7 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
     return list[0]?.id || '';
   });
 
-  // Filtra colaboradores excluindo gestores da alocação de escalas em lote
+  // Filtra colaboradores excluindo gestores e PJ da alocação de escalas em lote
   const schedulableEmployees = useMemo(() => {
     return getSchedulableEmployees(employees);
   }, [employees]);
@@ -147,6 +177,19 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>(() => 
     getSchedulableEmployees(employees).map(e => e.id)
   );
+
+  const hasInitializedSelectionRef = React.useRef(schedulableEmployees.length > 0);
+  React.useEffect(() => {
+    const validIds = new Set(schedulableEmployees.map(e => e.id));
+    setSelectedEmployeeIds(prev => {
+      const filtered = prev.filter(id => validIds.has(id));
+      if (!hasInitializedSelectionRef.current && schedulableEmployees.length > 0) {
+        hasInitializedSelectionRef.current = true;
+        return schedulableEmployees.map(e => e.id);
+      }
+      return filtered;
+    });
+  }, [schedulableEmployees]);
 
   // New Template Form States
   const [newTemplateName, setNewTemplateName] = useState('');
@@ -253,7 +296,13 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
       days,
     };
 
-    setTemplates(prev => [newTemplate, ...prev]);
+    setTemplates(prev => {
+      const updated = [newTemplate, ...prev];
+      try {
+        localStorage.setItem(STORAGE_TEMPLATES_KEY, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
     setSelectedTemplateId(newTemplate.id);
     if (onSaveNewTemplate) {
       onSaveNewTemplate(newTemplate);
@@ -350,16 +399,6 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
           />
 
           <div className="flex items-center gap-3.5 relative z-10">
-            <div 
-              className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-md"
-              style={{
-                background: 'linear-gradient(135deg, #96183c 0%, #f89847 100%)',
-                border: '1px solid rgba(249, 222, 151, 0.35)',
-                color: '#ffffff'
-              }}
-            >
-              <Layers className="w-5 h-5" />
-            </div>
             <div>
               <h2 className={`text-base sm:text-lg font-bold tracking-tight leading-tight ${
                 isDark ? 'text-white' : 'text-[#640C1E]'
@@ -455,6 +494,11 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
               </label>
 
               <div className="space-y-2">
+                {templates.length === 0 && (
+                  <div className={`p-4 rounded-xl border text-center text-xs ${isDark ? 'bg-[#181922] border-[#282a33] text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+                    Nenhum template na lista. Você pode criar um novo na aba <strong>"+ Salvar Semana Atual como Novo"</strong>.
+                  </div>
+                )}
                 {templates.map((tpl) => {
                   const isSelected = selectedTemplateId === tpl.id;
                   const badge = getBadgeStyle(tpl.category);
@@ -482,20 +526,36 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
                           {tpl.name}
                         </span>
 
-                        <span 
-                          className="px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono shrink-0 uppercase tracking-wider flex items-center gap-1.5"
-                          style={{
-                            backgroundColor: badge.bg,
-                            color: badge.text,
-                            border: `1px solid ${badge.border}`
-                          }}
-                        >
+                        <div className="flex items-center gap-2 shrink-0">
                           <span 
-                            className="w-1.5 h-1.5 rounded-full shrink-0" 
-                            style={{ backgroundColor: badge.dot }}
-                          />
-                          <span>{tpl.category}</span>
-                        </span>
+                            className="px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono shrink-0 uppercase tracking-wider flex items-center gap-1.5"
+                            style={{
+                              backgroundColor: badge.bg,
+                              color: badge.text,
+                              border: `1px solid ${badge.border}`
+                            }}
+                          >
+                            <span 
+                              className="w-1.5 h-1.5 rounded-full shrink-0" 
+                              style={{ backgroundColor: badge.dot }}
+                            />
+                            <span>{tpl.category}</span>
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteTemplate(e, tpl.id, tpl.name)}
+                            title="Excluir template"
+                            aria-label={`Excluir template ${tpl.name}`}
+                            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                              isDark
+                                ? 'text-slate-400 hover:text-rose-400 hover:bg-rose-500/15'
+                                : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
+                            }`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
 
                       <p className={`text-[11px] leading-relaxed ${
@@ -531,7 +591,7 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
               >
                 {workplacesList.map(w => (
                   <option key={w.id} value={w.id} className={isDark ? 'bg-[#181922] text-white' : 'bg-white text-slate-900'}>
-                    📍 {w.name} {w.isRemote ? '(Remoto/Flexível)' : `— ${w.address}`} ({w.radiusMeters || 200}m)
+                    {w.name} {w.isRemote ? '(Remoto/Flexível)' : `— ${w.address}`} ({w.radiusMeters || 200}m)
                   </option>
                 ))}
               </select>
@@ -633,7 +693,6 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
                   boxShadow: '0 4px 18px rgba(100, 12, 30, 0.45)'
                 }}
               >
-                <Sparkles className="w-4 h-4 fill-[#F9DE97]/30" />
                 <span>Aplicar na Semana</span>
               </button>
             </div>
@@ -710,7 +769,6 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
                 style={{ colorScheme: isDark ? 'dark' : 'light' }}
               >
                 <option value="Comercial">Comercial</option>
-                <option value="Escala 6x1">Escala 6x1</option>
                 <option value="Escala 12x36">Escala 12x36</option>
                 <option value="12x36 Noturno">12x36 Noturno</option>
                 <option value="Flexível">Flexível</option>

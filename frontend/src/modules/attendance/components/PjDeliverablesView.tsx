@@ -142,7 +142,7 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
 
   useEffect(() => {
     loadData();
-  }, [employee.id]);
+  }, [employee.id, activeSubView]);
 
   // Atualiza rascunhos quando uma nova entrada é adicionada via PjTimesheetTracker
   const handleEntryAdded = (newEntry: PjTimesheetEntry) => {
@@ -162,6 +162,67 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
   const totalDraftHours = useMemo(() => {
     return Number(draftEntries.reduce((acc, curr) => acc + (Number(curr.durationHours) || 0), 0).toFixed(2));
   }, [draftEntries]);
+
+  // Tarefas ou fechamentos com pedido de ajuste pelo gestor
+  const adjustmentItems = useMemo(() => {
+    const items: Array<{
+      id: string;
+      taskCode: string;
+      date?: string;
+      project: string;
+      description: string;
+      feedback: string;
+      periodLabel: string;
+    }> = [];
+    const seenIds = new Set<string>();
+
+    draftEntries.forEach((d, idx) => {
+      if (d.status === 'rejected' || d.managerFeedback) {
+        seenIds.add(d.id);
+        items.push({
+          id: d.id,
+          taskCode: d.taskCode || `TK-${String(draftEntries.length - idx).padStart(3, '0')}`,
+          date: d.date,
+          project: d.project,
+          description: d.taskDescription,
+          feedback: d.managerFeedback || 'Ajustes solicitados pelo gestor.',
+          periodLabel: 'Timesheet em Aberto',
+        });
+      }
+    });
+
+    reports.forEach(rep => {
+      if (rep.timesheetEntries && rep.timesheetEntries.length > 0) {
+        rep.timesheetEntries.forEach((ts, idx) => {
+          const isTaskRejected = ts.status === 'rejected' || Boolean(ts.managerFeedback);
+          if (isTaskRejected && !seenIds.has(ts.id)) {
+            seenIds.add(ts.id);
+            items.push({
+              id: ts.id || `${rep.id}-${idx}`,
+              taskCode: ts.taskCode || `TK-${String(idx + 1).padStart(3, '0')}`,
+              date: ts.date,
+              project: ts.project,
+              description: ts.taskDescription,
+              feedback: ts.managerFeedback || rep.managerFeedback || 'Ajustes solicitados pelo gestor.',
+              periodLabel: rep.period,
+            });
+          }
+        });
+      } else if (rep.status === 'rejected') {
+        items.push({
+          id: rep.id,
+          taskCode: `FECH-${rep.id.slice(-3).toUpperCase()}`,
+          date: rep.submittedAt?.slice(0, 10),
+          project: rep.period,
+          description: rep.activitiesDescription,
+          feedback: rep.managerFeedback || 'Ajustes solicitados pelo gestor.',
+          periodLabel: rep.period,
+        });
+      }
+    });
+
+    return items;
+  }, [draftEntries, reports]);
 
   // Métricas de relatórios enviados
   const totalHoursApproved = Number(
@@ -600,6 +661,63 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                               </div>
             </div>
 
+            {/* AVISO DE PEDIDOS DE AJUSTE DO GESTOR NA VISÃO GERAL */}
+            {adjustmentItems.length > 0 && (
+              <div className={`p-4 sm:p-5 rounded-3xl border space-y-2.5 transition-all ${
+                isDark ? 'bg-[#151822] border-rose-500/30' : 'bg-rose-50/70 border-rose-200 shadow-xs'
+              }`}>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className={`w-4 h-4 shrink-0 ${isDark ? 'text-rose-400' : 'text-rose-600'}`} />
+                    <h3 className={`text-xs sm:text-sm font-bold ${isDark ? 'text-rose-200' : 'text-rose-900'}`}>
+                      Pedidos de Ajuste do Gestor ({adjustmentItems.length})
+                    </h3>
+                  </div>
+                  {onNavigateToTimesheet && (
+                    <button
+                      type="button"
+                      onClick={onNavigateToTimesheet}
+                      className={`text-xs font-semibold underline cursor-pointer ${isDark ? 'text-rose-300 hover:text-white' : 'text-rose-700 hover:text-rose-900'}`}
+                    >
+                      Ir para Timesheet
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {adjustmentItems.map(item => (
+                    <div
+                      key={item.id}
+                      className={`p-3 rounded-2xl border text-xs space-y-1 ${
+                        isDark ? 'bg-[#0e1017] border-white/10' : 'bg-white border-rose-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`font-mono font-bold text-[10px] px-2 py-0.5 rounded border ${
+                          isDark ? 'bg-white/5 text-slate-200 border-white/10' : 'bg-slate-100 text-slate-700 border-slate-200'
+                        }`}>
+                          {item.taskCode}
+                        </span>
+                        <span className={`font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                          {item.project}
+                        </span>
+                        {item.date && (
+                          <span className="text-[11px] text-slate-400 font-mono">
+                            • {formatDateBR(item.date)}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`truncate ${isDark ? 'text-slate-400' : 'text-slate-600'}`} title={item.description}>
+                        {item.description}
+                      </p>
+                      <div className={`pt-0.5 font-medium ${isDark ? 'text-rose-300' : 'text-rose-700'}`}>
+                        <strong>Comentário do Gestor:</strong> {item.feedback}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* 2. MEU FATURAMENTO & CALCULADORA DE HORAS PJ */}
             <div
               className={`rounded-3xl border p-5 sm:p-6 space-y-5 transition-all ${
@@ -930,7 +1048,7 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                     content = (
                       <span
                         className="w-8 h-8 rounded-full text-white font-black flex items-center justify-center mx-auto shadow-md"
-                        style={{ background: 'linear-gradient(135deg, #96183c, #f89847)' }}
+                        style={{ backgroundColor: '#B01F46' }}
                       >
                         {cell.dayNumber}
                       </span>
@@ -1292,6 +1410,63 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
               </div>
             </div>
 
+          {/* AVISO DE PEDIDOS DE AJUSTE DO GESTOR */}
+          {adjustmentItems.length > 0 && (
+            <div className={`p-5 rounded-3xl border space-y-3 transition-all ${
+              isDark ? 'bg-rose-950/20 border-rose-500/30' : 'bg-rose-50 border-rose-200 shadow-xs'
+            }`}>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className={`w-4 h-4 shrink-0 ${isDark ? 'text-rose-400' : 'text-rose-600'}`} />
+                  <h3 className={`text-sm font-bold ${isDark ? 'text-rose-200' : 'text-rose-900'}`}>
+                    Pedidos de Ajuste do Gestor ({adjustmentItems.length})
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsHistoryModalOpen(true)}
+                  className={`text-xs font-semibold underline cursor-pointer ${isDark ? 'text-rose-300 hover:text-white' : 'text-rose-700 hover:text-rose-900'}`}
+                >
+                  Ver no Histórico
+                </button>
+              </div>
+              <div className="space-y-2">
+                {adjustmentItems.map(item => (
+                  <div
+                    key={item.id}
+                    className={`p-3 rounded-2xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                      isDark ? 'bg-[#0e1017]/90 border-white/10' : 'bg-white border-rose-200'
+                    }`}
+                  >
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`font-mono font-bold text-[10px] px-2 py-0.5 rounded border ${
+                          isDark ? 'bg-white/5 text-slate-200 border-white/10' : 'bg-slate-100 text-slate-700 border-slate-200'
+                        }`}>
+                          {item.taskCode}
+                        </span>
+                        <span className={`font-semibold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+                          {item.project}
+                        </span>
+                        {item.date && (
+                          <span className="text-[11px] text-slate-400 font-mono">
+                            • {formatDateBR(item.date)}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`truncate ${isDark ? 'text-slate-400' : 'text-slate-600'}`} title={item.description}>
+                        {item.description}
+                      </p>
+                      <div className={`pt-0.5 font-medium ${isDark ? 'text-rose-300' : 'text-rose-700'}`}>
+                        <strong>Comentário do Gestor:</strong> {item.feedback}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Cronômetro Interativo Play / Pause & Entrada Manual */}
           <PjTimesheetTracker 
             employee={employee}
@@ -1412,6 +1587,11 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                           <span className={`font-medium block truncate ${isDark ? 'text-slate-200' : 'text-slate-800'}`} title={entry.taskDescription}>
                             {entry.taskDescription}
                           </span>
+                          {entry.managerFeedback && (
+                            <span className={`block text-[11px] mt-0.5 font-medium ${isDark ? 'text-rose-400' : 'text-rose-600'}`} title={entry.managerFeedback}>
+                              Comentário do Gestor: {entry.managerFeedback}
+                            </span>
+                          )}
                           {entry.isLiveTracked && (
                             <span className={`inline-flex items-center gap-1 text-[10px] mt-0.5 font-semibold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
                               <Check className="w-3 h-3" /> Cronometrado em tempo real
@@ -1749,13 +1929,6 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
           }`}>
             <div className={`flex items-center justify-between pb-4 border-b ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
               <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-xl border flex items-center justify-center ${
-                  isDark
-                    ? 'bg-[#9F243C]/20 border-[#F59242]/30 text-[#f89847]'
-                    : 'bg-[#96183c]/10 border-[#96183c]/25 text-[#96183c]'
-                }`}>
-                  <History className="w-5 h-5" />
-                </div>
                 <div>
                   <h2 className="text-base sm:text-lg font-extrabold flex items-center gap-2 flex-wrap">
                     <span>Histórico de Fechamentos Enviados</span>
@@ -1820,13 +1993,6 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                         isDark ? 'border-white/5' : 'border-slate-200'
                       }`}>
                         <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-xl border flex items-center justify-center font-bold ${
-                            isDark
-                              ? 'bg-[#9F243C]/20 text-[#f89847] border-[#F59242]/30'
-                              : 'bg-[#96183c]/10 text-[#96183c] border-[#96183c]/25'
-                          }`}>
-                            <Calendar className="w-5 h-5" />
-                          </div>
                           <div>
                             <h3 className="font-extrabold text-sm sm:text-base flex items-center gap-2 flex-wrap">
                               <span>Período: {rep.period}</span>
@@ -1957,8 +2123,13 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                                         {ts.project}
                                       </span>
                                     </td>
-                                    <td className={`py-2.5 px-2.5 max-w-xs truncate ${isDark ? 'text-slate-200' : 'text-slate-800'}`} title={ts.taskDescription}>
-                                      {ts.taskDescription}
+                                    <td className={`py-2.5 px-2.5 max-w-xs ${isDark ? 'text-slate-200' : 'text-slate-800'}`} title={ts.taskDescription}>
+                                      <span className="block truncate">{ts.taskDescription}</span>
+                                      {ts.managerFeedback && (
+                                        <span className={`block text-[10px] mt-0.5 font-medium ${isDark ? 'text-rose-400' : 'text-rose-600'}`} title={ts.managerFeedback}>
+                                          Ajuste solicitado: {ts.managerFeedback}
+                                        </span>
+                                      )}
                                     </td>
                                     <td className={`py-2.5 px-2.5 font-mono text-center whitespace-nowrap ${isDark ? 'text-slate-400' : 'text-slate-700'}`}>
                                       {ts.startTime} → {ts.endTime}
@@ -2068,19 +2239,11 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
             isDark ? 'bg-[#10121A] border-[#252A3A] text-white' : 'bg-white border-slate-200 text-slate-900'
           }`}>
             <div className={`flex items-center justify-between pb-3 border-b ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold shadow-md"
-                  style={{ background: 'linear-gradient(135deg, #640C1E, #9F243C, #F59242)' }}
-                >
-                  <Briefcase className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-lg">Fechar Período e Enviar ao Gestor</h3>
-                  <span className={`text-xs block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    Consolida {draftEntries.length} atividade(s) do seu timesheet para homologação
-                  </span>
-                </div>
+              <div>
+                <h3 className="font-extrabold text-lg">Fechar Período e Enviar ao Gestor</h3>
+                <span className={`text-xs block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  Consolida {draftEntries.length} atividade(s) do seu timesheet para homologação
+                </span>
               </div>
               <button onClick={() => setIsModalOpen(false)} className={`cursor-pointer ${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'}`}>
                 <X className="w-5 h-5" />
