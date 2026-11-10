@@ -16,12 +16,14 @@ import {
   Image as ImageIcon,
   Smile,
   Edit2,
-  Check
+  Check,
+  Reply
 } from 'lucide-react';
 import { Employee } from '@/types';
 import { supabase } from '@/shared/services/supabase';
 import { 
   ChatAttachment, 
+  ChatReplyInfo,
   CHAT_COMMON_EMOJIS,
   compressImageFile, 
   parseChatMessage, 
@@ -80,8 +82,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Emoji Picker & Edição/Exclusão de Mensagem Própria
+  // Emoji Picker, Resposta (Reply) & Edição/Exclusão de Mensagem Própria
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
+  const [replyingToMessage, setReplyingToMessage] = useState<ChatReplyInfo | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingMessageText, setEditingMessageText] = useState<string>('');
 
@@ -780,13 +783,22 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
     const rawText = inputMsg.trim();
     const attachmentToSend = pendingAttachment;
+    const replyToSend = replyingToMessage;
 
     setInputMsg('');
     setPendingAttachment(null);
+    setReplyingToMessage(null);
     setIsEmojiPickerOpen(false);
 
     // Feedback imediato na tela (Optimistic UI)
     const directRecipient = chatType === 'direct' ? (selectedDirectEmployee?.id || null) : null;
+    const optimisticPayload =
+      attachmentToSend || replyToSend
+        ? JSON.stringify({
+            ...(attachmentToSend ? attachmentToSend : {}),
+            ...(replyToSend ? { replyTo: replyToSend } : {}),
+          })
+        : null;
     const optimisticMsg: ChatMessage = {
       id: `temp-${Date.now()}`,
       sender_id: currentEmployee.id,
@@ -794,7 +806,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       sender_role: currentEmployee.role,
       sender_avatar: currentEmployee.avatar || '',
       text: rawText,
-      attachment: attachmentToSend ? JSON.stringify(attachmentToSend) : null,
+      attachment: optimisticPayload,
       created_at: new Date().toISOString(),
       channel: currentChannel,
       recipient_id: directRecipient,
@@ -809,6 +821,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         sender_avatar: currentEmployee.avatar || '',
         text: rawText,
         attachment: attachmentToSend,
+        replyTo: replyToSend,
         channel: currentChannel,
         recipient_id: directRecipient,
       });
@@ -1298,31 +1311,75 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                       }`}>
                         {timeFormatted}
                       </span>
-                      {isMe && !msg.id.startsWith('temp-') && !isEditingThis && (
+                      {!isEditingThis && (
                         <div className="flex items-center gap-0.5 opacity-80 sm:opacity-0 sm:group-hover/msg:opacity-100 transition-opacity ml-1">
                           <button
                             type="button"
                             onClick={() => {
-                              setEditingMessageId(msg.id);
-                              setEditingMessageText(parsed.text || '');
+                              setReplyingToMessage({
+                                id: msg.id,
+                                sender_name: msg.sender_name,
+                                text: parsed.text || (parsed.attachment ? '📷 Imagem anexada' : 'Mensagem'),
+                              });
                             }}
-                            className="p-1 rounded hover:bg-black/20 text-white/90 hover:text-white cursor-pointer"
-                            title="Editar mensagem"
+                            className={`p-1 rounded cursor-pointer ${
+                              isMe
+                                ? 'hover:bg-black/20 text-white/90 hover:text-white'
+                                : isLightTheme
+                                  ? 'hover:bg-slate-100 text-slate-500 hover:text-slate-900'
+                                  : 'hover:bg-white/10 text-slate-400 hover:text-white'
+                            }`}
+                            title="Responder esta mensagem"
                           >
-                            <Edit2 className="w-3 h-3" />
+                            <Reply className="w-3 h-3" />
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteOwnMessage(msg.id)}
-                            className="p-1 rounded hover:bg-black/20 text-white/90 hover:text-red-200 cursor-pointer"
-                            title="Excluir mensagem"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
+                          {isMe && !msg.id.startsWith('temp-') && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingMessageId(msg.id);
+                                  setEditingMessageText(parsed.text || '');
+                                }}
+                                className="p-1 rounded hover:bg-black/20 text-white/90 hover:text-white cursor-pointer"
+                                title="Editar mensagem"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteOwnMessage(msg.id)}
+                                className="p-1 rounded hover:bg-black/20 text-white/90 hover:text-red-200 cursor-pointer"
+                                title="Excluir mensagem"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
                   </div>
+
+                  {/* Bloco de Mensagem Respondida (Quote) */}
+                  {parsed.replyTo && (
+                    <div
+                      className={`mb-1.5 px-2.5 py-1.5 rounded-lg border-l-2 text-[10px] leading-snug ${
+                        isMe
+                          ? 'bg-black/20 border-white/75 text-white/90'
+                          : isLightTheme
+                            ? 'bg-slate-100 border-[#96183c] text-slate-600'
+                            : 'bg-black/30 border-[#F59242] text-slate-300'
+                      }`}
+                    >
+                      <span className="font-extrabold block opacity-95">
+                        ↩ {parsed.replyTo.sender_name}
+                      </span>
+                      <span className="line-clamp-2 opacity-80 break-words">
+                        {parsed.replyTo.text}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Modo Edição ou Texto da Mensagem */}
                   {isEditingThis ? (
@@ -1411,6 +1468,33 @@ export const ChatModal: React.FC<ChatModalProps> = ({
           })}
           <div ref={messagesEndRef} />
         </div>
+
+        {/* Banner de Mensagem Sendo Respondida */}
+        {replyingToMessage && (
+          <div className={`px-3 py-2 border-t flex items-center justify-between gap-2 text-xs transition-colors shrink-0 ${
+            isLightTheme ? 'bg-slate-100 border-slate-200 text-slate-800' : 'bg-[#181922] border-white/10 text-slate-200'
+          }`}>
+            <div className="flex items-center gap-2 min-w-0 border-l-2 border-[#F59242] pl-2.5">
+              <Reply className="w-3.5 h-3.5 text-[#F59242] shrink-0" />
+              <div className="min-w-0">
+                <p className="font-bold text-[10px] text-[#F59242] truncate">
+                  Respondendo a {replyingToMessage.sender_name}
+                </p>
+                <p className="text-[11px] opacity-80 truncate max-w-[360px]">
+                  {replyingToMessage.text}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setReplyingToMessage(null)}
+              className="p-1 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 opacity-70 hover:opacity-100 cursor-pointer shrink-0"
+              title="Cancelar resposta"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* Banner de Preview do Anexo Pendente */}
         {pendingAttachment && (

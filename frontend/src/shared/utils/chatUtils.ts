@@ -7,9 +7,16 @@ export interface ChatAttachment {
   size?: string;
 }
 
+export interface ChatReplyInfo {
+  id: string;
+  sender_name: string;
+  text: string;
+}
+
 export interface ParsedChatPayload {
   text: string;
   attachment?: ChatAttachment | null;
+  replyTo?: ChatReplyInfo | null;
 }
 
 export const CHAT_COMMON_EMOJIS: string[] = [
@@ -100,24 +107,46 @@ export async function compressImageFile(file: File, maxWidth = 1200, maxHeight =
 
 /**
  * Converte mensagem do banco de dados:
- * 1. Prioriza a coluna dedicada 'attachment' caso exista
+ * 1. Prioriza a coluna dedicada 'attachment' caso exista (suporta imagem + metadado replyTo)
  * 2. Faz fallback transparente caso tenha sido gravado no campo 'text'
  */
 export function parseChatMessage(rawText: string, rawAttachment?: any | null): ParsedChatPayload {
   // 1. Se veio pela coluna dedicada 'attachment'
   if (rawAttachment) {
-    if (typeof rawAttachment === 'object' && rawAttachment.url) {
-      return {
-        text: rawText || '',
-        attachment: rawAttachment,
-      };
+    if (typeof rawAttachment === 'object') {
+      const hasAttachment = Boolean(rawAttachment.url);
+      const replyTo = rawAttachment.replyTo || null;
+      if (hasAttachment || replyTo) {
+        return {
+          text: rawText || '',
+          attachment: hasAttachment
+            ? {
+                type: rawAttachment.type || 'image',
+                name: rawAttachment.name || 'anexo',
+                url: rawAttachment.url,
+                size: rawAttachment.size,
+              }
+            : (rawAttachment.attachment || null),
+          replyTo,
+        };
+      }
     }
     if (typeof rawAttachment === 'string' && rawAttachment.trim().startsWith('{')) {
       try {
         const parsedAtt = JSON.parse(rawAttachment);
+        const hasAttachment = Boolean(parsedAtt.url);
+        const replyTo = parsedAtt.replyTo || null;
         return {
           text: rawText || '',
-          attachment: parsedAtt,
+          attachment: hasAttachment
+            ? {
+                type: parsedAtt.type || 'image',
+                name: parsedAtt.name || 'anexo',
+                url: parsedAtt.url,
+                size: parsedAtt.size,
+              }
+            : (parsedAtt.attachment || null),
+          replyTo,
         };
       } catch {}
     }
@@ -127,12 +156,13 @@ export function parseChatMessage(rawText: string, rawAttachment?: any | null): P
   if (!rawText) return { text: '' };
 
   const trimmed = rawText.trim();
-  if (trimmed.startsWith('{') && (trimmed.includes('"attachment"') || trimmed.includes('"url"'))) {
+  if (trimmed.startsWith('{') && (trimmed.includes('"attachment"') || trimmed.includes('"url"') || trimmed.includes('"replyTo"'))) {
     try {
       const parsed = JSON.parse(trimmed);
       return {
         text: parsed.text || '',
         attachment: parsed.attachment || null,
+        replyTo: parsed.replyTo || null,
       };
     } catch {}
   }
@@ -141,21 +171,26 @@ export function parseChatMessage(rawText: string, rawAttachment?: any | null): P
 }
 
 /**
- * Serializa texto e anexo para formato de fallback
+ * Serializa texto, anexo e resposta para formato de fallback
  */
-export function serializeChatMessage(text: string, attachment?: ChatAttachment | null): string {
-  if (!attachment) {
+export function serializeChatMessage(text: string, attachment?: ChatAttachment | null, replyTo?: ChatReplyInfo | null): string {
+  if (!attachment && !replyTo) {
     return text.trim();
   }
 
   return JSON.stringify({
     text: text.trim(),
-    attachment: {
-      type: attachment.type,
-      name: attachment.name,
-      url: attachment.url,
-      size: attachment.size,
-    },
+    ...(attachment
+      ? {
+          attachment: {
+            type: attachment.type,
+            name: attachment.name,
+            url: attachment.url,
+            size: attachment.size,
+          },
+        }
+      : {}),
+    ...(replyTo ? { replyTo } : {}),
   });
 }
 
@@ -171,12 +206,17 @@ export async function sendChatMessageToSupabase(params: {
   sender_avatar: string;
   text: string;
   attachment?: ChatAttachment | null;
+  replyTo?: ChatReplyInfo | null;
   channel?: string;
   recipient_id?: string | null;
 }): Promise<{ error: any }> {
-  // Se tem anexo, tenta gravar na coluna dedicada 'attachment'
-  if (params.attachment) {
-    const attachmentJson = JSON.stringify(params.attachment);
+  // Se tem anexo ou resposta a uma mensagem específica, grava na coluna dedicada 'attachment'
+  if (params.attachment || params.replyTo) {
+    const combinedMeta = {
+      ...(params.attachment ? params.attachment : {}),
+      ...(params.replyTo ? { replyTo: params.replyTo } : {}),
+    };
+    const attachmentJson = JSON.stringify(combinedMeta);
     const { error } = await supabase.from('messages').insert([
       {
         sender_id: params.sender_id,
@@ -195,7 +235,7 @@ export async function sendChatMessageToSupabase(params: {
     }
 
     // Fallback: se a coluna attachment ainda não foi criada no banco
-    const fallbackText = serializeChatMessage(params.text, params.attachment);
+    const fallbackText = serializeChatMessage(params.text, params.attachment, params.replyTo);
     return await supabase.from('messages').insert([
       {
         sender_id: params.sender_id,
