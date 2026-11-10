@@ -12,6 +12,12 @@ export interface ParsedChatPayload {
   attachment?: ChatAttachment | null;
 }
 
+export const CHAT_COMMON_EMOJIS: string[] = [
+  '😀', '😂', '🥹', '😍', '🤩', '😎', '🤝', '👍', '👏', '🙌',
+  '🙏', '💪', '🔥', '✨', '🎉', '❤️', '💯', '✅', '⚠️', '🚀',
+  '📅', '⏰', '📌', '💼', '📋', '💬', '👀', '🤔', '😅', '🫡',
+];
+
 /**
  * Converte e otimiza um arquivo de imagem para Base64 compacto (máx 1200px, JPEG 0.8)
  * garantindo salvamento direto no banco de dados com alta performance.
@@ -217,6 +223,170 @@ export async function sendChatMessageToSupabase(params: {
   ]);
 }
 
+/**
+ * Atualiza o texto de uma mensagem própria no Supabase
+ */
+export async function updateChatMessageInSupabase(messageId: string, newText: string): Promise<{ error: any }> {
+  const { error } = await supabase
+    .from('messages')
+    .update({ text: newText.trim() })
+    .eq('id', messageId);
+  return { error };
+}
+
+/**
+ * Exclui uma mensagem própria no Supabase
+ */
+export async function deleteChatMessageFromSupabase(messageId: string): Promise<{ error: any }> {
+  const { error } = await supabase
+    .from('messages')
+    .delete()
+    .eq('id', messageId);
+  return { error };
+}
+
+/**
+ * Salva ou atualiza o canal/grupo e sua imagem no Supabase:
+ * 1. Tenta salvar na tabela `chat_channels` (com ou sem a coluna `avatar`).
+ * 2. Também persiste os metadados (incluindo a imagem em `attachment`) na tabela `messages`
+ *    para garantir que a imagem do grupo sempre fique salva no banco mesmo sem migração extra.
+ */
+export async function saveChannelMetaToSupabase(params: {
+  companyId?: string | null;
+  channel: {
+    id: string;
+    name: string;
+    desc: string;
+    badge: string;
+    members?: string[];
+    avatar?: string;
+  };
+  sender: {
+    id: string;
+    name: string;
+    role?: string;
+    avatar?: string;
+  };
+  isNew?: boolean;
+}): Promise<void> {
+  const rawId = getDisplayChatChannel(params.channel.id);
+  const scopedGroupId = getScopedChatChannel(params.companyId, rawId);
+  const geralScoped = getScopedChatChannel(params.companyId, 'geral');
+
+  // 1. Tenta upsert com coluna avatar na tabela chat_channels
+  try {
+    const { error } = await supabase.from('chat_channels').upsert([
+      {
+        id: scopedGroupId,
+        name: params.channel.name,
+        description: params.channel.desc,
+        badge: params.channel.badge,
+        created_by: params.sender.name,
+        members: params.channel.members || null,
+        avatar: params.channel.avatar || null,
+      }
+    ]);
+    // Se a coluna avatar ainda não existir no banco do cliente, salva sem avatar na tabela chat_channels
+    if (error) {
+      await supabase.from('chat_channels').upsert([
+        {
+          id: scopedGroupId,
+          name: params.channel.name,
+          description: params.channel.desc,
+          badge: params.channel.badge,
+          created_by: params.sender.name,
+          members: params.channel.members || null,
+        }
+      ]);
+    }
+  } catch {}
+
+  // 2. Persiste o metadado completo (com avatar na coluna attachment) na tabela messages para sincronização multi-conta garantida
+  try {
+    // Remove metadados anteriores do mesmo grupo para não acumular registros antigos
+    await supabase
+      .from('messages')
+      .delete()
+      .eq('recipient_id', `group_meta_id:${rawId}`);
+  } catch {}
+
+  try {
+    const metaPayload = JSON.stringify({
+      id: rawId,
+      name: params.channel.name,
+      desc: params.channel.desc,
+      badge: params.channel.badge,
+      members: params.channel.members,
+      avatar: params.channel.avatar || undefined,
+    });
+
+    await supabase.from('messages').insert([
+      {
+        channel: geralScoped,
+        recipient_id: `group_meta_id:${rawId}`,
+        attachment: metaPayload,
+        text: params.isNew
+          ? `🎉 Novo grupo criado por ${params.sender.name}: #${params.channel.name} - ${params.channel.desc}`
+          : `🖼️ Configurações do grupo #${params.channel.name} atualizadas.`,
+        sender_id: params.sender.id,
+        sender_name: params.sender.name,
+        sender_role: params.sender.role || 'Gestão',
+        sender_avatar: params.sender.avatar || '',
+      }
+    ]);
+  } catch {}
+}
+
+/**
+ * Extrai metadados de grupo a partir de uma linha da tabela `messages` (compatível com formato novo `group_meta_id:` + `attachment` e legado `group_meta:`)
+ */
+export function extractGroupMetaFromMessage(msg: { channel?: string; recipient_id?: string | null; attachment?: string | null; text?: string | null }): {
+  id: string;
+  name?: string;
+  desc?: string;
+  badge?: string;
+  members?: string[];
+  avatar?: string;
+} | null {
+  if (!msg.recipient_id) return null;
+
+  if (msg.recipient_id.startsWith('group_meta_id:')) {
+    const rawId = getDisplayChatChannel(msg.recipient_id.replace('group_meta_id:', ''));
+    if (msg.attachment) {
+      try {
+        const parsed = typeof msg.attachment === 'string' ? JSON.parse(msg.attachment) : msg.attachment;
+        return {
+          id: getDisplayChatChannel(parsed.id || rawId),
+          name: parsed.name,
+          desc: parsed.desc,
+          badge: parsed.badge,
+          members: Array.isArray(parsed.members) ? parsed.members : undefined,
+          avatar: parsed.avatar || undefined,
+        };
+      } catch {}
+    }
+    return { id: rawId };
+  }
+
+  if (msg.recipient_id.startsWith('group_meta:')) {
+    try {
+      const parsed = JSON.parse(msg.recipient_id.replace('group_meta:', ''));
+      const rawId = getDisplayChatChannel(parsed.id || msg.channel || '');
+      if (!rawId) return null;
+      return {
+        id: rawId,
+        name: parsed.name,
+        desc: parsed.desc,
+        badge: parsed.badge,
+        members: Array.isArray(parsed.members) ? parsed.members : undefined,
+        avatar: parsed.avatar || undefined,
+      };
+    } catch {}
+  }
+
+  return null;
+}
+
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
   const k = 1024;
@@ -306,7 +476,11 @@ export function isMessageRelevantForUser(
   if (msg.sender_id === userId) return false;
 
   // Metadados de exclusão ou criação de grupos não são mensagens de bate-papo
-  if (msg.recipient_id?.startsWith('group_deleted:') || msg.recipient_id?.startsWith('group_meta:')) {
+  if (
+    msg.recipient_id?.startsWith('group_deleted:') ||
+    msg.recipient_id?.startsWith('group_meta:') ||
+    msg.recipient_id?.startsWith('group_meta_id:')
+  ) {
     return false;
   }
 
