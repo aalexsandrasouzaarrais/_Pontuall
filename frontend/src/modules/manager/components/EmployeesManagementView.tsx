@@ -803,7 +803,9 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                   >
                     <option value="colaborador">Colaborador (Equipe)</option>
                     <option value="gestor">Gestor de Setor</option>
-                    <option value="rh">RH (Administrador Geral)</option>
+                    {(editingEmployee.isRh || editingEmployee.roleType === "rh") && (
+                      <option value="rh">RH (Administrador Geral)</option>
+                    )}
                   </select>
                 </div>
 
