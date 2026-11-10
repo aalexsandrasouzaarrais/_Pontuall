@@ -667,7 +667,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
           id: 'overtime-punch-toast',
           title: `Saída Registrada (+${tol.diffMinutes} min)`,
           description: `Batida registrada às ${timeStr} com permanência além do horário contratual. Se desejar justificar, acesse "Minhas Ocorrências".`,
-          rimVariant: 'warning',
+          rimVariant: 'default',
           duration: 6000,
           closeButton: true,
         });
@@ -676,7 +676,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
           id: 'early-leave-punch-toast',
           title: `Saída Antecipada (-${Math.abs(tol.diffMinutes)} min)`,
           description: `Batida registrada às ${timeStr}. Se possuir justificativa ou autorização, acesse "Minhas Ocorrências".`,
-          rimVariant: 'warning',
+          rimVariant: 'default',
           duration: 6000,
           closeButton: true,
         });
@@ -691,7 +691,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
           id: 'late-punch-toast',
           title: `Entrada Registrada (+${tol.diffMinutes} min de atraso)`,
           description: `Batida registrada às ${timeStr}. Você pode anexar comprovante médico ou justificativa em "Minhas Ocorrências".`,
-          rimVariant: 'warning',
+          rimVariant: 'default',
           duration: 6000,
           closeButton: true,
         });
@@ -700,7 +700,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
           id: 'early-entry-toast',
           title: 'Entrada Antecipada',
           description: `Batida registrada às ${timeStr} antes do início previsto da escala.`,
-          rimVariant: 'info',
+          rimVariant: 'default',
           duration: 5000,
           closeButton: true,
         });

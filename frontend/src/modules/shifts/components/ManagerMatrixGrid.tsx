@@ -939,7 +939,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         id: 'desconto-falta-confirm',
         title: 'Desconto de Falta Confirmado',
         description: 'A ausência não justificada foi confirmada para desconto na folha (1 dia + DSR semanal).',
-        rimVariant: 'danger',
+        rimVariant: 'destructive',
         duration: 4000,
       });
       return;
@@ -1052,7 +1052,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       const atrasoMinutes = isAtraso && row.status === 'Ajustado' ? Math.abs(row.diffMinutes) : 0;
       const atrasoDecimal = (atrasoMinutes / 60).toFixed(2).replace('.', ',');
 
-      let statusLabel = row.status;
+      let statusLabel: string = row.status;
       if (row.status === 'Homologado') {
         statusLabel = isHe ? 'Aprovado p/ Banco de Horas' : 'Atraso Abonado c/ Comprovante';
       } else if (row.status === 'Ajustado') {
@@ -1109,7 +1109,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         id: 'csv-approvals-export-empty',
         title: 'Nenhum registro para exportar',
         description: 'Não foram encontradas ocorrências para o período selecionado.',
-        rimVariant: 'warning',
+        rimVariant: 'default',
         duration: 3500,
       });
       return;
