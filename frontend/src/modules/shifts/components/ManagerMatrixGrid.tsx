@@ -59,6 +59,7 @@ import {
   deleteChatMessageFromSupabase,
   saveChannelMetaToSupabase,
   extractGroupMetaFromMessage,
+  isSystemControlMessage,
   getScopedChatChannel,
   getScopedDirectChannel,
   getDisplayChatChannel
@@ -1934,12 +1935,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       // Descobre metadados e imagens de grupos gravados na tabela messages (group_meta_id: e group_meta:)
       const foundMetaMap = new Map<string, ChatChannelItem>();
       try {
-        const geralChan = getScopedChatChannel(activeEmployee?.companyId, 'geral');
         const groupPrefix = `cmp_${companyKey}__grupo_%`;
         const { data: groupMsgs } = await supabase
           .from('messages')
           .select('channel, recipient_id, attachment, text')
-          .or(`channel.like.${groupPrefix},and(channel.eq.${geralChan},recipient_id.like.group_meta%)`)
+          .or(`channel.like.${groupPrefix},recipient_id.like.group_meta%`)
           .order('created_at', { ascending: true });
 
         if (groupMsgs && groupMsgs.length > 0) {
@@ -2037,12 +2037,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
       if (!error && data) {
         // Filtra mensagens técnicas de controle de grupo para não poluir nem disparar scroll
-        const cleanData = (data as ChatMessage[]).filter(
-          (d) =>
-            !d.recipient_id?.startsWith('group_deleted:') &&
-            !d.recipient_id?.startsWith('group_meta:') &&
-            !d.recipient_id?.startsWith('group_meta_id:')
-        );
+        const cleanData = (data as ChatMessage[]).filter((d) => !isSystemControlMessage(d));
         setChatMessages(prev => {
           const pendingTemp = prev.filter(
             p => p.id.startsWith('temp-') && !cleanData.some((d: any) => d.text === p.text && d.sender_id === p.sender_id)
@@ -2148,6 +2143,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             });
             return;
           }
+
+          if (isSystemControlMessage(newMsg)) return;
 
           const directPair = (activeChatMode === 'direct' && selectedDirectEmployee?.id && activeEmployee?.id)
             ? [activeEmployee.id, selectedDirectEmployee.id].sort().join('_')

@@ -32,6 +32,7 @@ import {
   deleteChatMessageFromSupabase,
   saveChannelMetaToSupabase,
   extractGroupMetaFromMessage,
+  isSystemControlMessage,
   getScopedChatChannel,
   getScopedDirectChannel,
   getDisplayChatChannel
@@ -420,12 +421,11 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       // 2. Busca metadados e imagens de grupos gravados na tabela messages (group_meta_id: e group_meta:)
       const foundMetaMap = new Map<string, ChatChannelItem>();
       try {
-        const geralChan = getScopedChatChannel(currentEmployee?.companyId, 'geral');
         const groupPrefix = `cmp_${companyKey}__grupo_%`;
         const { data: groupMsgs } = await supabase
           .from('messages')
           .select('channel, recipient_id, attachment, text')
-          .or(`channel.like.${groupPrefix},and(channel.eq.${geralChan},recipient_id.like.group_meta%)`)
+          .or(`channel.like.${groupPrefix},recipient_id.like.group_meta%`)
           .order('created_at', { ascending: true });
 
         if (groupMsgs && groupMsgs.length > 0) {
@@ -532,12 +532,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       } else if (data) {
         setErrorMessage(null);
         // Filtra mensagens técnicas de controle de grupo para não poluir nem disparar scroll
-        const cleanData = (data as ChatMessage[]).filter(
-          (d) =>
-            !d.recipient_id?.startsWith('group_deleted:') &&
-            !d.recipient_id?.startsWith('group_meta:') &&
-            !d.recipient_id?.startsWith('group_meta_id:')
-        );
+        const cleanData = (data as ChatMessage[]).filter((d) => !isSystemControlMessage(d));
         setMessages((prev) => {
           const pendingTemp = prev.filter(
             (p) =>
@@ -652,6 +647,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({
             });
             return;
           }
+
+          if (isSystemControlMessage(newMsg)) return;
 
           const directPair = (chatType === 'direct' && selectedDirectEmployee?.id)
             ? [currentEmployee.id, selectedDirectEmployee.id].sort().join('_')
@@ -1253,19 +1250,8 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               ? new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
               : '';
 
-            if (isGroupAnnouncement || isGroupDeletedMsg) {
-              return (
-                <div key={msg.id} className="flex justify-center my-3">
-                  <div className={`px-4 py-2 rounded-2xl border text-xs max-w-[85%] text-center shadow-xs flex items-center gap-2 ${
-                    isGroupDeletedMsg
-                      ? (isLightTheme ? 'bg-red-50 border-red-200 text-red-900' : 'bg-red-500/10 border-red-500/30 text-red-200')
-                      : (isLightTheme ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-amber-500/10 border-amber-500/30 text-amber-200')
-                  }`}>
-                    <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-                    <span className="font-medium">{msg.text}</span>
-                  </div>
-                </div>
-              );
+            if (isGroupAnnouncement || isGroupDeletedMsg || isSystemControlMessage(msg)) {
+              return null;
             }
 
             const parsed = parseChatMessage(msg.text, msg.attachment);

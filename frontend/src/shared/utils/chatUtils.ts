@@ -311,7 +311,7 @@ export async function saveChannelMetaToSupabase(params: {
 }): Promise<void> {
   const rawId = getDisplayChatChannel(params.channel.id);
   const scopedGroupId = getScopedChatChannel(params.companyId, rawId);
-  const geralScoped = getScopedChatChannel(params.companyId, 'geral');
+  const systemMetaScoped = getScopedChatChannel(params.companyId, 'system_meta');
 
   // 1. Tenta upsert com coluna avatar na tabela chat_channels
   try {
@@ -362,19 +362,43 @@ export async function saveChannelMetaToSupabase(params: {
 
     await supabase.from('messages').insert([
       {
-        channel: geralScoped,
+        channel: systemMetaScoped,
         recipient_id: `group_meta_id:${rawId}`,
         attachment: metaPayload,
-        text: params.isNew
-          ? `🎉 Novo grupo criado por ${params.sender.name}: #${params.channel.name} - ${params.channel.desc}`
-          : `🖼️ Configurações do grupo #${params.channel.name} atualizadas.`,
-        sender_id: params.sender.id,
+        text: '__group_meta__',
+        sender_id: 'system_meta',
         sender_name: params.sender.name,
         sender_role: params.sender.role || 'Gestão',
         sender_avatar: params.sender.avatar || '',
       }
     ]);
   } catch {}
+}
+
+/**
+ * Identifica mensagens internas de controle/metadados de grupos para ocultá-las do feed de conversa
+ */
+export function isSystemControlMessage(msg: {
+  recipient_id?: string | null;
+  text?: string | null;
+  channel?: string | null;
+  sender_id?: string | null;
+}): boolean {
+  if (!msg) return false;
+  const r = msg.recipient_id || '';
+  const t = (msg.text || '').trim();
+  const c = msg.channel || '';
+  return (
+    msg.sender_id === 'system_meta' ||
+    r.startsWith('group_deleted:') ||
+    r.startsWith('group_meta:') ||
+    r.startsWith('group_meta_id:') ||
+    t.startsWith('🎉 Novo grupo criado') ||
+    t.startsWith('🖼️ Configurações do grupo') ||
+    t.startsWith('🗑️ O grupo #') ||
+    t === '__group_meta__' ||
+    c.endsWith('__system_meta')
+  );
 }
 
 /**
@@ -516,11 +540,7 @@ export function isMessageRelevantForUser(
   if (msg.sender_id === userId) return false;
 
   // Metadados de exclusão ou criação de grupos não são mensagens de bate-papo
-  if (
-    msg.recipient_id?.startsWith('group_deleted:') ||
-    msg.recipient_id?.startsWith('group_meta:') ||
-    msg.recipient_id?.startsWith('group_meta_id:')
-  ) {
+  if (isSystemControlMessage(msg)) {
     return false;
   }
 
