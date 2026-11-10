@@ -1500,8 +1500,8 @@ function AppContent() {
           const updatedNotes = targetShift.notes?.includes(rejectLabel)
             ? targetShift.notes
             : `${targetShift.notes ? `${targetShift.notes} | ` : ''}${rejectLabel}`;
-          const preservedStatus = targetShift.attendanceStatus === 'late' ? 'late' : (targetShift.attendanceStatus || 'present');
-          const updatedShift = { ...targetShift, attendanceStatus: preservedStatus, notes: updatedNotes };
+          const preservedStatus: Shift['attendanceStatus'] = targetShift.attendanceStatus === 'late' ? 'late' : (targetShift.attendanceStatus || 'present');
+          const updatedShift: Shift = { ...targetShift, attendanceStatus: preservedStatus, notes: updatedNotes };
           setShifts(prev => prev.map(s => s.id === targetShift!.id ? updatedShift : s));
           await updateShiftSupabase(updatedShift);
         } else {
