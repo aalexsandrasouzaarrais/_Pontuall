@@ -60,6 +60,7 @@ export interface ChatChannelItem {
   badge: string;
   unread?: number;
   members?: string[];
+  avatar?: string;
 }
 
 export const DEFAULT_TEAM_CHANNELS: ChatChannelItem[] = [
@@ -100,8 +101,11 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupDesc, setNewGroupDesc] = useState('');
   const [newGroupBadge, setNewGroupBadge] = useState('Equipe');
+  const [newGroupAvatar, setNewGroupAvatar] = useState<string>('');
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+  const groupAvatarInputRef = useRef<HTMLInputElement>(null);
+  const activeGroupAvatarInputRef = useRef<HTMLInputElement>(null);
 
   // Identifica se o usuário é RH
   const isRhUser = useMemo(() => {
@@ -260,16 +264,19 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     }
   }, [companyKey]);
 
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const prevChannelRef = useRef<string>('');
+  const prevMsgCountRef = useRef<number>(0);
 
-  // Filtra apenas os canais aos quais o colaborador pertence
+  // Filtra apenas os canais aos quais o usuário pertence (inclusive Gestor/RH só vê grupos privados onde está incluído)
   const visibleGroupChannels = useMemo(() => {
     return teamChannels.filter((c) => {
       if (c.id === 'geral' || c.id === 'escalas' || c.id === 'gestao') return true;
       if (!c.members || c.members.length === 0) return true;
-      return c.members.includes(currentEmployee.id) || isManager;
+      return c.members.includes(currentEmployee.id);
     });
-  }, [teamChannels, currentEmployee.id, isManager]);
+  }, [teamChannels, currentEmployee.id]);
 
   // Canal atual ativo no banco (isolado por empresa/participantes)
   const currentChannel = useMemo(() => {
@@ -297,24 +304,75 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     return allEmployeesList.filter(e => activeGroup.members?.includes(e.id));
   }, [activeGroup, allEmployeesList]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
+  // Controle inteligente de rolagem: só rola para o final ao trocar de canal ou quando chega uma nova mensagem e o usuário já estava próximo ao fim
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    const container = messagesContainerRef.current;
+    const isChannelSwitch = prevChannelRef.current !== currentChannel;
+    const isNewMessage = messages.length > prevMsgCountRef.current;
 
-  // Carrega e sincroniza os canais de grupo disponíveis
+    if (isChannelSwitch && messages.length > 0) {
+      prevChannelRef.current = currentChannel;
+      prevMsgCountRef.current = messages.length;
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+      return;
+    }
+
+    if (isNewMessage) {
+      const lastMsg = messages[messages.length - 1];
+      const isFromMe = lastMsg?.sender_id === currentEmployee.id;
+      const isNearBottom = container
+        ? container.scrollHeight - container.scrollTop - container.clientHeight < 140
+        : true;
+
+      if (isFromMe || isNearBottom || prevMsgCountRef.current === 0) {
+        if (container) {
+          container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+        }
+      }
+    }
+
+    prevMsgCountRef.current = messages.length;
+  }, [messages, currentChannel, currentEmployee.id]);
+
+  // Carrega e sincroniza os canais de grupo disponíveis (incluindo exclusões feitas por outros usuários)
   useEffect(() => {
     if (!isOpen) return;
 
     const syncChannels = async () => {
       const deletedIds = new Set<string>();
+      const deletedNames = new Set<string>(['girllssss']);
       try {
         const savedDeleted = localStorage.getItem(`pontuall_deleted_channels_${companyKey}`);
         if (savedDeleted) {
           JSON.parse(savedDeleted).forEach((id: string) => deletedIds.add(id));
+        }
+      } catch {}
+
+      // 0. Busca avisos de exclusão de grupos no Supabase para sincronizar entre contas (ex: Gestor excluiu, RH atualiza)
+      try {
+        const { data: delMsgs } = await supabase
+          .from('messages')
+          .select('recipient_id, text')
+          .or('recipient_id.like.group_deleted:%,text.like.🗑️ O grupo #%');
+
+        if (delMsgs && delMsgs.length > 0) {
+          delMsgs.forEach((m: any) => {
+            if (m.recipient_id && m.recipient_id.startsWith('group_deleted:')) {
+              const rawDelId = getDisplayChatChannel(m.recipient_id.replace('group_deleted:', ''));
+              deletedIds.add(rawDelId);
+            }
+            if (m.text && m.text.includes('🗑️ O grupo #')) {
+              const match = m.text.match(/#([^\s]+)\s+foi excluído/);
+              if (match && match[1]) {
+                deletedNames.add(match[1].trim().toLowerCase());
+              }
+            }
+          });
+          try {
+            localStorage.setItem(`pontuall_deleted_channels_${companyKey}`, JSON.stringify(Array.from(deletedIds)));
+          } catch {}
         }
       } catch {}
 
@@ -323,7 +381,10 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         const { data, error } = await supabase.from('chat_channels').select('*');
         if (!error && data && data.length > 0) {
           const loaded: ChatChannelItem[] = data
-            .filter((d: any) => !deletedIds.has(d.id))
+            .filter((d: any) => {
+              const cleanId = getDisplayChatChannel(d.id);
+              return !deletedIds.has(d.id) && !deletedIds.has(cleanId);
+            })
             .map((d: any) => ({
               id: getDisplayChatChannel(d.id),
               name: d.name,
@@ -331,46 +392,54 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               badge: d.badge || 'Equipe',
               unread: 0,
               members: d.members || undefined,
+              avatar: d.avatar || undefined,
             }));
 
           setTeamChannels((prev) => {
-            const map = new Map(prev.filter(p => !deletedIds.has(p.id)).map(p => [p.id, p]));
+            const map = new Map(prev.filter(p => !deletedIds.has(p.id) && (p.id === 'geral' || p.id === 'escalas' || p.id === 'gestao')).map(p => [p.id, p]));
             loaded.forEach(item => map.set(item.id, item));
             const merged = Array.from(map.values());
             try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(merged)); } catch {}
             return merged;
+          });
+        } else {
+          setTeamChannels((prev) => {
+            const filtered = prev.filter(p => !deletedIds.has(p.id));
+            try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(filtered)); } catch {}
+            return filtered;
           });
         }
       } catch {}
 
       // 2. Descobre canais criados gravados no histórico da tabela messages para esta empresa
       try {
+        const geralChan = getScopedChatChannel(currentEmployee?.companyId, 'geral');
         const groupPrefix = `cmp_${companyKey}__grupo_%`;
         const { data: groupMsgs } = await supabase
           .from('messages')
           .select('channel, recipient_id, text')
-          .like('channel', groupPrefix);
+          .or(`channel.like.${groupPrefix},and(channel.eq.${geralChan},recipient_id.like.group_meta:%)`);
 
         if (groupMsgs && groupMsgs.length > 0) {
           const foundMap = new Map<string, ChatChannelItem>();
 
           for (const msg of groupMsgs) {
-            if (!msg.channel) continue;
-            const rawId = getDisplayChatChannel(msg.channel);
-            if (foundMap.has(rawId) || deletedIds.has(rawId)) continue;
-
+            let rawId = msg.channel ? getDisplayChatChannel(msg.channel) : '';
             let name = rawId.replace('grupo_', '');
             let desc = 'Grupo de comunicação da equipe';
             let badge = 'Equipe';
             let members: string[] | undefined = undefined;
+            let avatar: string | undefined = undefined;
 
             if (msg.recipient_id && msg.recipient_id.startsWith('group_meta:')) {
               try {
                 const meta = JSON.parse(msg.recipient_id.replace('group_meta:', ''));
+                if (meta.id) rawId = getDisplayChatChannel(meta.id);
                 if (meta.name) name = meta.name;
                 if (meta.desc) desc = meta.desc;
                 if (meta.badge) badge = meta.badge;
                 if (meta.members && Array.isArray(meta.members)) members = meta.members;
+                if (meta.avatar) avatar = meta.avatar;
               } catch {}
             } else if (msg.text && msg.text.includes('#')) {
               const match = msg.text.match(/#([\w-]+)\s*-\s*(.*)/);
@@ -380,33 +449,43 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               }
             }
 
+            if (!rawId || !rawId.startsWith('grupo_') || deletedIds.has(rawId) || deletedNames.has((name || '').toLowerCase())) continue;
+            // Também verifica se o nome pertence a algum grupo que foi excluído pelo nome (ex: #girllssss)
+            const existingFound = foundMap.get(rawId);
             foundMap.set(rawId, {
               id: rawId,
-              name: name,
-              desc: desc,
-              badge: badge,
+              name: name || existingFound?.name || rawId,
+              desc: desc || existingFound?.desc || 'Grupo de comunicação da equipe',
+              badge: badge || existingFound?.badge || 'Equipe',
               unread: 0,
-              members: members,
+              members: members || existingFound?.members,
+              avatar: avatar || existingFound?.avatar,
             });
           }
 
-          if (foundMap.size > 0) {
-            setTeamChannels((prev) => {
-              const map = new Map(prev.filter(p => !deletedIds.has(p.id)).map(p => [p.id, p]));
-              foundMap.forEach((val, key) => {
-                if (!map.has(key)) map.set(key, val);
+          setTeamChannels((prev) => {
+            const map = new Map(prev.filter(p => !deletedIds.has(p.id) && !deletedNames.has((p.name || '').toLowerCase())).map(p => [p.id, p]));
+            foundMap.forEach((val, key) => {
+              const existing = map.get(key);
+              map.set(key, {
+                ...existing,
+                ...val,
+                members: val.members || existing?.members,
+                avatar: val.avatar || existing?.avatar,
               });
-              const merged = Array.from(map.values());
-              try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(merged)); } catch {}
-              return merged;
             });
-          }
+            const merged = Array.from(map.values()).filter(c => !deletedIds.has(c.id));
+            try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(merged)); } catch {}
+            return merged;
+          });
         }
       } catch {}
     };
 
     syncChannels();
-  }, [isOpen, companyKey]);
+    const syncTimer = setInterval(syncChannels, 5000);
+    return () => clearInterval(syncTimer);
+  }, [isOpen, companyKey, currentEmployee?.companyId]);
 
   // Carrega as mensagens do canal ativo e escuta novas em tempo real
   useEffect(() => {
@@ -435,13 +514,24 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         setErrorMessage(error.message);
       } else if (data) {
         setErrorMessage(null);
+        // Filtra mensagens técnicas de controle de grupo para não poluir nem disparar scroll
+        const cleanData = (data as ChatMessage[]).filter(
+          (d) => !d.recipient_id?.startsWith('group_deleted:') && !d.recipient_id?.startsWith('group_meta:')
+        );
         setMessages((prev) => {
           const pendingTemp = prev.filter(
             (p) =>
               p.id.startsWith('temp-') &&
-              !data.some((d: any) => d.text === p.text && d.sender_id === p.sender_id)
+              !cleanData.some((d: any) => d.text === p.text && d.sender_id === p.sender_id)
           );
-          return [...(data as ChatMessage[]), ...pendingTemp];
+          const nextList = [...cleanData, ...pendingTemp];
+          if (
+            prev.length === nextList.length &&
+            prev.every((item, idx) => item.id === nextList[idx]?.id && item.text === nextList[idx]?.text)
+          ) {
+            return prev;
+          }
+          return nextList;
         });
       }
       setLoading(false);
@@ -466,7 +556,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
           // Se a mensagem for um aviso de exclusão de grupo
           if (newMsg.recipient_id && newMsg.recipient_id.startsWith('group_deleted:')) {
-            const deletedId = newMsg.recipient_id.replace('group_deleted:', '');
+            const deletedId = getDisplayChatChannel(newMsg.recipient_id.replace('group_deleted:', ''));
             setTeamChannels((prev) => {
               const filtered = prev.filter(c => c.id !== deletedId);
               try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(filtered)); } catch {}
@@ -488,34 +578,35 @@ export const ChatModal: React.FC<ChatModalProps> = ({
           }
 
           // Se a nova mensagem for de um grupo recém-criado, sincroniza a lista de grupos
-          const rawChannelId = newMsg.channel ? getDisplayChatChannel(newMsg.channel) : '';
-          if (rawChannelId.startsWith('grupo_')) {
-            setTeamChannels((prev) => {
-              if (prev.some(p => p.id === rawChannelId)) return prev;
-              let name = rawChannelId.replace('grupo_', '');
-              let desc = 'Novo grupo criado pela gestão';
-              let badge = 'Equipe';
-              let members: string[] | undefined = undefined;
-
-              if (newMsg.recipient_id && newMsg.recipient_id.startsWith('group_meta:')) {
-                try {
-                  const meta = JSON.parse(newMsg.recipient_id.replace('group_meta:', ''));
-                  if (meta.name) name = meta.name;
-                  if (meta.desc) desc = meta.desc;
-                  if (meta.badge) badge = meta.badge;
-                  if (meta.members && Array.isArray(meta.members)) members = meta.members;
-                } catch {}
+          if (newMsg.recipient_id && newMsg.recipient_id.startsWith('group_meta:')) {
+            try {
+              const meta = JSON.parse(newMsg.recipient_id.replace('group_meta:', ''));
+              const rawChannelId = getDisplayChatChannel(meta.id || newMsg.channel || '');
+              if (rawChannelId.startsWith('grupo_')) {
+                const members: string[] | undefined = Array.isArray(meta.members) ? meta.members : undefined;
+                if (members && members.length > 0 && !members.includes(currentEmployee.id)) {
+                  return;
+                }
+                setTeamChannels((prev) => {
+                  if (prev.some(p => p.id === rawChannelId)) return prev;
+                  const updated = [
+                    ...prev,
+                    {
+                      id: rawChannelId,
+                      name: meta.name || rawChannelId.replace('grupo_', ''),
+                      desc: meta.desc || 'Grupo criado pela gestão',
+                      badge: meta.badge || 'Equipe',
+                      members,
+                      avatar: meta.avatar || undefined,
+                      unread: 0,
+                    },
+                  ];
+                  try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(updated)); } catch {}
+                  return updated;
+                });
               }
-
-              // Se o colaborador não for membro do grupo e não for gestor, não adiciona
-              if (members && members.length > 0 && !members.includes(currentEmployee.id) && !isManager) {
-                return prev;
-              }
-
-              const updated = [...prev, { id: rawChannelId, name, desc, badge, members, unread: 0 }];
-              try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(updated)); } catch {}
-              return updated;
-            });
+            } catch {}
+            return;
           }
 
           const directPair = (chatType === 'direct' && selectedDirectEmployee?.id)
@@ -563,7 +654,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       clearInterval(interval);
       supabase.removeChannel(channel);
     };
-  }, [isOpen, currentChannel, chatType, selectedDirectEmployee?.id, selectedGroupId, currentEmployee.id, isManager]);
+  }, [isOpen, currentChannel, chatType, selectedDirectEmployee?.id, selectedGroupId, currentEmployee.id, companyKey]);
 
   if (!isOpen) return null;
 
@@ -581,6 +672,68 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     } finally {
       setIsAttaching(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleGroupAvatarSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const compressed = await compressImageFile(file, 300, 300, 0.8);
+      setNewGroupAvatar(compressed.url);
+    } catch (err) {
+      console.error('Erro ao processar imagem do grupo:', err);
+    } finally {
+      if (groupAvatarInputRef.current) groupAvatarInputRef.current.value = '';
+    }
+  };
+
+  const handleUpdateActiveGroupAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeGroup) return;
+    try {
+      const compressed = await compressImageFile(file, 300, 300, 0.8);
+      const avatarUrl = compressed.url;
+      const updatedChan: ChatChannelItem = { ...activeGroup, avatar: avatarUrl };
+
+      setTeamChannels(prev => {
+        const next = prev.map(c => c.id === activeGroup.id ? updatedChan : c);
+        try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(next)); } catch {}
+        return next;
+      });
+
+      const scopedId = getScopedChatChannel(currentEmployee?.companyId, activeGroup.id);
+      try {
+        await supabase.from('chat_channels').upsert([
+          {
+            id: scopedId,
+            name: updatedChan.name,
+            description: updatedChan.desc,
+            badge: updatedChan.badge,
+            created_by: currentEmployee.name,
+            members: updatedChan.members || null,
+            avatar: avatarUrl,
+          }
+        ]);
+      } catch {}
+
+      try {
+        await supabase.from('messages').insert([
+          {
+            channel: scopedId,
+            text: `🖼️ A imagem do grupo #${updatedChan.name} foi atualizada.`,
+            recipient_id: `group_meta:${JSON.stringify(updatedChan)}`,
+            sender_id: currentEmployee.id,
+            sender_name: currentEmployee.name,
+            sender_role: currentEmployee.role,
+            sender_avatar: currentEmployee.avatar || '',
+          }
+        ]);
+      } catch {}
+    } catch (err) {
+      console.error('Erro ao atualizar imagem do grupo:', err);
+    } finally {
+      if (activeGroupAvatarInputRef.current) activeGroupAvatarInputRef.current.value = '';
     }
   };
 
@@ -634,14 +787,15 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     }
   };
 
-  // Criação de Grupo / Canal de Equipe (Gestão)
+  // Criação de Grupo / Canal de Equipe (Gestão): garante que apenas as pessoas marcadas + quem criou tenham acesso
   const handleCreateGroup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newGroupName.trim()) return;
 
     setIsCreatingGroup(true);
     const channelId = `grupo_${Date.now()}`;
-    const membersList = selectedMemberIds.length > 0 ? selectedMemberIds : allEmployeesList.map(e => e.id);
+    const baseMembers = selectedMemberIds.length > 0 ? selectedMemberIds : allEmployeesList.map(e => e.id);
+    const membersList = Array.from(new Set([...baseMembers, currentEmployee.id]));
     const newChan: ChatChannelItem = {
       id: channelId,
       name: newGroupName.trim().toLowerCase().replace(/\s+/g, '-'),
@@ -649,6 +803,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       badge: newGroupBadge.trim() || 'Equipe',
       unread: 0,
       members: membersList,
+      avatar: newGroupAvatar || undefined,
     };
 
     const updated = [...teamChannels, newChan];
@@ -668,6 +823,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
           badge: newChan.badge,
           created_by: currentEmployee.name,
           members: newChan.members,
+          avatar: newChan.avatar || null,
         }
       ]);
     } catch {}
@@ -679,6 +835,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         desc: newChan.desc,
         badge: newChan.badge,
         members: newChan.members,
+        avatar: newChan.avatar || undefined,
       });
 
       await supabase.from('messages').insert([
@@ -697,6 +854,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     setNewGroupName('');
     setNewGroupDesc('');
     setNewGroupBadge('Equipe');
+    setNewGroupAvatar('');
     setSelectedMemberIds([]);
     setIsCreatingGroup(false);
     setIsNewGroupModalOpen(false);
@@ -712,7 +870,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     const scopedGroupId = getScopedChatChannel(currentEmployee?.companyId, groupId);
 
     try {
-      await supabase.from('messages').delete().or(`channel.eq.${scopedGroupId},channel.eq.${groupId}`);
+      await supabase.from('messages').delete().or(`channel.eq.${scopedGroupId},channel.eq.${groupId},recipient_id.like.%${groupId}%`);
     } catch {}
 
     try {
@@ -766,9 +924,11 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         {/* Header */}
         <div className="px-4 py-3 text-white flex items-center justify-between shadow-xs shrink-0" style={{ background: 'linear-gradient(to right, #96183c, #f89642)' }}>
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center border border-white/30 shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center border border-white/30 shrink-0 overflow-hidden">
               {chatType === 'direct' ? (
                 <Lock className="w-4 h-4 text-[#faf0ac]" />
+              ) : activeGroup.avatar ? (
+                <img src={activeGroup.avatar} alt={activeGroup.name} className="w-full h-full object-cover" />
               ) : (
                 <Users className="w-4 h-4 text-[#faf0ac]" />
               )}
@@ -800,6 +960,24 @@ export const ChatModal: React.FC<ChatModalProps> = ({
           </div>
 
           <div className="flex items-center gap-1 shrink-0 ml-2">
+            <input
+              type="file"
+              ref={activeGroupAvatarInputRef}
+              accept="image/*"
+              onChange={handleUpdateActiveGroupAvatar}
+              className="hidden"
+            />
+            {/* Botão Alterar Imagem do Grupo */}
+            {chatType === 'group' && isManager && (
+              <button
+                type="button"
+                onClick={() => activeGroupAvatarInputRef.current?.click()}
+                className="p-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-[#faf0ac] transition-all cursor-pointer border border-white/20"
+                title="Alterar imagem deste grupo"
+              >
+                <ImageIcon className="w-3.5 h-3.5" />
+              </button>
+            )}
             {/* Botão Ver Integrantes */}
             {chatType === 'group' && (
               <button
@@ -888,7 +1066,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                   key={chan.id}
                   type="button"
                   onClick={() => setSelectedGroupId(chan.id)}
-                  className={`shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+                  className={`shrink-0 px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
                     isSelected
                       ? (isLightTheme
                           ? 'bg-[#96183c] text-white border-[#96183c] shadow-xs'
@@ -898,7 +1076,11 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                           : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:text-white')
                   }`}
                 >
-                  <Hash className="w-3 h-3 opacity-70" />
+                  {chan.avatar ? (
+                    <img src={chan.avatar} alt={chan.name} className="w-4 h-4 rounded-full object-cover shrink-0" />
+                  ) : (
+                    <Hash className="w-3 h-3 opacity-70" />
+                  )}
                   <span>{chan.name}</span>
                   {chan.badge && (
                     <span className={`text-[9px] px-1 py-0.2 rounded font-normal ${
@@ -1006,9 +1188,12 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         )}
 
         {/* Área de Mensagens */}
-        <div className={`flex-1 p-4 overflow-y-auto space-y-3 transition-colors ${
-          isLightTheme ? 'bg-slate-50' : 'bg-[#0B0C10]'
-        }`}>
+        <div
+          ref={messagesContainerRef}
+          className={`flex-1 p-4 overflow-y-auto space-y-3 transition-colors ${
+            isLightTheme ? 'bg-slate-50' : 'bg-[#0B0C10]'
+          }`}
+        >
           {loading && messages.length === 0 && (
             <div className="flex items-center justify-center h-full text-xs text-slate-400">
               Carregando mensagens em tempo real...
@@ -1273,8 +1458,12 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               {/* Header Integrantes */}
               <div className="px-4 py-3.5 border-b flex items-center justify-between shrink-0" style={{ background: 'linear-gradient(135deg, #96183c, #f89642)' }}>
                 <div className="flex items-center gap-2.5 text-white">
-                  <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center border border-white/30">
-                    <Users className="w-4 h-4 text-[#faf0ac]" />
+                  <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center border border-white/30 overflow-hidden">
+                    {activeGroup.avatar ? (
+                      <img src={activeGroup.avatar} alt={activeGroup.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <Users className="w-4 h-4 text-[#faf0ac]" />
+                    )}
                   </div>
                   <div>
                     <h4 className="font-extrabold text-xs leading-tight">Integrantes do Canal</h4>
@@ -1393,18 +1582,54 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               </div>
 
               <form onSubmit={handleCreateGroup} className="p-4 space-y-3 overflow-y-auto flex-1">
-                <div>
-                  <label className="block text-[11px] font-bold mb-1 opacity-80">Nome do Grupo (#canal)</label>
+                {/* Foto / Ícone do Grupo */}
+                <div className="flex items-center gap-3">
                   <input
-                    type="text"
-                    value={newGroupName}
-                    onChange={(e) => setNewGroupName(e.target.value)}
-                    placeholder="ex: noturno, plantao-uti, vendas"
-                    required
-                    className={`w-full px-3 py-2 rounded-xl text-xs border outline-none ${
-                      isLightTheme ? 'bg-slate-100 border-slate-300 text-slate-900' : 'bg-white/5 border-white/10 text-white'
-                    }`}
+                    type="file"
+                    ref={groupAvatarInputRef}
+                    accept="image/*"
+                    onChange={handleGroupAvatarSelect}
+                    className="hidden"
                   />
+                  <button
+                    type="button"
+                    onClick={() => groupAvatarInputRef.current?.click()}
+                    className={`w-14 h-14 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center shrink-0 overflow-hidden transition-all cursor-pointer relative group ${
+                      isLightTheme ? 'border-slate-300 bg-slate-100 hover:border-[#96183c]' : 'border-white/20 bg-white/5 hover:border-[#f89642]'
+                    }`}
+                    title="Selecionar imagem do grupo"
+                  >
+                    {newGroupAvatar ? (
+                      <img src={newGroupAvatar} alt="Avatar do grupo" className="w-full h-full object-cover" />
+                    ) : (
+                      <>
+                        <ImageIcon className="w-5 h-5 opacity-60" />
+                        <span className="text-[8px] font-bold opacity-60 mt-0.5">Foto</span>
+                      </>
+                    )}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <label className="block text-[11px] font-bold mb-1 opacity-80">Nome do Grupo (#canal)</label>
+                    <input
+                      type="text"
+                      value={newGroupName}
+                      onChange={(e) => setNewGroupName(e.target.value)}
+                      placeholder="ex: noturno, plantao-uti, vendas"
+                      required
+                      className={`w-full px-3 py-2 rounded-xl text-xs border outline-none ${
+                        isLightTheme ? 'bg-slate-100 border-slate-300 text-slate-900' : 'bg-white/5 border-white/10 text-white'
+                      }`}
+                    />
+                    {newGroupAvatar && (
+                      <button
+                        type="button"
+                        onClick={() => setNewGroupAvatar('')}
+                        className="text-[10px] text-rose-400 hover:underline mt-1 font-semibold cursor-pointer"
+                      >
+                        Remover imagem
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div>

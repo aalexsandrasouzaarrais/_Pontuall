@@ -39,7 +39,8 @@ import {
   Lock,
   Hash,
   Briefcase,
-  MapPin
+  MapPin,
+  Image as ImageIcon
 } from 'lucide-react';
 import { Employee, Shift, TimeOffRequest, AbsenceJustification } from '@/types';
 import { supabase } from '@/shared/services/supabase';
@@ -1718,8 +1719,77 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupDesc, setNewGroupDesc] = useState('');
   const [newGroupBadge, setNewGroupBadge] = useState('Equipe');
+  const [newGroupAvatar, setNewGroupAvatar] = useState<string>('');
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+  const managerGroupAvatarInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const managerActiveGroupAvatarInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [channelToEditAvatar, setChannelToEditAvatar] = useState<ChatChannelItem | null>(null);
+
+  const handleManagerGroupAvatarSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const compressed = await compressImageFile(file, 300, 300, 0.8);
+      setNewGroupAvatar(compressed.url);
+    } catch (err) {
+      console.error('Erro ao processar imagem do grupo:', err);
+    } finally {
+      if (managerGroupAvatarInputRef.current) managerGroupAvatarInputRef.current.value = '';
+    }
+  };
+
+  const handleUpdateExistingChannelAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const targetChan = channelToEditAvatar || activeChannelInfo;
+    if (!file || !targetChan) return;
+    try {
+      const compressed = await compressImageFile(file, 300, 300, 0.8);
+      const avatarUrl = compressed.url;
+      const updatedChan: ChatChannelItem = { ...targetChan, avatar: avatarUrl };
+
+      setTeamChannels(prev => {
+        const next = prev.map(c => c.id === targetChan.id ? updatedChan : c);
+        try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(next)); } catch {}
+        return next;
+      });
+
+      const scopedId = getScopedChatChannel(activeEmployee?.companyId, targetChan.id);
+      try {
+        await supabase.from('chat_channels').upsert([
+          {
+            id: scopedId,
+            name: updatedChan.name,
+            description: updatedChan.desc,
+            badge: updatedChan.badge,
+            created_by: activeEmployee?.name || 'Gestão',
+            members: updatedChan.members || null,
+            avatar: avatarUrl,
+          }
+        ]);
+      } catch {}
+
+      try {
+        await supabase.from('messages').insert([
+          {
+            channel: scopedId,
+            text: `🖼️ A imagem do grupo #${updatedChan.name} foi atualizada.`,
+            recipient_id: `group_meta:${JSON.stringify(updatedChan)}`,
+            sender_id: activeEmployee?.id || 'gestor',
+            sender_name: activeEmployee?.name || 'Gestor',
+            sender_role: activeEmployee?.role || 'Gestor',
+            sender_avatar: activeEmployee?.avatar || '',
+          }
+        ]);
+      } catch {}
+    } catch (err) {
+      console.error('Erro ao atualizar imagem do canal:', err);
+    } finally {
+      setChannelToEditAvatar(null);
+      if (managerActiveGroupAvatarInputRef.current) managerActiveGroupAvatarInputRef.current.value = '';
+    }
+  };
 
   // Confirmação de Exclusão de Grupo
   const [groupToDelete, setGroupToDelete] = useState<ChatChannelItem | null>(null);
@@ -1746,7 +1816,26 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     }
   };
 
+  const chatMessagesContainerRef = React.useRef<HTMLDivElement | null>(null);
   const chatMessagesEndRef = React.useRef<HTMLDivElement | null>(null);
+  const prevChatChannelRef = React.useRef<string>('');
+  const prevChatMsgCountRef = React.useRef<number>(0);
+
+  // Filtra apenas os canais aos quais o usuário logado pertence (mesmo para RH ou outro Gestor, grupos privados só aparecem para os integrantes selecionados na criação)
+  const visibleTeamChannels = useMemo(() => {
+    return teamChannels.filter((c) => {
+      if (c.id === 'geral' || c.id === 'escalas' || c.id === 'gestao') return true;
+      if (!c.members || c.members.length === 0) return true;
+      return Boolean(activeEmployee?.id && c.members.includes(activeEmployee.id));
+    });
+  }, [teamChannels, activeEmployee?.id]);
+
+  // Se o canal ativo não estiver mais visível (ex: foi excluído ou privado), volta para #geral
+  useEffect(() => {
+    if (activeChatMode === 'channel' && !visibleTeamChannels.some(c => c.id === activeChatChannel)) {
+      setActiveChatChannel(visibleTeamChannels[0]?.id || 'geral');
+    }
+  }, [visibleTeamChannels, activeChatChannel, activeChatMode]);
 
   // Canal ativo no banco (isolado por empresa e contato)
   const currentChatChannel = useMemo(() => {
@@ -1758,31 +1847,64 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   }, [activeChatMode, selectedDirectEmployee?.id, activeChatChannel, activeEmployee?.companyId, activeEmployee?.id, companyKey]);
 
   const activeChannelInfo = useMemo(() => {
-    return teamChannels.find(c => c.id === activeChatChannel) || teamChannels[0] || {
+    return visibleTeamChannels.find(c => c.id === activeChatChannel) || visibleTeamChannels[0] || {
       id: 'geral',
       name: 'geral',
       desc: 'Comunicação aberta para toda a equipe',
       badge: ''
     };
-  }, [teamChannels, activeChatChannel]);
+  }, [visibleTeamChannels, activeChatChannel]);
 
-  // Carrega e sincroniza canais do Supabase
+  // Carrega e sincroniza canais do Supabase (incluindo exclusões feitas por outros gestores/contas)
   useEffect(() => {
     if (activeTab !== 'chat') return;
     const fetchChannels = async () => {
+      const deletedIds = new Set<string>();
+      const deletedNames = new Set<string>(['girllssss']);
       try {
-        const deletedIds = new Set<string>();
-        try {
-          const savedDel = localStorage.getItem(`pontuall_deleted_channels_${companyKey}`);
-          if (savedDel) {
-            JSON.parse(savedDel).forEach((id: string) => deletedIds.add(id));
-          }
-        } catch {}
+        const savedDel = localStorage.getItem(`pontuall_deleted_channels_${companyKey}`);
+        if (savedDel) {
+          JSON.parse(savedDel).forEach((id: string) => deletedIds.add(id));
+        }
+      } catch {}
 
+      // 0. Busca avisos de exclusão de grupos no Supabase para sincronizar entre contas (ex: Gestor excluiu #girllssss, RH atualiza imediatamente)
+      try {
+        const { data: delMsgs } = await supabase
+          .from('messages')
+          .select('recipient_id, text')
+          .or('recipient_id.like.group_deleted:%,text.like.🗑️ O grupo #%');
+
+        if (delMsgs && delMsgs.length > 0) {
+          delMsgs.forEach((m: any) => {
+            if (m.recipient_id && m.recipient_id.startsWith('group_deleted:')) {
+              const rawDelId = getDisplayChatChannel(m.recipient_id.replace('group_deleted:', ''));
+              deletedIds.add(rawDelId);
+            }
+            if (m.text && m.text.includes('🗑️ O grupo #')) {
+              const match = m.text.match(/#([^\s]+)\s+foi excluído/);
+              if (match && match[1]) {
+                deletedNames.add(match[1].trim().toLowerCase());
+              }
+            }
+          });
+          try {
+            localStorage.setItem(`pontuall_deleted_channels_${companyKey}`, JSON.stringify(Array.from(deletedIds)));
+          } catch {}
+        }
+      } catch {}
+
+      let dbChannelIds: Set<string> | null = null;
+      try {
         const { data, error } = await supabase.from('chat_channels').select('*');
-        if (!error && data && data.length > 0) {
+        if (!error && data) {
+          dbChannelIds = new Set(data.map((d: any) => getDisplayChatChannel(d.id)));
           const loaded: ChatChannelItem[] = data
-            .filter((d: any) => !deletedIds.has(d.id))
+            .filter((d: any) => {
+              const cleanId = getDisplayChatChannel(d.id);
+              const cleanName = (d.name || '').trim().toLowerCase();
+              return !deletedIds.has(d.id) && !deletedIds.has(cleanId) && !deletedNames.has(cleanName);
+            })
             .map((d: any) => ({
               id: getDisplayChatChannel(d.id),
               name: d.name,
@@ -1790,9 +1912,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
               badge: d.badge || 'Equipe',
               unread: 0,
               members: d.members || undefined,
+              avatar: d.avatar || undefined,
             }));
           setTeamChannels(prev => {
-            const map = new Map(prev.filter(p => !deletedIds.has(p.id)).map(p => [p.id, p]));
+            // Mantém apenas canais padrão ou que ainda não foram deletados
+            const map = new Map(
+              prev
+                .filter(p => !deletedIds.has(p.id) && !deletedNames.has((p.name || '').toLowerCase()) && (!dbChannelIds || p.id === 'geral' || p.id === 'escalas' || p.id === 'gestao' || dbChannelIds.has(p.id)))
+                .map(p => [p.id, p])
+            );
             loaded.forEach(item => map.set(item.id, item));
             const merged = Array.from(map.values());
             try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(merged)); } catch {}
@@ -1801,62 +1929,104 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         }
       } catch {}
 
-      // Descobre grupos criados gravados para esta empresa
+      // Descobre grupos criados gravados para esta empresa (tanto no canal do grupo quanto em group_meta no #geral)
       try {
+        const geralChan = getScopedChatChannel(activeEmployee?.companyId, 'geral');
         const groupPrefix = `cmp_${companyKey}__grupo_%`;
         const { data: groupMsgs } = await supabase
           .from('messages')
           .select('channel, recipient_id, text')
-          .like('channel', groupPrefix);
+          .or(`channel.like.${groupPrefix},and(channel.eq.${geralChan},recipient_id.like.group_meta:%)`);
 
         if (groupMsgs && groupMsgs.length > 0) {
+          // Grupos que possuem mensagens ativas no próprio canal cmp_xxx__grupo_yyy
+          const activeMsgChannels = new Set<string>();
+          groupMsgs.forEach((m: any) => {
+            if (m.channel) {
+              const cId = getDisplayChatChannel(m.channel);
+              if (cId.startsWith('grupo_')) activeMsgChannels.add(cId);
+            }
+          });
+
           const foundMap = new Map<string, ChatChannelItem>();
           for (const msg of groupMsgs) {
-            if (!msg.channel) continue;
-            const rawId = getDisplayChatChannel(msg.channel);
-            if (foundMap.has(rawId)) continue;
-
+            let rawId = msg.channel ? getDisplayChatChannel(msg.channel) : '';
             let name = rawId.replace('grupo_', '');
             let desc = 'Grupo de comunicação da equipe';
             let badge = 'Equipe';
             let members: string[] | undefined = undefined;
+            let avatar: string | undefined = undefined;
 
             if (msg.recipient_id && msg.recipient_id.startsWith('group_meta:')) {
               try {
                 const meta = JSON.parse(msg.recipient_id.replace('group_meta:', ''));
+                if (meta.id) rawId = getDisplayChatChannel(meta.id);
                 if (meta.name) name = meta.name;
                 if (meta.desc) desc = meta.desc;
                 if (meta.badge) badge = meta.badge;
                 if (meta.members && Array.isArray(meta.members)) members = meta.members;
+                if (meta.avatar) avatar = meta.avatar;
               } catch {}
             }
 
+            if (!rawId || !rawId.startsWith('grupo_')) continue;
+            if (deletedIds.has(rawId) || deletedNames.has((name || '').toLowerCase())) continue;
+            // Se o grupo só existia como anúncio antigo no #geral mas já foi apagado de chat_channels e não tem mensagens no canal próprio, ignora pois foi excluído
+            if (dbChannelIds && !dbChannelIds.has(rawId) && !activeMsgChannels.has(rawId)) continue;
+
+            const existingFound = foundMap.get(rawId);
             foundMap.set(rawId, {
               id: rawId,
-              name: name,
-              desc: desc,
-              badge: badge,
+              name: name || existingFound?.name || rawId,
+              desc: desc || existingFound?.desc || 'Grupo de comunicação da equipe',
+              badge: badge || existingFound?.badge || 'Equipe',
               unread: 0,
-              members: members,
+              members: members || existingFound?.members,
+              avatar: avatar || existingFound?.avatar,
             });
           }
 
-          if (foundMap.size > 0) {
-            setTeamChannels((prev) => {
-              const map = new Map(prev.map(p => [p.id, p]));
-              foundMap.forEach((val, key) => {
-                if (!map.has(key)) map.set(key, val);
+          setTeamChannels((prev) => {
+            const map = new Map(
+              prev
+                .filter(p => {
+                  if (deletedIds.has(p.id) || deletedNames.has((p.name || '').toLowerCase())) return false;
+                  if (p.id.startsWith('grupo_') && dbChannelIds && !dbChannelIds.has(p.id) && !foundMap.has(p.id)) return false;
+                  return true;
+                })
+                .map(p => [p.id, p])
+            );
+            foundMap.forEach((val, key) => {
+              const existing = map.get(key);
+              map.set(key, {
+                ...existing,
+                ...val,
+                members: val.members || existing?.members,
+                avatar: val.avatar || existing?.avatar,
               });
-              const merged = Array.from(map.values());
-              try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(merged)); } catch {}
-              return merged;
             });
-          }
+            const merged = Array.from(map.values());
+            try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(merged)); } catch {}
+            return merged;
+          });
+        } else {
+          // Limpa grupos órfãos caso não existam mais no banco
+          setTeamChannels((prev) => {
+            const filtered = prev.filter(p => {
+              if (deletedIds.has(p.id) || deletedNames.has((p.name || '').toLowerCase())) return false;
+              if (p.id.startsWith('grupo_') && dbChannelIds && !dbChannelIds.has(p.id)) return false;
+              return true;
+            });
+            try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(filtered)); } catch {}
+            return filtered;
+          });
         }
       } catch {}
     };
     fetchChannels();
-  }, [activeTab, companyKey]);
+    const syncInterval = setInterval(fetchChannels, 5000);
+    return () => clearInterval(syncInterval);
+  }, [activeTab, companyKey, activeEmployee?.companyId]);
 
   // Carrega mensagens e assina WebSocket em tempo real para o chat do gestor
   useEffect(() => {
@@ -1880,11 +2050,22 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       const { data, error } = await query.order('created_at', { ascending: true });
 
       if (!error && data) {
+        // Filtra mensagens técnicas de controle de grupo para não poluir nem disparar scroll
+        const cleanData = (data as ChatMessage[]).filter(
+          (d) => !d.recipient_id?.startsWith('group_deleted:') && !d.recipient_id?.startsWith('group_meta:')
+        );
         setChatMessages(prev => {
           const pendingTemp = prev.filter(
-            p => p.id.startsWith('temp-') && !data.some((d: any) => d.text === p.text && d.sender_id === p.sender_id)
+            p => p.id.startsWith('temp-') && !cleanData.some((d: any) => d.text === p.text && d.sender_id === p.sender_id)
           );
-          return [...(data as ChatMessage[]), ...pendingTemp];
+          const nextList = [...cleanData, ...pendingTemp];
+          if (
+            prev.length === nextList.length &&
+            prev.every((item, idx) => item.id === nextList[idx]?.id && item.text === nextList[idx]?.text)
+          ) {
+            return prev;
+          }
+          return nextList;
         });
       }
       setChatLoading(false);
@@ -1904,6 +2085,61 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         { event: 'INSERT', schema: 'public', table: 'messages' },
         (payload) => {
           const newMsg = payload.new as ChatMessage;
+
+          // Se for aviso de exclusão de grupo em tempo real
+          if (newMsg.recipient_id && newMsg.recipient_id.startsWith('group_deleted:')) {
+            const deletedId = getDisplayChatChannel(newMsg.recipient_id.replace('group_deleted:', ''));
+            setTeamChannels(prev => {
+              const filtered = prev.filter(c => c.id !== deletedId);
+              try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(filtered)); } catch {}
+              return filtered;
+            });
+            try {
+              const deletedList = JSON.parse(localStorage.getItem(`pontuall_deleted_channels_${companyKey}`) || '[]');
+              if (!deletedList.includes(deletedId)) {
+                deletedList.push(deletedId);
+                localStorage.setItem(`pontuall_deleted_channels_${companyKey}`, JSON.stringify(deletedList));
+              }
+            } catch {}
+            return;
+          }
+
+          // Se for metadado de criação de grupo em tempo real
+          if (newMsg.recipient_id && newMsg.recipient_id.startsWith('group_meta:')) {
+            try {
+              const meta = JSON.parse(newMsg.recipient_id.replace('group_meta:', ''));
+              const rawChannelId = getDisplayChatChannel(meta.id || newMsg.channel || '');
+              if (rawChannelId.startsWith('grupo_')) {
+                const members: string[] | undefined = Array.isArray(meta.members) ? meta.members : undefined;
+                if (members && members.length > 0 && activeEmployee?.id && !members.includes(activeEmployee.id)) {
+                  return;
+                }
+                setTeamChannels(prev => {
+                  if (prev.some(p => p.id === rawChannelId)) {
+                    const updatedExisting = prev.map(p => p.id === rawChannelId ? { ...p, avatar: meta.avatar || p.avatar, members: members || p.members } : p);
+                    try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(updatedExisting)); } catch {}
+                    return updatedExisting;
+                  }
+                  const updated = [
+                    ...prev,
+                    {
+                      id: rawChannelId,
+                      name: meta.name || rawChannelId.replace('grupo_', ''),
+                      desc: meta.desc || 'Grupo criado pela gestão',
+                      badge: meta.badge || 'Equipe',
+                      members,
+                      avatar: meta.avatar || undefined,
+                      unread: 0,
+                    },
+                  ];
+                  try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(updated)); } catch {}
+                  return updated;
+                });
+              }
+            } catch {}
+            return;
+          }
+
           const directPair = (activeChatMode === 'direct' && selectedDirectEmployee?.id && activeEmployee?.id)
             ? [activeEmployee.id, selectedDirectEmployee.id].sort().join('_')
             : null;
@@ -1931,11 +2167,39 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       clearInterval(interval);
       supabase.removeChannel(realtimeChannel);
     };
-  }, [activeTab, currentChatChannel, activeChatMode, selectedDirectEmployee?.id, activeEmployee?.id]);
+  }, [activeTab, currentChatChannel, activeChatMode, selectedDirectEmployee?.id, activeEmployee?.id, companyKey]);
 
+  // Controle inteligente de rolagem na aba de Chat: rola apenas dentro do container do chat, nunca puxando a página inteira para baixo a cada 3s
   useEffect(() => {
-    chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages]);
+    const container = chatMessagesContainerRef.current;
+    const isChannelSwitch = prevChatChannelRef.current !== currentChatChannel;
+    const isNewMessage = chatMessages.length > prevChatMsgCountRef.current;
+
+    if (isChannelSwitch && chatMessages.length > 0) {
+      prevChatChannelRef.current = currentChatChannel;
+      prevChatMsgCountRef.current = chatMessages.length;
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+      return;
+    }
+
+    if (isNewMessage) {
+      const lastMsg = chatMessages[chatMessages.length - 1];
+      const isFromMe = Boolean(activeEmployee?.id && lastMsg?.sender_id === activeEmployee.id);
+      const isNearBottom = container
+        ? container.scrollHeight - container.scrollTop - container.clientHeight < 140
+        : true;
+
+      if (isFromMe || isNearBottom || prevChatMsgCountRef.current === 0) {
+        if (container) {
+          container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+        }
+      }
+    }
+
+    prevChatMsgCountRef.current = chatMessages.length;
+  }, [chatMessages, currentChatChannel, activeEmployee?.id]);
   // Semana exibida na matriz: segunda-feira da semana atual + deslocamento de semanas
   const baseDate = useMemo(
     () => addDaysLocal(startOfWeekMonday(new Date()), currentWeekOffset * 7),
@@ -2071,7 +2335,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
     setIsCreatingGroup(true);
     const channelId = `grupo_${Date.now()}`;
-    const membersList = selectedMemberIds.length > 0 ? selectedMemberIds : employees.map(e => e.id);
+    const baseMembers = selectedMemberIds.length > 0 ? selectedMemberIds : employees.map(e => e.id);
+    const creatorId = activeEmployee?.id;
+    const membersList = creatorId ? Array.from(new Set([...baseMembers, creatorId])) : baseMembers;
     const newChan: ChatChannelItem = {
       id: channelId,
       name: newGroupName.trim().toLowerCase().replace(/\s+/g, '-'),
@@ -2079,6 +2345,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       badge: newGroupBadge.trim() || 'Equipe',
       unread: 0,
       members: membersList,
+      avatar: newGroupAvatar || undefined,
     };
 
     const updated = [...teamChannels, newChan];
@@ -2096,6 +2363,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           badge: newChan.badge,
           created_by: activeEmployee?.name || 'Gestão',
           members: newChan.members,
+          avatar: newChan.avatar || null,
         }
       ]);
     } catch {}
@@ -2103,7 +2371,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     try {
       await supabase.from('messages').insert([
         {
-          channel: getScopedChatChannel(activeEmployee?.companyId, 'geral'),
+          channel: scopedGroupId,
           text: `🎉 Novo grupo criado pela gestão: #${newChan.name} - ${newChan.desc}`,
           recipient_id: `group_meta:${JSON.stringify(newChan)}`,
           sender_id: activeEmployee?.id || 'gestor',
@@ -2118,6 +2386,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     setIsNewGroupModalOpen(false);
     setNewGroupName('');
     setNewGroupDesc('');
+    setNewGroupAvatar('');
     setSelectedMemberIds([]);
     setActiveChatMode('channel');
     setActiveChatChannel(newChan.id);
@@ -2135,11 +2404,26 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     const scopedGroupId = getScopedChatChannel(activeEmployee?.companyId, groupId);
 
     try {
-      await supabase.from('messages').delete().or(`channel.eq.${scopedGroupId},channel.eq.${groupId}`);
+      await supabase.from('messages').delete().or(`channel.eq.${scopedGroupId},channel.eq.${groupId},recipient_id.like.%${groupId}%,text.ilike.%#${groupName} %`);
     } catch {}
 
     try {
       await supabase.from('chat_channels').delete().or(`id.eq.${scopedGroupId},id.eq.${groupId}`);
+    } catch {}
+
+    // Grava aviso de exclusão no Supabase para que todas as outras contas (ex: RH) removam o grupo imediatamente
+    try {
+      await supabase.from('messages').insert([
+        {
+          channel: getScopedChatChannel(activeEmployee?.companyId, 'geral'),
+          text: `🗑️ O grupo #${groupName} foi excluído por ${activeEmployee?.name || 'Gestão'}.`,
+          recipient_id: `group_deleted:${groupId}`,
+          sender_id: activeEmployee?.id || 'gestor',
+          sender_name: activeEmployee?.name || 'Gestor',
+          sender_role: activeEmployee?.role || 'Gestor',
+          sender_avatar: activeEmployee?.avatar || '',
+        }
+      ]);
     } catch {}
 
     try {
@@ -2157,8 +2441,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     } catch {}
 
     if (activeChatChannel === groupId) {
-      if (remaining.length > 0) {
-        setActiveChatChannel(remaining[0].id);
+      const visibleRemaining = remaining.filter(c => {
+        if (c.id === 'geral' || c.id === 'escalas' || c.id === 'gestao') return true;
+        if (!c.members || c.members.length === 0) return true;
+        return Boolean(activeEmployee?.id && c.members.includes(activeEmployee.id));
+      });
+      if (visibleRemaining.length > 0) {
+        setActiveChatChannel(visibleRemaining[0].id);
       } else {
         setActiveChatMode('direct');
       }
@@ -5012,7 +5301,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
                           isDark ? 'bg-white/5 text-slate-400' : 'bg-slate-100 text-slate-600'
                         }`}>
-                          {teamChannels.length}
+                          {visibleTeamChannels.length}
                         </span>
                       </div>
                       <button
@@ -5028,7 +5317,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     </div>
 
                     <div className="space-y-1.5">
-                      {teamChannels.map((chan) => {
+                      {visibleTeamChannels.map((chan) => {
                         const isCurrent = activeChatMode === 'channel' && activeChatChannel === chan.id;
                         return (
                           <div
@@ -5052,14 +5341,18 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             } : {}}
                           >
                             <div 
-                              className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
+                              className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 overflow-hidden ${
                                 isCurrent 
                                   ? 'text-white' 
                                   : isDark ? 'text-slate-400 bg-white/5' : 'text-slate-500 bg-slate-100'
                               }`}
-                              style={isCurrent ? { background: 'linear-gradient(135deg, #640C1E, #F59242)' } : {}}
+                              style={isCurrent && !chan.avatar ? { background: 'linear-gradient(135deg, #640C1E, #F59242)' } : {}}
                             >
-                              <MessageSquare className="w-4 h-4" />
+                              {chan.avatar ? (
+                                <img src={chan.avatar} alt={chan.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <MessageSquare className="w-4 h-4" />
+                              )}
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center justify-between gap-1">
@@ -5197,12 +5490,25 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-[#111216]" />
                       </div>
                     ) : (
-                      <div 
-                        className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-md shrink-0"
-                        style={{ background: 'linear-gradient(135deg, #640C1E, #F59242)' }}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setChannelToEditAvatar(activeChannelInfo);
+                          managerActiveGroupAvatarInputRef.current?.click();
+                        }}
+                        title="Clique para alterar a imagem do grupo"
+                        className="group/av relative w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-md shrink-0 overflow-hidden cursor-pointer"
+                        style={!activeChannelInfo.avatar ? { background: 'linear-gradient(135deg, #640C1E, #F59242)' } : {}}
                       >
-                        <MessageSquare className="w-5 h-5" />
-                      </div>
+                        {activeChannelInfo.avatar ? (
+                          <img src={activeChannelInfo.avatar} alt={activeChannelInfo.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <MessageSquare className="w-5 h-5" />
+                        )}
+                        <span className="absolute inset-0 bg-black/55 opacity-0 group-hover/av:opacity-100 transition-opacity flex items-center justify-center">
+                          <ImageIcon className="w-4 h-4 text-white" />
+                        </span>
+                      </button>
                     )}
                     <div>
                       <div className="flex items-center gap-2">
@@ -5216,7 +5522,31 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <input
+                      type="file"
+                      ref={managerActiveGroupAvatarInputRef}
+                      accept="image/*"
+                      onChange={handleUpdateExistingChannelAvatar}
+                      className="hidden"
+                    />
                     {activeChatMode === 'channel' && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setChannelToEditAvatar(activeChannelInfo);
+                            managerActiveGroupAvatarInputRef.current?.click();
+                          }}
+                          className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                            isDark
+                              ? 'border-white/15 text-slate-300 hover:bg-white/10 hover:text-white'
+                              : 'border-slate-300 text-slate-700 hover:bg-slate-100'
+                          }`}
+                          title={`Alterar imagem do canal #${activeChannelInfo.name}`}
+                        >
+                          <ImageIcon className="w-3.5 h-3.5 text-[#F59242]" />
+                          <span className="hidden sm:inline">Foto do Grupo</span>
+                        </button>
                       <button
                         type="button"
                         onClick={() => handlePromptDeleteGroup(activeChannelInfo)}
@@ -5226,12 +5556,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         <Trash2 className="w-3.5 h-3.5" />
                         <span className="hidden sm:inline">Excluir Grupo</span>
                       </button>
+                      </>
                     )}
                   </div>
                 </div>
 
                 {/* Messages Feed */}
-                <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 min-h-[380px] max-h-[520px]">
+                <div ref={chatMessagesContainerRef} className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 min-h-[380px] max-h-[520px]">
                   <div className="flex items-center gap-3">
                     <div className={`h-px flex-1 ${isDark ? 'bg-[#282a33]' : 'bg-[#E8DCCB]'}`} />
                     <span className={`text-[10px] font-black uppercase tracking-widest ${
@@ -5505,18 +5836,53 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   </div>
 
                   <form onSubmit={handleCreateNewGroup} className="p-4 space-y-3 overflow-y-auto flex-1">
-                    <div>
-                      <label className="block text-[11px] font-bold mb-1 opacity-80">Nome do Grupo (#canal)</label>
+                    <div className="flex items-center gap-3">
                       <input
-                        type="text"
-                        value={newGroupName}
-                        onChange={(e) => setNewGroupName(e.target.value)}
-                        placeholder="ex: noturno, plantao-uti, vendas"
-                        required
-                        className={`w-full px-3 py-2 rounded-xl text-xs border outline-none ${
-                          isDark ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-100 border-slate-300 text-slate-900'
-                        }`}
+                        type="file"
+                        ref={managerGroupAvatarInputRef}
+                        accept="image/*"
+                        onChange={handleManagerGroupAvatarSelect}
+                        className="hidden"
                       />
+                      <button
+                        type="button"
+                        onClick={() => managerGroupAvatarInputRef.current?.click()}
+                        className={`w-14 h-14 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center shrink-0 overflow-hidden transition-all cursor-pointer relative group ${
+                          isDark ? 'border-white/20 bg-white/5 hover:border-[#f89642]' : 'border-slate-300 bg-slate-100 hover:border-[#96183c]'
+                        }`}
+                        title="Selecionar imagem do grupo"
+                      >
+                        {newGroupAvatar ? (
+                          <img src={newGroupAvatar} alt="Avatar do grupo" className="w-full h-full object-cover" />
+                        ) : (
+                          <>
+                            <ImageIcon className="w-5 h-5 opacity-60" />
+                            <span className="text-[8px] font-bold opacity-60 mt-0.5">Foto</span>
+                          </>
+                        )}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <label className="block text-[11px] font-bold mb-1 opacity-80">Nome do Grupo (#canal)</label>
+                        <input
+                          type="text"
+                          value={newGroupName}
+                          onChange={(e) => setNewGroupName(e.target.value)}
+                          placeholder="ex: noturno, plantao-uti, vendas"
+                          required
+                          className={`w-full px-3 py-2 rounded-xl text-xs border outline-none ${
+                            isDark ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-100 border-slate-300 text-slate-900'
+                          }`}
+                        />
+                        {newGroupAvatar && (
+                          <button
+                            type="button"
+                            onClick={() => setNewGroupAvatar('')}
+                            className="text-[10px] text-rose-400 hover:underline mt-1 font-semibold cursor-pointer"
+                          >
+                            Remover imagem
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <div>

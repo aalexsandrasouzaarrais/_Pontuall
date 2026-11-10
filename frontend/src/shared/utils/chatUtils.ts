@@ -324,9 +324,28 @@ export function isMessageRelevantForUser(
     return participants.includes(userId) || msg.recipient_id === userId;
   }
 
-  // Se for canal corporativo (#geral, #escalas, #gestao):
+  // Se for canal corporativo (#geral, #escalas, #gestao ou grupo):
   const cleanCompany = (companyId || 'demo').replace(/[^a-zA-Z0-9_-]/g, '_');
   const expectedPrefix = `cmp_${cleanCompany}__`;
+  const rawChan = getDisplayChatChannel(channel);
+
+  if (rawChan.startsWith('grupo_')) {
+    try {
+      const deletedStr = localStorage.getItem(`pontuall_deleted_channels_${cleanCompany}`);
+      if (deletedStr) {
+        const deletedList: string[] = JSON.parse(deletedStr);
+        if (deletedList.includes(rawChan) || deletedList.includes(channel)) return false;
+      }
+      const savedStr = localStorage.getItem(`pontuall_team_channels_${cleanCompany}`);
+      if (savedStr) {
+        const savedChannels: any[] = JSON.parse(savedStr);
+        const found = savedChannels.find((c: any) => c.id === rawChan || c.id === channel);
+        if (found && Array.isArray(found.members) && found.members.length > 0 && !found.members.includes(userId)) {
+          return false;
+        }
+      }
+    } catch {}
+  }
 
   if (channel.startsWith(expectedPrefix)) {
     return true;
@@ -339,5 +358,3 @@ export function isMessageRelevantForUser(
 
   return false;
 }
-
-
