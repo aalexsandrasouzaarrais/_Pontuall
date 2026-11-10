@@ -1658,7 +1658,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
   // Tab 5 (Chat) State - Realtime Supabase
   const [activeChatMode, setActiveChatMode] = useState<'channel' | 'direct'>('channel');
-  const [activeChatChannel, setActiveChatChannel] = useState<string>('geral');
+  const [activeChatChannel, setActiveChatChannel] = useState<string>('');
 
   // Identifica a chave da empresa para isolamento multi-tenant
   const companyKey = useMemo(() => {
@@ -1691,10 +1691,12 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       const saved = localStorage.getItem(`pontuall_team_channels_${companyKey}`);
       if (saved) {
         const parsed: ChatChannelItem[] = JSON.parse(saved);
-        return parsed.filter(c => !deletedIds.has(c.id)).map(c => ({
-          ...c,
-          badge: ['Online', 'Ativo', 'RH'].includes(c.badge) ? '' : c.badge
-        }));
+        return parsed
+          .filter(c => !deletedIds.has(c.id) && c.id !== 'geral' && c.id !== 'escalas' && c.id !== 'gestao')
+          .map(c => ({
+            ...c,
+            badge: ['Online', 'Ativo', 'RH'].includes(c.badge) ? '' : c.badge
+          }));
       }
       return DEFAULT_TEAM_CHANNELS.filter(c => !deletedIds.has(c.id));
     } catch {}
@@ -1708,10 +1710,14 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       const saved = localStorage.getItem(`pontuall_team_channels_${companyKey}`);
       if (saved) {
         const parsed: ChatChannelItem[] = JSON.parse(saved);
-        setTeamChannels(parsed.filter(c => !deletedIds.has(c.id)).map(c => ({
-          ...c,
-          badge: ['Online', 'Ativo', 'RH'].includes(c.badge) ? '' : c.badge
-        })));
+        setTeamChannels(
+          parsed
+            .filter(c => !deletedIds.has(c.id) && c.id !== 'geral' && c.id !== 'escalas' && c.id !== 'gestao')
+            .map(c => ({
+              ...c,
+              badge: ['Online', 'Ativo', 'RH'].includes(c.badge) ? '' : c.badge
+            }))
+        );
       } else {
         setTeamChannels(DEFAULT_TEAM_CHANNELS);
       }
@@ -1830,18 +1836,24 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   // Filtra apenas os canais aos quais o usuário logado pertence (mesmo para RH ou outro Gestor, grupos privados só aparecem para os integrantes selecionados na criação)
   const visibleTeamChannels = useMemo(() => {
     return teamChannels.filter((c) => {
-      if (c.id === 'geral' || c.id === 'escalas' || c.id === 'gestao') return true;
+      if (c.id === 'geral' || c.id === 'escalas' || c.id === 'gestao') return false;
       if (!c.members || c.members.length === 0) return true;
       return Boolean(activeEmployee?.id && c.members.includes(activeEmployee.id));
     });
   }, [teamChannels, activeEmployee?.id]);
 
-  // Se o canal ativo não estiver mais visível (ex: foi excluído ou privado), volta para #geral
+  // Mantém o canal ativo sincronizado com os grupos visíveis
   useEffect(() => {
-    if (activeChatMode === 'channel' && !visibleTeamChannels.some(c => c.id === activeChatChannel)) {
-      setActiveChatChannel(visibleTeamChannels[0]?.id || 'geral');
+    if (visibleTeamChannels.length > 0 && !visibleTeamChannels.some(c => c.id === activeChatChannel)) {
+      setActiveChatChannel(visibleTeamChannels[0].id);
+    } else if (visibleTeamChannels.length === 0 && activeChatChannel !== '') {
+      setActiveChatChannel('');
     }
-  }, [visibleTeamChannels, activeChatChannel, activeChatMode]);
+  }, [visibleTeamChannels, activeChatChannel]);
+
+  const activeChannelInfo = useMemo(() => {
+    return visibleTeamChannels.find(c => c.id === activeChatChannel) || visibleTeamChannels[0] || null;
+  }, [visibleTeamChannels, activeChatChannel]);
 
   // Canal ativo no banco (isolado por empresa e contato)
   const currentChatChannel = useMemo(() => {
@@ -1849,17 +1861,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       if (!selectedDirectEmployee?.id) return `cmp_${companyKey}__direct_none`;
       return getScopedDirectChannel(activeEmployee?.companyId, activeEmployee?.id, selectedDirectEmployee.id);
     }
-    return getScopedChatChannel(activeEmployee?.companyId, activeChatChannel);
-  }, [activeChatMode, selectedDirectEmployee?.id, activeChatChannel, activeEmployee?.companyId, activeEmployee?.id, companyKey]);
-
-  const activeChannelInfo = useMemo(() => {
-    return visibleTeamChannels.find(c => c.id === activeChatChannel) || visibleTeamChannels[0] || {
-      id: 'geral',
-      name: 'geral',
-      desc: 'Comunicação aberta para toda a equipe',
-      badge: ''
-    };
-  }, [visibleTeamChannels, activeChatChannel]);
+    if (!activeChannelInfo?.id) return `cmp_${companyKey}__group_none`;
+    return getScopedChatChannel(activeEmployee?.companyId, activeChannelInfo.id);
+  }, [activeChatMode, selectedDirectEmployee?.id, activeChannelInfo?.id, activeEmployee?.companyId, activeEmployee?.id, companyKey]);
 
   // Carrega e sincroniza canais do Supabase (incluindo fotos de grupos e exclusões feitas por outros gestores/contas)
   useEffect(() => {
@@ -1909,6 +1913,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           data.forEach((d: any) => {
             const cleanId = getDisplayChatChannel(d.id);
             const cleanName = (d.name || '').trim().toLowerCase();
+            if (cleanId === 'geral' || cleanId === 'escalas' || cleanId === 'gestao') return;
             if (deletedIds.has(d.id) || deletedIds.has(cleanId) || deletedNames.has(cleanName)) return;
             loadedFromDb.set(cleanId, {
               id: cleanId,
@@ -2008,7 +2013,10 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     if (activeTab !== 'chat') return;
 
     const fetchMessages = async () => {
-      if (activeChatMode === 'direct' && !selectedDirectEmployee?.id) {
+      if (
+        (activeChatMode === 'direct' && !selectedDirectEmployee?.id) ||
+        (activeChatMode === 'channel' && !activeChannelInfo?.id)
+      ) {
         setChatMessages([]);
         setChatLoading(false);
         return;
@@ -2422,7 +2430,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
     if (activeChatChannel === groupId) {
       const visibleRemaining = remaining.filter(c => {
-        if (c.id === 'geral' || c.id === 'escalas' || c.id === 'gestao') return true;
+        if (c.id === 'geral' || c.id === 'escalas' || c.id === 'gestao') return false;
         if (!c.members || c.members.length === 0) return true;
         return Boolean(activeEmployee?.id && c.members.includes(activeEmployee.id));
       });
@@ -5288,6 +5296,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     </div>
 
                     <div className="space-y-1.5">
+                      {visibleTeamChannels.length === 0 && (
+                        <div className={`p-3 text-center text-[10px] italic rounded-xl border border-dashed ${
+                          isDark ? 'border-white/10 text-slate-500' : 'border-slate-200 text-slate-400'
+                        }`}>
+                          Nenhum grupo criado ainda. Clique em "+ Novo" para criar um grupo.
+                        </div>
+                      )}
                       {visibleTeamChannels.map((chan) => {
                         const isCurrent = activeChatMode === 'channel' && activeChatChannel === chan.id;
                         return (
@@ -5460,7 +5475,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         />
                         <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-[#111216]" />
                       </div>
-                    ) : (
+                    ) : activeChannelInfo ? (
                       <button
                         type="button"
                         onClick={() => {
@@ -5480,13 +5495,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           <ImageIcon className="w-4 h-4 text-white" />
                         </span>
                       </button>
+                    ) : (
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-md shrink-0"
+                        style={{ background: 'linear-gradient(135deg, #640C1E, #F59242)' }}
+                      >
+                        <MessageSquare className="w-5 h-5" />
+                      </div>
                     )}
                     <div>
                       <div className="flex items-center gap-2">
                         <h2 className={`text-sm font-black ${isDark ? 'text-white' : 'text-[#640C1E]'}`}>
                           {activeChatMode === 'direct' 
-                            ? `Chat Privado: ${selectedDirectEmployee?.name}` 
-                            : `#${activeChannelInfo.name}`}
+                            ? `Chat Privado: ${selectedDirectEmployee?.name || 'Selecione um contato'}` 
+                            : activeChannelInfo ? `#${activeChannelInfo.name}` : 'Nenhum grupo ativo'}
                         </h2>
                       </div>
                     </div>
@@ -5500,7 +5522,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       onChange={handleUpdateExistingChannelAvatar}
                       className="hidden"
                     />
-                    {activeChatMode === 'channel' && (
+                    {activeChatMode === 'channel' && activeChannelInfo && (
                       <>
                         <button
                           type="button"
@@ -5554,8 +5576,10 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       <p className="text-xs text-slate-400">Nenhuma mensagem neste canal ainda.</p>
                       <p className="text-[11px] text-slate-500 mt-1">
                         {activeChatMode === 'direct'
-                          ? `Envie uma mensagem direta para ${selectedDirectEmployee?.name}.`
-                          : `Envie a primeira mensagem no canal #${activeChannelInfo.name}!`}
+                          ? `Envie uma mensagem direta para ${selectedDirectEmployee?.name || 'um colaborador'}.`
+                          : activeChannelInfo
+                            ? `Envie a primeira mensagem no canal #${activeChannelInfo.name}!`
+                            : 'Clique em "+ Novo" na barra lateral para criar seu primeiro grupo com a equipe.'}
                       </p>
                     </div>
                   ) : (
@@ -5851,12 +5875,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     type="text"
                     value={newChatInput}
                     onChange={(e) => setNewChatInput(e.target.value)}
+                    disabled={activeChatMode === 'channel' && !activeChannelInfo}
                     placeholder={
                       pendingManagerAttachment
                         ? 'Adicionar legenda para a imagem (opcional)...'
                         : activeChatMode === 'direct'
                           ? `Mensagem privada para ${selectedDirectEmployee?.name || 'Colaborador'}...`
-                          : `Mensagem no canal #${activeChannelInfo.name}...`
+                          : activeChannelInfo
+                            ? `Mensagem no canal #${activeChannelInfo.name}...`
+                            : 'Crie ou selecione um grupo para enviar mensagens...'
                     }
                     className={`flex-1 border rounded-xl px-3.5 py-2.5 text-xs outline-none transition-all ${
                       isDark 
@@ -5868,7 +5895,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   <button
                     type="submit"
                     aria-label="Enviar mensagem"
-                    disabled={!newChatInput.trim() && !pendingManagerAttachment}
+                    disabled={(!newChatInput.trim() && !pendingManagerAttachment) || (activeChatMode === 'channel' && !activeChannelInfo)}
                     className="px-4 py-2.5 rounded-xl font-bold text-xs text-white flex items-center gap-1.5 shadow-md transition-all hover:scale-105 active:scale-95 disabled:opacity-40 disabled:hover:scale-100 cursor-pointer"
                     style={{
                       background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)',

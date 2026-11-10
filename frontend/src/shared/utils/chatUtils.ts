@@ -498,10 +498,15 @@ export function isMessageRelevantForUser(
     return participants.includes(userId) || msg.recipient_id === userId;
   }
 
-  // Se for canal corporativo (#geral, #escalas, #gestao ou grupo):
+  // Se for canal de grupo criado na empresa:
   const cleanCompany = (companyId || 'demo').replace(/[^a-zA-Z0-9_-]/g, '_');
   const expectedPrefix = `cmp_${cleanCompany}__`;
   const rawChan = getDisplayChatChannel(channel);
+
+  // Canais padrão antigos (#geral, #escalas, #gestao) foram descontinuados
+  if (rawChan === 'geral' || rawChan === 'escalas' || rawChan === 'gestao') {
+    return false;
+  }
 
   if (rawChan.startsWith('grupo_')) {
     try {
@@ -525,8 +530,8 @@ export function isMessageRelevantForUser(
     return true;
   }
 
-  // Mensagens sem prefixo (compatibilidade com histórico legado da empresa demo)
-  if (cleanCompany === 'demo' && (channel === 'geral' || channel === 'escalas' || channel === 'gestao' || channel.startsWith('grupo_'))) {
+  // Mensagens sem prefixo (compatibilidade com histórico legado de grupos da empresa demo)
+  if (cleanCompany === 'demo' && channel.startsWith('grupo_')) {
     return true;
   }
 

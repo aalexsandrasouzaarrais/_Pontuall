@@ -66,11 +66,7 @@ export interface ChatChannelItem {
   avatar?: string;
 }
 
-export const DEFAULT_TEAM_CHANNELS: ChatChannelItem[] = [
-  { id: 'geral', name: 'geral', desc: 'Comunicação aberta para toda a equipe', badge: '', unread: 0 },
-  { id: 'escalas', name: 'escalas', desc: 'Dúvidas sobre horários e plantões de fim de semana', badge: '', unread: 0 },
-  { id: 'gestao', name: 'gestao', desc: 'Alinhamento direto entre liderança e supervisão', badge: '', unread: 0 },
-];
+export const DEFAULT_TEAM_CHANNELS: ChatChannelItem[] = [];
 
 export const ChatModal: React.FC<ChatModalProps> = ({
   isOpen,
@@ -97,7 +93,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
   // Modo: 'direct' (1-on-1 com a Gestora ou Colaborador) ou 'group' (canais da equipe)
   const [chatType, setChatType] = useState<'direct' | 'group'>('group');
-  const [selectedGroupId, setSelectedGroupId] = useState<string>('geral');
+  const [selectedGroupId, setSelectedGroupId] = useState<string>('');
 
   // Modais secundários: Ver Integrantes, Confirmar Exclusão e Criar Novo Grupo
   const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
@@ -239,10 +235,12 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
       if (saved) {
         const parsed: ChatChannelItem[] = JSON.parse(saved);
-        return parsed.filter(c => !deletedIds.has(c.id)).map(c => ({
-          ...c,
-          badge: ['Online', 'Ativo', 'RH'].includes(c.badge) ? '' : c.badge
-        }));
+        return parsed
+          .filter(c => !deletedIds.has(c.id) && c.id !== 'geral' && c.id !== 'escalas' && c.id !== 'gestao')
+          .map(c => ({
+            ...c,
+            badge: ['Online', 'Ativo', 'RH'].includes(c.badge) ? '' : c.badge
+          }));
       }
     } catch {}
     return DEFAULT_TEAM_CHANNELS;
@@ -257,10 +255,14 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
       if (saved) {
         const parsed: ChatChannelItem[] = JSON.parse(saved);
-        setTeamChannels(parsed.filter(c => !deletedIds.has(c.id)).map(c => ({
-          ...c,
-          badge: ['Online', 'Ativo', 'RH'].includes(c.badge) ? '' : c.badge
-        })));
+        setTeamChannels(
+          parsed
+            .filter(c => !deletedIds.has(c.id) && c.id !== 'geral' && c.id !== 'escalas' && c.id !== 'gestao')
+            .map(c => ({
+              ...c,
+              badge: ['Online', 'Ativo', 'RH'].includes(c.badge) ? '' : c.badge
+            }))
+        );
       } else {
         setTeamChannels(DEFAULT_TEAM_CHANNELS);
       }
@@ -277,11 +279,24 @@ export const ChatModal: React.FC<ChatModalProps> = ({
   // Filtra apenas os canais aos quais o usuário pertence (inclusive Gestor/RH só vê grupos privados onde está incluído)
   const visibleGroupChannels = useMemo(() => {
     return teamChannels.filter((c) => {
-      if (c.id === 'geral' || c.id === 'escalas' || c.id === 'gestao') return true;
+      if (c.id === 'geral' || c.id === 'escalas' || c.id === 'gestao') return false;
       if (!c.members || c.members.length === 0) return true;
       return c.members.includes(currentEmployee.id);
     });
   }, [teamChannels, currentEmployee.id]);
+
+  // Mantém o grupo selecionado válido conforme a lista de grupos visíveis
+  useEffect(() => {
+    if (visibleGroupChannels.length > 0 && !visibleGroupChannels.some(c => c.id === selectedGroupId)) {
+      setSelectedGroupId(visibleGroupChannels[0].id);
+    } else if (visibleGroupChannels.length === 0 && selectedGroupId !== '') {
+      setSelectedGroupId('');
+    }
+  }, [visibleGroupChannels, selectedGroupId]);
+
+  const activeGroup = useMemo(() => {
+    return visibleGroupChannels.find(c => c.id === selectedGroupId) || visibleGroupChannels[0] || null;
+  }, [visibleGroupChannels, selectedGroupId]);
 
   // Canal atual ativo no banco (isolado por empresa/participantes)
   const currentChannel = useMemo(() => {
@@ -289,20 +304,13 @@ export const ChatModal: React.FC<ChatModalProps> = ({
       if (!selectedDirectEmployee?.id) return `cmp_${companyKey}__direct_none`;
       return getScopedDirectChannel(currentEmployee?.companyId, currentEmployee?.id, selectedDirectEmployee.id);
     }
-    return getScopedChatChannel(currentEmployee?.companyId, selectedGroupId);
-  }, [chatType, selectedDirectEmployee?.id, selectedGroupId, currentEmployee?.companyId, currentEmployee?.id, companyKey]);
-
-  const activeGroup = useMemo(() => {
-    return visibleGroupChannels.find(c => c.id === selectedGroupId) || visibleGroupChannels[0] || {
-      id: 'geral',
-      name: 'geral',
-      desc: 'Canal de comunicação da equipe',
-      badge: 'Equipe'
-    };
-  }, [visibleGroupChannels, selectedGroupId]);
+    if (!activeGroup?.id) return `cmp_${companyKey}__group_none`;
+    return getScopedChatChannel(currentEmployee?.companyId, activeGroup.id);
+  }, [chatType, selectedDirectEmployee?.id, activeGroup?.id, currentEmployee?.companyId, currentEmployee?.id, companyKey]);
 
   // Lista de integrantes do grupo ativo
   const groupMembersList = useMemo(() => {
+    if (!activeGroup) return [];
     if (!activeGroup.members || activeGroup.members.length === 0) {
       return allEmployeesList;
     }
@@ -391,6 +399,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
           data.forEach((d: any) => {
             const cleanId = getDisplayChatChannel(d.id);
             const cleanName = (d.name || '').trim().toLowerCase();
+            if (cleanId === 'geral' || cleanId === 'escalas' || cleanId === 'gestao') return;
             if (deletedIds.has(d.id) || deletedIds.has(cleanId) || deletedNames.has(cleanName)) return;
             loadedFromDb.set(cleanId, {
               id: cleanId,
@@ -494,7 +503,10 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     if (!isOpen) return;
 
     const fetchMessages = async () => {
-      if (chatType === 'direct' && !selectedDirectEmployee?.id) {
+      if (
+        (chatType === 'direct' && !selectedDirectEmployee?.id) ||
+        (chatType === 'group' && !activeGroup?.id)
+      ) {
         setMessages([]);
         setLoading(false);
         return;
@@ -591,7 +603,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
             } catch {}
 
             if (selectedGroupId === deletedId) {
-              setSelectedGroupId('geral');
+              setSelectedGroupId('');
             }
             return;
           }
@@ -863,6 +875,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
   // Exclusão do canal de grupo
   const handleDeleteActiveGroup = async () => {
+    if (!activeGroup) return;
     setIsDeleting(true);
     const groupId = activeGroup.id;
     const groupName = activeGroup.name;
@@ -907,7 +920,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     setIsDeleting(false);
     setIsConfirmDeleteOpen(false);
     setIsMembersModalOpen(false);
-    setSelectedGroupId('geral');
+    setSelectedGroupId('');
   };
 
   return (
@@ -926,7 +939,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
             <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center border border-white/30 shrink-0 overflow-hidden">
               {chatType === 'direct' ? (
                 <Lock className="w-4 h-4 text-[#faf0ac]" />
-              ) : activeGroup.avatar ? (
+              ) : activeGroup?.avatar ? (
                 <img src={activeGroup.avatar} alt={activeGroup.name} className="w-full h-full object-cover" />
               ) : (
                 <Users className="w-4 h-4 text-[#faf0ac]" />
@@ -937,9 +950,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                 <h3 className="font-extrabold text-sm leading-tight truncate">
                   {chatType === 'direct' 
                     ? `Direto com ${selectedDirectEmployee?.name || 'Contato'}` 
-                    : `#${activeGroup.name}`}
+                    : activeGroup ? `#${activeGroup.name}` : 'Grupos da Equipe'}
                 </h3>
-                {chatType === 'group' && activeGroup.badge && (
+                {chatType === 'group' && activeGroup?.badge && (
                   <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-white/20 text-[#faf0ac] shrink-0 border border-white/25">
                     {activeGroup.badge}
                   </span>
@@ -953,7 +966,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               <p className="text-[11px] text-[#faf0ac]/90 truncate">
                 {chatType === 'direct' 
                   ? `${selectedDirectEmployee?.role || 'Colaborador'} • Canal Privado 1-a-1` 
-                  : activeGroup.desc}
+                  : activeGroup ? activeGroup.desc : 'Nenhum grupo ativo no momento'}
               </p>
             </div>
           </div>
@@ -967,7 +980,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               className="hidden"
             />
             {/* Botão Alterar Imagem do Grupo */}
-            {chatType === 'group' && isManager && (
+            {chatType === 'group' && activeGroup && isManager && (
               <button
                 type="button"
                 onClick={() => activeGroupAvatarInputRef.current?.click()}
@@ -978,7 +991,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               </button>
             )}
             {/* Botão Ver Integrantes */}
-            {chatType === 'group' && (
+            {chatType === 'group' && activeGroup && (
               <button
                 type="button"
                 onClick={() => setIsMembersModalOpen(true)}
@@ -991,7 +1004,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
             )}
 
             {/* Botão Excluir Grupo */}
-            {chatType === 'group' && isManager && (
+            {chatType === 'group' && activeGroup && isManager && (
               <button
                 type="button"
                 onClick={() => setIsConfirmDeleteOpen(true)}
@@ -1058,6 +1071,11 @@ export const ChatModal: React.FC<ChatModalProps> = ({
             }`}>
               Canais:
             </span>
+            {visibleGroupChannels.length === 0 && (
+              <span className="text-[11px] text-slate-400 italic mr-1">
+                Nenhum grupo criado ainda
+              </span>
+            )}
             {visibleGroupChannels.map((chan) => {
               const isSelected = selectedGroupId === chan.id;
               return (
@@ -1206,7 +1224,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               <p className="text-[11px] text-slate-500 mt-1">
                 {chatType === 'direct'
                   ? `Envie uma mensagem direta para ${selectedDirectEmployee?.name || 'seu contato'}.`
-                  : `Envie a primeira mensagem no canal #${activeGroup.name}!`}
+                  : activeGroup
+                    ? `Envie a primeira mensagem no canal #${activeGroup.name}!`
+                    : (isManager ? 'Clique em "+ Novo Grupo" acima para criar um grupo com os colaboradores.' : 'Você ainda não participa de nenhum grupo criado pela gestão.')}
               </p>
             </div>
           )}
@@ -1487,12 +1507,15 @@ export const ChatModal: React.FC<ChatModalProps> = ({
             type="text"
             value={inputMsg}
             onChange={(e) => setInputMsg(e.target.value)}
+            disabled={chatType === 'group' && !activeGroup}
             placeholder={
               pendingAttachment
                 ? 'Adicionar legenda para a imagem (opcional)...'
                 : chatType === 'direct'
                   ? (isManager ? `Mensagem direta para ${selectedDirectEmployee?.name || 'Colaborador'}...` : 'Mensagem privada para a gestora Camila...')
-                  : `Mensagem no canal #${activeGroup.name}...`
+                  : activeGroup
+                    ? `Mensagem no canal #${activeGroup.name}...`
+                    : 'Crie ou selecione um grupo para enviar mensagens...'
             }
             className={`flex-1 rounded-xl px-3 py-2.5 text-xs focus:outline-none transition-colors border ${
               isLightTheme
@@ -1503,7 +1526,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
           <button
             type="submit"
-            disabled={!inputMsg.trim() && !pendingAttachment}
+            disabled={(!inputMsg.trim() && !pendingAttachment) || (chatType === 'group' && !activeGroup)}
             className="p-2.5 text-white hover:brightness-110 rounded-xl shadow-xs transition-all disabled:opacity-40 disabled:hover:brightness-100 cursor-pointer"
             style={{ background: 'linear-gradient(135deg, #96183c, #f89642)' }}
             title="Enviar mensagem"
@@ -1550,7 +1573,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         )}
 
         {/* ─── MODAL: VER INTEGRANTES DO GRUPO ─── */}
-        {isMembersModalOpen && (
+        {isMembersModalOpen && activeGroup && (
           <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
             <div className={`w-full max-w-sm rounded-3xl border shadow-2xl overflow-hidden flex flex-col max-h-[85%] ${
               isLightTheme ? 'bg-white border-slate-200 text-slate-800' : 'bg-[#161720] border-white/15 text-white'
@@ -1837,7 +1860,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         )}
 
         {/* ─── MODAL: CONFIRMAR EXCLUSÃO DO GRUPO ─── */}
-        {isConfirmDeleteOpen && (
+        {isConfirmDeleteOpen && activeGroup && (
           <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
             <div className={`w-full max-w-sm rounded-3xl border shadow-2xl p-5 text-center transition-all ${
               isLightTheme ? 'bg-white border-slate-200 text-slate-800' : 'bg-[#161720] border-white/15 text-white'
