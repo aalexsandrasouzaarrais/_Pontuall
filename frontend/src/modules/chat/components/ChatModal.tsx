@@ -1373,7 +1373,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                       }`}
                     >
                       <span className="font-extrabold block opacity-95">
-                        ↩ {parsed.replyTo.sender_name}
+                        {parsed.replyTo.sender_name}
                       </span>
                       <span className="line-clamp-2 opacity-80 break-words">
                         {parsed.replyTo.text}
