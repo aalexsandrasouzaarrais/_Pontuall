@@ -70,7 +70,7 @@ interface EmployeeMainViewProps {
   isLightTheme: boolean;
   employees?: Employee[];
   justifications?: AbsenceJustification[];
-  onOpenJustificationModal?: (shiftId?: string, date?: string, type?: 'absence' | 'delay', delayMinutes?: number, reason?: string) => void;
+  onOpenJustificationModal?: (shiftId?: string, date?: string, type?: 'absence' | 'delay' | 'early_entry' | 'early_leave', delayMinutes?: number, reason?: string) => void;
 }
 
 export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
@@ -192,6 +192,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
       justificationReasonDefault?: string;
       isGpsOk?: boolean;
       delayInfo?: {
+        kind: 'delay' | 'early_entry' | 'early_leave';
         minutes: number;
         isJustified: boolean;
         justificationStatus?: 'approved' | 'pending' | 'rejected' | 'none';
@@ -202,10 +203,20 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
 
     const items: OccurrenceItem[] = [];
 
-    const evaluateDelayInfo = (shift: Shift, dateStr: string, diffMin: number): OccurrenceItem['delayInfo'] => {
+    const evaluateDeviationInfo = (
+      shift: Shift,
+      dateStr: string,
+      diffMin: number,
+      kind: 'delay' | 'early_entry' | 'early_leave'
+    ): OccurrenceItem['delayInfo'] => {
       const notes = shift.notes || '';
-      const matchAtrasoNote = notes.match(/\[Atraso \d+m:\s*([^\]]+)\]/i);
-      const rawNoteReason = matchAtrasoNote ? matchAtrasoNote[1].trim() : '';
+      const tagRegex = kind === 'early_entry'
+        ? /\[Entrada Antecipada \d+m:\s*([^\]]+)\]/i
+        : kind === 'early_leave'
+          ? /\[Sa[íi]da Antecipada \d+m:\s*([^\]]+)\]/i
+          : /\[Atraso \d+m:\s*([^\]]+)\]/i;
+      const matchNote = notes.match(tagRegex);
+      const rawNoteReason = matchNote ? matchNote[1].trim() : '';
       const lowerNote = rawNoteReason.toLowerCase();
       const hasSubmittedNoteReason = Boolean(
         rawNoteReason &&
@@ -216,27 +227,47 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
       const matchingJust = (justifications || []).find(j => {
         const jDate = (j.date || (j as any).Dta_Ausencia || '').slice(0, 10);
         const isThisEmp = !j.employeeId || j.employeeId === employee.id;
-        return isThisEmp && (j.shiftId === shift.id || jDate === dateStr);
+        if (!isThisEmp || !(j.shiftId === shift.id || jDate === dateStr)) return false;
+
+        const rLower = (j.reason || '').toLowerCase();
+        if (kind === 'early_entry') return rLower.includes('entrada antecipada');
+        if (kind === 'early_leave') return rLower.includes('saída antecipada') || rLower.includes('saida antecipada');
+        return rLower.includes('atraso') || (
+          !rLower.includes('entrada antecipada') &&
+          !rLower.includes('saída antecipada') &&
+          !rLower.includes('saida antecipada') &&
+          !rLower.includes('ausência') &&
+          !rLower.includes('falta')
+        );
       });
 
       const justStatus = matchingJust?.status || (matchingJust as any)?.Tpo_Status;
 
       const isManagerAbonado =
-        notes.includes('[ABONO GESTOR') ||
+        justStatus === 'approved' ||
         notes.includes('HOMOLOGADO GESTOR') ||
-        shift.attendanceStatus === 'justified' ||
-        justStatus === 'approved';
+        (kind === 'delay' && (notes.includes('[ABONO GESTOR: Atraso') || shift.attendanceStatus === 'justified')) ||
+        (kind === 'early_entry' && notes.includes('[ABONO GESTOR: Entrada Antecipada')) ||
+        (kind === 'early_leave' && notes.includes('[ABONO GESTOR: Saída Antecipada'));
 
       const isManagerRejected =
-        notes.includes('Débito de Atraso Confirmado') ||
-        justStatus === 'rejected';
+        justStatus === 'rejected' ||
+        (kind === 'delay' && notes.includes('Débito de Atraso Confirmado')) ||
+        (kind === 'early_entry' && notes.includes('Entrada Antecipada Não Homologada')) ||
+        (kind === 'early_leave' && notes.includes('Saída Antecipada Não Abonada'));
+
+      const pendingNoteTag = kind === 'early_entry'
+        ? '[Justificativa Entrada Antecipada:'
+        : kind === 'early_leave'
+          ? '[Justificativa Saída Antecipada:'
+          : '[Justificativa Atraso:';
 
       const isPendingApproval =
         !isManagerAbonado &&
         !isManagerRejected &&
         (
           justStatus === 'pending' ||
-          notes.includes('[Justificativa Atraso:') ||
+          notes.includes(pendingNoteTag) ||
           hasSubmittedNoteReason
         );
 
@@ -249,6 +280,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
             : 'none';
 
       return {
+        kind,
         minutes: diffMin,
         isJustified: isManagerAbonado,
         justificationStatus,
@@ -266,50 +298,70 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
     if (dbPunches && dbPunches.length > 0) {
       dbPunches.forEach((punch: any, idx: number) => {
         const dt = punch.Dta_Hora_Registro ? new Date(punch.Dta_Hora_Registro) : new Date();
-        const dateStr = !isNaN(dt.getTime()) ? dt.toISOString().slice(0, 10) : todayStr;
+        const dateStr = !isNaN(dt.getTime()) ? toLocalDateString(dt) : todayStr;
         const dateFormatted = !isNaN(dt.getTime()) ? dt.toLocaleDateString('pt-BR') : todayStr;
         const timeFormatted = !isNaN(dt.getTime()) ? dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '--:--';
         const isEntrada = punch.Tpo_Registro?.toLowerCase() === 'entrada';
         const isValid = punch.Flg_Gps_Validado !== false;
 
-        // Verifica se essa batida de entrada teve atraso em relação ao turno
+        // Verifica desvios de horário em relação ao turno (entrada atrasada/antecipada ou saída antecipada)
         const matchingShift = punch.Idf_Turno 
           ? empShifts.find(s => s.id === punch.Idf_Turno) 
           : shiftByDate.get(dateStr);
 
         let delayInfo: OccurrenceItem['delayInfo'] = undefined;
-        let isAtraso = false;
+        let isDeviation = false;
 
-        if (isEntrada && matchingShift && matchingShift.startTime) {
-          const [inH, inM] = timeFormatted.split(':').map(Number);
-          const [startH, startM] = matchingShift.startTime.split(':').map(Number);
-          const diffMin = (inH * 60 + inM) - (startH * 60 + startM);
-
-          if (diffMin > 10) { // Tolerância CLT (Art. 58 § 1º)
-            isAtraso = true;
-            delayInfo = evaluateDelayInfo(matchingShift, dateStr, diffMin);
+        if (isEntrada && matchingShift?.startTime) {
+          const tol = evaluatePunchTolerance(matchingShift.startTime, timeFormatted, 'entrada', 10);
+          if (tol.isLate) {
+            isDeviation = true;
+            delayInfo = evaluateDeviationInfo(matchingShift, dateStr, tol.diffMinutes, 'delay');
+          } else if (tol.isEarly) {
+            isDeviation = true;
+            delayInfo = evaluateDeviationInfo(matchingShift, dateStr, tol.diffMinutes, 'early_entry');
+          }
+        } else if (!isEntrada && matchingShift?.endTime) {
+          const tol = evaluatePunchTolerance(matchingShift.endTime, timeFormatted, 'saida', 10);
+          if (tol.isEarlyLeave) {
+            isDeviation = true;
+            delayInfo = evaluateDeviationInfo(matchingShift, dateStr, tol.diffMinutes, 'early_leave');
           }
         }
 
         // Subtítulo descritivo
         let subtitle = punch.Des_Endereco || 'Localização Registrada';
         if (delayInfo) {
+          const kindLabel = delayInfo.kind === 'early_entry'
+            ? 'Entrada antecipada'
+            : delayInfo.kind === 'early_leave'
+              ? 'Saída antecipada'
+              : 'Atraso';
+          const refTime = delayInfo.kind === 'early_leave'
+            ? (matchingShift?.endTime || '17:00')
+            : (matchingShift?.startTime || '08:00');
           if (delayInfo.justificationStatus === 'approved') {
-            subtitle = `${subtitle} • Atraso abonado pelo gestor${delayInfo.justificationReason ? `: "${delayInfo.justificationReason}"` : ''}`;
+            subtitle = `${subtitle} • ${kindLabel} abonada pelo gestor${delayInfo.justificationReason ? `: "${delayInfo.justificationReason}"` : ''}`;
           } else if (delayInfo.justificationStatus === 'pending') {
             subtitle = `${subtitle} • Justificativa em análise pelo gestor${delayInfo.justificationReason ? `: "${delayInfo.justificationReason}"` : ''}`;
           } else if (delayInfo.justificationStatus === 'rejected') {
-            subtitle = `${subtitle} • Justificativa não homologada (sujeito a débito)`;
+            subtitle = `${subtitle} • Justificativa não homologada`;
           } else {
-            subtitle = `${subtitle} • Horário previsto: ${matchingShift?.startTime || '08:00'}`;
+            subtitle = `${subtitle} • Horário previsto: ${refTime}`;
           }
         }
+
+        const defaultReason = delayInfo?.kind === 'early_entry'
+          ? `Justificativa de entrada antecipada (${delayInfo.minutes} min antes) no dia ${dateFormatted}`
+          : delayInfo?.kind === 'early_leave'
+            ? `Justificativa de saída antecipada (${delayInfo.minutes} min antes) no dia ${dateFormatted}`
+            : `Justificativa de atraso de ${delayInfo?.minutes || ''} minutos no dia ${dateFormatted}`;
 
         items.push({
           id: punch.Idf_Registro_Ponto ? `punch-${punch.Idf_Registro_Ponto}` : `punch-${idx}`,
           date: dateStr,
           dateFormatted,
-          type: isAtraso ? 'atraso' : 'presenca',
+          type: isDeviation ? 'atraso' : 'presenca',
           title: isEntrada ? `Entrada: ${timeFormatted}` : `Saída: ${timeFormatted}`,
           subtitle,
           timeDisplay: timeFormatted,
@@ -319,8 +371,8 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
             : (isLightTheme ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-amber-500/10 text-amber-300 border-amber-500/20'),
           address: punch.Des_Endereco,
           shiftId: matchingShift?.id,
-          canJustify: Boolean(isAtraso && delayInfo && delayInfo.justificationStatus === 'none'),
-          justificationReasonDefault: `Justificativa de atraso de ${delayInfo?.minutes || ''} minutos no dia ${dateFormatted}`,
+          canJustify: Boolean(isDeviation && delayInfo && delayInfo.justificationStatus === 'none'),
+          justificationReasonDefault: defaultReason,
           isGpsOk: isValid,
           delayInfo
         });
@@ -385,30 +437,32 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
         });
       }
 
-      // 3. Fallback se dbPunches estiver vazio mas houver turnos com checkInTime
+      // 3. Fallback se dbPunches estiver vazio mas houver turnos com checkInTime / checkOutTime
       if ((!dbPunches || dbPunches.length === 0) && hasPunchIn && !items.some(it => it.shiftId === shift.id)) {
         const isGpsOk = shift.checkInLocation?.gpsValidated !== false;
-        let isAtraso = false;
-        let delayInfo: OccurrenceItem['delayInfo'] = undefined;
+        let isEntryDeviation = false;
+        let entryDelayInfo: OccurrenceItem['delayInfo'] = undefined;
 
         if (shift.startTime && shift.checkInTime) {
-          const [inH, inM] = shift.checkInTime.split(':').map(Number);
-          const [startH, startM] = shift.startTime.split(':').map(Number);
-          const diffMin = (inH * 60 + inM) - (startH * 60 + startM);
-          if (diffMin > 10) {
-            isAtraso = true;
-            delayInfo = evaluateDelayInfo(shift, shift.date, diffMin);
+          const tol = evaluatePunchTolerance(shift.startTime, shift.checkInTime, 'entrada', 10);
+          if (tol.isLate) {
+            isEntryDeviation = true;
+            entryDelayInfo = evaluateDeviationInfo(shift, shift.date, tol.diffMinutes, 'delay');
+          } else if (tol.isEarly) {
+            isEntryDeviation = true;
+            entryDelayInfo = evaluateDeviationInfo(shift, shift.date, tol.diffMinutes, 'early_entry');
           }
         }
 
-        let fallbackSubtitle = shift.checkInLocation?.address || shift.workplace || 'Posto Presencial';
-        if (delayInfo) {
-          if (delayInfo.justificationStatus === 'approved') {
-            fallbackSubtitle = `${fallbackSubtitle} • Atraso abonado pelo gestor`;
-          } else if (delayInfo.justificationStatus === 'pending') {
-            fallbackSubtitle = `${fallbackSubtitle} • Justificativa em análise pelo gestor`;
-          } else if (delayInfo.justificationStatus === 'rejected') {
-            fallbackSubtitle = `${fallbackSubtitle} • Justificativa não homologada`;
+        let entrySubtitle = shift.checkInLocation?.address || shift.workplace || 'Posto Presencial';
+        if (entryDelayInfo) {
+          const label = entryDelayInfo.kind === 'early_entry' ? 'Entrada antecipada' : 'Atraso';
+          if (entryDelayInfo.justificationStatus === 'approved') {
+            entrySubtitle = `${entrySubtitle} • ${label} abonado pelo gestor`;
+          } else if (entryDelayInfo.justificationStatus === 'pending') {
+            entrySubtitle = `${entrySubtitle} • Justificativa em análise pelo gestor`;
+          } else if (entryDelayInfo.justificationStatus === 'rejected') {
+            entrySubtitle = `${entrySubtitle} • Justificativa não homologada`;
           }
         }
 
@@ -416,20 +470,66 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
           id: `shift-punch-${shift.id}`,
           date: shift.date,
           dateFormatted,
-          type: isAtraso ? 'atraso' : 'presenca',
-          title: `Entrada: ${shift.checkInTime}${shift.checkOutTime ? ` • Saída: ${shift.checkOutTime}` : ''}`,
-          subtitle: fallbackSubtitle,
-          timeDisplay: shift.checkInTime,
+          type: isEntryDeviation ? 'atraso' : 'presenca',
+          title: `Entrada: ${shift.checkInTime}`,
+          subtitle: entrySubtitle,
+          timeDisplay: shift.checkInTime!,
           badgeText: isGpsOk ? 'GPS OK' : 'Fora do Raio',
           badgeClass: isGpsOk
             ? (isLightTheme ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-white/10 text-slate-300 border-white/10')
             : (isLightTheme ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-amber-500/10 text-amber-300 border-amber-500/20'),
           shiftId: shift.id,
-          canJustify: Boolean(isAtraso && delayInfo && delayInfo.justificationStatus === 'none'),
-          justificationReasonDefault: `Justificativa de atraso de ${delayInfo?.minutes || ''} minutos no dia ${dateFormatted}`,
+          canJustify: Boolean(isEntryDeviation && entryDelayInfo && entryDelayInfo.justificationStatus === 'none'),
+          justificationReasonDefault: entryDelayInfo?.kind === 'early_entry'
+            ? `Justificativa de entrada antecipada (${entryDelayInfo.minutes} min antes) no dia ${dateFormatted}`
+            : `Justificativa de atraso de ${entryDelayInfo?.minutes || ''} minutos no dia ${dateFormatted}`,
           isGpsOk,
-          delayInfo
+          delayInfo: entryDelayInfo
         });
+
+        if (shift.checkOutTime) {
+          const isOutGpsOk = shift.checkOutLocation?.gpsValidated !== false;
+          let isExitDeviation = false;
+          let exitDelayInfo: OccurrenceItem['delayInfo'] = undefined;
+
+          if (shift.endTime) {
+            const tol = evaluatePunchTolerance(shift.endTime, shift.checkOutTime, 'saida', 10);
+            if (tol.isEarlyLeave) {
+              isExitDeviation = true;
+              exitDelayInfo = evaluateDeviationInfo(shift, shift.date, tol.diffMinutes, 'early_leave');
+            }
+          }
+
+          let exitSubtitle = shift.checkOutLocation?.address || shift.workplace || 'Posto Presencial';
+          if (exitDelayInfo) {
+            if (exitDelayInfo.justificationStatus === 'approved') {
+              exitSubtitle = `${exitSubtitle} • Saída antecipada abonada pelo gestor`;
+            } else if (exitDelayInfo.justificationStatus === 'pending') {
+              exitSubtitle = `${exitSubtitle} • Justificativa em análise pelo gestor`;
+            } else if (exitDelayInfo.justificationStatus === 'rejected') {
+              exitSubtitle = `${exitSubtitle} • Justificativa não homologada`;
+            }
+          }
+
+          items.push({
+            id: `shift-punch-out-${shift.id}`,
+            date: shift.date,
+            dateFormatted,
+            type: isExitDeviation ? 'atraso' : 'presenca',
+            title: `Saída: ${shift.checkOutTime}`,
+            subtitle: exitSubtitle,
+            timeDisplay: shift.checkOutTime,
+            badgeText: isOutGpsOk ? 'GPS OK' : 'Fora do Raio',
+            badgeClass: isOutGpsOk
+              ? (isLightTheme ? 'bg-slate-100 text-slate-700 border-slate-200' : 'bg-white/10 text-slate-300 border-white/10')
+              : (isLightTheme ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-amber-500/10 text-amber-300 border-amber-500/20'),
+            shiftId: shift.id,
+            canJustify: Boolean(isExitDeviation && exitDelayInfo && exitDelayInfo.justificationStatus === 'none'),
+            justificationReasonDefault: `Justificativa de saída antecipada (${exitDelayInfo?.minutes || ''} min antes) no dia ${dateFormatted}`,
+            isGpsOk: isOutGpsOk,
+            delayInfo: exitDelayInfo
+          });
+        }
       }
     });
 
@@ -439,6 +539,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
 
   const presencasCount = occurrences.filter(o => o.type === 'presenca' || o.type === 'atraso').length;
   const faltasCount = occurrences.filter(o => o.type === 'falta').length;
+  const pendingUnjustifiedAbsencesCount = occurrences.filter(o => o.type === 'falta' && o.canJustify).length;
   const atrasosCount = occurrences.filter(o => Boolean(o.delayInfo)).length;
   const justificadosCount = occurrences.filter(o => o.type === 'justificado' || o.delayInfo?.justificationStatus === 'approved').length;
 
@@ -1853,7 +1954,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                       : 'text-slate-400 hover:bg-white/10'
                 }`}
               >
-                <span>Atrasos</span>
+                <span>Atrasos / Saídas</span>
                 <span className="text-[10px] opacity-75 font-mono font-normal">({atrasosCount})</span>
               </button>
 
@@ -1877,8 +1978,8 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
 
             {/* Content List */}
             <div className="p-3 sm:p-5 overflow-y-auto overflow-x-hidden space-y-2 sm:space-y-2.5 flex-1 custom-scrollbar">
-              {/* Banner discreto se houver faltas sem justificativa */}
-              {faltasCount > 0 && historyFilter !== 'presencas' && (
+              {/* Banner discreto apenas quando houver faltas ainda não justificadas */}
+              {pendingUnjustifiedAbsencesCount > 0 && historyFilter !== 'presencas' && (
                 <div className={`p-3 sm:p-3.5 rounded-xl sm:rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 text-xs ${
                   isLightTheme
                     ? 'bg-rose-50/70 border-rose-200 text-rose-900'
@@ -1888,7 +1989,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                     <span className="w-2 h-2 rounded-full bg-[#96183c] shrink-0" />
                     <div>
                       <p className="font-bold text-[11px] sm:text-xs">
-                        Você possui {faltasCount} {faltasCount === 1 ? 'ausência pendente de justificativa' : 'ausências pendentes de justificativa'}.
+                        Você possui {pendingUnjustifiedAbsencesCount} {pendingUnjustifiedAbsencesCount === 1 ? 'ausência pendente de justificativa' : 'ausências pendentes de justificativa'}.
                       </p>
                       <p className="text-[10px] sm:text-[11px] opacity-80">
                         Envie seu atestado médico ou declaração para análise e homologação do gestor.
@@ -1898,17 +1999,18 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      const firstPending = occurrences.find(o => o.canJustify);
+                      const firstPending = occurrences.find(o => o.type === 'falta' && o.canJustify) || occurrences.find(o => o.canJustify);
                       if (firstPending && onOpenJustificationModal) {
                         setIsHistoryOpen(false);
                         onOpenJustificationModal(
                           firstPending.shiftId,
                           firstPending.date,
-                          firstPending.type === 'falta' ? 'absence' : 'delay',
+                          firstPending.type === 'falta' ? 'absence' : (firstPending.delayInfo?.kind || 'delay'),
                           firstPending.delayInfo?.minutes
                         );
-                      } else {
-                        setHistoryFilter('faltas');
+                      } else if (onOpenJustificationModal) {
+                        setIsHistoryOpen(false);
+                        onOpenJustificationModal();
                       }
                     }}
                     className={`w-full sm:w-auto px-3 py-1.5 rounded-xl border text-[11px] sm:text-xs font-bold transition-all cursor-pointer shrink-0 text-center ${
@@ -1930,10 +2032,15 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
               ) : filteredOccurrences && filteredOccurrences.length > 0 ? (
                 filteredOccurrences.map((item) => {
                   const isEntrada = item.title.toLowerCase().startsWith('entrada');
-                  const isSaida = item.title.toLowerCase().startsWith('saída') || item.title.toLowerCase().startsWith('saida');
                   const isFalta = item.type === 'falta';
                   const isAtraso = Boolean(item.delayInfo);
                   const isDelayJustified = item.delayInfo?.isJustified;
+                  const deviationKind = item.delayInfo?.kind || 'delay';
+                  const deviationBadgeText = deviationKind === 'early_entry'
+                    ? (isDelayJustified ? `Entrada antecipada justificada (-${item.delayInfo?.minutes}m)` : `Entrada antecipada (-${item.delayInfo?.minutes}m)`)
+                    : deviationKind === 'early_leave'
+                      ? (isDelayJustified ? `Saída antecipada justificada (-${item.delayInfo?.minutes}m)` : `Saída antecipada (-${item.delayInfo?.minutes}m)`)
+                      : (isDelayJustified ? `Atraso justificado (+${item.delayInfo?.minutes}m)` : `Atraso (+${item.delayInfo?.minutes}m)`);
 
                   return (
                     <div
@@ -1984,9 +2091,9 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                         </span>
                       </div>
 
-                      {/* Linha 2: Badges de Status (Atraso, GPS, Justificativa) e Botão Justificar */}
+                      {/* Linha 2: Badges de Status (Atraso/Antecipação, GPS, Justificativa) e Botão Justificar */}
                       <div className="flex items-center gap-1.5 flex-wrap mt-2">
-                        {/* Badge de Atraso se aplicável */}
+                        {/* Badge de Desvio de Horário se aplicável */}
                         {isAtraso && (
                           <span
                             className="text-[10px] sm:text-[11px] px-2 py-0.5 rounded-full font-black border shadow-xs shrink-0"
@@ -2000,10 +2107,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                                   : { backgroundColor: 'rgba(245, 158, 11, 0.25)', color: '#fde68a', borderColor: 'rgba(245, 158, 11, 0.4)' }
                             }
                           >
-                            {isDelayJustified
-                              ? `Atraso justificado (+${item.delayInfo?.minutes}m)`
-                              : `Atraso (+${item.delayInfo?.minutes}m)`
-                            }
+                            {deviationBadgeText}
                           </span>
                         )}
 
@@ -2040,7 +2144,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                           }
                         </span>
 
-                        {/* Ação de Justificar (Apenas se a falta ou o atraso não foi justificado) */}
+                        {/* Ação de Justificar (Falta, Atraso, Entrada Antecipada ou Saída Antecipada) */}
                         {item.canJustify && onOpenJustificationModal && (
                           <button
                             type="button"
@@ -2049,7 +2153,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                               onOpenJustificationModal(
                                 item.shiftId,
                                 item.date,
-                                isFalta ? 'absence' : 'delay',
+                                isFalta ? 'absence' : (item.delayInfo?.kind || 'delay'),
                                 item.delayInfo?.minutes
                               );
                             }}
@@ -2060,7 +2164,15 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                                   ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300'
                                   : 'bg-white/10 hover:bg-white/20 text-white border border-white/15'
                             }`}
-                            title={isFalta ? 'Enviar justificativa/atestado para esta falta' : 'Enviar justificativa para este atraso'}
+                            title={
+                              isFalta
+                                ? 'Enviar justificativa/atestado para esta falta'
+                                : deviationKind === 'early_entry'
+                                  ? 'Enviar justificativa para entrada antecipada'
+                                  : deviationKind === 'early_leave'
+                                    ? 'Enviar justificativa para saída antecipada'
+                                    : 'Enviar justificativa para este atraso'
+                            }
                           >
                             <FileText className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                             <span>Justificar</span>

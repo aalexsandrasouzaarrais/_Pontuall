@@ -474,7 +474,7 @@ function AppContent() {
     shiftId?: string; 
     date?: string; 
     reason?: string; 
-    type?: 'absence' | 'delay';
+    type?: 'absence' | 'delay' | 'early_entry' | 'early_leave';
     delayMinutes?: number;
   } | null>(null);
   const [editingRequest, setEditingRequest] = useState<TimeOffRequest | null>(null);
@@ -526,7 +526,7 @@ function AppContent() {
   const handleOpenJustificationModal = (
     shiftId?: string, 
     date?: string, 
-    type: 'absence' | 'delay' = 'absence', 
+    type: 'absence' | 'delay' | 'early_entry' | 'early_leave' = 'absence', 
     delayMinutes?: number,
     reason?: string
   ) => {
@@ -763,18 +763,24 @@ function AppContent() {
     // Avaliação de tolerância conforme Art. 58 § 1º CLT
     let punchAttendanceStatus: 'present' | 'late' = 'present';
     let lateDiffMinutes = 0;
+    let earlyEntryDiffMinutes = 0;
     let overtimeDiffMinutes = 0;
+    let earlyLeaveDiffMinutes = 0;
 
     if (punchType === 'entrada' && targetShift?.startTime) {
       const tol = evaluatePunchTolerance(targetShift.startTime, timeStr, 'entrada', 10);
       if (tol.isLate) {
         punchAttendanceStatus = 'late';
         lateDiffMinutes = tol.diffMinutes;
+      } else if (tol.isEarly) {
+        earlyEntryDiffMinutes = tol.diffMinutes;
       }
     } else if (punchType === 'saida' && targetShift?.endTime) {
       const tol = evaluatePunchTolerance(targetShift.endTime, timeStr, 'saida', 10);
       if (tol.isOvertime) {
         overtimeDiffMinutes = tol.diffMinutes;
+      } else if (tol.isEarlyLeave) {
+        earlyLeaveDiffMinutes = tol.diffMinutes;
       }
     }
     
@@ -795,8 +801,11 @@ function AppContent() {
               ? `[Esquecimento de Saída: Saída real no horário previsto (${s.endTime || '15:20'}) - Batida às ${timeStr}]`
               : `[HE +${overtimeDiffMinutes}m: ${notesOrReason || 'Aguardando justificativa'}]`;
             updatedNotes = updatedNotes ? `${updatedNotes} | ${heTag}` : heTag;
+          } else if (earlyLeaveDiffMinutes > 0) {
+            const earlyLeaveTag = `[Saída Antecipada ${earlyLeaveDiffMinutes}m: ${notesOrReason || 'Aguardando justificativa'}]`;
+            updatedNotes = updatedNotes ? `${updatedNotes} | ${earlyLeaveTag}` : earlyLeaveTag;
           }
-          return {
+          const updatedShift = {
             ...s,
             checkOutTime: timeStr,
             notes: updatedNotes,
@@ -811,13 +820,20 @@ function AppContent() {
               timestamp: now.toISOString(),
             }
           };
+          if (updatedNotes !== (s.notes || '')) {
+            updateShiftSupabase(updatedShift);
+          }
+          return updatedShift;
         } else {
           let updatedNotes = s.notes || '';
           if (lateDiffMinutes > 0) {
             const lateTag = `[Atraso ${lateDiffMinutes}m: ${notesOrReason || 'Aguardando justificativa'}]`;
             updatedNotes = updatedNotes ? `${updatedNotes} | ${lateTag}` : lateTag;
+          } else if (earlyEntryDiffMinutes > 0) {
+            const earlyEntryTag = `[Entrada Antecipada ${earlyEntryDiffMinutes}m: ${notesOrReason || 'Aguardando justificativa'}]`;
+            updatedNotes = updatedNotes ? `${updatedNotes} | ${earlyEntryTag}` : earlyEntryTag;
           }
-          return {
+          const updatedShift = {
             ...s,
             attendanceStatus: punchAttendanceStatus,
             checkInTime: timeStr,
@@ -833,6 +849,10 @@ function AppContent() {
               timestamp: now.toISOString(),
             }
           };
+          if (updatedNotes !== (s.notes || '')) {
+            updateShiftSupabase(updatedShift);
+          }
+          return updatedShift;
         }
       }
       return s;
@@ -853,10 +873,14 @@ function AppContent() {
     
     if (punchType === 'entrada' && lateDiffMinutes > 0) {
       notifTitle = `Entrada Registrada (Atraso de ${lateDiffMinutes} min)`;
+    } else if (punchType === 'entrada' && earlyEntryDiffMinutes > 0) {
+      notifTitle = `Entrada Antecipada (-${earlyEntryDiffMinutes} min)`;
     } else if (punchType === 'saida' && overtimeDiffMinutes > 0) {
       notifTitle = isForgetfulness
         ? `Saída Registrada (Ajuste de Esquecimento de Ponto)`
         : `Saída Registrada (Hora Extra: +${overtimeDiffMinutes} min)`;
+    } else if (punchType === 'saida' && earlyLeaveDiffMinutes > 0) {
+      notifTitle = `Saída Antecipada (-${earlyLeaveDiffMinutes} min)`;
     }
 
     const newNotif: NotificationItem = {
@@ -890,6 +914,19 @@ function AppContent() {
       });
     }
 
+    // Alerta gestor em caso de entrada antecipada (> 10 min)
+    if (punchType === 'entrada' && earlyEntryDiffMinutes > 0) {
+      managers.forEach(mgr => {
+        createNotificationSupabase({
+          targetEmployeeId: mgr.id,
+          title: 'Alerta de Entrada Antecipada',
+          message: `${activeEmployee.name} registrou entrada ${earlyEntryDiffMinutes} min antes do horário às ${timeStr} (previsto: ${targetShift?.startTime || '08:00'}).${notesOrReason ? ` Motivo: "${notesOrReason}".` : ''}`,
+          type: 'system',
+          actionRequired: true,
+        });
+      });
+    }
+
     // Alerta gestor em caso de saída após o horário (hora extra ou esquecimento)
     if (punchType === 'saida' && overtimeDiffMinutes > 0) {
       managers.forEach(mgr => {
@@ -901,6 +938,19 @@ function AppContent() {
             : `${activeEmployee.name} registrou saída às ${timeStr} (+${overtimeDiffMinutes} min após o término previsto às ${targetShift?.endTime || '17:00'}). Motivo informado: "${notesOrReason || 'Permanência após o expediente'}". Requer homologação no Banco de Horas.`,
           type: isForgetfulness ? 'system' : 'approval',
           actionRequired: !isForgetfulness,
+        });
+      });
+    }
+
+    // Alerta gestor em caso de saída antecipada (> 10 min antes do término)
+    if (punchType === 'saida' && earlyLeaveDiffMinutes > 0) {
+      managers.forEach(mgr => {
+        createNotificationSupabase({
+          targetEmployeeId: mgr.id,
+          title: 'Alerta de Saída Antecipada',
+          message: `${activeEmployee.name} registrou saída antecipada às ${timeStr} (-${earlyLeaveDiffMinutes} min antes do término previsto às ${targetShift?.endTime || '17:00'}).${notesOrReason ? ` Motivo: "${notesOrReason}".` : ''}`,
+          type: 'approval',
+          actionRequired: true,
         });
       });
     }
@@ -997,8 +1047,24 @@ function AppContent() {
   };
 
   // Submit absence or delay justification
-  const handleSubmitJustification = async (just: Partial<AbsenceJustification> & { justificationType?: 'absence' | 'delay' }) => {
-    const isDelayJustification = just.justificationType === 'delay';
+  const handleSubmitJustification = async (just: Partial<AbsenceJustification> & { justificationType?: 'absence' | 'delay' | 'early_entry' | 'early_leave' }) => {
+    const jType = just.justificationType || 'absence';
+    const isDelayJustification = jType === 'delay';
+    const isEarlyEntryJustification = jType === 'early_entry';
+    const isEarlyLeaveJustification = jType === 'early_leave';
+    const isTimeDeviation = isDelayJustification || isEarlyEntryJustification || isEarlyLeaveJustification;
+
+    const rawReason = (just.reason || '').trim();
+    const lowerReason = rawReason.toLowerCase();
+    let finalReason = rawReason;
+    if (isEarlyEntryJustification && !lowerReason.includes('entrada antecipada')) {
+      finalReason = `[Entrada Antecipada] ${rawReason}`;
+    } else if (isEarlyLeaveJustification && !lowerReason.includes('saída antecipada') && !lowerReason.includes('saida antecipada')) {
+      finalReason = `[Saída Antecipada] ${rawReason}`;
+    } else if (isDelayJustification && !lowerReason.includes('atraso')) {
+      finalReason = `[Atraso] ${rawReason}`;
+    }
+
     const tempId = `just-${Date.now()}`;
     const newJust: AbsenceJustification = {
       id: tempId,
@@ -1007,7 +1073,7 @@ function AppContent() {
       employeeAvatar: activeEmployee.avatar,
       shiftId: just.shiftId || '',
       date: just.date || getTodayDateString(),
-      reason: just.reason || '',
+      reason: finalReason,
       documentName: just.documentName,
       documentType: just.documentType,
       status: 'pending',
@@ -1016,37 +1082,52 @@ function AppContent() {
 
     setJustifications(prev => [newJust, ...prev]);
     
-    if (just.shiftId) {
+    if (just.shiftId && isTimeDeviation) {
+      const notePrefix = isEarlyEntryJustification
+        ? 'Justificativa Entrada Antecipada'
+        : isEarlyLeaveJustification
+          ? 'Justificativa Saída Antecipada'
+          : 'Justificativa Atraso';
       setShifts(prev => prev.map(s => {
         if (s.id === just.shiftId) {
-          const updatedNotes = isDelayJustification
-            ? (s.notes ? `${s.notes} | [Justificativa Atraso: ${just.reason}]` : `[Justificativa Atraso: ${just.reason}]`)
-            : s.notes;
-          return {
-            ...s,
-            notes: updatedNotes
-          };
+          const updatedNotes = s.notes
+            ? `${s.notes} | [${notePrefix}: ${rawReason}]`
+            : `[${notePrefix}: ${rawReason}]`;
+          const updatedShift = { ...s, notes: updatedNotes };
+          updateShiftSupabase(updatedShift);
+          return updatedShift;
         }
         return s;
       }));
     }
 
-    if (!isDelayJustification) {
+    if (!isTimeDeviation) {
       setEmployeeTab('justifications');
       showToast('Atestado Enviado', 'Seu atestado/comprovante foi enviado para o RH e Gestor.', 'success');
     } else {
-      showToast('Justificativa Enviada', 'Sua justificativa de atraso foi registrada e enviada para o Gestor.', 'success');
+      const labelToast = isEarlyEntryJustification
+        ? 'entrada antecipada'
+        : isEarlyLeaveJustification
+          ? 'saída antecipada'
+          : 'atraso';
+      showToast('Justificativa Enviada', `Sua justificativa de ${labelToast} foi registrada e enviada para o Gestor.`, 'success');
     }
 
     try {
-      const saved = await createJustificativaSupabase(just, activeEmployee);
+      const saved = await createJustificativaSupabase({ ...just, reason: finalReason }, activeEmployee);
       if (saved) {
         setJustifications(prev => prev.map(j => j.id === tempId ? { ...saved, employeeName: activeEmployee.name, employeeAvatar: activeEmployee.avatar } : j));
         // Notifica gestores/RH
         const managers = employees.filter(e => e.roleType === 'gestor' || e.isMasterManager || e.isRh);
-        const notifTitle = isDelayJustification ? 'Nova Justificativa de Atraso' : 'Novo Atestado / Justificativa';
-        const notifMsg = isDelayJustification
-          ? `${activeEmployee.name} enviou justificativa para atraso no dia ${just.date || ''}: "${just.reason}".`
+        const notifTitle = isEarlyEntryJustification
+          ? 'Nova Justificativa de Entrada Antecipada'
+          : isEarlyLeaveJustification
+            ? 'Nova Justificativa de Saída Antecipada'
+            : isDelayJustification
+              ? 'Nova Justificativa de Atraso'
+              : 'Novo Atestado / Justificativa';
+        const notifMsg = isTimeDeviation
+          ? `${activeEmployee.name} enviou justificativa (${notifTitle.replace('Nova Justificativa de ', '')}) no dia ${just.date || ''}: "${rawReason}".`
           : `${activeEmployee.name} enviou atestado/comprovante para ${just.date || 'data de ausência'}.`;
 
         managers.forEach(mgr => {
@@ -1334,7 +1415,10 @@ function AppContent() {
     setJustifications(prev => prev.map(j => j.id === id ? { ...j, status: 'approved', managerNotes: feedback } : j));
     await updateJustificativaStatusSupabase(id, 'approved', feedback);
 
-    let isDelayTarget = target?.reason?.toLowerCase().includes('atraso') || false;
+    const lowerReason = (target?.reason || '').toLowerCase();
+    const isEarlyLeaveTarget = lowerReason.includes('saída antecipada') || lowerReason.includes('saida antecipada');
+    const isEarlyEntryTarget = lowerReason.includes('entrada antecipada');
+    let isTimeDeviationTarget = lowerReason.includes('atraso') || isEarlyLeaveTarget || isEarlyEntryTarget;
 
     if (target) {
       let targetShift = target.shiftId ? shifts.find(s => s.id === target.shiftId) : undefined;
@@ -1344,12 +1428,17 @@ function AppContent() {
 
       if (targetShift) {
         const hasWorkedPunch = Boolean(targetShift.checkInTime) || targetShift.attendanceStatus === 'late';
-        isDelayTarget = isDelayTarget || hasWorkedPunch;
+        isTimeDeviationTarget = isTimeDeviationTarget || hasWorkedPunch;
 
         if (hasWorkedPunch) {
-          const updatedNotes = targetShift.notes?.includes('ABONO GESTOR')
+          const abonoLabel = isEarlyLeaveTarget
+            ? '[ABONO GESTOR: Saída Antecipada Abonada]'
+            : isEarlyEntryTarget
+              ? '[ABONO GESTOR: Entrada Antecipada Abonada]'
+              : '[ABONO GESTOR: Atraso Abonado]';
+          const updatedNotes = targetShift.notes?.includes(abonoLabel)
             ? targetShift.notes
-            : `${targetShift.notes ? `${targetShift.notes} | ` : ''}[ABONO GESTOR: Atraso Abonado]`;
+            : `${targetShift.notes ? `${targetShift.notes} | ` : ''}${abonoLabel}`;
           const updatedShift = { ...targetShift, notes: updatedNotes };
           setShifts(prev => prev.map(s => s.id === targetShift!.id ? updatedShift : s));
           await updateShiftSupabase(updatedShift);
@@ -1364,17 +1453,17 @@ function AppContent() {
     if (target?.employeeId) {
       await createNotificationSupabase({
         targetEmployeeId: target.employeeId,
-        title: isDelayTarget ? 'Atraso Abonado' : 'Atestado Homologado',
-        message: isDelayTarget
-          ? `Sua justificativa de atraso para ${target.date} foi homologada. Parecer: "${feedback}".`
+        title: isTimeDeviationTarget ? 'Justificativa Homologada' : 'Atestado Homologado',
+        message: isTimeDeviationTarget
+          ? `Sua justificativa de horário para ${target.date} foi homologada. Parecer: "${feedback}".`
           : `Seu atestado médico para ${target.date} foi homologado. Parecer: "${feedback}". As horas do dia foram abonadas.`,
         type: 'justification',
       });
     }
     showToast(
-      isDelayTarget ? 'Atraso Abonado' : 'Atestado Homologado',
-      isDelayTarget
-        ? 'A justificativa de atraso foi homologada pelo gestor.'
+      isTimeDeviationTarget ? 'Ocorrência Abonada' : 'Atestado Homologado',
+      isTimeDeviationTarget
+        ? 'A justificativa de horário foi homologada pelo gestor.'
         : 'O atestado/justificativa foi homologado e o turno atualizado no sistema.',
       'success'
     );
@@ -1386,7 +1475,10 @@ function AppContent() {
     setJustifications(prev => prev.map(j => j.id === id ? { ...j, status: 'rejected', managerNotes: feedback } : j));
     await updateJustificativaStatusSupabase(id, 'rejected', feedback);
 
-    let isDelayTarget = target?.reason?.toLowerCase().includes('atraso') || false;
+    const lowerReason = (target?.reason || '').toLowerCase();
+    const isEarlyLeaveTarget = lowerReason.includes('saída antecipada') || lowerReason.includes('saida antecipada');
+    const isEarlyEntryTarget = lowerReason.includes('entrada antecipada');
+    let isTimeDeviationTarget = lowerReason.includes('atraso') || isEarlyLeaveTarget || isEarlyEntryTarget;
 
     if (target) {
       let targetShift = target.shiftId ? shifts.find(s => s.id === target.shiftId) : undefined;
@@ -1396,14 +1488,20 @@ function AppContent() {
 
       if (targetShift) {
         const hasWorkedPunch = Boolean(targetShift.checkInTime) || targetShift.attendanceStatus === 'late';
-        isDelayTarget = isDelayTarget || hasWorkedPunch;
+        isTimeDeviationTarget = isTimeDeviationTarget || hasWorkedPunch;
 
         if (hasWorkedPunch) {
-          // Colaborador trabalhou no dia: mantém atraso (não transforma dia trabalhado em falta)
-          const updatedNotes = targetShift.notes?.includes('AJUSTE GESTOR')
+          // Colaborador trabalhou no dia: mantém status trabalhado (não transforma dia trabalhado em falta)
+          const rejectLabel = isEarlyLeaveTarget
+            ? '[AJUSTE GESTOR: Saída Antecipada Não Abonada]'
+            : isEarlyEntryTarget
+              ? '[AJUSTE GESTOR: Entrada Antecipada Não Homologada]'
+              : '[AJUSTE GESTOR: Débito de Atraso Confirmado]';
+          const updatedNotes = targetShift.notes?.includes(rejectLabel)
             ? targetShift.notes
-            : `${targetShift.notes ? `${targetShift.notes} | ` : ''}[AJUSTE GESTOR: Débito de Atraso Confirmado]`;
-          const updatedShift = { ...targetShift, attendanceStatus: 'late' as const, notes: updatedNotes };
+            : `${targetShift.notes ? `${targetShift.notes} | ` : ''}${rejectLabel}`;
+          const preservedStatus = targetShift.attendanceStatus === 'late' ? 'late' : (targetShift.attendanceStatus || 'present');
+          const updatedShift = { ...targetShift, attendanceStatus: preservedStatus, notes: updatedNotes };
           setShifts(prev => prev.map(s => s.id === targetShift!.id ? updatedShift : s));
           await updateShiftSupabase(updatedShift);
         } else {
@@ -1416,15 +1514,15 @@ function AppContent() {
     if (target?.employeeId) {
       await createNotificationSupabase({
         targetEmployeeId: target.employeeId,
-        title: isDelayTarget ? 'Justificativa de Atraso Recusada' : 'Atestado Recusado',
-        message: isDelayTarget
-          ? `Sua justificativa de atraso para ${target.date} não foi homologada. Motivo: "${feedback}".`
+        title: isTimeDeviationTarget ? 'Justificativa Recusada' : 'Atestado Recusado',
+        message: isTimeDeviationTarget
+          ? `Sua justificativa de horário para ${target.date} não foi homologada. Motivo: "${feedback}".`
           : `Seu atestado médico para ${target.date} não foi homologado. Motivo: "${feedback}".`,
         type: 'justification',
       });
     }
     showToast(
-      isDelayTarget ? 'Justificativa Recusada' : 'Atestado Recusado',
+      isTimeDeviationTarget ? 'Justificativa Recusada' : 'Atestado Recusado',
       'A justificativa foi marcada como não homologada no Supabase.',
       'info'
     );
