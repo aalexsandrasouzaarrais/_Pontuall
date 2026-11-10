@@ -230,15 +230,10 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
         if (!isThisEmp || !(j.shiftId === shift.id || jDate === dateStr)) return false;
 
         const rLower = (j.reason || '').toLowerCase();
-        if (kind === 'early_entry') return rLower.includes('entrada antecipada');
-        if (kind === 'early_leave') return rLower.includes('saída antecipada') || rLower.includes('saida antecipada');
-        return rLower.includes('atraso') || (
-          !rLower.includes('entrada antecipada') &&
-          !rLower.includes('saída antecipada') &&
-          !rLower.includes('saida antecipada') &&
-          !rLower.includes('ausência') &&
-          !rLower.includes('falta')
-        );
+        const jType = (j as any).justificationType;
+        if (kind === 'early_entry') return rLower.includes('entrada antecipada') || jType === 'early_entry';
+        if (kind === 'early_leave') return rLower.includes('saída antecipada') || rLower.includes('saida antecipada') || jType === 'early_leave';
+        return rLower.includes('atraso') || jType === 'delay';
       });
 
       const justStatus = matchingJust?.status || (matchingJust as any)?.Tpo_Status;

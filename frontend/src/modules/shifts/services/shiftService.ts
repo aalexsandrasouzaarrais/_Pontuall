@@ -2,6 +2,7 @@ import { supabase } from '@/shared/services/supabase';
 import { Shift, WorkplaceLocation } from '@/types';
 import { findWorkplaceByName, registerWorkplaceIfNew } from '@/shared/services/workplaceService';
 import { calculateHaversineDistance } from '@/shared/utils/geolocation';
+import { evaluatePunchTolerance } from '@/shared/utils/dateUtils';
 
 function encodeShiftNotesWithWorkplace(notes?: string, workplace?: string, workplaceLocation?: WorkplaceLocation): string {
   const wpObj = workplaceLocation || (workplace ? findWorkplaceByName(workplace) : undefined) || (workplace ? { name: workplace } : undefined);
@@ -138,9 +139,19 @@ export async function getShiftsSupabase(employeeIds?: string[]): Promise<Shift[]
             const inData = inPunch ? buildPunchInfo(inPunch) : undefined;
             const outData = (outPunch && outPunch !== inPunch) ? buildPunchInfo(outPunch) : undefined;
 
+            let computedStatus = s.attendanceStatus;
+            if (computedStatus !== 'justified') {
+              if (inData?.time && s.startTime) {
+                const tol = evaluatePunchTolerance(s.startTime, inData.time, 'entrada', 10);
+                computedStatus = tol.isLate ? 'late' : 'present';
+              } else {
+                computedStatus = 'present';
+              }
+            }
+
             return {
               ...s,
-              attendanceStatus: 'present',
+              attendanceStatus: computedStatus,
               checkInTime: inData?.time,
               checkInLocation: inData?.location,
               checkOutTime: outData?.time,

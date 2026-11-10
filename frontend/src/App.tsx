@@ -795,7 +795,10 @@ function AppContent() {
     setShifts(prev => prev.map(s => {
       if (s.id === shiftId) {
         if (punchType === 'saida') {
-          let updatedNotes = s.notes || '';
+          let updatedNotes = (s.notes || '')
+            .replace(/\|?\s*\[(HE|Esquecimento de Sa[íi]da|Sa[íi]da Antecipada|Justificativa Sa[íi]da Antecipada)[^\]]*\]/gi, '')
+            .replace(/^\s*\|\s*|\s*\|\s*$/g, '')
+            .trim();
           if (overtimeDiffMinutes > 0) {
             const heTag = isForgetfulness
               ? `[Esquecimento de Saída: Saída real no horário previsto (${s.endTime || '15:20'}) - Batida às ${timeStr}]`
@@ -825,7 +828,10 @@ function AppContent() {
           }
           return updatedShift;
         } else {
-          let updatedNotes = s.notes || '';
+          let updatedNotes = (s.notes || '')
+            .replace(/\|?\s*\[(Atraso|Entrada Antecipada|Justificativa Atraso|Justificativa Entrada Antecipada)[^\]]*\]/gi, '')
+            .replace(/^\s*\|\s*|\s*\|\s*$/g, '')
+            .trim();
           if (lateDiffMinutes > 0) {
             const lateTag = `[Atraso ${lateDiffMinutes}m: ${notesOrReason || 'Aguardando justificativa'}]`;
             updatedNotes = updatedNotes ? `${updatedNotes} | ${lateTag}` : lateTag;

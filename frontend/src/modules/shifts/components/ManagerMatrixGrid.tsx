@@ -57,7 +57,7 @@ import {
 import { EmployeesManagementView } from '@/modules/manager/components/EmployeesManagementView';
 import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
 import { DeleteShiftsModal } from './DeleteShiftsModal';
-import { addDaysLocal, startOfWeekMonday, toLocalDateString, getTodayDateString, formatDateBR, normalizeDateToISO, isShiftPast24hWithoutPunch } from '@/shared/utils/dateUtils';
+import { addDaysLocal, startOfWeekMonday, toLocalDateString, getTodayDateString, formatDateBR, normalizeDateToISO, isShiftPast24hWithoutPunch, evaluatePunchTolerance } from '@/shared/utils/dateUtils';
 import { showPolishedToast } from '@/components/ui/halo-toast';
 import {
   ReminderItem,
@@ -567,92 +567,139 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       feedback: 'Atestado válido homologado pelo gestor.',
     }];
 
-    // Ocorrências de Atraso, Antecipação e Horas Extras apuradas para a Central Única de Aprovações
-    const mappedDelaysAndOvertimeFromShifts = (shifts || []).filter(s => {
-      const hasHe = Boolean(s.notes && s.notes.includes('[HE'));
-      const hasLate = Boolean((s.notes && s.notes.includes('[Atraso')) || s.attendanceStatus === 'late');
-      const hasEarlyEntry = Boolean(s.notes && s.notes.includes('[Entrada Antecipada'));
-      const hasEarlyLeave = Boolean(s.notes && (s.notes.includes('[Saída Antecipada') || s.notes.includes('[Saida Antecipada')));
+    // Ocorrências de Atraso, Antecipação e Horas Extras apuradas imediatamente pelas batidas e notas para a Central Única de Aprovações
+    const mappedDelaysAndOvertimeFromShifts = (shifts || []).flatMap(s => {
+      const emp = employees.find(e => e.id === s.employeeId) || emp1;
+      const results: Array<{
+        id: string;
+        shiftId: string;
+        employeeId: string;
+        employeeName: string;
+        employeeRole: string;
+        employeeDept: string;
+        employeeAvatar: string;
+        type: string;
+        reason: string;
+        date: string;
+        documentName: string;
+        documentUrl?: string;
+        status: 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente';
+        actionText?: string;
+        feedback: string;
+      }> = [];
 
-      if (!hasHe && (hasLate || hasEarlyEntry || hasEarlyLeave)) {
-        const alreadyInJustifications = (justifications || []).some(j => {
+      const findJustForKind = (kind: 'delay' | 'early_entry' | 'early_leave' | 'overtime') =>
+        (justifications || []).find(j => {
           const matchesShift = (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date);
           if (!matchesShift) return false;
           const rLower = (j.reason || '').toLowerCase();
-          return rLower.includes('atraso') || rLower.includes('entrada antecipada') || rLower.includes('saída antecipada') || rLower.includes('saida antecipada') || ['delay', 'early_entry', 'early_leave'].includes((j as any).justificationType);
+          const jType = (j as any).justificationType;
+          if (kind === 'early_entry') return rLower.includes('entrada antecipada') || jType === 'early_entry';
+          if (kind === 'early_leave') return rLower.includes('saída antecipada') || rLower.includes('saida antecipada') || jType === 'early_leave';
+          if (kind === 'delay') return rLower.includes('atraso') || jType === 'delay';
+          return false;
         });
-        if (alreadyInJustifications) return false;
+
+      // 1. Avaliar Entrada (Atraso ou Entrada Antecipada)
+      const inTol = (s.startTime && s.checkInTime)
+        ? evaluatePunchTolerance(s.startTime, s.checkInTime, 'entrada', 10)
+        : null;
+      const hasLate = Boolean(s.notes?.includes('[Atraso')) || s.attendanceStatus === 'late' || Boolean(inTol?.isLate);
+      const hasEarlyEntry = !hasLate && (Boolean(s.notes?.includes('[Entrada Antecipada')) || Boolean(inTol?.isEarly));
+
+      if (hasLate || hasEarlyEntry) {
+        const entryKind = hasLate ? 'delay' : 'early_entry';
+        const existingJust = findJustForKind(entryKind);
+        // Se já foi mapeada em mappedJustifications, evita duplicar na lista
+        if (!existingJust) {
+          const lateMatch = s.notes?.match(/\[Atraso (\d+)m/);
+          const earlyMatch = s.notes?.match(/\[Entrada Antecipada (\d+)m/);
+          const diffMins = hasLate
+            ? (lateMatch ? Number(lateMatch[1]) : (inTol?.isLate ? inTol.diffMinutes : 0))
+            : (earlyMatch ? Number(earlyMatch[1]) : (inTol?.isEarly ? inTol.diffMinutes : 0));
+
+          const isHomologated = Boolean(
+            s.notes?.includes('HOMOLOGADO') ||
+            (hasLate && s.notes?.includes('[ABONO GESTOR: Atraso')) ||
+            (hasEarlyEntry && s.notes?.includes('[ABONO GESTOR: Entrada Antecipada')) ||
+            s.attendanceStatus === 'justified'
+          );
+          const isAdjusted = Boolean(
+            (hasLate && s.notes?.includes('Débito de Atraso Confirmado')) ||
+            (hasEarlyEntry && s.notes?.includes('Entrada Antecipada Não Homologada'))
+          );
+
+          results.push({
+            id: `shift-occ-in-${s.id}`,
+            shiftId: s.id,
+            employeeId: s.employeeId,
+            employeeName: emp.name,
+            employeeRole: emp.role || 'Colaborador',
+            employeeDept: emp.department || 'Geral',
+            employeeAvatar: emp.avatar || '',
+            type: hasLate ? 'Atraso de Entrada' : 'Entrada Antecipada',
+            reason: hasLate
+              ? `Entrada às ${s.checkInTime || '--:--'} (previsto ${s.startTime})${diffMins ? ` • +${diffMins} min de atraso` : ''} — aguardando justificativa ou decisão do gestor.`
+              : `Entrada às ${s.checkInTime || '--:--'} (previsto ${s.startTime})${diffMins ? ` • ${diffMins} min antes do horário` : ''} — aguardando justificativa ou decisão do gestor.`,
+            date: s.date,
+            documentName: 'Sem anexo',
+            documentUrl: undefined,
+            status: isHomologated ? 'Aprovado' : isAdjusted ? 'Recusado / Falta' : 'Pendente',
+            actionText: isHomologated ? 'Abonado' : isAdjusted ? 'Debitado' : undefined,
+            feedback: '',
+          });
+        }
       }
-      return hasHe || hasLate || hasEarlyEntry || hasEarlyLeave;
-    }).map(s => {
-      const emp = employees.find(e => e.id === s.employeeId) || emp1;
-      const isHe = Boolean(s.notes?.includes('[HE'));
-      const isEarlyLeave = Boolean(s.notes?.includes('[Saída Antecipada') || s.notes?.includes('[Saida Antecipada'));
-      const isEarlyEntry = Boolean(s.notes?.includes('[Entrada Antecipada'));
-      const isLate = (Boolean(s.notes?.includes('[Atraso')) || s.attendanceStatus === 'late') && !isHe;
-      const isDeviation = isLate || isEarlyLeave || isEarlyEntry;
-      
-      const type = isEarlyLeave
-        ? 'Saída Antecipada'
-        : isEarlyEntry
-          ? 'Entrada Antecipada'
-          : isLate
-            ? 'Atraso de Entrada'
-            : 'Hora Extra';
-      let diffStr = '';
-      if (isEarlyLeave) {
-        const match = s.notes?.match(/\[Sa[íi]da Antecipada (\d+)m/);
-        diffStr = match ? ` (-${match[1]} min)` : '';
-      } else if (isEarlyEntry) {
-        const match = s.notes?.match(/\[Entrada Antecipada (\d+)m/);
-        diffStr = match ? ` (-${match[1]} min)` : '';
-      } else if (isLate) {
-        const lateMatch = s.notes?.match(/\[Atraso (\d+)m/);
-        diffStr = lateMatch ? ` (-${lateMatch[1]} min)` : ' (-35 min)';
-      } else {
-        const heMatch = s.notes?.match(/\[HE \+(\d+)m/);
-        diffStr = heMatch ? ` (+${heMatch[1]} min)` : ' (+39 min)';
+
+      // 2. Avaliar Saída (Hora Extra ou Saída Antecipada)
+      const outTol = (s.endTime && s.checkOutTime)
+        ? evaluatePunchTolerance(s.endTime, s.checkOutTime, 'saida', 10)
+        : null;
+      const hasHe = Boolean(s.notes?.includes('[HE')) || Boolean(outTol?.isOvertime);
+      const hasEarlyLeave = !hasHe && (Boolean(s.notes?.includes('[Saída Antecipada') || s.notes?.includes('[Saida Antecipada')) || Boolean(outTol?.isEarlyLeave));
+
+      if (hasHe || hasEarlyLeave) {
+        const exitKind = hasEarlyLeave ? 'early_leave' : 'overtime';
+        const existingJust = findJustForKind(exitKind);
+        if (!existingJust) {
+          const heMatch = s.notes?.match(/\[HE \+(\d+)m/);
+          const earlyLeaveMatch = s.notes?.match(/\[Sa[íi]da Antecipada (\d+)m/);
+          const diffMins = hasHe
+            ? (heMatch ? Number(heMatch[1]) : (outTol?.isOvertime ? outTol.diffMinutes : 0))
+            : (earlyLeaveMatch ? Number(earlyLeaveMatch[1]) : (outTol?.isEarlyLeave ? outTol.diffMinutes : 0));
+
+          const isHomologated = Boolean(
+            s.notes?.includes('HOMOLOGADO') ||
+            (hasEarlyLeave && s.notes?.includes('[ABONO GESTOR: Saída Antecipada'))
+          );
+          const isAdjusted = Boolean(
+            s.notes?.includes('AJUSTE GESTOR') ||
+            (hasEarlyLeave && s.notes?.includes('Saída Antecipada Não Abonada'))
+          );
+
+          results.push({
+            id: `shift-occ-out-${s.id}`,
+            shiftId: s.id,
+            employeeId: s.employeeId,
+            employeeName: emp.name,
+            employeeRole: emp.role || 'Colaborador',
+            employeeDept: emp.department || 'Geral',
+            employeeAvatar: emp.avatar || '',
+            type: hasEarlyLeave ? 'Saída Antecipada' : 'Hora Extra',
+            reason: hasEarlyLeave
+              ? `Saída às ${s.checkOutTime || '--:--'} (previsto ${s.endTime})${diffMins ? ` • -${diffMins} min antes do término` : ''} — aguardando justificativa ou decisão do gestor.`
+              : `Saída às ${s.checkOutTime || '--:--'} (previsto ${s.endTime})${diffMins ? ` • +${diffMins} min após o término` : ''}.`,
+            date: s.date,
+            documentName: 'Sem anexo',
+            documentUrl: undefined,
+            status: isHomologated ? 'Aprovado' : isAdjusted ? 'Recusado / Falta' : 'Pendente',
+            actionText: isHomologated ? (hasEarlyLeave ? 'Abonado' : 'Homologado') : isAdjusted ? (hasEarlyLeave ? 'Debitado' : 'Ajustado') : undefined,
+            feedback: '',
+          });
+        }
       }
 
-      const shiftJust = (justifications || []).find(j => 
-        (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)
-      );
-
-      const isHomologated = s.notes?.includes('HOMOLOGADO') || s.notes?.includes('ABONO GESTOR') || shiftJust?.status === 'approved';
-      const isAdjusted = s.notes?.includes('AJUSTE GESTOR') || shiftJust?.status === 'rejected';
-
-      const statusVal = isHomologated ? 'Aprovado' : isAdjusted ? 'Recusado / Falta' : 'Pendente';
-      const actionText = isHomologated 
-        ? (isDeviation ? 'Abonado' : 'Homologado')
-        : isAdjusted 
-        ? (isDeviation ? 'Debitado' : 'Ajustado')
-        : undefined;
-
-      return {
-        id: `shift-occ-${s.id}`,
-        shiftId: s.id,
-        employeeId: s.employeeId,
-        employeeName: emp.name,
-        employeeRole: emp.role || 'Colaborador',
-        employeeDept: emp.department || 'Geral',
-        employeeAvatar: emp.avatar || '',
-        type,
-        reason: shiftJust?.reason || s.notes || (
-          isEarlyLeave
-            ? `Saída antecipada${diffStr}`
-            : isEarlyEntry
-              ? `Entrada antecipada${diffStr}`
-              : isLate
-                ? `Entrada com atraso${diffStr}`
-                : `Permanência com hora extra${diffStr}`
-        ),
-        date: s.date,
-        documentName: shiftJust?.documentName || (isDeviation ? 'Declaracao_Comparecimento_Horas.pdf' : 'Não se aplica'),
-        documentUrl: shiftJust?.documentUrl,
-        status: statusVal as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
-        actionText,
-        feedback: shiftJust?.managerNotes || '',
-      };
+      return results;
     });
 
     const demoDelayItem = (mappedDelaysAndOvertimeFromShifts.some(i => i.type === 'Atraso de Entrada') || mappedJustifications.some(j => j.type === 'Atraso de Entrada' || j.type === 'Justificativa de Atraso')) ? [] : [{
@@ -893,8 +940,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     }
 
     if (isAtraso) {
-      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace('shift-occ-', '') : undefined);
-      const matchingJust = justifications.find(j => j.id === id) || (shiftId ? justifications.find(j => j.shiftId === shiftId) : undefined);
+      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace(/^shift-occ-(?:in-|out-)?/, '') : undefined);
+      const matchingJust = id.startsWith('shift-occ-') ? undefined : justifications.find(j => j.id === id);
 
       const abonoTag = isEarlyLeave
         ? '[ABONO GESTOR: Saída Antecipada Abonada]'
@@ -928,7 +975,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     }
 
     if (isHe) {
-      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace('shift-occ-', '') : undefined);
+      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace(/^shift-occ-(?:in-|out-)?/, '') : undefined);
       if (shiftId) {
         const targetShift = shifts.find(s => s.id === shiftId);
         if (targetShift) {
@@ -1011,8 +1058,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     }
 
     if (isAtraso) {
-      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace('shift-occ-', '') : undefined);
-      const matchingJust = justifications.find(j => j.id === id) || (shiftId ? justifications.find(j => j.shiftId === shiftId) : undefined);
+      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace(/^shift-occ-(?:in-|out-)?/, '') : undefined);
+      const matchingJust = id.startsWith('shift-occ-') ? undefined : justifications.find(j => j.id === id);
 
       const rejectTag = isEarlyLeave
         ? '[AJUSTE GESTOR: Saída Antecipada Não Abonada]'
@@ -1046,7 +1093,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     }
 
     if (isHe) {
-      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace('shift-occ-', '') : undefined);
+      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace(/^shift-occ-(?:in-|out-)?/, '') : undefined);
       if (shiftId) {
         const targetShift = shifts.find(s => s.id === shiftId);
         if (targetShift) {
