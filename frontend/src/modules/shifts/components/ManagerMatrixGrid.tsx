@@ -442,8 +442,10 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     const mappedJustifications = (justifications || []).map(j => {
       const emp = employees.find(e => e.id === j.employeeId);
       const isDelayJust = j.reason?.toLowerCase().includes('atraso') || (j as any).justificationType === 'delay';
+      const resolvedShiftId = j.shiftId || (shifts || []).find(s => s.employeeId === j.employeeId && s.date === j.date)?.id;
       return {
         id: j.id,
+        shiftId: resolvedShiftId,
         employeeId: j.employeeId,
         employeeName: emp?.name || j.employeeName || 'Colaborador',
         employeeRole: emp?.role || 'Colaborador',
@@ -559,6 +561,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     const mappedDelaysAndOvertimeFromShifts = (shifts || []).filter(s => {
       const hasHe = s.notes && s.notes.includes('[HE');
       const hasLate = (s.notes && s.notes.includes('[Atraso')) || s.attendanceStatus === 'late';
+      if (!hasHe && hasLate) {
+        const alreadyInJustifications = (justifications || []).some(j =>
+          ((j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)) &&
+          (j.reason?.toLowerCase().includes('atraso') || (j as any).justificationType === 'delay')
+        );
+        if (alreadyInJustifications) return false;
+      }
       return hasHe || hasLate;
     }).map(s => {
       const emp = employees.find(e => e.id === s.employeeId) || emp1;
@@ -579,7 +588,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)
       );
 
-      const isHomologated = s.notes?.includes('HOMOLOGADO') || shiftJust?.status === 'approved';
+      const isHomologated = s.notes?.includes('HOMOLOGADO') || s.notes?.includes('ABONO GESTOR') || shiftJust?.status === 'approved';
       const isAdjusted = s.notes?.includes('AJUSTE GESTOR') || shiftJust?.status === 'rejected';
 
       const statusVal = isHomologated ? 'Aprovado' : isAdjusted ? 'Recusado / Falta' : 'Pendente';
@@ -692,7 +701,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         diffBadge = `+${diffMinutes} min`;
       }
 
-      const isHomologated = s.notes?.includes('HOMOLOGADO');
+      const isHomologated = s.notes?.includes('HOMOLOGADO') || s.notes?.includes('ABONO GESTOR');
       const isAdjusted = s.notes?.includes('AJUSTE GESTOR');
       const defaultReason = isLate ? 'Entrada com atraso superior à tolerância CLT' : 'Ocorrência de jornada';
 
@@ -845,7 +854,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
     if (isAtraso) {
       const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace('shift-occ-', '') : undefined);
-      if (shiftId) {
+      const matchingJust = justifications.find(j => j.id === id || (shiftId && j.shiftId === shiftId));
+
+      if (matchingJust) {
+        if (onApproveJustification) {
+          onApproveJustification(matchingJust.id, customFeedback || 'Atraso abonado pelo gestor');
+        } else {
+          await updateJustificativaStatusSupabase(matchingJust.id, 'approved', customFeedback || 'Atraso abonado pelo gestor');
+        }
+      } else if (shiftId) {
         const targetShift = shifts.find(s => s.id === shiftId);
         if (targetShift) {
           onOpenEditShift?.({
@@ -947,7 +964,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
     if (isAtraso) {
       const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace('shift-occ-', '') : undefined);
-      if (shiftId) {
+      const matchingJust = justifications.find(j => j.id === id || (shiftId && j.shiftId === shiftId));
+
+      if (matchingJust) {
+        if (onRejectJustification) {
+          onRejectJustification(matchingJust.id, customFeedback || 'Débito de atraso confirmado');
+        } else {
+          await updateJustificativaStatusSupabase(matchingJust.id, 'rejected', customFeedback || 'Débito de atraso confirmado');
+        }
+      } else if (shiftId) {
         const targetShift = shifts.find(s => s.id === shiftId);
         if (targetShift) {
           onOpenEditShift?.({

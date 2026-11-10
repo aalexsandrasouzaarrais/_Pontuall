@@ -1024,7 +1024,6 @@ function AppContent() {
             : s.notes;
           return {
             ...s,
-            attendanceStatus: isDelayJustification ? s.attendanceStatus : 'justified',
             notes: updatedNotes
           };
         }
@@ -1335,30 +1334,50 @@ function AppContent() {
     setJustifications(prev => prev.map(j => j.id === id ? { ...j, status: 'approved', managerNotes: feedback } : j));
     await updateJustificativaStatusSupabase(id, 'approved', feedback);
 
-    // Sincroniza o turno para 'justified' na memória e no Supabase
+    let isDelayTarget = target?.reason?.toLowerCase().includes('atraso') || false;
+
     if (target) {
-      let shiftIdToUpdate = target.shiftId;
-      if (!shiftIdToUpdate && target.employeeId && target.date) {
-        const found = shifts.find(s => s.employeeId === target.employeeId && s.date === target.date);
-        shiftIdToUpdate = found?.id;
+      let targetShift = target.shiftId ? shifts.find(s => s.id === target.shiftId) : undefined;
+      if (!targetShift && target.employeeId && target.date) {
+        targetShift = shifts.find(s => s.employeeId === target.employeeId && s.date === target.date);
       }
-      if (shiftIdToUpdate) {
-        setShifts(prev => prev.map(s => s.id === shiftIdToUpdate ? { ...s, attendanceStatus: 'justified' } : s));
-        await updateShiftAttendanceStatusSupabase(shiftIdToUpdate, 'justified');
-      } else if (target.employeeId && target.date) {
-        setShifts(prev => prev.map(s => (s.employeeId === target.employeeId && s.date === target.date) ? { ...s, attendanceStatus: 'justified' } : s));
+
+      if (targetShift) {
+        const hasWorkedPunch = Boolean(targetShift.checkInTime) || targetShift.attendanceStatus === 'late';
+        isDelayTarget = isDelayTarget || hasWorkedPunch;
+
+        if (hasWorkedPunch) {
+          const updatedNotes = targetShift.notes?.includes('ABONO GESTOR')
+            ? targetShift.notes
+            : `${targetShift.notes ? `${targetShift.notes} | ` : ''}[ABONO GESTOR: Atraso Abonado]`;
+          const updatedShift = { ...targetShift, notes: updatedNotes };
+          setShifts(prev => prev.map(s => s.id === targetShift!.id ? updatedShift : s));
+          await updateShiftSupabase(updatedShift);
+        } else {
+          const updatedShift = { ...targetShift, attendanceStatus: 'justified' as const };
+          setShifts(prev => prev.map(s => s.id === targetShift!.id ? updatedShift : s));
+          await updateShiftAttendanceStatusSupabase(targetShift.id, 'justified');
+        }
       }
     }
 
     if (target?.employeeId) {
       await createNotificationSupabase({
         targetEmployeeId: target.employeeId,
-        title: 'Atestado Homologado',
-        message: `Seu atestado médico para ${target.date} foi homologado. Parecer: "${feedback}". As horas do dia foram abonadas.`,
+        title: isDelayTarget ? 'Atraso Abonado' : 'Atestado Homologado',
+        message: isDelayTarget
+          ? `Sua justificativa de atraso para ${target.date} foi homologada. Parecer: "${feedback}".`
+          : `Seu atestado médico para ${target.date} foi homologado. Parecer: "${feedback}". As horas do dia foram abonadas.`,
         type: 'justification',
       });
     }
-    showToast('Atestado Homologado', 'O atestado/justificativa foi homologado e o turno atualizado no sistema.', 'success');
+    showToast(
+      isDelayTarget ? 'Atraso Abonado' : 'Atestado Homologado',
+      isDelayTarget
+        ? 'A justificativa de atraso foi homologada pelo gestor.'
+        : 'O atestado/justificativa foi homologado e o turno atualizado no sistema.',
+      'success'
+    );
   };
 
   const handleRejectJustification = async (id: string, customFeedback?: string) => {
@@ -1367,27 +1386,48 @@ function AppContent() {
     setJustifications(prev => prev.map(j => j.id === id ? { ...j, status: 'rejected', managerNotes: feedback } : j));
     await updateJustificativaStatusSupabase(id, 'rejected', feedback);
 
+    let isDelayTarget = target?.reason?.toLowerCase().includes('atraso') || false;
+
     if (target) {
-      let shiftIdToUpdate = target.shiftId;
-      if (!shiftIdToUpdate && target.employeeId && target.date) {
-        const found = shifts.find(s => s.employeeId === target.employeeId && s.date === target.date);
-        shiftIdToUpdate = found?.id;
+      let targetShift = target.shiftId ? shifts.find(s => s.id === target.shiftId) : undefined;
+      if (!targetShift && target.employeeId && target.date) {
+        targetShift = shifts.find(s => s.employeeId === target.employeeId && s.date === target.date);
       }
-      if (shiftIdToUpdate) {
-        setShifts(prev => prev.map(s => s.id === shiftIdToUpdate ? { ...s, attendanceStatus: 'absent' } : s));
-        await updateShiftAttendanceStatusSupabase(shiftIdToUpdate, 'absent');
+
+      if (targetShift) {
+        const hasWorkedPunch = Boolean(targetShift.checkInTime) || targetShift.attendanceStatus === 'late';
+        isDelayTarget = isDelayTarget || hasWorkedPunch;
+
+        if (hasWorkedPunch) {
+          // Colaborador trabalhou no dia: mantém atraso (não transforma dia trabalhado em falta)
+          const updatedNotes = targetShift.notes?.includes('AJUSTE GESTOR')
+            ? targetShift.notes
+            : `${targetShift.notes ? `${targetShift.notes} | ` : ''}[AJUSTE GESTOR: Débito de Atraso Confirmado]`;
+          const updatedShift = { ...targetShift, attendanceStatus: 'late' as const, notes: updatedNotes };
+          setShifts(prev => prev.map(s => s.id === targetShift!.id ? updatedShift : s));
+          await updateShiftSupabase(updatedShift);
+        } else {
+          setShifts(prev => prev.map(s => s.id === targetShift!.id ? { ...s, attendanceStatus: 'absent' } : s));
+          await updateShiftAttendanceStatusSupabase(targetShift.id, 'absent');
+        }
       }
     }
 
     if (target?.employeeId) {
       await createNotificationSupabase({
         targetEmployeeId: target.employeeId,
-        title: 'Atestado Recusado',
-        message: `Seu atestado médico para ${target.date} não foi homologado. Motivo: "${feedback}".`,
+        title: isDelayTarget ? 'Justificativa de Atraso Recusada' : 'Atestado Recusado',
+        message: isDelayTarget
+          ? `Sua justificativa de atraso para ${target.date} não foi homologada. Motivo: "${feedback}".`
+          : `Seu atestado médico para ${target.date} não foi homologado. Motivo: "${feedback}".`,
         type: 'justification',
       });
     }
-    showToast('Atestado Recusado', 'A justificativa foi marcada como não homologada no Supabase.', 'info');
+    showToast(
+      isDelayTarget ? 'Justificativa Recusada' : 'Atestado Recusado',
+      'A justificativa foi marcada como não homologada no Supabase.',
+      'info'
+    );
   };
 
   const handleApprovePjReport = async (id: string) => {
