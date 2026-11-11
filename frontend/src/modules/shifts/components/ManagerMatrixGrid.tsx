@@ -39,17 +39,27 @@ import {
   Lock,
   Hash,
   Briefcase,
-  MapPin
+  MapPin,
+  Image as ImageIcon,
+  Smile,
+  Reply
 } from 'lucide-react';
 import { Employee, Shift, TimeOffRequest, AbsenceJustification } from '@/types';
 import { supabase } from '@/shared/services/supabase';
 import { DEFAULT_TEAM_CHANNELS, ChatChannelItem, ChatMessage } from '@/modules/chat/components/ChatModal';
 import { 
   ChatAttachment, 
+  ChatReplyInfo,
+  CHAT_COMMON_EMOJIS,
   compressImageFile, 
   parseChatMessage, 
   serializeChatMessage,
   sendChatMessageToSupabase,
+  updateChatMessageInSupabase,
+  deleteChatMessageFromSupabase,
+  saveChannelMetaToSupabase,
+  extractGroupMetaFromMessage,
+  isSystemControlMessage,
   getScopedChatChannel,
   getScopedDirectChannel,
   getDisplayChatChannel
@@ -1651,7 +1661,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
   // Tab 5 (Chat) State - Realtime Supabase
   const [activeChatMode, setActiveChatMode] = useState<'channel' | 'direct'>('channel');
-  const [activeChatChannel, setActiveChatChannel] = useState<string>('geral');
+  const [activeChatChannel, setActiveChatChannel] = useState<string>('');
 
   // Identifica a chave da empresa para isolamento multi-tenant
   const companyKey = useMemo(() => {
@@ -1684,10 +1694,12 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       const saved = localStorage.getItem(`pontuall_team_channels_${companyKey}`);
       if (saved) {
         const parsed: ChatChannelItem[] = JSON.parse(saved);
-        return parsed.filter(c => !deletedIds.has(c.id)).map(c => ({
-          ...c,
-          badge: ['Online', 'Ativo', 'RH'].includes(c.badge) ? '' : c.badge
-        }));
+        return parsed
+          .filter(c => !deletedIds.has(c.id) && c.id !== 'geral' && c.id !== 'escalas' && c.id !== 'gestao')
+          .map(c => ({
+            ...c,
+            badge: ['Online', 'Ativo', 'RH'].includes(c.badge) ? '' : c.badge
+          }));
       }
       return DEFAULT_TEAM_CHANNELS.filter(c => !deletedIds.has(c.id));
     } catch {}
@@ -1701,10 +1713,14 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       const saved = localStorage.getItem(`pontuall_team_channels_${companyKey}`);
       if (saved) {
         const parsed: ChatChannelItem[] = JSON.parse(saved);
-        setTeamChannels(parsed.filter(c => !deletedIds.has(c.id)).map(c => ({
-          ...c,
-          badge: ['Online', 'Ativo', 'RH'].includes(c.badge) ? '' : c.badge
-        })));
+        setTeamChannels(
+          parsed
+            .filter(c => !deletedIds.has(c.id) && c.id !== 'geral' && c.id !== 'escalas' && c.id !== 'gestao')
+            .map(c => ({
+              ...c,
+              badge: ['Online', 'Ativo', 'RH'].includes(c.badge) ? '' : c.badge
+            }))
+        );
       } else {
         setTeamChannels(DEFAULT_TEAM_CHANNELS);
       }
@@ -1718,8 +1734,78 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupDesc, setNewGroupDesc] = useState('');
   const [newGroupBadge, setNewGroupBadge] = useState('Equipe');
+  const [newGroupAvatar, setNewGroupAvatar] = useState<string>('');
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+  const managerGroupAvatarInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const managerActiveGroupAvatarInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [channelToEditAvatar, setChannelToEditAvatar] = useState<ChatChannelItem | null>(null);
+  const [isManagerEmojiPickerOpen, setIsManagerEmojiPickerOpen] = useState(false);
+  const [replyingToManagerMsg, setReplyingToManagerMsg] = useState<ChatReplyInfo | null>(null);
+  const [editingManagerMsgId, setEditingManagerMsgId] = useState<string | null>(null);
+  const [editingManagerMsgText, setEditingManagerMsgText] = useState<string>('');
+
+  const handleSaveManagerEditMessage = async (msgId: string) => {
+    const trimmed = editingManagerMsgText.trim();
+    if (!trimmed) return;
+    setChatMessages(prev => prev.map(m => m.id === msgId ? { ...m, text: trimmed } : m));
+    setEditingManagerMsgId(null);
+    setEditingManagerMsgText('');
+    await updateChatMessageInSupabase(msgId, trimmed);
+  };
+
+  const handleDeleteManagerOwnMessage = async (msgId: string) => {
+    setChatMessages(prev => prev.filter(m => m.id !== msgId));
+    await deleteChatMessageFromSupabase(msgId);
+  };
+
+  const handleManagerGroupAvatarSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const compressed = await compressImageFile(file, 260, 260, 0.78);
+      setNewGroupAvatar(compressed.url);
+    } catch (err) {
+      console.error('Erro ao processar imagem do grupo:', err);
+    } finally {
+      if (managerGroupAvatarInputRef.current) managerGroupAvatarInputRef.current.value = '';
+    }
+  };
+
+  const handleUpdateExistingChannelAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const targetChan = channelToEditAvatar || activeChannelInfo;
+    if (!file || !targetChan) return;
+    try {
+      const compressed = await compressImageFile(file, 260, 260, 0.78);
+      const avatarUrl = compressed.url;
+      const updatedChan: ChatChannelItem = { ...targetChan, avatar: avatarUrl };
+
+      setTeamChannels(prev => {
+        const next = prev.map(c => c.id === targetChan.id ? updatedChan : c);
+        try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(next)); } catch {}
+        return next;
+      });
+
+      await saveChannelMetaToSupabase({
+        companyId: activeEmployee?.companyId,
+        channel: updatedChan,
+        sender: {
+          id: activeEmployee?.id || 'gestor',
+          name: activeEmployee?.name || 'Gestor',
+          role: activeEmployee?.role || 'Gestor',
+          avatar: activeEmployee?.avatar || '',
+        },
+        isNew: false,
+      });
+    } catch (err) {
+      console.error('Erro ao atualizar imagem do canal:', err);
+    } finally {
+      setChannelToEditAvatar(null);
+      if (managerActiveGroupAvatarInputRef.current) managerActiveGroupAvatarInputRef.current.value = '';
+    }
+  };
 
   // Confirmação de Exclusão de Grupo
   const [groupToDelete, setGroupToDelete] = useState<ChatChannelItem | null>(null);
@@ -1746,7 +1832,32 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     }
   };
 
+  const chatMessagesContainerRef = React.useRef<HTMLDivElement | null>(null);
   const chatMessagesEndRef = React.useRef<HTMLDivElement | null>(null);
+  const prevChatChannelRef = React.useRef<string>('');
+  const prevChatMsgCountRef = React.useRef<number>(0);
+
+  // Filtra apenas os canais aos quais o usuário logado pertence (mesmo para RH ou outro Gestor, grupos privados só aparecem para os integrantes selecionados na criação)
+  const visibleTeamChannels = useMemo(() => {
+    return teamChannels.filter((c) => {
+      if (c.id === 'geral' || c.id === 'escalas' || c.id === 'gestao') return false;
+      if (!c.members || c.members.length === 0) return true;
+      return Boolean(activeEmployee?.id && c.members.includes(activeEmployee.id));
+    });
+  }, [teamChannels, activeEmployee?.id]);
+
+  // Mantém o canal ativo sincronizado com os grupos visíveis
+  useEffect(() => {
+    if (visibleTeamChannels.length > 0 && !visibleTeamChannels.some(c => c.id === activeChatChannel)) {
+      setActiveChatChannel(visibleTeamChannels[0].id);
+    } else if (visibleTeamChannels.length === 0 && activeChatChannel !== '') {
+      setActiveChatChannel('');
+    }
+  }, [visibleTeamChannels, activeChatChannel]);
+
+  const activeChannelInfo = useMemo(() => {
+    return visibleTeamChannels.find(c => c.id === activeChatChannel) || visibleTeamChannels[0] || null;
+  }, [visibleTeamChannels, activeChatChannel]);
 
   // Canal ativo no banco (isolado por empresa e contato)
   const currentChatChannel = useMemo(() => {
@@ -1754,116 +1865,161 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       if (!selectedDirectEmployee?.id) return `cmp_${companyKey}__direct_none`;
       return getScopedDirectChannel(activeEmployee?.companyId, activeEmployee?.id, selectedDirectEmployee.id);
     }
-    return getScopedChatChannel(activeEmployee?.companyId, activeChatChannel);
-  }, [activeChatMode, selectedDirectEmployee?.id, activeChatChannel, activeEmployee?.companyId, activeEmployee?.id, companyKey]);
+    if (!activeChannelInfo?.id) return `cmp_${companyKey}__group_none`;
+    return getScopedChatChannel(activeEmployee?.companyId, activeChannelInfo.id);
+  }, [activeChatMode, selectedDirectEmployee?.id, activeChannelInfo?.id, activeEmployee?.companyId, activeEmployee?.id, companyKey]);
 
-  const activeChannelInfo = useMemo(() => {
-    return teamChannels.find(c => c.id === activeChatChannel) || teamChannels[0] || {
-      id: 'geral',
-      name: 'geral',
-      desc: 'Comunicação aberta para toda a equipe',
-      badge: ''
-    };
-  }, [teamChannels, activeChatChannel]);
-
-  // Carrega e sincroniza canais do Supabase
+  // Carrega e sincroniza canais do Supabase (incluindo fotos de grupos e exclusões feitas por outros gestores/contas)
   useEffect(() => {
     if (activeTab !== 'chat') return;
     const fetchChannels = async () => {
+      const deletedIds = new Set<string>();
+      const deletedNames = new Set<string>(['girllssss']);
       try {
-        const deletedIds = new Set<string>();
-        try {
-          const savedDel = localStorage.getItem(`pontuall_deleted_channels_${companyKey}`);
-          if (savedDel) {
-            JSON.parse(savedDel).forEach((id: string) => deletedIds.add(id));
-          }
-        } catch {}
+        const savedDel = localStorage.getItem(`pontuall_deleted_channels_${companyKey}`);
+        if (savedDel) {
+          JSON.parse(savedDel).forEach((id: string) => deletedIds.add(id));
+        }
+      } catch {}
 
+      // 0. Busca avisos de exclusão de grupos no Supabase para sincronizar entre contas
+      try {
+        const { data: delMsgs } = await supabase
+          .from('messages')
+          .select('recipient_id, text')
+          .or('recipient_id.like.group_deleted:%,text.like.🗑️ O grupo #%');
+
+        if (delMsgs && delMsgs.length > 0) {
+          delMsgs.forEach((m: any) => {
+            if (m.recipient_id && m.recipient_id.startsWith('group_deleted:')) {
+              const rawDelId = getDisplayChatChannel(m.recipient_id.replace('group_deleted:', ''));
+              deletedIds.add(rawDelId);
+            }
+            if (m.text && m.text.includes('🗑️ O grupo #')) {
+              const match = m.text.match(/#([^\s]+)\s+foi excluído/);
+              if (match && match[1]) {
+                deletedNames.add(match[1].trim().toLowerCase());
+              }
+            }
+          });
+          try {
+            localStorage.setItem(`pontuall_deleted_channels_${companyKey}`, JSON.stringify(Array.from(deletedIds)));
+          } catch {}
+        }
+      } catch {}
+
+      let dbChannelIds: Set<string> | null = null;
+      const loadedFromDb = new Map<string, ChatChannelItem>();
+      try {
         const { data, error } = await supabase.from('chat_channels').select('*');
-        if (!error && data && data.length > 0) {
-          const loaded: ChatChannelItem[] = data
-            .filter((d: any) => !deletedIds.has(d.id))
-            .map((d: any) => ({
-              id: getDisplayChatChannel(d.id),
+        if (!error && data) {
+          dbChannelIds = new Set(data.map((d: any) => getDisplayChatChannel(d.id)));
+          data.forEach((d: any) => {
+            const cleanId = getDisplayChatChannel(d.id);
+            const cleanName = (d.name || '').trim().toLowerCase();
+            if (cleanId === 'geral' || cleanId === 'escalas' || cleanId === 'gestao') return;
+            if (deletedIds.has(d.id) || deletedIds.has(cleanId) || deletedNames.has(cleanName)) return;
+            loadedFromDb.set(cleanId, {
+              id: cleanId,
               name: d.name,
               desc: d.description || '',
               badge: d.badge || 'Equipe',
               unread: 0,
               members: d.members || undefined,
-            }));
-          setTeamChannels(prev => {
-            const map = new Map(prev.filter(p => !deletedIds.has(p.id)).map(p => [p.id, p]));
-            loaded.forEach(item => map.set(item.id, item));
-            const merged = Array.from(map.values());
-            try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(merged)); } catch {}
-            return merged;
+              avatar: d.avatar || undefined,
+            });
           });
         }
       } catch {}
 
-      // Descobre grupos criados gravados para esta empresa
+      // Descobre metadados e imagens de grupos gravados na tabela messages (group_meta_id: e group_meta:)
+      const foundMetaMap = new Map<string, ChatChannelItem>();
       try {
         const groupPrefix = `cmp_${companyKey}__grupo_%`;
         const { data: groupMsgs } = await supabase
           .from('messages')
-          .select('channel, recipient_id, text')
-          .like('channel', groupPrefix);
+          .select('channel, recipient_id, attachment, text')
+          .or(`channel.like.${groupPrefix},recipient_id.like.group_meta%`)
+          .order('created_at', { ascending: true });
 
         if (groupMsgs && groupMsgs.length > 0) {
-          const foundMap = new Map<string, ChatChannelItem>();
           for (const msg of groupMsgs) {
-            if (!msg.channel) continue;
-            const rawId = getDisplayChatChannel(msg.channel);
-            if (foundMap.has(rawId)) continue;
-
-            let name = rawId.replace('grupo_', '');
-            let desc = 'Grupo de comunicação da equipe';
-            let badge = 'Equipe';
-            let members: string[] | undefined = undefined;
-
-            if (msg.recipient_id && msg.recipient_id.startsWith('group_meta:')) {
-              try {
-                const meta = JSON.parse(msg.recipient_id.replace('group_meta:', ''));
-                if (meta.name) name = meta.name;
-                if (meta.desc) desc = meta.desc;
-                if (meta.badge) badge = meta.badge;
-                if (meta.members && Array.isArray(meta.members)) members = meta.members;
-              } catch {}
-            }
-
-            foundMap.set(rawId, {
-              id: rawId,
-              name: name,
-              desc: desc,
-              badge: badge,
-              unread: 0,
-              members: members,
-            });
-          }
-
-          if (foundMap.size > 0) {
-            setTeamChannels((prev) => {
-              const map = new Map(prev.map(p => [p.id, p]));
-              foundMap.forEach((val, key) => {
-                if (!map.has(key)) map.set(key, val);
+            const extracted = extractGroupMetaFromMessage(msg);
+            if (extracted && extracted.id) {
+              const rawId = extracted.id;
+              const cleanName = (extracted.name || rawId).trim().toLowerCase();
+              if (deletedIds.has(rawId) || deletedNames.has(cleanName)) continue;
+              const prevMeta = foundMetaMap.get(rawId);
+              foundMetaMap.set(rawId, {
+                id: rawId,
+                name: extracted.name || prevMeta?.name || rawId.replace('grupo_', ''),
+                desc: extracted.desc || prevMeta?.desc || 'Grupo de comunicação da equipe',
+                badge: extracted.badge || prevMeta?.badge || 'Equipe',
+                unread: 0,
+                members: extracted.members || prevMeta?.members,
+                avatar: extracted.avatar || prevMeta?.avatar,
               });
-              const merged = Array.from(map.values());
-              try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(merged)); } catch {}
-              return merged;
-            });
+            }
           }
         }
       } catch {}
+
+      setTeamChannels((prev) => {
+        const map = new Map<string, ChatChannelItem>();
+        DEFAULT_TEAM_CHANNELS.forEach(def => {
+          const existing = prev.find(p => p.id === def.id);
+          const meta = foundMetaMap.get(def.id) || loadedFromDb.get(def.id);
+          map.set(def.id, {
+            ...def,
+            avatar: meta?.avatar || existing?.avatar,
+          });
+        });
+
+        loadedFromDb.forEach((val, key) => {
+          const meta = foundMetaMap.get(key);
+          const existing = prev.find(p => p.id === key);
+          map.set(key, {
+            ...val,
+            members: meta?.members || val.members || existing?.members,
+            avatar: meta?.avatar || val.avatar || existing?.avatar,
+          });
+        });
+
+        foundMetaMap.forEach((val, key) => {
+          if (key === 'geral' || key === 'escalas' || key === 'gestao') return;
+          if (dbChannelIds && !dbChannelIds.has(key)) return;
+          const existing = map.get(key) || prev.find(p => p.id === key);
+          map.set(key, {
+            ...val,
+            ...existing,
+            name: val.name || existing?.name || key,
+            desc: val.desc || existing?.desc || '',
+            members: val.members || existing?.members,
+            avatar: val.avatar || existing?.avatar,
+          });
+        });
+
+        const merged = Array.from(map.values()).filter(
+          c => !deletedIds.has(c.id) && !deletedNames.has((c.name || '').toLowerCase())
+        );
+        try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(merged)); } catch {}
+        return merged;
+      });
     };
     fetchChannels();
-  }, [activeTab, companyKey]);
+    const syncInterval = setInterval(fetchChannels, 5000);
+    return () => clearInterval(syncInterval);
+  }, [activeTab, companyKey, activeEmployee?.companyId]);
 
   // Carrega mensagens e assina WebSocket em tempo real para o chat do gestor
   useEffect(() => {
     if (activeTab !== 'chat') return;
 
     const fetchMessages = async () => {
-      if (activeChatMode === 'direct' && !selectedDirectEmployee?.id) {
+      if (
+        (activeChatMode === 'direct' && !selectedDirectEmployee?.id) ||
+        (activeChatMode === 'channel' && !activeChannelInfo?.id)
+      ) {
         setChatMessages([]);
         setChatLoading(false);
         return;
@@ -1880,11 +2036,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       const { data, error } = await query.order('created_at', { ascending: true });
 
       if (!error && data) {
+        // Filtra mensagens técnicas de controle de grupo para não poluir nem disparar scroll
+        const cleanData = (data as ChatMessage[]).filter((d) => !isSystemControlMessage(d));
         setChatMessages(prev => {
           const pendingTemp = prev.filter(
-            p => p.id.startsWith('temp-') && !data.some((d: any) => d.text === p.text && d.sender_id === p.sender_id)
+            p => p.id.startsWith('temp-') && !cleanData.some((d: any) => d.text === p.text && d.sender_id === p.sender_id)
           );
-          return [...(data as ChatMessage[]), ...pendingTemp];
+          const nextList = [...cleanData, ...pendingTemp];
+          if (
+            prev.length === nextList.length &&
+            prev.every((item, idx) => item.id === nextList[idx]?.id && item.text === nextList[idx]?.text)
+          ) {
+            return prev;
+          }
+          return nextList;
         });
       }
       setChatLoading(false);
@@ -1901,9 +2066,86 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       .channel(realtimeSubId)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages' },
+        { event: '*', schema: 'public', table: 'messages' },
         (payload) => {
+          if (payload.eventType === 'DELETE') {
+            const oldId = (payload.old as any)?.id;
+            if (oldId) {
+              setChatMessages(prev => prev.filter(m => m.id !== oldId));
+            }
+            return;
+          }
+
+          if (payload.eventType === 'UPDATE') {
+            const updatedMsg = payload.new as ChatMessage;
+            setChatMessages(prev => prev.map(m => m.id === updatedMsg.id ? { ...m, text: updatedMsg.text } : m));
+            return;
+          }
+
           const newMsg = payload.new as ChatMessage;
+
+          // Se for aviso de exclusão de grupo em tempo real
+          if (newMsg.recipient_id && newMsg.recipient_id.startsWith('group_deleted:')) {
+            const deletedId = getDisplayChatChannel(newMsg.recipient_id.replace('group_deleted:', ''));
+            setTeamChannels(prev => {
+              const filtered = prev.filter(c => c.id !== deletedId);
+              try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(filtered)); } catch {}
+              return filtered;
+            });
+            try {
+              const deletedList = JSON.parse(localStorage.getItem(`pontuall_deleted_channels_${companyKey}`) || '[]');
+              if (!deletedList.includes(deletedId)) {
+                deletedList.push(deletedId);
+                localStorage.setItem(`pontuall_deleted_channels_${companyKey}`, JSON.stringify(deletedList));
+              }
+            } catch {}
+            return;
+          }
+
+          // Se for metadado de criação ou atualização de foto de grupo em tempo real
+          const extractedMeta = extractGroupMetaFromMessage(newMsg);
+          if (extractedMeta && extractedMeta.id) {
+            const rawChannelId = extractedMeta.id;
+            const members = extractedMeta.members;
+            if (rawChannelId.startsWith('grupo_') && members && members.length > 0 && activeEmployee?.id && !members.includes(activeEmployee.id)) {
+              return;
+            }
+            setTeamChannels(prev => {
+              if (prev.some(p => p.id === rawChannelId)) {
+                const updatedExisting = prev.map(p =>
+                  p.id === rawChannelId
+                    ? {
+                        ...p,
+                        name: extractedMeta.name || p.name,
+                        desc: extractedMeta.desc || p.desc,
+                        avatar: extractedMeta.avatar || p.avatar,
+                        members: members || p.members,
+                      }
+                    : p
+                );
+                try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(updatedExisting)); } catch {}
+                return updatedExisting;
+              }
+              const updated = [
+                ...prev,
+                {
+                  id: rawChannelId,
+                  name: extractedMeta.name || rawChannelId.replace('grupo_', ''),
+                  desc: extractedMeta.desc || 'Grupo criado pela gestão',
+                  badge: extractedMeta.badge || 'Equipe',
+                  members,
+                  avatar: extractedMeta.avatar || undefined,
+                  unread: 0,
+                },
+              ];
+              try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(updated)); } catch {}
+              return updated;
+            });
+            return;
+          }
+
+          if (isSystemControlMessage(newMsg)) return;
+
           const directPair = (activeChatMode === 'direct' && selectedDirectEmployee?.id && activeEmployee?.id)
             ? [activeEmployee.id, selectedDirectEmployee.id].sort().join('_')
             : null;
@@ -1931,11 +2173,39 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       clearInterval(interval);
       supabase.removeChannel(realtimeChannel);
     };
-  }, [activeTab, currentChatChannel, activeChatMode, selectedDirectEmployee?.id, activeEmployee?.id]);
+  }, [activeTab, currentChatChannel, activeChatMode, selectedDirectEmployee?.id, activeEmployee?.id, companyKey]);
 
+  // Controle inteligente de rolagem na aba de Chat: rola apenas dentro do container do chat, nunca puxando a página inteira para baixo a cada 3s
   useEffect(() => {
-    chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatMessages]);
+    const container = chatMessagesContainerRef.current;
+    const isChannelSwitch = prevChatChannelRef.current !== currentChatChannel;
+    const isNewMessage = chatMessages.length > prevChatMsgCountRef.current;
+
+    if (isChannelSwitch && chatMessages.length > 0) {
+      prevChatChannelRef.current = currentChatChannel;
+      prevChatMsgCountRef.current = chatMessages.length;
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+      return;
+    }
+
+    if (isNewMessage) {
+      const lastMsg = chatMessages[chatMessages.length - 1];
+      const isFromMe = Boolean(activeEmployee?.id && lastMsg?.sender_id === activeEmployee.id);
+      const isNearBottom = container
+        ? container.scrollHeight - container.scrollTop - container.clientHeight < 140
+        : true;
+
+      if (isFromMe || isNearBottom || prevChatMsgCountRef.current === 0) {
+        if (container) {
+          container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+        }
+      }
+    }
+
+    prevChatMsgCountRef.current = chatMessages.length;
+  }, [chatMessages, currentChatChannel, activeEmployee?.id]);
   // Semana exibida na matriz: segunda-feira da semana atual + deslocamento de semanas
   const baseDate = useMemo(
     () => addDaysLocal(startOfWeekMonday(new Date()), currentWeekOffset * 7),
@@ -2025,15 +2295,26 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
     const rawText = newChatInput.trim();
     const attachmentToSend = pendingManagerAttachment;
+    const replyToSend = replyingToManagerMsg;
 
     setNewChatInput('');
     setPendingManagerAttachment(null);
+    setReplyingToManagerMsg(null);
+    setIsManagerEmojiPickerOpen(false);
 
     const recipientId = activeChatMode === 'direct' ? (selectedDirectEmployee?.id || null) : null;
     const senderId = activeEmployee?.id || 'gestor';
     const senderName = activeEmployee?.name || 'Gestor';
     const senderRole = activeEmployee?.role || (isRh ? 'Gestora Geral' : 'Gestor');
     const senderAvatar = activeEmployee?.avatar || '';
+
+    const optimisticPayload =
+      attachmentToSend || replyToSend
+        ? JSON.stringify({
+            ...(attachmentToSend ? attachmentToSend : {}),
+            ...(replyToSend ? { replyTo: replyToSend } : {}),
+          })
+        : null;
 
     const optimisticMsg: ChatMessage = {
       id: `temp-${Date.now()}`,
@@ -2042,7 +2323,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       sender_role: senderRole,
       sender_avatar: senderAvatar,
       text: rawText,
-      attachment: attachmentToSend ? JSON.stringify(attachmentToSend) : null,
+      attachment: optimisticPayload,
       created_at: new Date().toISOString(),
       channel: currentChatChannel,
       recipient_id: recipientId,
@@ -2057,6 +2338,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         sender_avatar: senderAvatar,
         text: rawText,
         attachment: attachmentToSend,
+        replyTo: replyToSend,
         channel: currentChatChannel,
         recipient_id: recipientId,
       });
@@ -2071,7 +2353,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
     setIsCreatingGroup(true);
     const channelId = `grupo_${Date.now()}`;
-    const membersList = selectedMemberIds.length > 0 ? selectedMemberIds : employees.map(e => e.id);
+    const baseMembers = selectedMemberIds.length > 0 ? selectedMemberIds : employees.map(e => e.id);
+    const creatorId = activeEmployee?.id;
+    const membersList = creatorId ? Array.from(new Set([...baseMembers, creatorId])) : baseMembers;
     const newChan: ChatChannelItem = {
       id: channelId,
       name: newGroupName.trim().toLowerCase().replace(/\s+/g, '-'),
@@ -2079,45 +2363,30 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       badge: newGroupBadge.trim() || 'Equipe',
       unread: 0,
       members: membersList,
+      avatar: newGroupAvatar || undefined,
     };
 
     const updated = [...teamChannels, newChan];
     setTeamChannels(updated);
     try { localStorage.setItem(`pontuall_team_channels_${companyKey}`, JSON.stringify(updated)); } catch {}
 
-    const scopedGroupId = getScopedChatChannel(activeEmployee?.companyId, newChan.id);
-
-    try {
-      await supabase.from('chat_channels').insert([
-        {
-          id: scopedGroupId,
-          name: newChan.name,
-          description: newChan.desc,
-          badge: newChan.badge,
-          created_by: activeEmployee?.name || 'Gestão',
-          members: newChan.members,
-        }
-      ]);
-    } catch {}
-
-    try {
-      await supabase.from('messages').insert([
-        {
-          channel: getScopedChatChannel(activeEmployee?.companyId, 'geral'),
-          text: `🎉 Novo grupo criado pela gestão: #${newChan.name} - ${newChan.desc}`,
-          recipient_id: `group_meta:${JSON.stringify(newChan)}`,
-          sender_id: activeEmployee?.id || 'gestor',
-          sender_name: activeEmployee?.name || 'Gestor',
-          sender_role: activeEmployee?.role || 'Gestor',
-          sender_avatar: activeEmployee?.avatar || '',
-        }
-      ]);
-    } catch {}
+    await saveChannelMetaToSupabase({
+      companyId: activeEmployee?.companyId,
+      channel: newChan,
+      sender: {
+        id: activeEmployee?.id || 'gestor',
+        name: activeEmployee?.name || 'Gestor',
+        role: activeEmployee?.role || 'Gestor',
+        avatar: activeEmployee?.avatar || '',
+      },
+      isNew: true,
+    });
 
     setIsCreatingGroup(false);
     setIsNewGroupModalOpen(false);
     setNewGroupName('');
     setNewGroupDesc('');
+    setNewGroupAvatar('');
     setSelectedMemberIds([]);
     setActiveChatMode('channel');
     setActiveChatChannel(newChan.id);
@@ -2135,11 +2404,25 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     const scopedGroupId = getScopedChatChannel(activeEmployee?.companyId, groupId);
 
     try {
-      await supabase.from('messages').delete().or(`channel.eq.${scopedGroupId},channel.eq.${groupId}`);
+      await supabase.from('messages').delete().or(`channel.eq.${scopedGroupId},channel.eq.${groupId},recipient_id.eq.group_meta_id:${groupId},recipient_id.like.%${groupId}%`);
     } catch {}
 
     try {
-      await supabase.from('chat_channels').delete().or(`id.eq.${scopedGroupId},id.eq.${groupId}`);
+      await supabase.from('chat_channels').delete().or(`id.eq.${scopedGroupId},id.eq.${groupId},name.eq.${groupName}`);
+    } catch {}
+
+    try {
+      await supabase.from('messages').insert([
+        {
+          channel: getScopedChatChannel(activeEmployee?.companyId, 'geral'),
+          text: `🗑️ O grupo #${groupName} foi excluído por ${activeEmployee?.name || 'Gestão'}.`,
+          recipient_id: `group_deleted:${groupId}`,
+          sender_id: activeEmployee?.id || 'gestor',
+          sender_name: activeEmployee?.name || 'Gestor',
+          sender_role: activeEmployee?.role || 'Gestor',
+          sender_avatar: activeEmployee?.avatar || '',
+        }
+      ]);
     } catch {}
 
     try {
@@ -2157,8 +2440,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     } catch {}
 
     if (activeChatChannel === groupId) {
-      if (remaining.length > 0) {
-        setActiveChatChannel(remaining[0].id);
+      const visibleRemaining = remaining.filter(c => {
+        if (c.id === 'geral' || c.id === 'escalas' || c.id === 'gestao') return false;
+        if (!c.members || c.members.length === 0) return true;
+        return Boolean(activeEmployee?.id && c.members.includes(activeEmployee.id));
+      });
+      if (visibleRemaining.length > 0) {
+        setActiveChatChannel(visibleRemaining[0].id);
       } else {
         setActiveChatMode('direct');
       }
@@ -3209,15 +3497,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     }}
                   >
                     <div className="flex items-center gap-3.5">
-                      <div 
-                        className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-md"
-                        style={{
-                          background: 'linear-gradient(135deg, #96183c 0%, #f89847 100%)',
-                          color: '#ffffff'
-                        }}
-                      >
-                        <FileText className="w-5 h-5" />
-                      </div>
                       <div>
                         <h3 className={`text-base font-bold tracking-tight ${
                           isDark ? 'text-white' : 'text-[#640C1E]'
@@ -5012,7 +5291,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
                           isDark ? 'bg-white/5 text-slate-400' : 'bg-slate-100 text-slate-600'
                         }`}>
-                          {teamChannels.length}
+                          {visibleTeamChannels.length}
                         </span>
                       </div>
                       <button
@@ -5028,7 +5307,14 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     </div>
 
                     <div className="space-y-1.5">
-                      {teamChannels.map((chan) => {
+                      {visibleTeamChannels.length === 0 && (
+                        <div className={`p-3 text-center text-[10px] italic rounded-xl border border-dashed ${
+                          isDark ? 'border-white/10 text-slate-500' : 'border-slate-200 text-slate-400'
+                        }`}>
+                          Nenhum grupo criado ainda. Clique em "+ Novo" para criar um grupo.
+                        </div>
+                      )}
+                      {visibleTeamChannels.map((chan) => {
                         const isCurrent = activeChatMode === 'channel' && activeChatChannel === chan.id;
                         return (
                           <div
@@ -5052,14 +5338,18 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             } : {}}
                           >
                             <div 
-                              className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
+                              className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 overflow-hidden ${
                                 isCurrent 
                                   ? 'text-white' 
                                   : isDark ? 'text-slate-400 bg-white/5' : 'text-slate-500 bg-slate-100'
                               }`}
-                              style={isCurrent ? { background: 'linear-gradient(135deg, #640C1E, #F59242)' } : {}}
+                              style={isCurrent && !chan.avatar ? { background: 'linear-gradient(135deg, #640C1E, #F59242)' } : {}}
                             >
-                              <MessageSquare className="w-4 h-4" />
+                              {chan.avatar ? (
+                                <img src={chan.avatar} alt={chan.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <MessageSquare className="w-4 h-4" />
+                              )}
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center justify-between gap-1">
@@ -5196,8 +5486,28 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         />
                         <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-400 border-2 border-[#111216]" />
                       </div>
+                    ) : activeChannelInfo ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setChannelToEditAvatar(activeChannelInfo);
+                          managerActiveGroupAvatarInputRef.current?.click();
+                        }}
+                        title="Clique para alterar a imagem do grupo"
+                        className="group/av relative w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-md shrink-0 overflow-hidden cursor-pointer"
+                        style={!activeChannelInfo.avatar ? { background: 'linear-gradient(135deg, #640C1E, #F59242)' } : {}}
+                      >
+                        {activeChannelInfo.avatar ? (
+                          <img src={activeChannelInfo.avatar} alt={activeChannelInfo.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <MessageSquare className="w-5 h-5" />
+                        )}
+                        <span className="absolute inset-0 bg-black/55 opacity-0 group-hover/av:opacity-100 transition-opacity flex items-center justify-center">
+                          <ImageIcon className="w-4 h-4 text-white" />
+                        </span>
+                      </button>
                     ) : (
-                      <div 
+                      <div
                         className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-md shrink-0"
                         style={{ background: 'linear-gradient(135deg, #640C1E, #F59242)' }}
                       >
@@ -5208,15 +5518,39 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       <div className="flex items-center gap-2">
                         <h2 className={`text-sm font-black ${isDark ? 'text-white' : 'text-[#640C1E]'}`}>
                           {activeChatMode === 'direct' 
-                            ? `Chat Privado: ${selectedDirectEmployee?.name}` 
-                            : `#${activeChannelInfo.name}`}
+                            ? `Chat Privado: ${selectedDirectEmployee?.name || 'Selecione um contato'}` 
+                            : activeChannelInfo ? `#${activeChannelInfo.name}` : 'Nenhum grupo ativo'}
                         </h2>
                       </div>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {activeChatMode === 'channel' && (
+                    <input
+                      type="file"
+                      ref={managerActiveGroupAvatarInputRef}
+                      accept="image/*"
+                      onChange={handleUpdateExistingChannelAvatar}
+                      className="hidden"
+                    />
+                    {activeChatMode === 'channel' && activeChannelInfo && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setChannelToEditAvatar(activeChannelInfo);
+                            managerActiveGroupAvatarInputRef.current?.click();
+                          }}
+                          className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                            isDark
+                              ? 'border-white/15 text-slate-300 hover:bg-white/10 hover:text-white'
+                              : 'border-slate-300 text-slate-700 hover:bg-slate-100'
+                          }`}
+                          title={`Alterar imagem do canal #${activeChannelInfo.name}`}
+                        >
+                          <ImageIcon className="w-3.5 h-3.5 text-[#F59242]" />
+                          <span className="hidden sm:inline">Foto do Grupo</span>
+                        </button>
                       <button
                         type="button"
                         onClick={() => handlePromptDeleteGroup(activeChannelInfo)}
@@ -5226,12 +5560,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         <Trash2 className="w-3.5 h-3.5" />
                         <span className="hidden sm:inline">Excluir Grupo</span>
                       </button>
+                      </>
                     )}
                   </div>
                 </div>
 
                 {/* Messages Feed */}
-                <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 min-h-[380px] max-h-[520px]">
+                <div ref={chatMessagesContainerRef} className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-4 min-h-[380px] max-h-[520px]">
                   <div className="flex items-center gap-3">
                     <div className={`h-px flex-1 ${isDark ? 'bg-[#282a33]' : 'bg-[#E8DCCB]'}`} />
                     <span className={`text-[10px] font-black uppercase tracking-widest ${
@@ -5252,8 +5587,10 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       <p className="text-xs text-slate-400">Nenhuma mensagem neste canal ainda.</p>
                       <p className="text-[11px] text-slate-500 mt-1">
                         {activeChatMode === 'direct'
-                          ? `Envie uma mensagem direta para ${selectedDirectEmployee?.name}.`
-                          : `Envie a primeira mensagem no canal #${activeChannelInfo.name}!`}
+                          ? `Envie uma mensagem direta para ${selectedDirectEmployee?.name || 'um colaborador'}.`
+                          : activeChannelInfo
+                            ? `Envie a primeira mensagem no canal #${activeChannelInfo.name}!`
+                            : 'Clique em "+ Novo" na barra lateral para criar seu primeiro grupo com a equipe.'}
                       </p>
                     </div>
                   ) : (
@@ -5264,11 +5601,12 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         ? new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
                         : 'Agora';
                       const parsed = parseChatMessage(msg.text, msg.attachment);
+                      const isEditingThis = editingManagerMsgId === msg.id;
 
                       return (
                         <div
                           key={msg.id}
-                          className={`flex items-start gap-3 ${isMe ? 'flex-row-reverse text-right' : 'flex-row text-left'}`}
+                          className={`group/mmsg flex items-start gap-3 ${isMe ? 'flex-row-reverse text-right' : 'flex-row text-left'}`}
                         >
                           <div className="relative shrink-0">
                             <img
@@ -5296,6 +5634,53 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                               </span>
                               <span className="text-slate-400">•</span>
                               <span className="font-mono text-slate-400">{timeStr}</span>
+                              {!isEditingThis && (
+                                <span className="inline-flex items-center gap-1 opacity-80 sm:opacity-0 sm:group-hover/mmsg:opacity-100 transition-opacity ml-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setReplyingToManagerMsg({
+                                        id: msg.id,
+                                        sender_name: msg.sender_name,
+                                        text: parsed.text || (parsed.attachment ? '📷 Imagem anexada' : 'Mensagem'),
+                                      });
+                                    }}
+                                    className={`p-1 rounded transition-colors cursor-pointer ${
+                                      isDark ? 'hover:bg-white/10 text-slate-400 hover:text-white' : 'hover:bg-slate-200 text-slate-500 hover:text-slate-900'
+                                    }`}
+                                    title="Responder esta mensagem"
+                                  >
+                                    <Reply className="w-3 h-3" />
+                                  </button>
+                                  {isMe && !msg.id.startsWith('temp-') && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setEditingManagerMsgId(msg.id);
+                                          setEditingManagerMsgText(parsed.text || '');
+                                        }}
+                                        className={`p-1 rounded transition-colors cursor-pointer ${
+                                          isDark ? 'hover:bg-white/10 text-slate-400 hover:text-white' : 'hover:bg-slate-200 text-slate-500 hover:text-slate-900'
+                                        }`}
+                                        title="Editar mensagem"
+                                      >
+                                        <Edit2 className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteManagerOwnMessage(msg.id)}
+                                        className={`p-1 rounded transition-colors cursor-pointer ${
+                                          isDark ? 'hover:bg-rose-500/20 text-slate-400 hover:text-rose-400' : 'hover:bg-rose-100 text-slate-500 hover:text-rose-600'
+                                        }`}
+                                        title="Excluir mensagem"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </>
+                                  )}
+                                </span>
+                              )}
                             </div>
 
                             <div
@@ -5314,8 +5699,67 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                 boxShadow: isDark ? '0 8px 20px rgba(0, 0, 0, 0.25)' : '0 4px 12px rgba(0, 0, 0, 0.05)'
                               }}
                             >
-                              {parsed.text && (
-                                <p className="leading-relaxed">{parsed.text}</p>
+                              {parsed.replyTo && (
+                                <div
+                                  className={`mb-2 px-2.5 py-1.5 rounded-lg border-l-2 text-[10px] leading-snug ${
+                                    isMe
+                                      ? 'bg-black/25 border-[#F59242] text-[#F9DE97]/90'
+                                      : isDark
+                                        ? 'bg-black/30 border-[#F59242] text-slate-300'
+                                        : 'bg-slate-100 border-[#96183c] text-slate-600'
+                                  }`}
+                                >
+                                  <span className="font-extrabold block opacity-95">
+                                    {parsed.replyTo.sender_name}
+                                  </span>
+                                  <span className="line-clamp-2 opacity-80 break-words">
+                                    {parsed.replyTo.text}
+                                  </span>
+                                </div>
+                              )}
+                              {isEditingThis ? (
+                                <div className="space-y-2 min-w-[220px]">
+                                  <input
+                                    type="text"
+                                    value={editingManagerMsgText}
+                                    onChange={(e) => setEditingManagerMsgText(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        handleSaveManagerEditMessage(msg.id);
+                                      } else if (e.key === 'Escape') {
+                                        setEditingManagerMsgId(null);
+                                        setEditingManagerMsgText('');
+                                      }
+                                    }}
+                                    autoFocus
+                                    className="w-full px-2.5 py-1.5 rounded-lg text-xs bg-black/30 text-white border border-white/30 outline-none"
+                                  />
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingManagerMsgId(null);
+                                        setEditingManagerMsgText('');
+                                      }}
+                                      className="px-2 py-0.5 rounded text-[10px] font-bold bg-black/25 hover:bg-black/40 text-white cursor-pointer"
+                                    >
+                                      Cancelar
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSaveManagerEditMessage(msg.id)}
+                                      className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-[#F59242] text-black hover:brightness-110 flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Check className="w-3 h-3" />
+                                      Salvar
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                parsed.text && (
+                                  <p className="leading-relaxed">{parsed.text}</p>
+                                )
                               )}
 
                               {/* Anexo de Imagem Salvo no Banco */}
@@ -5385,6 +5829,33 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   ))}
                 </div>
 
+                {/* Banner de Mensagem Sendo Respondida */}
+                {replyingToManagerMsg && (
+                  <div className={`px-4 py-2 border-t flex items-center justify-between gap-2 text-xs transition-colors shrink-0 ${
+                    !isDark ? 'bg-slate-100 border-[#E8DCCB] text-slate-800' : 'bg-[#111216] border-[#282a33] text-slate-200'
+                  }`}>
+                    <div className="flex items-center gap-2 min-w-0 border-l-2 border-[#F59242] pl-2.5">
+                      <Reply className="w-3.5 h-3.5 text-[#F59242] shrink-0" />
+                      <div className="min-w-0">
+                        <p className="font-bold text-[10px] text-[#F59242] truncate">
+                          Respondendo a {replyingToManagerMsg.sender_name}
+                        </p>
+                        <p className="text-[11px] opacity-80 truncate max-w-[420px]">
+                          {replyingToManagerMsg.text}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReplyingToManagerMsg(null)}
+                      className="p-1 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 opacity-70 hover:opacity-100 cursor-pointer shrink-0"
+                      title="Cancelar resposta"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+
                 {/* Banner de Preview do Anexo Pendente do Gestor */}
                 {pendingManagerAttachment && (
                   <div className={`px-4 py-2 border-t flex items-center justify-between gap-2 text-xs transition-colors shrink-0 ${
@@ -5409,6 +5880,24 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     >
                       <X className="w-4 h-4" />
                     </button>
+                  </div>
+                )}
+
+                {/* Barra de Emojis Rápidos */}
+                {isManagerEmojiPickerOpen && (
+                  <div className={`px-4 py-2 border-t flex flex-wrap items-center gap-1.5 shrink-0 ${
+                    isDark ? 'bg-[#111216] border-[#282a33]' : 'bg-[#FFFDF8] border-[#E8DCCB]'
+                  }`}>
+                    {CHAT_COMMON_EMOJIS.map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => setNewChatInput(prev => prev + emoji)}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-base hover:bg-black/10 dark:hover:bg-white/10 transition-transform hover:scale-115 cursor-pointer"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
                   </div>
                 )}
 
@@ -5443,17 +5932,34 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     <Paperclip className="w-4 h-4" />
                   </button>
 
+                  <button
+                    type="button"
+                    onClick={() => setIsManagerEmojiPickerOpen(prev => !prev)}
+                    aria-label="Inserir emoji"
+                    className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                      isManagerEmojiPickerOpen
+                        ? 'bg-[#F59242]/20 text-[#F59242] border border-[#F59242]/30'
+                        : isDark ? 'text-slate-400 hover:text-white hover:bg-white/5' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                    title="Inserir emoji"
+                  >
+                    <Smile className="w-4 h-4" />
+                  </button>
+
                   <input
                     id="chat-main-input"
                     type="text"
                     value={newChatInput}
                     onChange={(e) => setNewChatInput(e.target.value)}
+                    disabled={activeChatMode === 'channel' && !activeChannelInfo}
                     placeholder={
                       pendingManagerAttachment
                         ? 'Adicionar legenda para a imagem (opcional)...'
                         : activeChatMode === 'direct'
                           ? `Mensagem privada para ${selectedDirectEmployee?.name || 'Colaborador'}...`
-                          : `Mensagem no canal #${activeChannelInfo.name}...`
+                          : activeChannelInfo
+                            ? `Mensagem no canal #${activeChannelInfo.name}...`
+                            : 'Crie ou selecione um grupo para enviar mensagens...'
                     }
                     className={`flex-1 border rounded-xl px-3.5 py-2.5 text-xs outline-none transition-all ${
                       isDark 
@@ -5465,7 +5971,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   <button
                     type="submit"
                     aria-label="Enviar mensagem"
-                    disabled={!newChatInput.trim() && !pendingManagerAttachment}
+                    disabled={(!newChatInput.trim() && !pendingManagerAttachment) || (activeChatMode === 'channel' && !activeChannelInfo)}
                     className="px-4 py-2.5 rounded-xl font-bold text-xs text-white flex items-center gap-1.5 shadow-md transition-all hover:scale-105 active:scale-95 disabled:opacity-40 disabled:hover:scale-100 cursor-pointer"
                     style={{
                       background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)',
@@ -5505,18 +6011,53 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   </div>
 
                   <form onSubmit={handleCreateNewGroup} className="p-4 space-y-3 overflow-y-auto flex-1">
-                    <div>
-                      <label className="block text-[11px] font-bold mb-1 opacity-80">Nome do Grupo (#canal)</label>
+                    <div className="flex items-center gap-3">
                       <input
-                        type="text"
-                        value={newGroupName}
-                        onChange={(e) => setNewGroupName(e.target.value)}
-                        placeholder="ex: noturno, plantao-uti, vendas"
-                        required
-                        className={`w-full px-3 py-2 rounded-xl text-xs border outline-none ${
-                          isDark ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-100 border-slate-300 text-slate-900'
-                        }`}
+                        type="file"
+                        ref={managerGroupAvatarInputRef}
+                        accept="image/*"
+                        onChange={handleManagerGroupAvatarSelect}
+                        className="hidden"
                       />
+                      <button
+                        type="button"
+                        onClick={() => managerGroupAvatarInputRef.current?.click()}
+                        className={`w-14 h-14 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center shrink-0 overflow-hidden transition-all cursor-pointer relative group ${
+                          isDark ? 'border-white/20 bg-white/5 hover:border-[#f89642]' : 'border-slate-300 bg-slate-100 hover:border-[#96183c]'
+                        }`}
+                        title="Selecionar imagem do grupo"
+                      >
+                        {newGroupAvatar ? (
+                          <img src={newGroupAvatar} alt="Avatar do grupo" className="w-full h-full object-cover" />
+                        ) : (
+                          <>
+                            <ImageIcon className="w-5 h-5 opacity-60" />
+                            <span className="text-[8px] font-bold opacity-60 mt-0.5">Foto</span>
+                          </>
+                        )}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <label className="block text-[11px] font-bold mb-1 opacity-80">Nome do Grupo (#canal)</label>
+                        <input
+                          type="text"
+                          value={newGroupName}
+                          onChange={(e) => setNewGroupName(e.target.value)}
+                          placeholder="ex: noturno, plantao-uti, vendas"
+                          required
+                          className={`w-full px-3 py-2 rounded-xl text-xs border outline-none ${
+                            isDark ? 'bg-white/5 border-white/10 text-white' : 'bg-slate-100 border-slate-300 text-slate-900'
+                          }`}
+                        />
+                        {newGroupAvatar && (
+                          <button
+                            type="button"
+                            onClick={() => setNewGroupAvatar('')}
+                            className="text-[10px] text-rose-400 hover:underline mt-1 font-semibold cursor-pointer"
+                          >
+                            Remover imagem
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <div>

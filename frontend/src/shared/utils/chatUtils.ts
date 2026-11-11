@@ -7,10 +7,23 @@ export interface ChatAttachment {
   size?: string;
 }
 
+export interface ChatReplyInfo {
+  id: string;
+  sender_name: string;
+  text: string;
+}
+
 export interface ParsedChatPayload {
   text: string;
   attachment?: ChatAttachment | null;
+  replyTo?: ChatReplyInfo | null;
 }
+
+export const CHAT_COMMON_EMOJIS: string[] = [
+  '😀', '😂', '😊', '😍', '🤩', '😎', '🤝', '👍', '👏', '🙌',
+  '🙏', '💪', '🔥', '✨', '🎉', '❤️', '💯', '✅', '⚠️', '🚀',
+  '📅', '⏰', '📌', '💼', '📋', '💬', '👀', '🤔', '😅', '😉',
+];
 
 /**
  * Converte e otimiza um arquivo de imagem para Base64 compacto (máx 1200px, JPEG 0.8)
@@ -94,24 +107,46 @@ export async function compressImageFile(file: File, maxWidth = 1200, maxHeight =
 
 /**
  * Converte mensagem do banco de dados:
- * 1. Prioriza a coluna dedicada 'attachment' caso exista
+ * 1. Prioriza a coluna dedicada 'attachment' caso exista (suporta imagem + metadado replyTo)
  * 2. Faz fallback transparente caso tenha sido gravado no campo 'text'
  */
 export function parseChatMessage(rawText: string, rawAttachment?: any | null): ParsedChatPayload {
   // 1. Se veio pela coluna dedicada 'attachment'
   if (rawAttachment) {
-    if (typeof rawAttachment === 'object' && rawAttachment.url) {
-      return {
-        text: rawText || '',
-        attachment: rawAttachment,
-      };
+    if (typeof rawAttachment === 'object') {
+      const hasAttachment = Boolean(rawAttachment.url);
+      const replyTo = rawAttachment.replyTo || null;
+      if (hasAttachment || replyTo) {
+        return {
+          text: rawText || '',
+          attachment: hasAttachment
+            ? {
+                type: rawAttachment.type || 'image',
+                name: rawAttachment.name || 'anexo',
+                url: rawAttachment.url,
+                size: rawAttachment.size,
+              }
+            : (rawAttachment.attachment || null),
+          replyTo,
+        };
+      }
     }
     if (typeof rawAttachment === 'string' && rawAttachment.trim().startsWith('{')) {
       try {
         const parsedAtt = JSON.parse(rawAttachment);
+        const hasAttachment = Boolean(parsedAtt.url);
+        const replyTo = parsedAtt.replyTo || null;
         return {
           text: rawText || '',
-          attachment: parsedAtt,
+          attachment: hasAttachment
+            ? {
+                type: parsedAtt.type || 'image',
+                name: parsedAtt.name || 'anexo',
+                url: parsedAtt.url,
+                size: parsedAtt.size,
+              }
+            : (parsedAtt.attachment || null),
+          replyTo,
         };
       } catch {}
     }
@@ -121,12 +156,13 @@ export function parseChatMessage(rawText: string, rawAttachment?: any | null): P
   if (!rawText) return { text: '' };
 
   const trimmed = rawText.trim();
-  if (trimmed.startsWith('{') && (trimmed.includes('"attachment"') || trimmed.includes('"url"'))) {
+  if (trimmed.startsWith('{') && (trimmed.includes('"attachment"') || trimmed.includes('"url"') || trimmed.includes('"replyTo"'))) {
     try {
       const parsed = JSON.parse(trimmed);
       return {
         text: parsed.text || '',
         attachment: parsed.attachment || null,
+        replyTo: parsed.replyTo || null,
       };
     } catch {}
   }
@@ -135,21 +171,26 @@ export function parseChatMessage(rawText: string, rawAttachment?: any | null): P
 }
 
 /**
- * Serializa texto e anexo para formato de fallback
+ * Serializa texto, anexo e resposta para formato de fallback
  */
-export function serializeChatMessage(text: string, attachment?: ChatAttachment | null): string {
-  if (!attachment) {
+export function serializeChatMessage(text: string, attachment?: ChatAttachment | null, replyTo?: ChatReplyInfo | null): string {
+  if (!attachment && !replyTo) {
     return text.trim();
   }
 
   return JSON.stringify({
     text: text.trim(),
-    attachment: {
-      type: attachment.type,
-      name: attachment.name,
-      url: attachment.url,
-      size: attachment.size,
-    },
+    ...(attachment
+      ? {
+          attachment: {
+            type: attachment.type,
+            name: attachment.name,
+            url: attachment.url,
+            size: attachment.size,
+          },
+        }
+      : {}),
+    ...(replyTo ? { replyTo } : {}),
   });
 }
 
@@ -165,12 +206,17 @@ export async function sendChatMessageToSupabase(params: {
   sender_avatar: string;
   text: string;
   attachment?: ChatAttachment | null;
+  replyTo?: ChatReplyInfo | null;
   channel?: string;
   recipient_id?: string | null;
 }): Promise<{ error: any }> {
-  // Se tem anexo, tenta gravar na coluna dedicada 'attachment'
-  if (params.attachment) {
-    const attachmentJson = JSON.stringify(params.attachment);
+  // Se tem anexo ou resposta a uma mensagem específica, grava na coluna dedicada 'attachment'
+  if (params.attachment || params.replyTo) {
+    const combinedMeta = {
+      ...(params.attachment ? params.attachment : {}),
+      ...(params.replyTo ? { replyTo: params.replyTo } : {}),
+    };
+    const attachmentJson = JSON.stringify(combinedMeta);
     const { error } = await supabase.from('messages').insert([
       {
         sender_id: params.sender_id,
@@ -189,7 +235,7 @@ export async function sendChatMessageToSupabase(params: {
     }
 
     // Fallback: se a coluna attachment ainda não foi criada no banco
-    const fallbackText = serializeChatMessage(params.text, params.attachment);
+    const fallbackText = serializeChatMessage(params.text, params.attachment, params.replyTo);
     return await supabase.from('messages').insert([
       {
         sender_id: params.sender_id,
@@ -215,6 +261,194 @@ export async function sendChatMessageToSupabase(params: {
       recipient_id: params.recipient_id,
     }
   ]);
+}
+
+/**
+ * Atualiza o texto de uma mensagem própria no Supabase
+ */
+export async function updateChatMessageInSupabase(messageId: string, newText: string): Promise<{ error: any }> {
+  const { error } = await supabase
+    .from('messages')
+    .update({ text: newText.trim() })
+    .eq('id', messageId);
+  return { error };
+}
+
+/**
+ * Exclui uma mensagem própria no Supabase
+ */
+export async function deleteChatMessageFromSupabase(messageId: string): Promise<{ error: any }> {
+  const { error } = await supabase
+    .from('messages')
+    .delete()
+    .eq('id', messageId);
+  return { error };
+}
+
+/**
+ * Salva ou atualiza o canal/grupo e sua imagem no Supabase:
+ * 1. Tenta salvar na tabela `chat_channels` (com ou sem a coluna `avatar`).
+ * 2. Também persiste os metadados (incluindo a imagem em `attachment`) na tabela `messages`
+ *    para garantir que a imagem do grupo sempre fique salva no banco mesmo sem migração extra.
+ */
+export async function saveChannelMetaToSupabase(params: {
+  companyId?: string | null;
+  channel: {
+    id: string;
+    name: string;
+    desc: string;
+    badge: string;
+    members?: string[];
+    avatar?: string;
+  };
+  sender: {
+    id: string;
+    name: string;
+    role?: string;
+    avatar?: string;
+  };
+  isNew?: boolean;
+}): Promise<void> {
+  const rawId = getDisplayChatChannel(params.channel.id);
+  const scopedGroupId = getScopedChatChannel(params.companyId, rawId);
+  const systemMetaScoped = getScopedChatChannel(params.companyId, 'system_meta');
+
+  // 1. Tenta upsert com coluna avatar na tabela chat_channels
+  try {
+    const { error } = await supabase.from('chat_channels').upsert([
+      {
+        id: scopedGroupId,
+        name: params.channel.name,
+        description: params.channel.desc,
+        badge: params.channel.badge,
+        created_by: params.sender.name,
+        members: params.channel.members || null,
+        avatar: params.channel.avatar || null,
+      }
+    ]);
+    // Se a coluna avatar ainda não existir no banco do cliente, salva sem avatar na tabela chat_channels
+    if (error) {
+      await supabase.from('chat_channels').upsert([
+        {
+          id: scopedGroupId,
+          name: params.channel.name,
+          description: params.channel.desc,
+          badge: params.channel.badge,
+          created_by: params.sender.name,
+          members: params.channel.members || null,
+        }
+      ]);
+    }
+  } catch {}
+
+  // 2. Persiste o metadado completo (com avatar na coluna attachment) na tabela messages para sincronização multi-conta garantida
+  try {
+    // Remove metadados anteriores do mesmo grupo para não acumular registros antigos
+    await supabase
+      .from('messages')
+      .delete()
+      .eq('recipient_id', `group_meta_id:${rawId}`);
+  } catch {}
+
+  try {
+    const metaPayload = JSON.stringify({
+      id: rawId,
+      name: params.channel.name,
+      desc: params.channel.desc,
+      badge: params.channel.badge,
+      members: params.channel.members,
+      avatar: params.channel.avatar || undefined,
+    });
+
+    await supabase.from('messages').insert([
+      {
+        channel: systemMetaScoped,
+        recipient_id: `group_meta_id:${rawId}`,
+        attachment: metaPayload,
+        text: '__group_meta__',
+        sender_id: 'system_meta',
+        sender_name: params.sender.name,
+        sender_role: params.sender.role || 'Gestão',
+        sender_avatar: params.sender.avatar || '',
+      }
+    ]);
+  } catch {}
+}
+
+/**
+ * Identifica mensagens internas de controle/metadados de grupos para ocultá-las do feed de conversa
+ */
+export function isSystemControlMessage(msg: {
+  recipient_id?: string | null;
+  text?: string | null;
+  channel?: string | null;
+  sender_id?: string | null;
+}): boolean {
+  if (!msg) return false;
+  const r = msg.recipient_id || '';
+  const t = (msg.text || '').trim();
+  const c = msg.channel || '';
+  return (
+    msg.sender_id === 'system_meta' ||
+    r.startsWith('group_deleted:') ||
+    r.startsWith('group_meta:') ||
+    r.startsWith('group_meta_id:') ||
+    t.startsWith('🎉 Novo grupo criado') ||
+    t.startsWith('🖼️ Configurações do grupo') ||
+    t.startsWith('🗑️ O grupo #') ||
+    t === '__group_meta__' ||
+    c.endsWith('__system_meta')
+  );
+}
+
+/**
+ * Extrai metadados de grupo a partir de uma linha da tabela `messages` (compatível com formato novo `group_meta_id:` + `attachment` e legado `group_meta:`)
+ */
+export function extractGroupMetaFromMessage(msg: { channel?: string; recipient_id?: string | null; attachment?: string | null; text?: string | null }): {
+  id: string;
+  name?: string;
+  desc?: string;
+  badge?: string;
+  members?: string[];
+  avatar?: string;
+} | null {
+  if (!msg.recipient_id) return null;
+
+  if (msg.recipient_id.startsWith('group_meta_id:')) {
+    const rawId = getDisplayChatChannel(msg.recipient_id.replace('group_meta_id:', ''));
+    if (msg.attachment) {
+      try {
+        const parsed = typeof msg.attachment === 'string' ? JSON.parse(msg.attachment) : msg.attachment;
+        return {
+          id: getDisplayChatChannel(parsed.id || rawId),
+          name: parsed.name,
+          desc: parsed.desc,
+          badge: parsed.badge,
+          members: Array.isArray(parsed.members) ? parsed.members : undefined,
+          avatar: parsed.avatar || undefined,
+        };
+      } catch {}
+    }
+    return { id: rawId };
+  }
+
+  if (msg.recipient_id.startsWith('group_meta:')) {
+    try {
+      const parsed = JSON.parse(msg.recipient_id.replace('group_meta:', ''));
+      const rawId = getDisplayChatChannel(parsed.id || msg.channel || '');
+      if (!rawId) return null;
+      return {
+        id: rawId,
+        name: parsed.name,
+        desc: parsed.desc,
+        badge: parsed.badge,
+        members: Array.isArray(parsed.members) ? parsed.members : undefined,
+        avatar: parsed.avatar || undefined,
+      };
+    } catch {}
+  }
+
+  return null;
 }
 
 function formatBytes(bytes: number): string {
@@ -306,7 +540,7 @@ export function isMessageRelevantForUser(
   if (msg.sender_id === userId) return false;
 
   // Metadados de exclusão ou criação de grupos não são mensagens de bate-papo
-  if (msg.recipient_id?.startsWith('group_deleted:') || msg.recipient_id?.startsWith('group_meta:')) {
+  if (isSystemControlMessage(msg)) {
     return false;
   }
 
@@ -324,20 +558,42 @@ export function isMessageRelevantForUser(
     return participants.includes(userId) || msg.recipient_id === userId;
   }
 
-  // Se for canal corporativo (#geral, #escalas, #gestao):
+  // Se for canal de grupo criado na empresa:
   const cleanCompany = (companyId || 'demo').replace(/[^a-zA-Z0-9_-]/g, '_');
   const expectedPrefix = `cmp_${cleanCompany}__`;
+  const rawChan = getDisplayChatChannel(channel);
+
+  // Canais padrão antigos (#geral, #escalas, #gestao) foram descontinuados
+  if (rawChan === 'geral' || rawChan === 'escalas' || rawChan === 'gestao') {
+    return false;
+  }
+
+  if (rawChan.startsWith('grupo_')) {
+    try {
+      const deletedStr = localStorage.getItem(`pontuall_deleted_channels_${cleanCompany}`);
+      if (deletedStr) {
+        const deletedList: string[] = JSON.parse(deletedStr);
+        if (deletedList.includes(rawChan) || deletedList.includes(channel)) return false;
+      }
+      const savedStr = localStorage.getItem(`pontuall_team_channels_${cleanCompany}`);
+      if (savedStr) {
+        const savedChannels: any[] = JSON.parse(savedStr);
+        const found = savedChannels.find((c: any) => c.id === rawChan || c.id === channel);
+        if (found && Array.isArray(found.members) && found.members.length > 0 && !found.members.includes(userId)) {
+          return false;
+        }
+      }
+    } catch {}
+  }
 
   if (channel.startsWith(expectedPrefix)) {
     return true;
   }
 
-  // Mensagens sem prefixo (compatibilidade com histórico legado da empresa demo)
-  if (cleanCompany === 'demo' && (channel === 'geral' || channel === 'escalas' || channel === 'gestao' || channel.startsWith('grupo_'))) {
+  // Mensagens sem prefixo (compatibilidade com histórico legado de grupos da empresa demo)
+  if (cleanCompany === 'demo' && channel.startsWith('grupo_')) {
     return true;
   }
 
   return false;
 }
-
-
