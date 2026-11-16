@@ -475,7 +475,7 @@ function AppContent() {
     shiftId?: string; 
     date?: string; 
     reason?: string; 
-    type?: 'absence' | 'delay' | 'early_entry' | 'early_leave';
+    type?: 'absence' | 'delay' | 'early_entry' | 'early_leave' | 'overtime' | 'forgetfulness';
     delayMinutes?: number;
   } | null>(null);
   const [editingRequest, setEditingRequest] = useState<TimeOffRequest | null>(null);
@@ -527,7 +527,7 @@ function AppContent() {
   const handleOpenJustificationModal = (
     shiftId?: string, 
     date?: string, 
-    type: 'absence' | 'delay' | 'early_entry' | 'early_leave' = 'absence', 
+    type: 'absence' | 'delay' | 'early_entry' | 'early_leave' | 'overtime' | 'forgetfulness' = 'absence', 
     delayMinutes?: number,
     reason?: string
   ) => {
@@ -1054,12 +1054,14 @@ function AppContent() {
   };
 
   // Submit absence or delay justification
-  const handleSubmitJustification = async (just: Partial<AbsenceJustification> & { justificationType?: 'absence' | 'delay' | 'early_entry' | 'early_leave' }) => {
+  const handleSubmitJustification = async (just: Partial<AbsenceJustification> & { justificationType?: 'absence' | 'delay' | 'early_entry' | 'early_leave' | 'overtime' | 'forgetfulness' }) => {
     const jType = just.justificationType || 'absence';
     const isDelayJustification = jType === 'delay';
     const isEarlyEntryJustification = jType === 'early_entry';
     const isEarlyLeaveJustification = jType === 'early_leave';
-    const isTimeDeviation = isDelayJustification || isEarlyEntryJustification || isEarlyLeaveJustification;
+    const isOvertimeJustification = jType === 'overtime';
+    const isForgetfulnessJustification = jType === 'forgetfulness';
+    const isTimeDeviation = isDelayJustification || isEarlyEntryJustification || isEarlyLeaveJustification || isOvertimeJustification || isForgetfulnessJustification;
 
     const rawReason = (just.reason || '').trim();
     const lowerReason = rawReason.toLowerCase();
@@ -1070,6 +1072,10 @@ function AppContent() {
       finalReason = `[Saída Antecipada] ${rawReason}`;
     } else if (isDelayJustification && !lowerReason.includes('atraso')) {
       finalReason = `[Atraso] ${rawReason}`;
+    } else if (isOvertimeJustification && !lowerReason.includes('hora extra')) {
+      finalReason = `[Hora Extra] ${rawReason}`;
+    } else if (isForgetfulnessJustification && !lowerReason.includes('esquecimento') && !lowerReason.includes('esqueci')) {
+      finalReason = `[Esquecimento de Ponto] ${rawReason}`;
     }
 
     const tempId = `just-${Date.now()}`;
@@ -1094,7 +1100,11 @@ function AppContent() {
         ? 'Justificativa Entrada Antecipada'
         : isEarlyLeaveJustification
           ? 'Justificativa Saída Antecipada'
-          : 'Justificativa Atraso';
+          : isDelayJustification
+            ? 'Justificativa Atraso'
+            : isOvertimeJustification
+              ? 'Justificativa Hora Extra'
+              : 'Justificativa Esquecimento';
       setShifts(prev => prev.map(s => {
         if (s.id === just.shiftId) {
           const updatedNotes = s.notes
@@ -1116,7 +1126,11 @@ function AppContent() {
         ? 'entrada antecipada'
         : isEarlyLeaveJustification
           ? 'saída antecipada'
-          : 'atraso';
+          : isDelayJustification
+            ? 'atraso'
+            : isOvertimeJustification
+              ? 'hora extra'
+              : 'esquecimento de ponto';
       showToast('Justificativa Enviada', `Sua justificativa de ${labelToast} foi registrada e enviada para o Gestor.`, 'success');
     }
 
@@ -1132,7 +1146,11 @@ function AppContent() {
             ? 'Nova Justificativa de Saída Antecipada'
             : isDelayJustification
               ? 'Nova Justificativa de Atraso'
-              : 'Novo Atestado / Justificativa';
+              : isOvertimeJustification
+                ? 'Nova Justificativa de Hora Extra'
+                : isForgetfulnessJustification
+                  ? 'Nova Justificativa de Esquecimento de Ponto'
+                  : 'Novo Atestado / Justificativa';
         const notifMsg = isTimeDeviation
           ? `${activeEmployee.name} enviou justificativa (${notifTitle.replace('Nova Justificativa de ', '')}) no dia ${just.date || ''}: "${rawReason}".`
           : `${activeEmployee.name} enviou atestado/comprovante para ${just.date || 'data de ausência'}.`;

@@ -454,17 +454,23 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     const mappedJustifications = (justifications || []).map(j => {
       const emp = employees.find(e => e.id === j.employeeId);
       const rLower = (j.reason || '').toLowerCase();
+      const isOvertimeJust = rLower.includes('hora extra') || (j as any).justificationType === 'overtime';
+      const isForgetfulnessJust = rLower.includes('esquecimento') || rLower.includes('esqueci') || (j as any).justificationType === 'forgetfulness';
       const isEarlyLeaveJust = rLower.includes('saída antecipada') || rLower.includes('saida antecipada') || (j as any).justificationType === 'early_leave';
       const isEarlyEntryJust = rLower.includes('entrada antecipada') || (j as any).justificationType === 'early_entry';
       const isDelayJust = rLower.includes('atraso') || (j as any).justificationType === 'delay';
       const resolvedShiftId = j.shiftId || (shifts || []).find(s => s.employeeId === j.employeeId && s.date === j.date)?.id;
-      const typeLabel = isEarlyLeaveJust
-        ? 'Saída Antecipada'
-        : isEarlyEntryJust
-          ? 'Entrada Antecipada'
-          : isDelayJust
-            ? 'Justificativa de Atraso'
-            : 'Atestado Médico';
+      const typeLabel = isOvertimeJust
+        ? 'Hora Extra'
+        : isForgetfulnessJust
+          ? 'Esquecimento de Saída'
+          : isEarlyLeaveJust
+            ? 'Saída Antecipada'
+            : isEarlyEntryJust
+              ? 'Entrada Antecipada'
+              : isDelayJust
+                ? 'Justificativa de Atraso'
+                : 'Atestado Médico';
       return {
         id: j.id,
         shiftId: resolvedShiftId,
@@ -476,8 +482,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         type: typeLabel,
         reason: j.reason,
         date: j.date,
-        documentName: j.documentName || ((isDelayJust || isEarlyEntryJust || isEarlyLeaveJust) ? 'Declaracao_Comparecimento_Horas.pdf' : 'atestado.pdf'),
-        documentUrl: j.documentUrl,
+        documentName: j.documentName || (j.documentUrl ? 'Comprovante.pdf' : undefined),
+        documentUrl: j.documentUrl || undefined,
         status: (j.status === 'approved' ? 'Aprovado' : j.status === 'rejected' ? 'Recusado / Falta' : 'Pendente') as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
         actionText: j.status === 'approved' ? 'Homologado' : j.status === 'rejected' ? 'Não homologado' : undefined,
         feedback: j.managerNotes || '',
@@ -1655,12 +1661,31 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             : `${Math.round(s.checkOutLocation.distanceMeters)} m`;
         }
 
+        let scheduledMin = 0;
+        let scheduledHoursFormatted = '—';
+        if (s.startTime && s.endTime) {
+          const [sInH, sInM] = s.startTime.split(':').map(Number);
+          const [sOutH, sOutM] = s.endTime.split(':').map(Number);
+          let diff = (sOutH * 60 + sOutM) - (sInH * 60 + sInM);
+          if (diff < 0) diff += 24 * 60;
+          if (s.breakMinutes) diff = Math.max(0, diff - s.breakMinutes);
+          scheduledMin = diff;
+          const sH = Math.floor(diff / 60);
+          const sM = diff % 60;
+          scheduledHoursFormatted = `${sH}h${sM > 0 ? ` ${sM}m` : ''}`;
+        }
+
+        let workedMin = 0;
         let calculatedHours = '—';
         if (s.checkInTime && hasRealExit) {
           const [inH, inM] = s.checkInTime.split(':').map(Number);
           const [outH, outM] = s.checkOutTime!.split(':').map(Number);
           let diffMin = (outH * 60 + outM) - (inH * 60 + inM);
           if (diffMin < 0) diffMin += 24 * 60;
+          if (s.breakMinutes && diffMin > s.breakMinutes + 60) {
+            diffMin = Math.max(0, diffMin - s.breakMinutes);
+          }
+          workedMin = diffMin;
           const h = Math.floor(diffMin / 60);
           const m = diffMin % 60;
           calculatedHours = diffMin === 0 ? '< 1m' : `${h}h${m > 0 ? ` ${m}m` : ''}`;
@@ -1669,6 +1694,46 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         } else if (!s.checkInTime) {
           calculatedHours = '0h';
         }
+
+        let apuracaoSaldo = 'Regular';
+        let apuracaoKind: 'overtime' | 'deficit' | 'regular' | 'falta' | 'pending' = 'regular';
+
+        if (!s.checkInTime) {
+          apuracaoSaldo = 'Falta (0h)';
+          apuracaoKind = 'falta';
+        } else if (!hasRealExit) {
+          apuracaoSaldo = 'Em andamento';
+          apuracaoKind = 'pending';
+        } else if (scheduledMin > 0) {
+          const balance = workedMin - scheduledMin;
+          // CLT Art. 58 § 1º: tolerância geral de até 10 minutos no dia
+          if (balance > 10) {
+            const extraH = Math.floor(balance / 60);
+            const extraM = balance % 60;
+            apuracaoSaldo = `Hora Extra (+${extraH > 0 ? `${extraH}h ` : ''}${extraM}m)`;
+            apuracaoKind = 'overtime';
+          } else if (balance < -10) {
+            const absBal = Math.abs(balance);
+            const defH = Math.floor(absBal / 60);
+            const defM = absBal % 60;
+            apuracaoSaldo = `Déficit (-${defH > 0 ? `${defH}h ` : ''}${defM}m)`;
+            apuracaoKind = 'deficit';
+          } else {
+            apuracaoSaldo = 'Regular (No horário)';
+            apuracaoKind = 'regular';
+          }
+        } else {
+          apuracaoSaldo = 'Trabalhado';
+          apuracaoKind = 'regular';
+        }
+
+        const scheduledShift = (s.startTime && s.endTime)
+          ? `${s.startTime} às ${s.endTime}${scheduledHoursFormatted !== '—' ? ` (${scheduledHoursFormatted})` : ''}`
+          : 'Sem escala definida';
+
+        const punchReal = s.checkInTime
+          ? `${s.checkInTime}${hasRealExit ? ` → ${s.checkOutTime}` : ' (Em andamento)'}`
+          : 'Sem registro';
 
         const isPast24h = isShiftPast24hWithoutPunch(s);
         const just = (justifications || []).find(j => 
@@ -1731,13 +1796,17 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           name: emp?.name || 'Colaborador',
           role: emp?.role || 'Colaborador',
           dept: emp?.department || 'Geral',
+          scheduledShift,
+          punchReal,
           time: s.checkInTime 
             ? `${s.checkInTime}${hasRealExit ? ` → ${s.checkOutTime}` : ' (Entrada)'}` 
             : `${s.startTime} – ${s.endTime}`,
           hours: calculatedHours,
           status: finalReportStatus,
           isDecisionPending,
-          type: s.type === 'regular' ? 'Regular' : 'Extra',
+          type: apuracaoSaldo,
+          apuracao: apuracaoSaldo,
+          apuracaoKind,
           checkInLocation: s.checkInLocation,
           checkOutLocation: s.checkOutLocation,
           isGpsOutside,
@@ -4689,10 +4758,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       <th className="p-3.5 font-bold tracking-wider">DATA</th>
                       <th className="p-3.5 font-bold tracking-wider">COLABORADOR</th>
                       <th className="p-3.5 font-bold tracking-wider">DEPARTAMENTO</th>
-                      <th className="p-3.5 font-bold tracking-wider">HORÁRIO</th>
+                      <th className="p-3.5 font-bold tracking-wider">ESCALA PREVISTA</th>
+                      <th className="p-3.5 font-bold tracking-wider">PONTO REALIZADO</th>
                       <th className="p-3.5 font-bold tracking-wider">CARGA</th>
                       <th className="p-3.5 font-bold tracking-wider text-center">STATUS</th>
-                      <th className="p-3.5 font-bold tracking-wider">TIPO</th>
+                      <th className="p-3.5 font-bold tracking-wider">APURAÇÃO / SALDO</th>
                       <th className="p-3.5 font-bold tracking-wider">OBSERVAÇÕES</th>
                     </tr>
                   </thead>
@@ -4714,7 +4784,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         const matchDateRaw = row.date.toLowerCase().includes(q);
                         const matchDateFormatted = formattedRowDate.toLowerCase().includes(q);
                         const matchDateSlash = formattedRowDate.replace(/-/g, '/').toLowerCase().includes(q);
-                        if (!matchName && !matchDept && !matchRole && !matchDateRaw && !matchDateFormatted && !matchDateSlash) {
+                        const matchApuracao = (row.apuracao || '').toLowerCase().includes(q);
+                        if (!matchName && !matchDept && !matchRole && !matchDateRaw && !matchDateFormatted && !matchDateSlash && !matchApuracao) {
                           return false;
                         }
                       }
@@ -4765,7 +4836,14 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           </div>
                         </td>
                         <td className={`p-3.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{row.dept}</td>
-                        <td className={`p-3.5 font-mono text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{row.time}</td>
+                        <td className={`p-3.5 font-mono text-[11px] whitespace-nowrap ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          <span>{row.scheduledShift}</span>
+                        </td>
+                        <td className={`p-3.5 font-mono text-[11px] whitespace-nowrap ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          <span className={row.punchReal === 'Sem registro' ? (isDark ? 'text-slate-500 italic' : 'text-slate-400 italic') : ''}>
+                            {row.punchReal}
+                          </span>
+                        </td>
                         <td className={`p-3.5 font-mono font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{row.hours}</td>
                         <td className="p-3.5 text-center">
                           <div className="flex items-center justify-center">
@@ -4787,7 +4865,31 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             />
                           </div>
                         </td>
-                        <td className={`p-3.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{row.type}</td>
+                        <td className="p-3.5 text-[11px] whitespace-nowrap">
+                          {row.apuracaoKind === 'overtime' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                              {row.apuracao}
+                            </span>
+                          ) : row.apuracaoKind === 'deficit' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                              {row.apuracao}
+                            </span>
+                          ) : row.apuracaoKind === 'falta' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                              {row.apuracao}
+                            </span>
+                          ) : row.apuracaoKind === 'pending' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                              {row.apuracao}
+                            </span>
+                          ) : (
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium ${
+                              isDark ? 'bg-white/5 text-slate-300 border border-white/10' : 'bg-slate-100 text-slate-700 border border-slate-200'
+                            }`}>
+                              {row.apuracao}
+                            </span>
+                          )}
+                        </td>
                         <td className={`p-3.5 text-[11px] max-w-[280px] ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                           <div className="flex items-center gap-2 truncate" title={row.obsFull || row.cleanObs}>
                             {row.isGpsOutside && (

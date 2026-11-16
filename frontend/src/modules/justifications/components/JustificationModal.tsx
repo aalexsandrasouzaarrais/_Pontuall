@@ -1,22 +1,24 @@
 import { getTodayDateString, formatDateBR } from '@/shared/utils/dateUtils';
 import React, { useState, useEffect } from 'react';
-import { X, FileText, Upload, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, FileText, Upload, CheckCircle2, AlertCircle, Lock } from 'lucide-react';
 import { Employee, Shift, AbsenceJustification } from '@/types';
 import { uploadDocumentSupabase } from '@/shared/services/storageService';
+
+export type JustificationCategoryType = 'absence' | 'delay' | 'early_entry' | 'early_leave' | 'overtime' | 'forgetfulness';
 
 interface JustificationModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentEmployee: Employee;
   shifts: Shift[];
-  onSubmitJustification: (justification: Partial<AbsenceJustification> & { justificationType?: 'absence' | 'delay' | 'early_entry' | 'early_leave' }) => void;
+  onSubmitJustification: (justification: Partial<AbsenceJustification> & { justificationType?: JustificationCategoryType }) => void;
   onUpdateJustification?: (id: string, updates: Partial<AbsenceJustification>) => void;
   editingJustification?: AbsenceJustification | null;
   isLightTheme?: boolean;
   initialShiftId?: string;
   initialDate?: string;
   initialReason?: string;
-  justificationType?: 'absence' | 'delay' | 'early_entry' | 'early_leave';
+  justificationType?: JustificationCategoryType;
   delayMinutes?: number;
 }
 
@@ -35,10 +37,14 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
   justificationType = 'absence',
   delayMinutes,
 }) => {
-  const isDelay = justificationType === 'delay';
-  const isEarlyEntry = justificationType === 'early_entry';
-  const isEarlyLeave = justificationType === 'early_leave';
-  const isTimeDeviation = isDelay || isEarlyEntry || isEarlyLeave;
+  const [selectedCategory, setSelectedCategory] = useState<JustificationCategoryType>(justificationType || 'absence');
+  const isDelay = selectedCategory === 'delay';
+  const isEarlyEntry = selectedCategory === 'early_entry';
+  const isEarlyLeave = selectedCategory === 'early_leave';
+  const isOvertime = selectedCategory === 'overtime';
+  const isForgetfulness = selectedCategory === 'forgetfulness';
+  const isTimeDeviation = isDelay || isEarlyEntry || isEarlyLeave || isOvertime || isForgetfulness;
+
   const [selectedShiftId, setSelectedShiftId] = useState('');
   const [absenceDate, setAbsenceDate] = useState('');
   const [reason, setReason] = useState('');
@@ -58,8 +64,17 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
         setDocumentUrl(editingJustification.documentUrl || '');
         setIsUploaded(Boolean(editingJustification.documentName || editingJustification.documentUrl));
         setIsUploading(false);
+
+        const rLower = (editingJustification.reason || '').toLowerCase();
+        if (rLower.includes('hora extra')) setSelectedCategory('overtime');
+        else if (rLower.includes('esqueci') || rLower.includes('esquecimento')) setSelectedCategory('forgetfulness');
+        else if (rLower.includes('saída antecipada') || rLower.includes('saida antecipada')) setSelectedCategory('early_leave');
+        else if (rLower.includes('entrada antecipada')) setSelectedCategory('early_entry');
+        else if (rLower.includes('atraso')) setSelectedCategory('delay');
+        else setSelectedCategory('absence');
       } else {
         // Novo atestado: 100% limpo, sem resquícios do envio anterior
+        setSelectedCategory(justificationType || 'absence');
         setSelectedShiftId(initialShiftId || shifts[0]?.id || '');
         setAbsenceDate(initialDate || getTodayDateString());
         setReason(initialReason || '');
@@ -69,7 +84,7 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
         setIsUploading(false);
       }
     }
-  }, [isOpen, editingJustification, initialShiftId, initialDate, initialReason, shifts]);
+  }, [isOpen, editingJustification, initialShiftId, initialDate, initialReason, shifts, justificationType]);
 
   const handleClose = () => {
     setSelectedShiftId('');
@@ -143,39 +158,61 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
         shiftId: selectedShiftId || undefined,
         date: finalDate,
         reason,
-        documentName: documentName || (isTimeDeviation ? '' : 'Atestado_Medico_Anexo.pdf'),
+        documentName: documentName || undefined,
         documentType: documentName ? 'application/pdf' : undefined,
         documentUrl: documentUrl || undefined,
         status: 'pending',
-        justificationType
+        justificationType: selectedCategory
       });
     }
 
     handleClose();
   };
 
+  const isPreselectedOccurrence = Boolean(initialShiftId || initialDate || editingJustification);
+  const chosenShift = shifts.find(s => s.id === selectedShiftId);
+  const occurrenceLabel = isOvertime
+    ? `Hora Extra / Extensão ${delayMinutes ? `(+${delayMinutes} min)` : ''}`
+    : isForgetfulness
+      ? 'Esquecimento de Ponto'
+      : isDelay
+        ? `Atraso de Entrada ${delayMinutes ? `(+${delayMinutes} min)` : ''}`
+        : isEarlyEntry
+          ? `Entrada Antecipada ${delayMinutes ? `(-${delayMinutes} min)` : ''}`
+          : isEarlyLeave
+            ? `Saída Antecipada ${delayMinutes ? `(-${delayMinutes} min)` : ''}`
+            : 'Falta / Ausência no Turno';
+
   const modalTitle = editingJustification
     ? 'Editar Atestado / Justificativa'
-    : isDelay
-      ? 'Justificar Atraso de Entrada'
-      : isEarlyEntry
-        ? 'Justificar Entrada Antecipada'
-        : isEarlyLeave
-          ? 'Justificar Saída Antecipada'
-          : 'Enviar Atestado / Justificar Ausência';
+    : isOvertime
+      ? 'Justificar / Solicitar Hora Extra'
+      : isForgetfulness
+        ? 'Justificar Esquecimento de Ponto'
+        : isDelay
+          ? 'Justificar Atraso de Entrada'
+          : isEarlyEntry
+            ? 'Justificar Entrada Antecipada'
+            : isEarlyLeave
+              ? 'Justificar Saída Antecipada'
+              : 'Enviar Atestado / Justificar Ausência';
 
-  const modalSubtitle = isDelay
-    ? (delayMinutes ? `Atraso registrado de +${delayMinutes} min. Informe o motivo para o gestor.` : 'Informe o motivo do atraso e anexe declaração/comprovante se aplicável.')
-    : isEarlyEntry
-      ? (delayMinutes ? `Entrada registrada ${delayMinutes} min antes do horário previsto. Informe o motivo para o gestor.` : 'Informe o motivo da entrada antecipada para análise do gestor.')
-      : isEarlyLeave
-        ? (delayMinutes ? `Saída registrada ${delayMinutes} min antes do término previsto. Informe o motivo para o gestor.` : 'Informe o motivo da saída antecipada e anexe declaração se aplicável.')
-        : 'Envie comprovantes médicos ou declarações legais';
+  const modalSubtitle = isOvertime
+    ? 'Informe a demanda, urgência ou chamado que motivou o tempo adicional trabalhado.'
+    : isForgetfulness
+      ? 'Informe o horário real em que você trabalhou e relate o motivo do esquecimento do ponto.'
+      : isDelay
+        ? (delayMinutes ? `Atraso registrado de +${delayMinutes} min. Informe o motivo para o gestor.` : 'Informe o motivo do atraso e anexe declaração/comprovante se aplicável.')
+        : isEarlyEntry
+          ? (delayMinutes ? `Entrada registrada ${delayMinutes} min antes do horário previsto. Informe o motivo para o gestor.` : 'Informe o motivo da entrada antecipada para análise do gestor.')
+          : isEarlyLeave
+            ? (delayMinutes ? `Saída registrada ${delayMinutes} min antes do término previsto. Informe o motivo para o gestor.` : 'Informe o motivo da saída antecipada e anexe declaração se aplicável.')
+            : 'Envie comprovantes médicos ou declarações legais';
 
   return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 ${isLightTheme ? 'bg-slate-900/40 backdrop-blur-xs' : 'bg-black/70 backdrop-blur-md'} animate-in fade-in duration-200`}>
+    <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto ${isLightTheme ? 'bg-slate-900/40 backdrop-blur-xs' : 'bg-black/70 backdrop-blur-md'} animate-in fade-in duration-200`}>
       <div 
-        className={`relative rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col transition-colors ${
+        className={`relative rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col transition-colors ${
           isLightTheme ? 'bg-white border border-slate-200 text-slate-800' : 'text-white'
         }`}
         style={
@@ -195,15 +232,25 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
         <div className="h-1.5 w-full bg-gradient-to-r from-[#96183C] via-[#F89847] to-[#FCEABB] shrink-0"></div>
 
         {/* Header */}
-        <div className={`px-5 py-4 flex items-center justify-between border-b ${
+        <div className={`px-5 py-4 flex items-center justify-between border-b shrink-0 ${
           isLightTheme ? 'border-slate-100 bg-slate-50/60' : 'border-white/5 bg-transparent'
         }`}>
           <div className="flex items-center gap-3">
-            
             <div>
-              <h3 className={`font-bold text-base leading-tight ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
-                {modalTitle}
-              </h3>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className={`font-bold text-base leading-tight ${isLightTheme ? 'text-slate-900' : 'text-white'}`}>
+                  {modalTitle}
+                </h3>
+                {isPreselectedOccurrence && (
+                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                    isLightTheme
+                      ? 'bg-amber-100 border-amber-300 text-amber-900'
+                      : 'bg-[#f89847]/15 border-[#f89847]/40 text-[#f89847]'
+                  }`}>
+                    {occurrenceLabel}
+                  </span>
+                )}
+              </div>
               <p className={`text-[11px] mt-0.5 ${isLightTheme ? 'text-slate-500' : 'text-white/50'}`}>
                 {modalSubtitle}
               </p>
@@ -221,43 +268,112 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className={`p-5 space-y-4 ${isLightTheme ? 'text-slate-800' : 'text-white'}`}>
+        {/* Form Body com scroll interno independente */}
+        <form onSubmit={handleSubmit} className={`p-5 space-y-4 overflow-y-auto flex-1 ${isLightTheme ? 'text-slate-800' : 'text-white'}`}>
+          {/* Categoria / Tipo de Ocorrência Selector (Apenas quando não veio pré-selecionado de um card) */}
+          {!isPreselectedOccurrence && (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className={`block text-[10px] font-semibold uppercase tracking-wider ${
+                  isLightTheme ? 'text-slate-600' : 'text-white/60'
+                }`}>
+                  Tipo de Ocorrência / Justificativa
+                </label>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {[
+                  { key: 'absence', label: 'Falta / Ausência', activeClass: 'border-rose-500 bg-rose-500/15 text-rose-400' },
+                  { key: 'delay', label: 'Atraso de Entrada', activeClass: 'border-amber-500 bg-amber-500/15 text-amber-400' },
+                  { key: 'early_leave', label: 'Saída Antecipada', activeClass: 'border-orange-500 bg-orange-500/15 text-orange-400' },
+                  { key: 'overtime', label: 'Hora Extra', activeClass: 'border-emerald-500 bg-emerald-500/15 text-emerald-400' },
+                  { key: 'forgetfulness', label: 'Esquecimento', activeClass: 'border-purple-500 bg-purple-500/15 text-purple-400' },
+                ].map(cat => {
+                  const isSelected = selectedCategory === cat.key;
+                  return (
+                    <button
+                      key={cat.key}
+                      type="button"
+                      onClick={() => setSelectedCategory(cat.key as JustificationCategoryType)}
+                      className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all text-left flex items-center gap-2 cursor-pointer ${
+                        isSelected
+                          ? isLightTheme
+                            ? 'border-[#96183c] bg-[#96183c]/10 text-[#96183c] shadow-xs'
+                            : `${cat.activeClass} shadow-md`
+                          : isLightTheme
+                            ? 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                            : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'
+                      }`}
+                    >
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${
+                        isSelected ? 'bg-current shadow-xs' : 'bg-slate-400/50'
+                      }`} />
+                      <span className="truncate">{cat.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Absence Date Field */}
           <div>
-            <label className={`block text-[10px] font-semibold uppercase tracking-wider mb-2 ${
-              isLightTheme ? 'text-slate-600' : 'text-white/60'
-            }`}>
-              {isTimeDeviation ? 'Data do Turno da Ocorrência' : 'Data da Ausência / Falta'}
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className={`block text-[10px] font-semibold uppercase tracking-wider ${
+                isLightTheme ? 'text-slate-600' : 'text-white/60'
+              }`}>
+                {isTimeDeviation ? 'Data do Turno da Ocorrência' : 'Data da Ausência / Falta'}
+              </label>
+              {isPreselectedOccurrence && (
+                <span className="text-[10px] font-mono text-amber-500 flex items-center gap-1 font-bold">
+                  <Lock className="w-3 h-3" /> Bloqueado
+                </span>
+              )}
+            </div>
             <input
               type="date"
               value={absenceDate}
               onChange={(e) => setAbsenceDate(e.target.value)}
+              disabled={isPreselectedOccurrence}
               className={`w-full rounded-xl px-3 py-2.5 text-sm transition-colors focus:outline-none border ${
-                isLightTheme
-                  ? 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:border-[#f89642] focus:ring-1 focus:ring-[#f89642]'
-                  : 'bg-white/5 border-white/10 text-white focus:border-[#f89642] focus:ring-1 focus:ring-[#f89642]'
+                isPreselectedOccurrence
+                  ? isLightTheme
+                    ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed opacity-80'
+                    : 'bg-white/5 border-white/5 text-slate-400 cursor-not-allowed opacity-75'
+                  : isLightTheme
+                    ? 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:border-[#f89642] focus:ring-1 focus:ring-[#f89642]'
+                    : 'bg-white/5 border-white/10 text-white focus:border-[#f89642] focus:ring-1 focus:ring-[#f89642]'
               }`}
               style={{ colorScheme: isLightTheme ? 'light' : 'dark' }}
               required
             />
           </div>
 
-          {/* Shift Selection (Optional) */}
+          {/* Shift Selection (Optional / Fixed) */}
           <div>
-            <label className={`block text-[10px] font-semibold uppercase tracking-wider mb-2 ${
-              isLightTheme ? 'text-slate-600' : 'text-white/60'
-            }`}>
-              Vincular a um Turno da Escala (Opcional)
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className={`block text-[10px] font-semibold uppercase tracking-wider ${
+                isLightTheme ? 'text-slate-600' : 'text-white/60'
+              }`}>
+                Vincular a um Turno da Escala
+              </label>
+              {isPreselectedOccurrence && (
+                <span className="text-[10px] font-mono text-amber-500 flex items-center gap-1 font-bold">
+                  <Lock className="w-3 h-3" /> Bloqueado
+                </span>
+              )}
+            </div>
             <select
               value={selectedShiftId}
               onChange={(e) => handleShiftChange(e.target.value)}
+              disabled={isPreselectedOccurrence}
               className={`w-full rounded-xl px-3 py-2.5 text-sm transition-colors appearance-none focus:outline-none border ${
-                isLightTheme
-                  ? 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:border-[#f89642] focus:ring-1 focus:ring-[#f89642]'
-                  : 'bg-white/5 border-white/10 text-white focus:border-[#f89642] focus:ring-1 focus:ring-[#f89642]'
+                isPreselectedOccurrence
+                  ? isLightTheme
+                    ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed opacity-80'
+                    : 'bg-white/5 border-white/5 text-slate-400 cursor-not-allowed opacity-75'
+                  : isLightTheme
+                    ? 'bg-slate-50 border-slate-200 text-slate-900 focus:bg-white focus:border-[#f89642] focus:ring-1 focus:ring-[#f89642]'
+                    : 'bg-white/5 border-white/10 text-white focus:border-[#f89642] focus:ring-1 focus:ring-[#f89642]'
               }`}
             >
               <option value="" className={isLightTheme ? 'bg-white text-slate-900' : 'bg-[#1a0010] text-white'}>
@@ -280,26 +396,34 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
             <label className={`block text-[10px] font-semibold uppercase tracking-wider mb-2 ${
               isLightTheme ? 'text-slate-600' : 'text-white/60'
             }`}>
-              {isDelay
-                ? 'Motivo do Atraso'
-                : isEarlyEntry
-                  ? 'Motivo da Entrada Antecipada'
-                  : isEarlyLeave
-                    ? 'Motivo da Saída Antecipada'
-                    : 'Motivo detalhado'}
+              {isOvertime
+                ? 'Motivo da Hora Extra / Demanda Urgente'
+                : isForgetfulness
+                  ? 'Motivo do Esquecimento e Horário Efetivo de Trabalho'
+                  : isDelay
+                    ? 'Motivo do Atraso'
+                    : isEarlyEntry
+                      ? 'Motivo da Entrada Antecipada'
+                      : isEarlyLeave
+                        ? 'Motivo da Saída Antecipada'
+                        : 'Motivo detalhado'}
             </label>
             <textarea
               rows={3}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               placeholder={
-                isEarlyLeave
-                  ? "Ex: Consulta médica, liberação autorizada pelo gestor, imprevisto pessoal..."
-                  : isEarlyEntry
-                    ? "Ex: Demanda antecipada solicitada pela liderança, chegada antecipada ao posto..."
-                    : isDelay
-                      ? "Ex: Consulta médica, exame laboratorial, trânsito atípico..."
-                      : "Ex: Consulta médica de emergência, exame laboratorial..."
+                isOvertime
+                  ? "Ex: Atendimento urgente a cliente, suporte a incidente crítico, fechamento emergencial..."
+                  : isForgetfulness
+                    ? "Ex: Saída realizada às 17:00, esqueci de registrar o ponto no aplicativo..."
+                    : isEarlyLeave
+                      ? "Ex: Consulta médica, liberação autorizada pelo gestor, imprevisto pessoal..."
+                      : isEarlyEntry
+                        ? "Ex: Demanda antecipada solicitada pela liderança, chegada antecipada ao posto..."
+                        : isDelay
+                          ? "Ex: Consulta médica, exame laboratorial, trânsito atípico..."
+                          : "Ex: Consulta médica de emergência, exame laboratorial..."
               }
               className={`w-full rounded-xl px-3 py-2.5 text-sm transition-colors focus:outline-none border ${
                 isLightTheme
@@ -350,7 +474,7 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
           </div>
 
           {/* Footer Actions */}
-          <div className={`pt-4 flex items-center justify-end gap-3 border-t ${
+          <div className={`pt-4 flex items-center justify-end gap-3 border-t shrink-0 ${
             isLightTheme ? 'border-slate-100' : 'border-white/5'
           }`}>
             <button
