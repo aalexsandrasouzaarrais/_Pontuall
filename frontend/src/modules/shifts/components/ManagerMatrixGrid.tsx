@@ -1448,12 +1448,65 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     };
   }, [shifts]);
 
+  // Sincronização em tempo real das batidas de entrada e saída (TAB_Registro_Ponto)
+  const [livePunches, setLivePunches] = useState<any[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchLivePunches = async () => {
+      try {
+        const { data } = await supabase
+          .from('TAB_Registro_Ponto')
+          .select('*')
+          .order('Dta_Hora_Registro', { ascending: true });
+        if (mounted && data) {
+          setLivePunches(data);
+        }
+      } catch {}
+    };
+
+    fetchLivePunches();
+    const timer = setInterval(fetchLivePunches, 5000);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, [activeTab]);
+
   const reportRows = useMemo(() => {
     if (shifts && shifts.length > 0) {
       const cutoff60 = toLocalDateString(addDaysLocal(new Date(), -60));
       return shifts
         .filter(s => !s.date || normalizeDateToISO(s.date) >= cutoff60)
-        .map(s => {
+        .map(rawShift => {
+        // Mescla batidas ao vivo do banco caso o estado local ainda não tenha recebido a saída
+        let s = rawShift;
+        if (livePunches.length > 0 && (!s.checkInTime || !s.checkOutTime)) {
+          const matching = livePunches.filter(p => {
+            if (p.Idf_Turno && p.Idf_Turno === s.id) return true;
+            if (p.Idf_Colaborador === s.employeeId && p.Dta_Hora_Registro) {
+              const dt = new Date(p.Dta_Hora_Registro);
+              const localIso = !isNaN(dt.getTime()) ? toLocalDateString(dt) : p.Dta_Hora_Registro.slice(0, 10);
+              return localIso === normalizeDateToISO(s.date);
+            }
+            return false;
+          });
+          if (matching.length > 0) {
+            const inRec = matching.find(p => p.Tpo_Registro?.toLowerCase() === 'entrada') || matching[0];
+            const outRec = [...matching].reverse().find(p => p.Tpo_Registro?.toLowerCase() === 'saida');
+            const fmtTime = (rec: any) => {
+              const dt = new Date(rec.Dta_Hora_Registro);
+              if (isNaN(dt.getTime())) return undefined;
+              return `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
+            };
+            s = {
+              ...s,
+              checkInTime: s.checkInTime || (inRec ? fmtTime(inRec) : undefined),
+              checkOutTime: s.checkOutTime || (outRec && outRec !== inRec ? fmtTime(outRec) : undefined),
+            };
+          }
+        }
+
         const emp = employees.find(e => e.id === s.employeeId);
         const statusMap: Record<string, string> = {
           present: 'Presente',
@@ -1575,7 +1628,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     }
 
     return [];
-  }, [shifts, employees, justifications]);
+  }, [shifts, employees, justifications, livePunches]);
 
   // Consolidação por Departamento: Presença, Assiduidade, Absenteísmo e Horas Trabalhadas (Fechamento Contábil & Folha)
   const departmentConsolidatedRows = useMemo(() => {
