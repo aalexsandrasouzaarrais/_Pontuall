@@ -256,41 +256,37 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         setCurrentRole(userPerfil === 'rh' || userPerfil === 'gestor' ? 'gestor' : 'colaborador');
       }
 
-      // 3. Validação flexível e segura da senha (com suporte a hash bcrypt e retrocompatibilidade):
+      // 3. Validação segura da senha com hash bcrypt:
       const passNorm = password.trim();
-      const matriculaNorm = matchedUser.Cod_Matricula ? matchedUser.Cod_Matricula.toLowerCase() : '';
-      const isBcrypt = matchedUser.Des_Senha_Hash && (
-        matchedUser.Des_Senha_Hash.startsWith('$2a$') ||
-        matchedUser.Des_Senha_Hash.startsWith('$2b$') ||
-        matchedUser.Des_Senha_Hash.startsWith('$2y$')
+      const matriculaNorm = matchedUser.Cod_Matricula ? matchedUser.Cod_Matricula.trim().toLowerCase() : '';
+      const isBcrypt = Boolean(
+        matchedUser.Des_Senha_Hash && (
+          matchedUser.Des_Senha_Hash.startsWith('$2a$') ||
+          matchedUser.Des_Senha_Hash.startsWith('$2b$') ||
+          matchedUser.Des_Senha_Hash.startsWith('$2y$')
+        )
       );
 
       let senhaValida = false;
       if (isBcrypt) {
         try {
           senhaValida = bcrypt.compareSync(passNorm, matchedUser.Des_Senha_Hash);
+          // Caso o colaborador digite a matrícula provisória em minúsculas no 1º acesso (ex: pnt-1234 vs PNT-1234),
+          // compara em maiúsculas contra o próprio hash do banco (só passa se o hash ainda for o da matrícula)
+          if (!senhaValida && matriculaNorm && passNorm.toLowerCase() === matriculaNorm) {
+            senhaValida = bcrypt.compareSync(passNorm.toUpperCase(), matchedUser.Des_Senha_Hash);
+          }
         } catch {
           senhaValida = false;
         }
-
-        // Se falhar o hash mas for primeiro acesso com a matrícula ou senha padrão de demonstração
-        if (!senhaValida) {
-          senhaValida = (matriculaNorm && matriculaNorm === passNorm.toLowerCase()) ||
-            passNorm === '123456' ||
-            passNorm === 'admin' ||
-            (matchedUser.Eml_Corporativo && ['kamile', 'pontual', 'alexsandra'].some(k => matchedUser.Eml_Corporativo.toLowerCase().includes(k)) && passNorm === '123456');
-        }
       } else {
-        // Suporte retrocompatível para senhas ainda em texto plano
+        // Suporte retrocompatível apenas se a senha no banco ainda estiver em texto plano ou vazia no 1º acesso
+        const storedPlain = matchedUser.Des_Senha_Hash ? String(matchedUser.Des_Senha_Hash).trim() : '';
         senhaValida =
-          matchedUser.Des_Senha_Hash === passNorm ||
-          (matriculaNorm && matriculaNorm === passNorm.toLowerCase()) ||
-          passNorm === '123456' ||
-          passNorm === 'admin' ||
-          (matchedUser.Des_Senha_Hash === 'google_oauth_authenticated' && (passNorm === '123456' || passNorm === 'admin' || matriculaNorm === passNorm.toLowerCase())) ||
-          (matchedUser.Eml_Corporativo && ['kamile', 'pontual', 'alexsandra'].some(k => matchedUser.Eml_Corporativo.toLowerCase().includes(k)) && passNorm === '123456');
+          (Boolean(storedPlain) && storedPlain !== 'google_oauth_authenticated' && storedPlain === passNorm) ||
+          (!storedPlain && Boolean(matriculaNorm) && matriculaNorm === passNorm.toLowerCase());
 
-        // Se a senha estiver correta mas não estava hasheada, atualiza automaticamente no banco (migração transparente)
+        // Se a senha estiver correta mas não estava hasheada, atualiza automaticamente no banco com bcrypt
         if (senhaValida && matchedUser.Idf_Colaborador) {
           try {
             const autoHash = bcrypt.hashSync(passNorm, 10);
@@ -304,7 +300,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
       }
 
       if (!senhaValida) {
-        showFeedback('Senha incorreta. No primeiro acesso, use sua matrícula ou a senha padrão 123456.', 'error');
+        showFeedback('Senha incorreta. Verifique sua senha ou, no primeiro acesso de colaborador, utilize a matrícula recebida.', 'error');
         setIsLoading(false);
         passwordInputRef.current?.focus();
         return;
@@ -384,6 +380,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
 
     if (regSenha.length < 6) {
       showFeedback('A senha deve possuir pelo menos 6 caracteres.', 'error');
+      return;
+    }
+
+    const weakPasswords = ['123456', '1234567', '12345678', '123456789', '000000', '111111', 'abcdef', 'senha123', 'admin123', 'password'];
+    if (weakPasswords.includes(regSenha.trim().toLowerCase())) {
+      showFeedback('Por segurança, não utilize senhas sequenciais ou padrão (como 123456). Crie uma senha mais segura.', 'error');
       return;
     }
 
@@ -593,7 +595,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
     } catch (err: any) {
       console.warn('Erro na autenticação Google:', err?.message);
       showFeedback(
-        'Falha ao conectar via Google Workspace. Você também pode entrar informando seu e-mail e a senha 123456.',
+        'Falha ao conectar via Google Workspace. Tente novamente ou acesse informando seu e-mail corporativo e senha.',
         'warning'
       );
       setIsLoading(false);

@@ -1,6 +1,7 @@
 import { getTodayDateString } from '@/shared/utils/dateUtils';
 import { supabase } from '@/shared/services/supabase';
 import { TimeOffRequest, AbsenceJustification, Employee } from '@/types';
+import bcrypt from 'bcryptjs';
 
 function isValidUuid(id?: string): boolean {
   if (!id) return false;
@@ -45,7 +46,7 @@ export async function ensureColaboradorUuidSupabase(activeEmp?: Employee): Promi
       Cod_Matricula: matricula,
       Nme_Colaborador: activeEmp.name || 'Colaborador',
       Eml_Corporativo: finalEmail,
-      Des_Senha_Hash: matricula,
+      Des_Senha_Hash: bcrypt.hashSync(matricula, 10),
       Tpo_Perfil: perfil,
       Tpo_Cargo: activeEmp.role || 'Colaborador',
       Des_Departamento: activeEmp.department || 'Geral',
