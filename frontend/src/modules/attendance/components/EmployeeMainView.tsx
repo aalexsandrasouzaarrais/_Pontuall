@@ -631,7 +631,19 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
   const hasCheckedIn = Boolean(todayShift?.checkInTime);
   const hasCheckedOut = Boolean(todayShift?.checkOutTime);
 
-  const workplaceMapsUrl = currentShiftWorkplace?.latitude && currentShiftWorkplace?.longitude
+  const isRemoteShiftOrWorkplace = Boolean(
+    currentShiftWorkplace?.isRemote ||
+    (currentShiftWorkplace?.name || '').toLowerCase().includes('home office') ||
+    (currentShiftWorkplace?.name || '').toLowerCase().includes('remoto') ||
+    (currentShiftWorkplace?.address || '').toLowerCase().includes('remoto') ||
+    (currentShiftWorkplace?.address || '').toLowerCase().includes('domiciliar') ||
+    (todayShift?.workplace || '').toLowerCase().includes('home office') ||
+    (todayShift?.workplace || '').toLowerCase().includes('remoto')
+  );
+
+  const workplaceMapsUrl = isRemoteShiftOrWorkplace
+    ? null
+    : currentShiftWorkplace?.latitude && currentShiftWorkplace?.longitude
     ? `https://www.google.com/maps/dir/?api=1&destination=${currentShiftWorkplace.latitude},${currentShiftWorkplace.longitude}`
     : currentShiftWorkplace?.address
     ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(currentShiftWorkplace.address)}`

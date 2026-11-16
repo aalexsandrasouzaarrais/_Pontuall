@@ -387,9 +387,9 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     }
     const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
     const cleanId = employeeId.trim() || generateRandomId();
-    const isRhSelected = userRole === 'Administrador' || userRole === 'RH';
+    const isRhSelected = false;
     const isGestorSelected = userRole === 'Gestor';
-    const roleTypeVal: 'rh' | 'gestor' | 'colaborador' = isRhSelected ? 'rh' : isGestorSelected ? 'gestor' : 'colaborador';
+    const roleTypeVal: 'gestor' | 'colaborador' = isGestorSelected ? 'gestor' : 'colaborador';
 
     const parsedRate = employmentType === 'PJ' ? Number(pjHourlyRate.replace(',', '.')) || 0 : undefined;
     const parsedQuota = employmentType === 'PJ' ? Number(pjMonthlyHoursQuota) || 160 : undefined;
@@ -934,7 +934,6 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                     >
                       <option value="Colaborador" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>Colaborador</option>
                       <option value="Gestor" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>Gestor</option>
-                      <option value="Administrador" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>Administrador</option>
                     </select>
                   </div>
 

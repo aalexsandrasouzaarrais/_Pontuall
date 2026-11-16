@@ -62,7 +62,7 @@ export function mapBneToShift(row: any): Shift {
 
 export async function getShiftsSupabase(employeeIds?: string[]): Promise<Shift[]> {
   try {
-    if (employeeIds && employeeIds.length === 0) {
+    if (!employeeIds || employeeIds.length === 0) {
       return [];
     }
 
@@ -134,7 +134,7 @@ export async function getShiftsSupabase(employeeIds?: string[]): Promise<Shift[]
             };
 
             const inPunch = shiftPunches.find(p => p.Tpo_Registro?.toLowerCase() === 'entrada') || shiftPunches[0];
-            const outPunch = shiftPunches.find(p => p.Tpo_Registro?.toLowerCase() === 'saida');
+            const outPunch = [...shiftPunches].reverse().find(p => p.Tpo_Registro?.toLowerCase() === 'saida');
 
             const inData = inPunch ? buildPunchInfo(inPunch) : undefined;
             const outData = (outPunch && outPunch !== inPunch) ? buildPunchInfo(outPunch) : undefined;

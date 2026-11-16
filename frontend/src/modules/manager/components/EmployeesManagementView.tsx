@@ -261,11 +261,18 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
 
       {/* Cards de Métricas Rápidas */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className={`p-4 rounded-2xl border flex items-center gap-4 ${
+        <div className={`p-4 rounded-2xl border flex items-center gap-3.5 ${
           isDark ? 'bg-[#151822] border-[#252A3A]' : 'bg-white border-slate-200 shadow-sm'
         }`}>
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#96183c] to-[#f89642] flex items-center justify-center text-white shrink-0 shadow-lg">
-            <Users className="w-6 h-6" />
+          <div
+            className="w-9 h-9 rounded-lg border flex items-center justify-center shrink-0"
+            style={{
+              color: '#96183c',
+              backgroundColor: 'rgba(150, 24, 60, 0.14)',
+              borderColor: 'rgba(150, 24, 60, 0.32)',
+            }}
+          >
+            <Users className="w-4 h-4" strokeWidth={1.75} />
           </div>
           <div>
             <span className={`text-xs font-bold block uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Total de Colaboradores</span>
@@ -273,11 +280,18 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
           </div>
         </div>
 
-        <div className={`p-4 rounded-2xl border flex items-center gap-4 ${
+        <div className={`p-4 rounded-2xl border flex items-center gap-3.5 ${
           isDark ? 'bg-[#151822] border-[#252A3A]' : 'bg-white border-slate-200 shadow-sm'
         }`}>
-          <div className="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
-            <Building2 className="w-6 h-6" />
+          <div
+            className="w-9 h-9 rounded-lg border flex items-center justify-center shrink-0"
+            style={{
+              color: '#f89642',
+              backgroundColor: 'rgba(248, 150, 66, 0.14)',
+              borderColor: 'rgba(248, 150, 66, 0.30)',
+            }}
+          >
+            <LayoutGrid className="w-4 h-4" strokeWidth={1.75} />
           </div>
           <div>
             <span className={`text-xs font-bold block uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Departamentos Ativos</span>
@@ -285,11 +299,18 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
           </div>
         </div>
 
-        <div className={`p-4 rounded-2xl border flex items-center gap-4 ${
+        <div className={`p-4 rounded-2xl border flex items-center gap-3.5 ${
           isDark ? 'bg-[#151822] border-[#252A3A]' : 'bg-white border-slate-200 shadow-sm'
         }`}>
-          <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
-            <Briefcase className="w-6 h-6" />
+          <div
+            className="w-9 h-9 rounded-lg border flex items-center justify-center shrink-0"
+            style={{
+              color: '#faf0ac',
+              backgroundColor: isDark ? 'rgba(250, 240, 172, 0.12)' : '#96183c',
+              borderColor: isDark ? 'rgba(250, 240, 172, 0.28)' : '#96183c',
+            }}
+          >
+            <ShieldCheck className="w-4 h-4" strokeWidth={1.75} />
           </div>
           <div>
             <span className={`text-xs font-bold block uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Gestores Ativos</span>
@@ -803,7 +824,9 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
                   >
                     <option value="colaborador">Colaborador (Equipe)</option>
                     <option value="gestor">Gestor de Setor</option>
-                    <option value="rh">RH (Administrador Geral)</option>
+                    {(editingEmployee.isRh || editingEmployee.roleType === "rh") && (
+                      <option value="rh">RH (Administrador Geral)</option>
+                    )}
                   </select>
                 </div>
 

@@ -89,7 +89,7 @@ interface ManagerMatrixGridProps {
   onOpenEditShift: (shift: Shift) => void;
   onOpenRequests: () => void;
   onOpenPjModal: () => void;
-  onExportCsv: (targetMonth?: string) => void;
+  onExportCsv: (targetMonth?: string, targetDept?: string) => void;
   onAddEmployee: () => void;
   onSwitchToEmployee?: () => void;
   onOpenChat?: () => void;
@@ -260,6 +260,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   // Estados e cálculos para exportação mensal de presenças e aprovações
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportModalContext, setExportModalContext] = useState<'attendance' | 'approvals'>('attendance');
+  const [exportReportFormat, setExportReportFormat] = useState<'detailed' | 'consolidated_employees_dept' | 'consolidated_dept'>('consolidated_employees_dept');
+  const [selectedExportDept, setSelectedExportDept] = useState<string>('all');
   const [selectedExportMonth, setSelectedExportMonth] = useState<string>(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -1150,10 +1152,19 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
   // Ações do Gestor para Banco de Horas e Ajustes CLT (Aba Relatório de Presenças)
   // Exportação especializada de Fechamento de Folha & Banco de Horas para o RH (Padrão Contábil / eSocial)
+  const getEmployeeMatricula = (empId?: string, empName?: string): string => {
+    const found = employees.find(
+      e => (empId && e.id === empId) || (empName && e.name.toLowerCase() === empName.toLowerCase())
+    );
+    if (found?.registrationId) return found.registrationId;
+    if (empId && !/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(empId)) return empId;
+    return '—';
+  };
+
   const handleExportBancoHorasCsv = (rowsToExport: BancoHorasItem[]) => {
     const headers = [
       'Colaborador',
-      'Matrícula / ID',
+      'Matrícula',
       'Departamento',
       'Cargo',
       'Data',
@@ -1202,10 +1213,10 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
       return [
         escapeCsv(row.employeeName),
-        escapeCsv(row.employeeId),
+        escapeCsv(getEmployeeMatricula(row.employeeId, row.employeeName)),
         escapeCsv(row.employeeDept),
         escapeCsv(row.employeeRole),
-        escapeCsv(formatDateToDDMMAAAA(row.date)),
+        `="${formatDateToDDMMAAAA(row.date)}"`,
         escapeCsv(row.scheduledTime),
         escapeCsv(row.punchTime),
         escapeCsv(row.typeLabel),
@@ -1253,7 +1264,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
     const headers = [
       'Colaborador',
-      'Matrícula / ID',
+      'Matrícula',
       'Departamento',
       'Cargo',
       'Data da Ocorrência',
@@ -1283,10 +1294,10 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
       return [
         escapeCsv(row.employeeName),
-        escapeCsv(row.employeeId || '—'),
+        escapeCsv(getEmployeeMatricula(row.employeeId, row.employeeName)),
         escapeCsv(row.employeeDept),
         escapeCsv(row.employeeRole),
-        escapeCsv(dateFormatted),
+        `="${dateFormatted}"`,
         escapeCsv(row.type),
         escapeCsv(row.reason),
         escapeCsv(row.documentName || 'Sem anexo'),
@@ -1572,12 +1583,65 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     };
   }, [shifts]);
 
+  // Sincronização em tempo real das batidas de entrada e saída (TAB_Registro_Ponto)
+  const [livePunches, setLivePunches] = useState<any[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchLivePunches = async () => {
+      try {
+        const { data } = await supabase
+          .from('TAB_Registro_Ponto')
+          .select('*')
+          .order('Dta_Hora_Registro', { ascending: true });
+        if (mounted && data) {
+          setLivePunches(data);
+        }
+      } catch {}
+    };
+
+    fetchLivePunches();
+    const timer = setInterval(fetchLivePunches, 5000);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, [activeTab]);
+
   const reportRows = useMemo(() => {
     if (shifts && shifts.length > 0) {
       const cutoff60 = toLocalDateString(addDaysLocal(new Date(), -60));
       return shifts
         .filter(s => !s.date || normalizeDateToISO(s.date) >= cutoff60)
-        .map(s => {
+        .map(rawShift => {
+        // Mescla batidas ao vivo do banco caso o estado local ainda não tenha recebido a saída
+        let s = rawShift;
+        if (livePunches.length > 0 && (!s.checkInTime || !s.checkOutTime)) {
+          const matching = livePunches.filter(p => {
+            if (p.Idf_Turno && p.Idf_Turno === s.id) return true;
+            if (p.Idf_Colaborador === s.employeeId && p.Dta_Hora_Registro) {
+              const dt = new Date(p.Dta_Hora_Registro);
+              const localIso = !isNaN(dt.getTime()) ? toLocalDateString(dt) : p.Dta_Hora_Registro.slice(0, 10);
+              return localIso === normalizeDateToISO(s.date);
+            }
+            return false;
+          });
+          if (matching.length > 0) {
+            const inRec = matching.find(p => p.Tpo_Registro?.toLowerCase() === 'entrada') || matching[0];
+            const outRec = [...matching].reverse().find(p => p.Tpo_Registro?.toLowerCase() === 'saida');
+            const fmtTime = (rec: any) => {
+              const dt = new Date(rec.Dta_Hora_Registro);
+              if (isNaN(dt.getTime())) return undefined;
+              return `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
+            };
+            s = {
+              ...s,
+              checkInTime: s.checkInTime || (inRec ? fmtTime(inRec) : undefined),
+              checkOutTime: s.checkOutTime || (outRec && outRec !== inRec ? fmtTime(outRec) : undefined),
+            };
+          }
+        }
+
         const emp = employees.find(e => e.id === s.employeeId);
         const statusMap: Record<string, string> = {
           present: 'Presente',
@@ -1586,7 +1650,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           late: 'Atrasado',
           pending: 'Pendente'
         };
-        const hasRealExit = Boolean(s.checkOutTime) && s.checkOutTime !== s.checkInTime;
+        const hasRealExit = Boolean(s.checkOutTime);
 
         // GPS fora do posto detectado de forma discreta
         const isCheckInOutside = Boolean(s.checkInLocation && !s.checkInLocation.gpsValidated);
@@ -1612,7 +1676,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           if (diffMin < 0) diffMin += 24 * 60;
           const h = Math.floor(diffMin / 60);
           const m = diffMin % 60;
-          calculatedHours = `${h}h${m > 0 ? ` ${m}m` : ''}`;
+          calculatedHours = diffMin === 0 ? '< 1m' : `${h}h${m > 0 ? ` ${m}m` : ''}`;
         } else if (s.checkInTime && !hasRealExit) {
           calculatedHours = 'Em andamento';
         } else if (!s.checkInTime) {
@@ -1627,19 +1691,17 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         let finalReportStatus = statusMap[s.attendanceStatus || 'pending'] || 'Pendente';
         let isDecisionPending = false;
 
-        if (just) {
-          if (just.status === 'approved' || s.attendanceStatus === 'justified') {
-            finalReportStatus = 'Justificado';
-          } else if (just.status === 'rejected') {
+        if (s.attendanceStatus === 'justified' || just?.status === 'approved') {
+          finalReportStatus = 'Justificado';
+        } else if (Boolean(s.checkInTime) || Boolean(s.checkOutTime) || s.attendanceStatus === 'present' || s.attendanceStatus === 'late') {
+          finalReportStatus = s.attendanceStatus === 'late' ? 'Atrasado' : 'Presente';
+        } else if (just) {
+          if (just.status === 'rejected') {
             finalReportStatus = 'Ausente';
           } else {
             finalReportStatus = (isPast24h || s.attendanceStatus === 'absent') ? 'Ausente' : 'Pendente';
             isDecisionPending = true;
           }
-        } else if (s.attendanceStatus === 'justified') {
-          finalReportStatus = 'Justificado';
-        } else if (s.attendanceStatus === 'present' || Boolean(s.checkInTime)) {
-          finalReportStatus = s.attendanceStatus === 'late' ? 'Atrasado' : 'Presente';
         } else if (isPast24h || s.attendanceStatus === 'absent') {
           finalReportStatus = 'Ausente';
           isDecisionPending = true;
@@ -1701,7 +1763,318 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     }
 
     return [];
-  }, [shifts, employees, justifications]);
+  }, [shifts, employees, justifications, livePunches]);
+
+  // Consolidação por Departamento: Presença, Assiduidade, Absenteísmo e Horas Trabalhadas (Fechamento Contábil & Folha)
+  const departmentConsolidatedRows = useMemo(() => {
+    const deptSet = new Set<string>();
+    employees.forEach(e => {
+      if (e.department) deptSet.add(e.department);
+    });
+    shifts.forEach(s => {
+      const emp = employees.find(e => e.id === s.employeeId);
+      if (emp?.department) deptSet.add(emp.department);
+    });
+    if (deptSet.size === 0) {
+      ['Atendimento', 'Suporte Técnico', 'Operações', 'Comercial'].forEach(d => deptSet.add(d));
+    }
+
+    return Array.from(deptSet).map(deptName => {
+      const deptEmployees = employees.filter(e => (e.department || 'Geral') === deptName);
+      const deptShifts = reportRows.filter(r => r.dept === deptName);
+
+      const totalShifts = deptShifts.length;
+      const presentCount = deptShifts.filter(r => r.status === 'Presente').length;
+      const lateCount = deptShifts.filter(r => r.status === 'Atrasado').length;
+      const justifiedCount = deptShifts.filter(r => r.status === 'Justificado').length;
+      const absentCount = deptShifts.filter(r => r.status === 'Ausente').length;
+
+      const effectivePresent = presentCount + lateCount + justifiedCount;
+      const evaluatedTotal = effectivePresent + absentCount;
+
+      const assiduidadePct = evaluatedTotal > 0
+        ? Math.round((effectivePresent / evaluatedTotal) * 1000) / 10
+        : 100;
+      const absenteismoPct = evaluatedTotal > 0
+        ? Math.round((absentCount / evaluatedTotal) * 1000) / 10
+        : 0;
+
+      // Soma de horas trabalhadas e previstas no departamento
+      let workedMinutes = 0;
+      let scheduledMinutes = 0;
+      shifts.forEach(s => {
+        const emp = employees.find(e => e.id === s.employeeId);
+        const empDept = emp?.department || 'Geral';
+        if (empDept !== deptName) return;
+
+        if (s.startTime && s.endTime) {
+          const [sH, sM] = s.startTime.split(':').map(Number);
+          const [eH, eM] = s.endTime.split(':').map(Number);
+          let dur = (eH * 60 + eM) - (sH * 60 + sM) - (s.breakMinutes ?? 60);
+          if (dur < 0) dur += 24 * 60;
+          if (!isNaN(dur) && dur > 0) scheduledMinutes += dur;
+        }
+
+        const hasRealExit = Boolean(s.checkOutTime);
+        if (s.checkInTime && hasRealExit) {
+          const [inH, inM] = s.checkInTime.split(':').map(Number);
+          const [outH, outM] = s.checkOutTime!.split(':').map(Number);
+          let diff = (outH * 60 + outM) - (inH * 60 + inM) - (s.breakMinutes ?? 60);
+          if (diff < 0) diff += 24 * 60;
+          if (!isNaN(diff) && diff > 0) workedMinutes += diff;
+        } else if (s.attendanceStatus === 'present' || s.attendanceStatus === 'late' || s.attendanceStatus === 'justified') {
+          if (s.startTime && s.endTime) {
+            const [sH, sM] = s.startTime.split(':').map(Number);
+            const [eH, eM] = s.endTime.split(':').map(Number);
+            let dur = (eH * 60 + eM) - (sH * 60 + sM) - (s.breakMinutes ?? 60);
+            if (dur < 0) dur += 24 * 60;
+            if (!isNaN(dur) && dur > 0) workedMinutes += dur;
+          }
+        }
+      });
+
+      const formatMinToHHMM = (min: number) => {
+        const h = Math.floor(min / 60);
+        const m = min % 60;
+        return `${h}h${m > 0 ? ` ${String(m).padStart(2, '0')}m` : ''}`;
+      };
+
+      const workedDecimal = (workedMinutes / 60).toFixed(2).replace('.', ',');
+      const scheduledDecimal = (scheduledMinutes / 60).toFixed(2).replace('.', ',');
+      const balanceMinutes = workedMinutes - scheduledMinutes;
+      const balanceDecimal = (balanceMinutes / 60).toFixed(2).replace('.', ',');
+
+      return {
+        dept: deptName,
+        employeesCount: deptEmployees.length,
+        totalShifts,
+        presentCount,
+        lateCount,
+        justifiedCount,
+        absentCount,
+        assiduidadePct,
+        absenteismoPct,
+        scheduledFormatted: formatMinToHHMM(scheduledMinutes),
+        workedFormatted: formatMinToHHMM(workedMinutes),
+        scheduledDecimal,
+        workedDecimal,
+        balanceDecimal,
+        workedMinutes,
+        scheduledMinutes,
+      };
+    });
+  }, [employees, reportRows, shifts]);
+
+  const handleExportConsolidatedDepartmentCsv = (
+    targetMonth?: string,
+    targetDept: string = 'all',
+    mode: 'consolidated_employees_dept' | 'consolidated_dept' = 'consolidated_employees_dept'
+  ) => {
+    const escapeCsv = (val: any) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+    const formatMinToHHMM = (min: number) => {
+      const h = Math.floor(min / 60);
+      const m = min % 60;
+      return `${h}h${m > 0 ? ` ${String(m).padStart(2, '0')}m` : ''}`;
+    };
+
+    const deptSlug = targetDept && targetDept !== 'all'
+      ? `-${targetDept.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')}`
+      : '-geral';
+    const suffix = (targetMonth && targetMonth !== 'all' ? targetMonth : getTodayDateString()) + deptSlug;
+
+    if (mode === 'consolidated_dept') {
+      const headers = [
+        'Departamento / Centro de Custo',
+        'Colaboradores Ativos',
+        'Turnos Escalados',
+        'Presenças no Posto',
+        'Entradas com Atraso',
+        'Faltas Justificadas / Abonadas',
+        'Faltas Injustificadas (Desconto)',
+        'Taxa de Assiduidade (%)',
+        'Taxa de Absenteísmo (%)',
+        'Horas Contratuais Previstas (HH:MM)',
+        'Horas Previstas Decimal (Contábil)',
+        'Horas Trabalhadas Apuradas (HH:MM)',
+        'Horas Trabalhadas Decimal (p/ Folha)',
+        'Saldo Líquido Decimal (Banco / Folha)',
+        'Situação Contábil / Fechamento'
+      ];
+
+      const filteredDepts = targetDept && targetDept !== 'all'
+        ? departmentConsolidatedRows.filter(d => d.dept === targetDept)
+        : departmentConsolidatedRows;
+
+      const rows = filteredDepts.map(d => [
+        escapeCsv(d.dept),
+        d.employeesCount,
+        d.totalShifts,
+        d.presentCount,
+        d.lateCount,
+        d.justifiedCount,
+        d.absentCount,
+        escapeCsv(`${d.assiduidadePct.toFixed(1).replace('.', ',')}%`),
+        escapeCsv(`${d.absenteismoPct.toFixed(1).replace('.', ',')}%`),
+        escapeCsv(d.scheduledFormatted),
+        escapeCsv(d.scheduledDecimal),
+        escapeCsv(d.workedFormatted),
+        escapeCsv(d.workedDecimal),
+        escapeCsv(d.balanceDecimal),
+        escapeCsv(d.absentCount === 0 ? 'Regular — Pronto p/ Folha' : `Atenção: ${d.absentCount} falta(s) apurada(s)`)
+      ].join(';'));
+
+      const csvContent = '\uFEFF' + [headers.join(';'), ...rows].join('\r\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `relatorio-consolidado-departamentos-${suffix}.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+
+      showPolishedToast({
+        id: 'csv-consolidated-dept-export',
+        title: 'Planilha por Departamento Exportada!',
+        description: 'Resumo consolidado por setor gerado com sucesso para fechamento contábil e de folha.',
+        rimVariant: 'success',
+        duration: 4000,
+      });
+      return;
+    }
+
+    // Modo 'consolidated_employees_dept': Lista todos os funcionários do setor selecionado (ou de todos os setores) com presença, assiduidade, absenteísmo e horas trabalhadas
+    const targetEmployees = (targetDept && targetDept !== 'all'
+      ? employees.filter(e => (e.department || 'Geral') === targetDept)
+      : [...employees]
+    ).sort((a, b) => (a.department || '').localeCompare(b.department || '', 'pt-BR') || (a.name || '').localeCompare(b.name || '', 'pt-BR'));
+
+    const headers = [
+      'Departamento / Setor',
+      'Colaborador',
+      'Matrícula',
+      'Cargo / Função',
+      'Regime Contratual',
+      'Turnos no Período',
+      'Presenças no Posto',
+      'Entradas com Atraso',
+      'Faltas Justificadas / Abonadas',
+      'Faltas Injustificadas (Desconto)',
+      'Taxa de Assiduidade (%)',
+      'Taxa de Absenteísmo (%)',
+      'Horas Previstas (HH:MM)',
+      'Horas Previstas Decimal',
+      'Horas Trabalhadas (HH:MM)',
+      'Horas Trabalhadas Decimal (p/ Folha)',
+      'Saldo Líquido Decimal (Banco / Folha)',
+      'Situação para Fechamento de Folha'
+    ];
+
+    const empRows = targetEmployees.map(emp => {
+      const empShifts = shifts.filter(s => {
+        if (s.employeeId !== emp.id) return false;
+        if (targetMonth && targetMonth !== 'all' && s.date) {
+          return normalizeDateToISO(s.date).startsWith(targetMonth);
+        }
+        return true;
+      });
+
+      let presentCount = 0;
+      let lateCount = 0;
+      let justifiedCount = 0;
+      let absentCount = 0;
+      let scheduledMinutes = 0;
+      let workedMinutes = 0;
+
+      empShifts.forEach(s => {
+        const just = (justifications || []).find(
+          j => (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)
+        );
+        const isPast24h = isShiftPast24hWithoutPunch(s);
+
+        if (just?.status === 'approved' || s.attendanceStatus === 'justified') {
+          justifiedCount++;
+        } else if (s.attendanceStatus === 'late') {
+          lateCount++;
+        } else if (s.attendanceStatus === 'present' || Boolean(s.checkInTime)) {
+          presentCount++;
+        } else if (s.attendanceStatus === 'absent' || just?.status === 'rejected' || isPast24h) {
+          absentCount++;
+        }
+
+        if (s.startTime && s.endTime) {
+          const [sH, sM] = s.startTime.split(':').map(Number);
+          const [eH, eM] = s.endTime.split(':').map(Number);
+          let dur = (eH * 60 + eM) - (sH * 60 + sM) - (s.breakMinutes ?? 60);
+          if (dur < 0) dur += 24 * 60;
+          if (!isNaN(dur) && dur > 0) scheduledMinutes += dur;
+        }
+
+        const hasRealExit = Boolean(s.checkOutTime);
+        if (s.checkInTime && hasRealExit) {
+          const [inH, inM] = s.checkInTime.split(':').map(Number);
+          const [outH, outM] = s.checkOutTime!.split(':').map(Number);
+          let diff = (outH * 60 + outM) - (inH * 60 + inM) - (s.breakMinutes ?? 60);
+          if (diff < 0) diff += 24 * 60;
+          if (!isNaN(diff) && diff > 0) workedMinutes += diff;
+        } else if (s.attendanceStatus === 'present' || s.attendanceStatus === 'late' || s.attendanceStatus === 'justified') {
+          if (s.startTime && s.endTime) {
+            const [sH, sM] = s.startTime.split(':').map(Number);
+            const [eH, eM] = s.endTime.split(':').map(Number);
+            let dur = (eH * 60 + eM) - (sH * 60 + sM) - (s.breakMinutes ?? 60);
+            if (dur < 0) dur += 24 * 60;
+            if (!isNaN(dur) && dur > 0) workedMinutes += dur;
+          }
+        }
+      });
+
+      const effectivePresent = presentCount + lateCount + justifiedCount;
+      const evaluatedTotal = effectivePresent + absentCount;
+      const assiduidadePct = evaluatedTotal > 0 ? Math.round((effectivePresent / evaluatedTotal) * 1000) / 10 : 100;
+      const absenteismoPct = evaluatedTotal > 0 ? Math.round((absentCount / evaluatedTotal) * 1000) / 10 : 0;
+
+      const scheduledDecimal = (scheduledMinutes / 60).toFixed(2).replace('.', ',');
+      const workedDecimal = (workedMinutes / 60).toFixed(2).replace('.', ',');
+      const balanceDecimal = ((workedMinutes - scheduledMinutes) / 60).toFixed(2).replace('.', ',');
+
+      return [
+        escapeCsv(emp.department || 'Geral'),
+        escapeCsv(emp.name),
+        escapeCsv(emp.registrationId || getEmployeeMatricula(emp.id, emp.name)),
+        escapeCsv(emp.role || 'Colaborador'),
+        escapeCsv(emp.contractType || 'CLT'),
+        empShifts.length,
+        presentCount,
+        lateCount,
+        justifiedCount,
+        absentCount,
+        escapeCsv(`${assiduidadePct.toFixed(1).replace('.', ',')}%`),
+        escapeCsv(`${absenteismoPct.toFixed(1).replace('.', ',')}%`),
+        escapeCsv(formatMinToHHMM(scheduledMinutes)),
+        escapeCsv(scheduledDecimal),
+        escapeCsv(formatMinToHHMM(workedMinutes)),
+        escapeCsv(workedDecimal),
+        escapeCsv(balanceDecimal),
+        escapeCsv(absentCount === 0 ? 'Regular — Pronto p/ Folha' : `Desconto / Revisão: ${absentCount} falta(s)`)
+      ].join(';');
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(';'), ...empRows].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `relatorio-consolidado-colaboradores-${suffix}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+
+    showPolishedToast({
+      id: 'csv-consolidated-emp-dept-export',
+      title: 'Relatório Consolidado Exportado!',
+      description: targetDept && targetDept !== 'all'
+        ? `Planilha com todos os funcionários do setor "${targetDept}" (presença, assiduidade, absenteísmo e horas) baixada com sucesso.`
+        : 'Planilha consolidada de todos os funcionários por setor baixada com sucesso.',
+      rimVariant: 'success',
+      duration: 4000,
+    });
+  };
 
   // Tab 4 (Tarefas) State - Orbit Visual Identity
   const allAssignablePeople = useMemo(() => {
@@ -2986,15 +3359,32 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
         // Filter items
         const filteredApprovals = approvalsData.filter(row => {
-          // Search filter
+          // Search filter (colaborador, cargo, setor, tipo, motivo ou data igual ao Relatório de Presenças)
           if (approvalsSearch.trim()) {
-            const q = approvalsSearch.toLowerCase();
+            const q = approvalsSearch.toLowerCase().trim();
+            const formattedRowDate = formatDateToDDMMAAAA(row.date || '');
             const matchName = row.employeeName.toLowerCase().includes(q);
             const matchRole = row.employeeRole.toLowerCase().includes(q);
             const matchDept = (row.employeeDept || '').toLowerCase().includes(q);
             const matchType = row.type.toLowerCase().includes(q);
             const matchReason = row.reason.toLowerCase().includes(q);
-            if (!matchName && !matchRole && !matchDept && !matchType && !matchReason) return false;
+            const matchDateRaw = (row.date || '').toLowerCase().includes(q);
+            const matchDateFormatted = formattedRowDate.toLowerCase().includes(q);
+            const matchDateSlash = formattedRowDate.replace(/-/g, '/').toLowerCase().includes(q);
+            const matchDateDash = formattedRowDate.replace(/\//g, '-').toLowerCase().includes(q);
+            if (
+              !matchName &&
+              !matchRole &&
+              !matchDept &&
+              !matchType &&
+              !matchReason &&
+              !matchDateRaw &&
+              !matchDateFormatted &&
+              !matchDateSlash &&
+              !matchDateDash
+            ) {
+              return false;
+            }
           }
 
           // Department filter
@@ -3205,7 +3595,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     type="text"
                     value={approvalsSearch}
                     onChange={(e) => setApprovalsSearch(e.target.value)}
-                    placeholder="Buscar por colaborador..."
+                    placeholder="Filtrar por colaborador, setor ou data (ex: 26-10-2026)..."
                     className={`approvals-light-search w-full pl-9 pr-3 py-2 text-xs rounded-full outline-none transition-colors border ${
                       isDark
                         ? 'bg-[#0e0f12] text-white placeholder:text-slate-500 border-[#282a33] focus:border-[#F59242]'
@@ -6437,13 +6827,74 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   ))}
                 </select>
 
+                <div className="space-y-1.5 pt-1">
+                  <label className={`block text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                    Departamento / Setor
+                  </label>
+                  <select
+                    value={selectedExportDept}
+                    onChange={(e) => setSelectedExportDept(e.target.value)}
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium border outline-none cursor-pointer transition-colors ${
+                      isDark 
+                        ? 'bg-[#0e0f12] border-[#282a33] text-white focus:border-[#F59242]' 
+                        : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-[#9F243C]'
+                    }`}
+                  >
+                    <option value="all">Todos os Departamentos (Geral da Empresa)</option>
+                    {departmentConsolidatedRows.map(d => (
+                      <option key={d.dept} value={d.dept}>
+                        {d.dept} ({d.employeesCount} {d.employeesCount === 1 ? 'funcionário' : 'funcionários'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {exportModalContext === 'attendance' && (
+                  <div className="space-y-1.5 pt-1">
+                    <label className={`block text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                      Modelo de Relatório (CSV)
+                    </label>
+                    <select
+                      value={exportReportFormat}
+                      onChange={(e) => setExportReportFormat(e.target.value as 'detailed' | 'consolidated_employees_dept' | 'consolidated_dept')}
+                      className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium border outline-none cursor-pointer transition-colors ${
+                        isDark 
+                          ? 'bg-[#0e0f12] border-[#282a33] text-white focus:border-[#F59242]' 
+                          : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-[#9F243C]'
+                      }`}
+                    >
+                      <option value="consolidated_employees_dept">
+                        Consolidado de Funcionários por Setor (Presença, Assiduidade, Absenteísmo e Horas p/ Folha)
+                      </option>
+                      <option value="consolidated_dept">
+                        Resumo Geral por Departamento (Totais Contábeis do Setor)
+                      </option>
+                      <option value="detailed">
+                        Espelho de Ponto Detalhado (Turnos e Batidas Diárias)
+                      </option>
+                    </select>
+                  </div>
+                )}
+
                 <div className={`p-3 rounded-xl border text-xs ${
                   isDark ? 'bg-black/20 border-white/5 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'
                 }`}>
                   <div className="flex items-center justify-between font-medium">
-                    <span>Registros a exportar:</span>
+                    <span>
+                      {exportModalContext === 'attendance' && exportReportFormat === 'consolidated_employees_dept'
+                        ? (selectedExportDept === 'all' ? 'Funcionários incluídos (Todos os setores):' : `Funcionários do setor ${selectedExportDept}:`)
+                        : exportModalContext === 'attendance' && exportReportFormat === 'consolidated_dept'
+                        ? 'Departamentos consolidados:'
+                        : 'Registros a exportar:'}
+                    </span>
                     <span className="font-bold text-amber-500">
-                      {activeMonths.find(m => m.key === selectedExportMonth)?.count || 0}
+                      {exportModalContext === 'attendance' && exportReportFormat === 'consolidated_employees_dept'
+                        ? (selectedExportDept === 'all'
+                            ? employees.length
+                            : employees.filter(e => (e.department || 'Geral') === selectedExportDept).length)
+                        : exportModalContext === 'attendance' && exportReportFormat === 'consolidated_dept'
+                        ? (selectedExportDept === 'all' ? departmentConsolidatedRows.length : 1)
+                        : (activeMonths.find(m => m.key === selectedExportMonth)?.count || 0)}
                     </span>
                   </div>
                 </div>
@@ -6463,14 +6914,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   type="button"
                   onClick={() => {
                     if (exportModalContext === 'approvals') {
-                      const rowsToExport = selectedExportMonth === 'all'
+                      const monthFiltered = selectedExportMonth === 'all'
                         ? approvalsData
                         : approvalsData.filter(row => row.date && normalizeDateToISO(row.date).startsWith(selectedExportMonth));
+                      const rowsToExport = selectedExportDept === 'all'
+                        ? monthFiltered
+                        : monthFiltered.filter(row => (row.employeeDept || 'Geral') === selectedExportDept);
 
                       handleExportApprovalsCsv(rowsToExport, selectedExportMonth);
                       setIsExportModalOpen(false);
+                    } else if (exportReportFormat === 'consolidated_employees_dept' || exportReportFormat === 'consolidated_dept') {
+                      handleExportConsolidatedDepartmentCsv(selectedExportMonth, selectedExportDept, exportReportFormat);
+                      setIsExportModalOpen(false);
                     } else {
-                      onExportCsv(selectedExportMonth);
+                      onExportCsv(selectedExportMonth, selectedExportDept);
                       setIsExportModalOpen(false);
                       showPolishedToast({
                         title: 'Planilha exportada com sucesso!',
