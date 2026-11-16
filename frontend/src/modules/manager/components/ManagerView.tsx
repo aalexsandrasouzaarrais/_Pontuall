@@ -88,6 +88,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
     // Relatório de Auditoria de Ponto & Banco de Horas (Conformidade Portaria MTE 671/2021)
     const headers = [
       'Colaborador',
+      'Matrícula',
       'Departamento',
       'Data do Turno',
       'Início Previsto',
@@ -123,6 +124,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
     const rows = targetShifts.map(s => {
       const emp = employees.find(e => e.id === s.employeeId);
       const name = `"${(emp?.name || 'Não informado').replace(/"/g, '""')}"`;
+      const matricula = `"${(emp?.registrationId || '—').replace(/"/g, '""')}"`;
       const dept = `"${(emp?.department || 'Geral').replace(/"/g, '""')}"`;
       
       // Formata a data para padrão brasileiro DD/MM/AAAA no CSV
@@ -198,6 +200,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
 
       return [
         name,
+        matricula,
         dept,
         safeDateForExcel,
         safeStart,

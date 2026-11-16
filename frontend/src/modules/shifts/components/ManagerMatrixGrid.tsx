@@ -1026,10 +1026,19 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
   // Ações do Gestor para Banco de Horas e Ajustes CLT (Aba Relatório de Presenças)
   // Exportação especializada de Fechamento de Folha & Banco de Horas para o RH (Padrão Contábil / eSocial)
+  const getEmployeeMatricula = (empId?: string, empName?: string): string => {
+    const found = employees.find(
+      e => (empId && e.id === empId) || (empName && e.name.toLowerCase() === empName.toLowerCase())
+    );
+    if (found?.registrationId) return found.registrationId;
+    if (empId && !/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(empId)) return empId;
+    return '—';
+  };
+
   const handleExportBancoHorasCsv = (rowsToExport: BancoHorasItem[]) => {
     const headers = [
       'Colaborador',
-      'Matrícula / ID',
+      'Matrícula',
       'Departamento',
       'Cargo',
       'Data',
@@ -1078,7 +1087,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
       return [
         escapeCsv(row.employeeName),
-        escapeCsv(row.employeeId),
+        escapeCsv(getEmployeeMatricula(row.employeeId, row.employeeName)),
         escapeCsv(row.employeeDept),
         escapeCsv(row.employeeRole),
         `="${formatDateToDDMMAAAA(row.date)}"`,
@@ -1129,7 +1138,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
     const headers = [
       'Colaborador',
-      'Matrícula / ID',
+      'Matrícula',
       'Departamento',
       'Cargo',
       'Data da Ocorrência',
@@ -1159,7 +1168,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
       return [
         escapeCsv(row.employeeName),
-        escapeCsv(row.employeeId || '—'),
+        escapeCsv(getEmployeeMatricula(row.employeeId, row.employeeName)),
         escapeCsv(row.employeeDept),
         escapeCsv(row.employeeRole),
         `="${dateFormatted}"`,
@@ -1815,7 +1824,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     const headers = [
       'Departamento / Setor',
       'Colaborador',
-      'Matrícula / ID',
+      'Matrícula',
       'Cargo / Função',
       'Regime Contratual',
       'Turnos no Período',
@@ -1903,7 +1912,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       return [
         escapeCsv(emp.department || 'Geral'),
         escapeCsv(emp.name),
-        escapeCsv(emp.registrationId || emp.id),
+        escapeCsv(emp.registrationId || getEmployeeMatricula(emp.id, emp.name)),
         escapeCsv(emp.role || 'Colaborador'),
         escapeCsv(emp.contractType || 'CLT'),
         empShifts.length,
