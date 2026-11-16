@@ -163,11 +163,30 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
   };
 
   // Gestão de Posto de Trabalho do Template
-  const [workplacesList] = useState<WorkplaceLocation[]>(() => getStoredWorkplaces());
+  const [workplacesList, setWorkplacesList] = useState<WorkplaceLocation[]>(() => getStoredWorkplaces());
   const [selectedWorkplaceId, setSelectedWorkplaceId] = useState<string>(() => {
     const list = getStoredWorkplaces();
     return list[0]?.id || '';
   });
+
+  // Recarrega os postos de trabalho salvos sempre que o modal é aberto
+  React.useEffect(() => {
+    if (isOpen) {
+      const list = [...getStoredWorkplaces()];
+      (currentWeekShifts || []).forEach(s => {
+        if (s.workplaceLocation && s.workplaceLocation.name) {
+          const exists = list.some(
+            w => w.id === s.workplaceLocation?.id || w.name.toLowerCase() === s.workplaceLocation?.name.toLowerCase()
+          );
+          if (!exists) {
+            list.push(s.workplaceLocation);
+          }
+        }
+      });
+      setWorkplacesList(list);
+      setSelectedWorkplaceId(prev => (list.some(w => w.id === prev) ? prev : (list[0]?.id || '')));
+    }
+  }, [isOpen, currentWeekShifts]);
 
   // Filtra colaboradores excluindo gestores e PJ da alocação de escalas em lote
   const schedulableEmployees = useMemo(() => {

@@ -1536,7 +1536,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                   {/* Nome do Posto */}
                   <input
                     type="text"
-                    placeholder="Nome do Posto (Ex: Filial Colombo, Stand Anhembi, Obra 02...)"
+                    placeholder="Nome do Posto"
                     value={newWorkplaceName}
                     onChange={e => setNewWorkplaceName(e.target.value)}
                     className="w-full px-3.5 py-2 rounded-xl text-xs outline-none font-medium"
@@ -1549,7 +1549,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                       <div className="relative flex-1">
                         <input
                           type="text"
-                          placeholder="Endereço, Rua ou CEP (Ex: Rua Antonio Chemin, Colombo - PR)"
+                          placeholder="Endereço, Rua ou CEP"
                           value={newWorkplaceAddress}
                           onChange={e => {
                             setNewWorkplaceAddress(e.target.value);
