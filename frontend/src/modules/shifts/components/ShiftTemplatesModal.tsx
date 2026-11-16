@@ -12,7 +12,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { Employee, Shift, ShiftTemplate, ShiftType } from '@/types';
-import { getStoredWorkplaces, WorkplaceLocation } from '@/shared/services/workplaceService';
+import { getStoredWorkplaces, getScopedDepartmentsStorageKey, WorkplaceLocation } from '@/shared/services/workplaceService';
 import { getSchedulableEmployees } from '@/shared/utils/employeeUtils';
 
 export interface ShiftTemplatesModalProps {
@@ -114,8 +114,9 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
   // Active Tab: 'apply' | 'save'
   const [activeTab, setActiveTab] = useState<'apply' | 'save'>('apply');
 
-  const STORAGE_TEMPLATES_KEY = 'pontual_shift_templates_v1';
-  const STORAGE_DELETED_IDS_KEY = 'pontual_deleted_template_ids_v1';
+  const scopeSuffix = getScopedDepartmentsStorageKey();
+  const STORAGE_TEMPLATES_KEY = `pontual_shift_templates_${scopeSuffix}`;
+  const STORAGE_DELETED_IDS_KEY = `pontual_deleted_template_ids_${scopeSuffix}`;
 
   // Templates list com persistência de exclusões e novos modelos
   const [templates, setTemplates] = useState<ShiftTemplate[]>(() => {

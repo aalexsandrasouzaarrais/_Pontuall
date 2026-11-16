@@ -1151,12 +1151,12 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                       <p className={`text-xs sm:text-sm font-black truncate leading-tight mt-0.5 ${
                         isLightTheme ? 'text-slate-900' : 'text-white'
                       }`}>
-                        {currentShiftWorkplace?.name || todayShift?.workplace || 'BNE'}
+                        {currentShiftWorkplace?.name || todayShift?.workplace || 'Home Office / Remoto'}
                       </p>
                       <p className={`text-[10.5px] truncate font-medium mt-0.5 ${
                         isLightTheme ? 'text-slate-500' : 'text-slate-400'
                       }`}>
-                        {currentShiftWorkplace?.address || 'Rua Antônio Chemin - São Gabriel, Colombo - PR'}
+                        {currentShiftWorkplace?.address || 'Trabalho Remoto / Domiciliar'}
                       </p>
                     </div>
                   </div>

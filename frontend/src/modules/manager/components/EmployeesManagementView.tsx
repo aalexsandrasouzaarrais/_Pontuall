@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { Employee } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
+import { getScopedDepartmentsStorageKey } from '@/shared/services/workplaceService';
 import { savePjContractParamsLocal } from '@/modules/auth/services/colaboradorService';
 
 interface EmployeesManagementViewProps {
@@ -85,21 +86,22 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
     });
   }, [employees]);
 
-  // Lista de departamentos únicos (incluindo setores criados pelo gestor)
+  // Lista de departamentos únicos estritamente isolada por empresa e gestor ativo
   const departments = useMemo(() => {
-    const set = new Set<string>(['Atendimento', 'Suporte Técnico', 'Operações', 'Comercial', 'Tecnologia']);
+    const set = new Set<string>();
+    const scopedKey = getScopedDepartmentsStorageKey(activeEmployee);
     try {
-      const raw = localStorage.getItem('pontual_custom_departments_v1');
+      const raw = localStorage.getItem(scopedKey);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) parsed.forEach(d => d && typeof d === 'string' && set.add(d.trim()));
       }
     } catch {}
     (employees || []).forEach(e => {
-      if (e?.department) set.add(e.department);
+      if (e?.department && e.department.trim()) set.add(e.department.trim());
     });
     return Array.from(set);
-  }, [employees]);
+  }, [employees, activeEmployee]);
 
   // Filtragem da lista
   const filteredEmployees = useMemo(() => {
@@ -295,7 +297,7 @@ export const EmployeesManagementView: React.FC<EmployeesManagementViewProps> = (
           </div>
           <div>
             <span className={`text-xs font-bold block uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Departamentos Ativos</span>
-            <span className="text-2xl font-black">{departments.length || 1}</span>
+            <span className="text-2xl font-black">{departments.length}</span>
           </div>
         </div>
 

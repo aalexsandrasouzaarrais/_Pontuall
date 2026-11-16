@@ -747,12 +747,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     }];
 
     // Central Unificada de Aprovações (Aba 2):
-    // Reúne Atestados Médicos, Faltas Não Justificadas, Justificados, Atrasos de Entrada, Horas Extras, Trocas de Turno e Folgas
+    // Reúne apenas ocorrências reais dos colaboradores vinculados a esta empresa/gestor
     setApprovalsData([
-      ...demoAbsenceItem,
-      ...demoJustifiedItem,
-      ...demoDelayItem,
-      ...demoOvertimeItem,
       ...mappedAbsences,
       ...mappedDelaysAndOvertimeFromShifts,
       ...mappedJustifications.map(j => ({
@@ -900,15 +896,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     };
 
     const finalBancoHoras: BancoHorasItem[] = [...mappedFromShifts];
-    if (!finalBancoHoras.some(b => b.type === 'hora_extra')) {
-      finalBancoHoras.unshift(demoHoraExtra);
-    }
-    if (!finalBancoHoras.some(b => b.type === 'atraso')) {
-      finalBancoHoras.splice(1, 0, demoAtraso);
-    }
-    if (!finalBancoHoras.some(b => b.type === 'esquecimento')) {
-      finalBancoHoras.push(demoEsquecimento);
-    }
     setBancoHorasData(finalBancoHoras);
   }, [employees, justifications, requests, shifts]);
 

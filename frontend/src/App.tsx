@@ -371,10 +371,10 @@ function AppContent() {
         });
         setReminders(dbReminders || []);
 
-        // Busca solicitações e justificativas salvas no Supabase vinculadas à equipe
+        // Busca solicitações e justificativas salvas no Supabase estritamente vinculadas à equipe
         const validScopeIds = empIds.filter(isUuid);
-        const dbRequests = await getSolicitacoesSupabase(validScopeIds.length > 0 ? validScopeIds : undefined);
-        const dbJustifications = await getJustificativasSupabase(validScopeIds.length > 0 ? validScopeIds : undefined);
+        const dbRequests = validScopeIds.length > 0 ? await getSolicitacoesSupabase(validScopeIds) : [];
+        const dbJustifications = validScopeIds.length > 0 ? await getJustificativasSupabase(validScopeIds) : [];
 
         const enrichedRequests = (dbRequests || []).map(r => {
           const emp = finalEmployees.find(e => e.id === r.employeeId || (e.email && currentEmp.email && e.email.toLowerCase() === currentEmp.email.toLowerCase())) 
@@ -405,7 +405,8 @@ function AppContent() {
         setNotifications(dbNotifications || []);
 
         const dbPjReports = await getPjReportsSupabase();
-        setPjReports(dbPjReports || []);
+        const scopedPjReports = (dbPjReports || []).filter(r => empIds.includes(r.employeeId));
+        setPjReports(scopedPjReports);
 
       } catch (err) {
         console.warn('Erro ao carregar dados do Supabase:', err);

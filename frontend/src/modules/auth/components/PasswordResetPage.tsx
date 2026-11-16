@@ -55,6 +55,12 @@ export const PasswordResetPage: React.FC<PasswordResetPageProps> = ({
       return;
     }
 
+    const weakPasswords = ['123456', '1234567', '12345678', '123456789', '000000', '111111', 'abcdef', 'senha123', 'admin123', 'password'];
+    if (weakPasswords.includes(novaSenha.trim().toLowerCase())) {
+      setFeedback({ message: 'Por segurança, não utilize senhas sequenciais ou padrão (como 123456). Crie uma senha mais forte.', type: 'error' });
+      return;
+    }
+
     if (novaSenha !== confirmarSenha) {
       setFeedback({ message: 'A confirmação de senha não coincide com a nova senha digitada.', type: 'error' });
       return;

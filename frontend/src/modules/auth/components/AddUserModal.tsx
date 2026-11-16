@@ -4,6 +4,7 @@ import { User, X, Check, Sparkles, RefreshCw, ArrowRight, ArrowLeft, AlertCircle
 import { Employee } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
 import { safeStorage } from '@/shared/utils/safeStorage';
+import { getScopedDepartmentsStorageKey } from '@/shared/services/workplaceService';
 import { sendWelcomeEmail as sendWelcomeEmailService } from '@/modules/auth/services/emailService';
 import { savePjContractParamsLocal, checkEmailExists } from '@/modules/auth/services/colaboradorService';
 
@@ -54,7 +55,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
   };
 
   const DEFAULT_DEPARTMENTS = ['Atendimento', 'Suporte Técnico', 'Operações', 'Comercial', 'Tecnologia'];
-  const CUSTOM_DEPTS_KEY = 'pontual_custom_departments_v1';
+  const CUSTOM_DEPTS_KEY = getScopedDepartmentsStorageKey(activeEmployee);
 
   const getAvailableDepartments = (): string[] => {
     const set = new Set<string>(DEFAULT_DEPARTMENTS);
