@@ -84,7 +84,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
     title: 'Novo turno', startTime: '09:00', endTime: '18:00', breakMinutes: 60,
   });
 
-  const exportCsv = (targetMonth?: string) => {
+  const exportCsv = (targetMonth?: string, targetDept?: string) => {
     // Relatório de Auditoria de Ponto & Banco de Horas (Conformidade Portaria MTE 671/2021)
     const headers = [
       'Colaborador',
@@ -104,14 +104,21 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
       'Parecer / Auditoria Legal (Portaria 671)'
     ];
 
-    // Se especificado targetMonth (ex: '2026-10'), filtra apenas turnos do mês correspondente
-    const targetShifts = targetMonth && targetMonth !== 'all'
+    // Se especificado targetMonth (ex: '2026-10') e/ou targetDept, filtra os turnos correspondentes
+    const monthFilteredShifts = targetMonth && targetMonth !== 'all'
       ? shifts.filter(s => {
           if (!s.date) return false;
           const iso = normalizeDateToISO(s.date);
           return iso.startsWith(targetMonth);
         })
       : shifts;
+
+    const targetShifts = targetDept && targetDept !== 'all'
+      ? monthFilteredShifts.filter(s => {
+          const emp = employees.find(e => e.id === s.employeeId);
+          return (emp?.department || 'Geral') === targetDept;
+        })
+      : monthFilteredShifts;
 
     const rows = targetShifts.map(s => {
       const emp = employees.find(e => e.id === s.employeeId);

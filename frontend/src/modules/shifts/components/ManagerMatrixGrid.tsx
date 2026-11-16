@@ -89,7 +89,7 @@ interface ManagerMatrixGridProps {
   onOpenEditShift: (shift: Shift) => void;
   onOpenRequests: () => void;
   onOpenPjModal: () => void;
-  onExportCsv: (targetMonth?: string) => void;
+  onExportCsv: (targetMonth?: string, targetDept?: string) => void;
   onAddEmployee: () => void;
   onSwitchToEmployee?: () => void;
   onOpenChat?: () => void;
@@ -260,7 +260,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   // Estados e cálculos para exportação mensal de presenças e aprovações
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportModalContext, setExportModalContext] = useState<'attendance' | 'approvals'>('attendance');
-  const [exportReportFormat, setExportReportFormat] = useState<'detailed' | 'consolidated_dept'>('detailed');
+  const [exportReportFormat, setExportReportFormat] = useState<'detailed' | 'consolidated_employees_dept' | 'consolidated_dept'>('consolidated_employees_dept');
+  const [selectedExportDept, setSelectedExportDept] = useState<string>('all');
   const [selectedExportMonth, setSelectedExportMonth] = useState<string>(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -1678,58 +1679,212 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     });
   }, [employees, reportRows, shifts]);
 
-  const handleExportConsolidatedDepartmentCsv = (targetMonth?: string) => {
+  const handleExportConsolidatedDepartmentCsv = (
+    targetMonth?: string,
+    targetDept: string = 'all',
+    mode: 'consolidated_employees_dept' | 'consolidated_dept' = 'consolidated_employees_dept'
+  ) => {
     const escapeCsv = (val: any) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+    const formatMinToHHMM = (min: number) => {
+      const h = Math.floor(min / 60);
+      const m = min % 60;
+      return `${h}h${m > 0 ? ` ${String(m).padStart(2, '0')}m` : ''}`;
+    };
+
+    const deptSlug = targetDept && targetDept !== 'all'
+      ? `-${targetDept.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')}`
+      : '-geral';
+    const suffix = (targetMonth && targetMonth !== 'all' ? targetMonth : getTodayDateString()) + deptSlug;
+
+    if (mode === 'consolidated_dept') {
+      const headers = [
+        'Departamento / Centro de Custo',
+        'Colaboradores Ativos',
+        'Turnos Escalados',
+        'Presenças no Posto',
+        'Entradas com Atraso',
+        'Faltas Justificadas / Abonadas',
+        'Faltas Injustificadas (Desconto)',
+        'Taxa de Assiduidade (%)',
+        'Taxa de Absenteísmo (%)',
+        'Horas Contratuais Previstas (HH:MM)',
+        'Horas Previstas Decimal (Contábil)',
+        'Horas Trabalhadas Apuradas (HH:MM)',
+        'Horas Trabalhadas Decimal (p/ Folha)',
+        'Saldo Líquido Decimal (Banco / Folha)',
+        'Situação Contábil / Fechamento'
+      ];
+
+      const filteredDepts = targetDept && targetDept !== 'all'
+        ? departmentConsolidatedRows.filter(d => d.dept === targetDept)
+        : departmentConsolidatedRows;
+
+      const rows = filteredDepts.map(d => [
+        escapeCsv(d.dept),
+        d.employeesCount,
+        d.totalShifts,
+        d.presentCount,
+        d.lateCount,
+        d.justifiedCount,
+        d.absentCount,
+        escapeCsv(`${d.assiduidadePct.toFixed(1).replace('.', ',')}%`),
+        escapeCsv(`${d.absenteismoPct.toFixed(1).replace('.', ',')}%`),
+        escapeCsv(d.scheduledFormatted),
+        escapeCsv(d.scheduledDecimal),
+        escapeCsv(d.workedFormatted),
+        escapeCsv(d.workedDecimal),
+        escapeCsv(d.balanceDecimal),
+        escapeCsv(d.absentCount === 0 ? 'Regular — Pronto p/ Folha' : `Atenção: ${d.absentCount} falta(s) apurada(s)`)
+      ].join(';'));
+
+      const csvContent = '\uFEFF' + [headers.join(';'), ...rows].join('\r\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `relatorio-consolidado-departamentos-${suffix}.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+
+      showPolishedToast({
+        id: 'csv-consolidated-dept-export',
+        title: 'Planilha por Departamento Exportada!',
+        description: 'Resumo consolidado por setor gerado com sucesso para fechamento contábil e de folha.',
+        rimVariant: 'success',
+        duration: 4000,
+      });
+      return;
+    }
+
+    // Modo 'consolidated_employees_dept': Lista todos os funcionários do setor selecionado (ou de todos os setores) com presença, assiduidade, absenteísmo e horas trabalhadas
+    const targetEmployees = (targetDept && targetDept !== 'all'
+      ? employees.filter(e => (e.department || 'Geral') === targetDept)
+      : [...employees]
+    ).sort((a, b) => (a.department || '').localeCompare(b.department || '', 'pt-BR') || (a.name || '').localeCompare(b.name || '', 'pt-BR'));
 
     const headers = [
-      'Departamento / Centro de Custo',
-      'Colaboradores Ativos',
-      'Turnos Escalados',
+      'Departamento / Setor',
+      'Colaborador',
+      'Matrícula / ID',
+      'Cargo / Função',
+      'Regime Contratual',
+      'Turnos no Período',
       'Presenças no Posto',
       'Entradas com Atraso',
       'Faltas Justificadas / Abonadas',
       'Faltas Injustificadas (Desconto)',
       'Taxa de Assiduidade (%)',
       'Taxa de Absenteísmo (%)',
-      'Horas Contratuais Previstas (HH:MM)',
-      'Horas Previstas Decimal (Contábil)',
-      'Horas Trabalhadas Apuradas (HH:MM)',
+      'Horas Previstas (HH:MM)',
+      'Horas Previstas Decimal',
+      'Horas Trabalhadas (HH:MM)',
       'Horas Trabalhadas Decimal (p/ Folha)',
       'Saldo Líquido Decimal (Banco / Folha)',
-      'Situação Contábil / Fechamento'
+      'Situação para Fechamento de Folha'
     ];
 
-    const rows = departmentConsolidatedRows.map(d => [
-      escapeCsv(d.dept),
-      d.employeesCount,
-      d.totalShifts,
-      d.presentCount,
-      d.lateCount,
-      d.justifiedCount,
-      d.absentCount,
-      escapeCsv(`${d.assiduidadePct.toFixed(1).replace('.', ',')}%`),
-      escapeCsv(`${d.absenteismoPct.toFixed(1).replace('.', ',')}%`),
-      escapeCsv(d.scheduledFormatted),
-      escapeCsv(d.scheduledDecimal),
-      escapeCsv(d.workedFormatted),
-      escapeCsv(d.workedDecimal),
-      escapeCsv(d.balanceDecimal),
-      escapeCsv(d.absentCount === 0 ? 'Regular — Pronto p/ Folha' : `Atenção: ${d.absentCount} falta(s) apurada(s)`)
-    ].join(';'));
+    const empRows = targetEmployees.map(emp => {
+      const empShifts = shifts.filter(s => {
+        if (s.employeeId !== emp.id) return false;
+        if (targetMonth && targetMonth !== 'all' && s.date) {
+          return normalizeDateToISO(s.date).startsWith(targetMonth);
+        }
+        return true;
+      });
 
-    const csvContent = '\uFEFF' + [headers.join(';'), ...rows].join('\r\n');
+      let presentCount = 0;
+      let lateCount = 0;
+      let justifiedCount = 0;
+      let absentCount = 0;
+      let scheduledMinutes = 0;
+      let workedMinutes = 0;
+
+      empShifts.forEach(s => {
+        const just = (justifications || []).find(
+          j => (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)
+        );
+        const isPast24h = isShiftPast24hWithoutPunch(s);
+
+        if (just?.status === 'approved' || s.attendanceStatus === 'justified') {
+          justifiedCount++;
+        } else if (s.attendanceStatus === 'late') {
+          lateCount++;
+        } else if (s.attendanceStatus === 'present' || Boolean(s.checkInTime)) {
+          presentCount++;
+        } else if (s.attendanceStatus === 'absent' || just?.status === 'rejected' || isPast24h) {
+          absentCount++;
+        }
+
+        if (s.startTime && s.endTime) {
+          const [sH, sM] = s.startTime.split(':').map(Number);
+          const [eH, eM] = s.endTime.split(':').map(Number);
+          let dur = (eH * 60 + eM) - (sH * 60 + sM) - (s.breakMinutes ?? 60);
+          if (dur < 0) dur += 24 * 60;
+          if (!isNaN(dur) && dur > 0) scheduledMinutes += dur;
+        }
+
+        const hasRealExit = Boolean(s.checkOutTime) && s.checkOutTime !== s.checkInTime;
+        if (s.checkInTime && hasRealExit) {
+          const [inH, inM] = s.checkInTime.split(':').map(Number);
+          const [outH, outM] = s.checkOutTime!.split(':').map(Number);
+          let diff = (outH * 60 + outM) - (inH * 60 + inM) - (s.breakMinutes ?? 60);
+          if (diff < 0) diff += 24 * 60;
+          if (!isNaN(diff) && diff > 0) workedMinutes += diff;
+        } else if (s.attendanceStatus === 'present' || s.attendanceStatus === 'late' || s.attendanceStatus === 'justified') {
+          if (s.startTime && s.endTime) {
+            const [sH, sM] = s.startTime.split(':').map(Number);
+            const [eH, eM] = s.endTime.split(':').map(Number);
+            let dur = (eH * 60 + eM) - (sH * 60 + sM) - (s.breakMinutes ?? 60);
+            if (dur < 0) dur += 24 * 60;
+            if (!isNaN(dur) && dur > 0) workedMinutes += dur;
+          }
+        }
+      });
+
+      const effectivePresent = presentCount + lateCount + justifiedCount;
+      const evaluatedTotal = effectivePresent + absentCount;
+      const assiduidadePct = evaluatedTotal > 0 ? Math.round((effectivePresent / evaluatedTotal) * 1000) / 10 : 100;
+      const absenteismoPct = evaluatedTotal > 0 ? Math.round((absentCount / evaluatedTotal) * 1000) / 10 : 0;
+
+      const scheduledDecimal = (scheduledMinutes / 60).toFixed(2).replace('.', ',');
+      const workedDecimal = (workedMinutes / 60).toFixed(2).replace('.', ',');
+      const balanceDecimal = ((workedMinutes - scheduledMinutes) / 60).toFixed(2).replace('.', ',');
+
+      return [
+        escapeCsv(emp.department || 'Geral'),
+        escapeCsv(emp.name),
+        escapeCsv(emp.registrationId || emp.id),
+        escapeCsv(emp.role || 'Colaborador'),
+        escapeCsv(emp.contractType || 'CLT'),
+        empShifts.length,
+        presentCount,
+        lateCount,
+        justifiedCount,
+        absentCount,
+        escapeCsv(`${assiduidadePct.toFixed(1).replace('.', ',')}%`),
+        escapeCsv(`${absenteismoPct.toFixed(1).replace('.', ',')}%`),
+        escapeCsv(formatMinToHHMM(scheduledMinutes)),
+        escapeCsv(scheduledDecimal),
+        escapeCsv(formatMinToHHMM(workedMinutes)),
+        escapeCsv(workedDecimal),
+        escapeCsv(balanceDecimal),
+        escapeCsv(absentCount === 0 ? 'Regular — Pronto p/ Folha' : `Desconto / Revisão: ${absentCount} falta(s)`)
+      ].join(';');
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(';'), ...empRows].join('\r\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    const suffix = targetMonth && targetMonth !== 'all' ? targetMonth : getTodayDateString();
-    link.download = `relatorio-consolidado-departamentos-folha-${suffix}.csv`;
+    link.download = `relatorio-consolidado-colaboradores-${suffix}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
 
     showPolishedToast({
-      id: 'csv-consolidated-dept-export',
+      id: 'csv-consolidated-emp-dept-export',
       title: 'Relatório Consolidado Exportado!',
-      description: 'Planilha de presença, assiduidade, absenteísmo e horas por departamento gerada para fechamento contábil e de folha.',
+      description: targetDept && targetDept !== 'all'
+        ? `Planilha com todos os funcionários do setor "${targetDept}" (presença, assiduidade, absenteísmo e horas) baixada com sucesso.`
+        : 'Planilha consolidada de todos os funcionários por setor baixada com sucesso.',
       rimVariant: 'success',
       duration: 4000,
     });
@@ -4159,24 +4314,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 </p>
               </div>
 
-              <div className="relative z-10 flex flex-wrap items-center gap-2.5 shrink-0">
+              <div className="relative z-10 flex items-center gap-3 shrink-0">
                 <button
-                  type="button"
-                  onClick={() => handleExportConsolidatedDepartmentCsv(selectedExportMonth)}
-                  className={`px-4 py-2.5 font-bold text-xs rounded-full flex items-center gap-2 border transition-all hover:scale-105 active:scale-95 cursor-pointer ${
-                    isDark
-                      ? 'bg-white/5 hover:bg-white/10 text-[#F9DE97] border-[#F59242]/40'
-                      : 'bg-slate-100 hover:bg-slate-200 text-[#640C1E] border-[#9F243C]/30'
-                  }`}
-                  title="Exportar relatório consolidado de presença, assiduidade, absenteísmo e horas trabalhadas por departamento para fechamento contábil e de folha"
-                >
-                  <BarChart3 className="w-4 h-4 text-[#F59242]" /> Exportar Consolidado por Setor (CSV)
-                </button>
-                <button
-                  onClick={() => {
-                    setExportReportFormat('detailed');
-                    handleOpenExportModal('attendance');
-                  }}
+                  onClick={() => handleOpenExportModal('attendance')}
                   className="attendance-report-export px-5 py-2.5 font-bold text-xs rounded-full text-white flex items-center gap-2 shadow-lg hover:scale-105 active:scale-95 transition-all cursor-pointer"
                   style={{ 
                     background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)',
@@ -4281,107 +4421,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     }`}>{kpi.sub}</span>
                   </div>
                 ))}
-              </div>
-
-              {/* Relatórios Consolidados por Departamento (Fechamento Contábil e de Folha) */}
-              <div
-                className={`rounded-2xl border overflow-hidden relative z-10 transition-colors ${
-                  isDark ? 'bg-[#15161b] border-[#282a33]' : 'bg-white border-slate-200 shadow-sm'
-                }`}
-              >
-                <div className={`p-4 sm:p-5 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                  isDark ? 'border-[#282a33] bg-[#121318]' : 'border-slate-200 bg-slate-50/70'
-                }`}>
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
-                      <BarChart3 className="w-4 h-4 text-[#F59242]" />
-                      <h3 className={`text-sm font-extrabold tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                        Relatórios Consolidados por Departamento (Fechamento Contábil e de Folha)
-                      </h3>
-                    </div>
-                    <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                      Emissão e exportação (CSV/relatórios) de dados de presença, assiduidade, absenteísmo e horas trabalhadas por departamento para fechamento contábil e de folha.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleExportConsolidatedDepartmentCsv(selectedExportMonth)}
-                    className="px-4 py-2 rounded-xl text-xs font-bold text-white flex items-center gap-1.5 shrink-0 cursor-pointer transition-all hover:scale-105 shadow-sm"
-                    style={{ background: 'linear-gradient(90deg, #640C1E 0%, #9F243C 55%, #F59242 100%)' }}
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Exportar Fechamento por Departamento (CSV)</span>
-                  </button>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-left text-xs font-sans min-w-[780px]">
-                    <thead>
-                      <tr className={`border-b font-mono text-[10px] uppercase ${
-                        isDark ? 'border-[#282a33] bg-[#101115] text-slate-400' : 'border-slate-200 bg-slate-100 text-slate-600'
-                      }`}>
-                        <th className="p-3.5 font-bold tracking-wider">DEPARTAMENTO</th>
-                        <th className="p-3.5 font-bold tracking-wider text-center">EQUIPE</th>
-                        <th className="p-3.5 font-bold tracking-wider text-center">PRESENÇAS / ABONOS</th>
-                        <th className="p-3.5 font-bold tracking-wider text-center">FALTAS</th>
-                        <th className="p-3.5 font-bold tracking-wider text-center">ASSIDUIDADE</th>
-                        <th className="p-3.5 font-bold tracking-wider text-center">ABSENTEÍSMO</th>
-                        <th className="p-3.5 font-bold tracking-wider">HORAS TRABALHADAS</th>
-                        <th className="p-3.5 font-bold tracking-wider">DECIMAL (FOLHA)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {departmentConsolidatedRows.map((d, i) => (
-                        <tr
-                          key={d.dept || i}
-                          className={`border-b transition-colors ${
-                            isDark ? 'border-white/5 hover:bg-white/[0.02] text-slate-200' : 'border-slate-100 hover:bg-slate-50 text-slate-800'
-                          }`}
-                        >
-                          <td className="p-3.5 font-bold">
-                            <div className="flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full bg-[#F59242]" />
-                              <span>{d.dept}</span>
-                            </div>
-                          </td>
-                          <td className="p-3.5 text-center font-mono">{d.employeesCount} colab.</td>
-                          <td className="p-3.5 text-center font-mono">
-                            <span className="text-emerald-400 font-bold">{d.presentCount + d.lateCount}</span>
-                            {d.justifiedCount > 0 && (
-                              <span className="text-xs text-sky-400 ml-1">(+{d.justifiedCount} abon.)</span>
-                            )}
-                          </td>
-                          <td className="p-3.5 text-center font-mono">
-                            <span className={d.absentCount > 0 ? 'text-rose-400 font-bold' : 'text-slate-400'}>
-                              {d.absentCount}
-                            </span>
-                          </td>
-                          <td className="p-3.5 text-center">
-                            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
-                              {d.assiduidadePct.toFixed(1).replace('.', ',')}%
-                            </span>
-                          </td>
-                          <td className="p-3.5 text-center">
-                            <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold border ${
-                              d.absenteismoPct > 5
-                                ? 'bg-rose-500/10 text-rose-400 border-rose-500/25'
-                                : 'bg-slate-500/10 text-slate-400 border-slate-500/20'
-                            }`}>
-                              {d.absenteismoPct.toFixed(1).replace('.', ',')}%
-                            </span>
-                          </td>
-                          <td className="p-3.5 font-mono font-bold">
-                            {d.workedFormatted}{' '}
-                            <span className="text-[10px] font-normal text-slate-400">/ {d.scheduledFormatted} prev.</span>
-                          </td>
-                          <td className="p-3.5 font-mono text-[#F59242] font-bold">
-                            {d.workedDecimal}h
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
               </div>
 
               {/* Filter Bar */}
@@ -6581,22 +6620,51 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   ))}
                 </select>
 
+                <div className="space-y-1.5 pt-1">
+                  <label className={`block text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                    Departamento / Setor
+                  </label>
+                  <select
+                    value={selectedExportDept}
+                    onChange={(e) => setSelectedExportDept(e.target.value)}
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium border outline-none cursor-pointer transition-colors ${
+                      isDark 
+                        ? 'bg-[#0e0f12] border-[#282a33] text-white focus:border-[#F59242]' 
+                        : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-[#9F243C]'
+                    }`}
+                  >
+                    <option value="all">Todos os Departamentos (Geral da Empresa)</option>
+                    {departmentConsolidatedRows.map(d => (
+                      <option key={d.dept} value={d.dept}>
+                        {d.dept} ({d.employeesCount} {d.employeesCount === 1 ? 'funcionário' : 'funcionários'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 {exportModalContext === 'attendance' && (
                   <div className="space-y-1.5 pt-1">
                     <label className={`block text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-                      Modelo de Relatório
+                      Modelo de Relatório (CSV)
                     </label>
                     <select
                       value={exportReportFormat}
-                      onChange={(e) => setExportReportFormat(e.target.value as 'detailed' | 'consolidated_dept')}
+                      onChange={(e) => setExportReportFormat(e.target.value as 'detailed' | 'consolidated_employees_dept' | 'consolidated_dept')}
                       className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium border outline-none cursor-pointer transition-colors ${
                         isDark 
                           ? 'bg-[#0e0f12] border-[#282a33] text-white focus:border-[#F59242]' 
                           : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-[#9F243C]'
                       }`}
                     >
-                      <option value="detailed">Espelho Detalhado de Presenças (Individual)</option>
-                      <option value="consolidated_dept">Relatório Consolidado por Departamento (Assiduidade, Absenteísmo e Horas p/ Folha)</option>
+                      <option value="consolidated_employees_dept">
+                        Consolidado de Funcionários por Setor (Presença, Assiduidade, Absenteísmo e Horas p/ Folha)
+                      </option>
+                      <option value="consolidated_dept">
+                        Resumo Geral por Departamento (Totais Contábeis do Setor)
+                      </option>
+                      <option value="detailed">
+                        Espelho de Ponto Detalhado (Turnos e Batidas Diárias)
+                      </option>
                     </select>
                   </div>
                 )}
@@ -6605,10 +6673,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   isDark ? 'bg-black/20 border-white/5 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'
                 }`}>
                   <div className="flex items-center justify-between font-medium">
-                    <span>{exportModalContext === 'attendance' && exportReportFormat === 'consolidated_dept' ? 'Departamentos consolidados:' : 'Registros a exportar:'}</span>
+                    <span>
+                      {exportModalContext === 'attendance' && exportReportFormat === 'consolidated_employees_dept'
+                        ? (selectedExportDept === 'all' ? 'Funcionários incluídos (Todos os setores):' : `Funcionários do setor ${selectedExportDept}:`)
+                        : exportModalContext === 'attendance' && exportReportFormat === 'consolidated_dept'
+                        ? 'Departamentos consolidados:'
+                        : 'Registros a exportar:'}
+                    </span>
                     <span className="font-bold text-amber-500">
-                      {exportModalContext === 'attendance' && exportReportFormat === 'consolidated_dept'
-                        ? departmentConsolidatedRows.length
+                      {exportModalContext === 'attendance' && exportReportFormat === 'consolidated_employees_dept'
+                        ? (selectedExportDept === 'all'
+                            ? employees.length
+                            : employees.filter(e => (e.department || 'Geral') === selectedExportDept).length)
+                        : exportModalContext === 'attendance' && exportReportFormat === 'consolidated_dept'
+                        ? (selectedExportDept === 'all' ? departmentConsolidatedRows.length : 1)
                         : (activeMonths.find(m => m.key === selectedExportMonth)?.count || 0)}
                     </span>
                   </div>
@@ -6629,17 +6707,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   type="button"
                   onClick={() => {
                     if (exportModalContext === 'approvals') {
-                      const rowsToExport = selectedExportMonth === 'all'
+                      const monthFiltered = selectedExportMonth === 'all'
                         ? approvalsData
                         : approvalsData.filter(row => row.date && normalizeDateToISO(row.date).startsWith(selectedExportMonth));
+                      const rowsToExport = selectedExportDept === 'all'
+                        ? monthFiltered
+                        : monthFiltered.filter(row => (row.employeeDept || 'Geral') === selectedExportDept);
 
                       handleExportApprovalsCsv(rowsToExport, selectedExportMonth);
                       setIsExportModalOpen(false);
-                    } else if (exportReportFormat === 'consolidated_dept') {
-                      handleExportConsolidatedDepartmentCsv(selectedExportMonth);
+                    } else if (exportReportFormat === 'consolidated_employees_dept' || exportReportFormat === 'consolidated_dept') {
+                      handleExportConsolidatedDepartmentCsv(selectedExportMonth, selectedExportDept, exportReportFormat);
                       setIsExportModalOpen(false);
                     } else {
-                      onExportCsv(selectedExportMonth);
+                      onExportCsv(selectedExportMonth, selectedExportDept);
                       setIsExportModalOpen(false);
                       showPolishedToast({
                         title: 'Planilha exportada com sucesso!',
