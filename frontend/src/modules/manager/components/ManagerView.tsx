@@ -89,7 +89,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
     const headers = [
       'Colaborador',
       'Departamento',
-      'Data',
+      'Data do Turno',
       'Início Previsto',
       'Fim Previsto',
       'Entrada Registrada',
@@ -190,14 +190,20 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
         auditStatus = 'Atestado médico homologado com abono legal';
       }
 
+      const safeDateForExcel = date ? `="${date}"` : '"—"';
+      const safeStart = `="${scheduledStart}"`;
+      const safeEnd = `="${scheduledEnd}"`;
+      const safeRealIn = `="${realIn}"`;
+      const safeRealOut = `="${realOut}"`;
+
       return [
         name,
         dept,
-        date,
-        scheduledStart,
-        scheduledEnd,
-        realIn,
-        realOut,
+        safeDateForExcel,
+        safeStart,
+        safeEnd,
+        safeRealIn,
+        safeRealOut,
         `"${scheduledHours}h"`,
         `"${realHoursFormatted}"`,
         `"${saldoFormatted}"`,
