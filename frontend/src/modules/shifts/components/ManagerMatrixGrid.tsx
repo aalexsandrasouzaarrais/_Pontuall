@@ -1462,7 +1462,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           late: 'Atrasado',
           pending: 'Pendente'
         };
-        const hasRealExit = Boolean(s.checkOutTime) && s.checkOutTime !== s.checkInTime;
+        const hasRealExit = Boolean(s.checkOutTime);
 
         // GPS fora do posto detectado de forma discreta
         const isCheckInOutside = Boolean(s.checkInLocation && !s.checkInLocation.gpsValidated);
@@ -1488,7 +1488,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           if (diffMin < 0) diffMin += 24 * 60;
           const h = Math.floor(diffMin / 60);
           const m = diffMin % 60;
-          calculatedHours = `${h}h${m > 0 ? ` ${m}m` : ''}`;
+          calculatedHours = diffMin === 0 ? '< 1m' : `${h}h${m > 0 ? ` ${m}m` : ''}`;
         } else if (s.checkInTime && !hasRealExit) {
           calculatedHours = 'Em andamento';
         } else if (!s.checkInTime) {
@@ -1503,19 +1503,17 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         let finalReportStatus = statusMap[s.attendanceStatus || 'pending'] || 'Pendente';
         let isDecisionPending = false;
 
-        if (just) {
-          if (just.status === 'approved' || s.attendanceStatus === 'justified') {
-            finalReportStatus = 'Justificado';
-          } else if (just.status === 'rejected') {
+        if (s.attendanceStatus === 'justified' || just?.status === 'approved') {
+          finalReportStatus = 'Justificado';
+        } else if (Boolean(s.checkInTime) || Boolean(s.checkOutTime) || s.attendanceStatus === 'present' || s.attendanceStatus === 'late') {
+          finalReportStatus = s.attendanceStatus === 'late' ? 'Atrasado' : 'Presente';
+        } else if (just) {
+          if (just.status === 'rejected') {
             finalReportStatus = 'Ausente';
           } else {
             finalReportStatus = (isPast24h || s.attendanceStatus === 'absent') ? 'Ausente' : 'Pendente';
             isDecisionPending = true;
           }
-        } else if (s.attendanceStatus === 'justified') {
-          finalReportStatus = 'Justificado';
-        } else if (s.attendanceStatus === 'present' || Boolean(s.checkInTime)) {
-          finalReportStatus = s.attendanceStatus === 'late' ? 'Atrasado' : 'Presente';
         } else if (isPast24h || s.attendanceStatus === 'absent') {
           finalReportStatus = 'Ausente';
           isDecisionPending = true;
@@ -1629,7 +1627,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           if (!isNaN(dur) && dur > 0) scheduledMinutes += dur;
         }
 
-        const hasRealExit = Boolean(s.checkOutTime) && s.checkOutTime !== s.checkInTime;
+        const hasRealExit = Boolean(s.checkOutTime);
         if (s.checkInTime && hasRealExit) {
           const [inH, inM] = s.checkInTime.split(':').map(Number);
           const [outH, outM] = s.checkOutTime!.split(':').map(Number);
@@ -1822,7 +1820,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           if (!isNaN(dur) && dur > 0) scheduledMinutes += dur;
         }
 
-        const hasRealExit = Boolean(s.checkOutTime) && s.checkOutTime !== s.checkInTime;
+        const hasRealExit = Boolean(s.checkOutTime);
         if (s.checkInTime && hasRealExit) {
           const [inH, inM] = s.checkInTime.split(':').map(Number);
           const [outH, outM] = s.checkOutTime!.split(':').map(Number);
@@ -3173,15 +3171,32 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
         // Filter items
         const filteredApprovals = approvalsData.filter(row => {
-          // Search filter
+          // Search filter (colaborador, cargo, setor, tipo, motivo ou data igual ao Relatório de Presenças)
           if (approvalsSearch.trim()) {
-            const q = approvalsSearch.toLowerCase();
+            const q = approvalsSearch.toLowerCase().trim();
+            const formattedRowDate = formatDateToDDMMAAAA(row.date || '');
             const matchName = row.employeeName.toLowerCase().includes(q);
             const matchRole = row.employeeRole.toLowerCase().includes(q);
             const matchDept = (row.employeeDept || '').toLowerCase().includes(q);
             const matchType = row.type.toLowerCase().includes(q);
             const matchReason = row.reason.toLowerCase().includes(q);
-            if (!matchName && !matchRole && !matchDept && !matchType && !matchReason) return false;
+            const matchDateRaw = (row.date || '').toLowerCase().includes(q);
+            const matchDateFormatted = formattedRowDate.toLowerCase().includes(q);
+            const matchDateSlash = formattedRowDate.replace(/-/g, '/').toLowerCase().includes(q);
+            const matchDateDash = formattedRowDate.replace(/\//g, '-').toLowerCase().includes(q);
+            if (
+              !matchName &&
+              !matchRole &&
+              !matchDept &&
+              !matchType &&
+              !matchReason &&
+              !matchDateRaw &&
+              !matchDateFormatted &&
+              !matchDateSlash &&
+              !matchDateDash
+            ) {
+              return false;
+            }
           }
 
           // Department filter
@@ -3391,7 +3406,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     type="text"
                     value={approvalsSearch}
                     onChange={(e) => setApprovalsSearch(e.target.value)}
-                    placeholder="Buscar por colaborador..."
+                    placeholder="Filtrar por colaborador, setor ou data (ex: 26-10-2026)..."
                     className={`approvals-light-search w-full pl-9 pr-3 py-2 text-xs rounded-full outline-none transition-colors border ${
                       isDark
                         ? 'bg-[#0e0f12] text-white placeholder:text-slate-500 border-[#282a33] focus:border-[#F59242]'

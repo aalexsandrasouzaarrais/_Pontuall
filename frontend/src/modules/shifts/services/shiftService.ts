@@ -133,7 +133,7 @@ export async function getShiftsSupabase(employeeIds?: string[]): Promise<Shift[]
             };
 
             const inPunch = shiftPunches.find(p => p.Tpo_Registro?.toLowerCase() === 'entrada') || shiftPunches[0];
-            const outPunch = shiftPunches.find(p => p.Tpo_Registro?.toLowerCase() === 'saida');
+            const outPunch = [...shiftPunches].reverse().find(p => p.Tpo_Registro?.toLowerCase() === 'saida');
 
             const inData = inPunch ? buildPunchInfo(inPunch) : undefined;
             const outData = (outPunch && outPunch !== inPunch) ? buildPunchInfo(outPunch) : undefined;
