@@ -280,13 +280,28 @@ export async function getColaboradorByIdSupabase(colaboradorId: string): Promise
 // Busca colaboradores do Supabase com suporte a filtragem por empresa e gestor
 export async function getColaboradoresSupabase(filter?: { companyId?: string; gestorId?: string }): Promise<Employee[]> {
   try {
+    // Nunca retorna registros globais se não houver companyId nem gestorId
+    if (!filter?.companyId && !filter?.gestorId) {
+      return [];
+    }
+
     let query = supabase
       .from('TAB_Colaborador')
       .select('*')
       .eq('Flg_Ativo', true);
 
-    if (filter?.companyId) {
+    if (filter?.companyId && isUuid(filter.companyId)) {
       query = query.eq('Idf_Empresa', filter.companyId);
+    } else if (filter?.gestorId && isUuid(filter.gestorId)) {
+      // Se não tiver Idf_Empresa válido mas tiver gestorId, busca apenas vínculos desse gestor
+      const { data: gestorLinks } = await supabase
+        .from('TAB_Gestor_Colaborador')
+        .select('Idf_Colaborador')
+        .eq('Idf_Gestor', filter.gestorId);
+      const linkedIds = Array.from(new Set([filter.gestorId, ...(gestorLinks || []).map((l: any) => l.Idf_Colaborador)])).filter(isUuid);
+      query = query.in('Idf_Colaborador', linkedIds);
+    } else {
+      return [];
     }
 
     const { data, error } = await query.order('Nme_Colaborador');

@@ -19,7 +19,7 @@ function getWorkplaceStorageKey(): string {
     const rawUser = safeStorage.getItem('pontual_active_user') || localStorage.getItem('pontual_active_user');
     if (rawUser) {
       const user = JSON.parse(rawUser);
-      const companyKey =
+      const companyPart =
         user.Idf_Empresa ||
         user.companyId ||
         user.company_id ||
@@ -27,19 +27,44 @@ function getWorkplaceStorageKey(): string {
         user.Num_CNPJ ||
         user.companyCnpj ||
         user.cnpj ||
+        'cmp';
+      const userPart =
+        user.Idf_Colaborador ||
+        user.id ||
         user.Eml_Corporativo ||
         user.email ||
-        user.Idf_Colaborador ||
-        user.id;
-      if (companyKey) {
-        const sanitized = String(companyKey).replace(/[^a-zA-Z0-9_-]/g, '_');
-        return `pontuall_workplaces_cmp_${sanitized}`;
-      }
+        'anon';
+      const sanitizedCmp = String(companyPart).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const sanitizedUsr = String(userPart).replace(/[^a-zA-Z0-9_-]/g, '_');
+      return `pontuall_workplaces_iso_${sanitizedCmp}__${sanitizedUsr}`;
     }
   } catch (e) {
     // ignore
   }
   return STORAGE_KEY;
+}
+
+/**
+ * Retorna a chave de setores/departamentos isolada estritamente por empresa e gestor ativo
+ */
+export function getScopedDepartmentsStorageKey(activeEmployee?: { id?: string; companyId?: string; email?: string }): string {
+  try {
+    let cmp = activeEmployee?.companyId || '';
+    let usr = activeEmployee?.id || activeEmployee?.email || '';
+    if (!cmp || !usr) {
+      const rawUser = safeStorage.getItem('pontual_active_user') || localStorage.getItem('pontual_active_user');
+      if (rawUser) {
+        const user = JSON.parse(rawUser);
+        if (!cmp) cmp = user.Idf_Empresa || user.companyId || user.Num_CNPJ || user.companyCnpj || 'cmp';
+        if (!usr) usr = user.Idf_Colaborador || user.id || user.Eml_Corporativo || user.email || 'usr';
+      }
+    }
+    const cleanCmp = String(cmp || 'cmp').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const cleanUsr = String(usr || 'usr').replace(/[^a-zA-Z0-9_-]/g, '_');
+    return `pontual_custom_depts_iso_${cleanCmp}__${cleanUsr}`;
+  } catch {
+    return 'pontual_custom_depts_iso_default';
+  }
 }
 
 // Locais padrão iniciais do sistema (apenas neutro Home Office / Remoto, sem sedes físicas fictícias)

@@ -27,10 +27,7 @@ export function mapBneToShift(row: any): Shift {
         workplaceLocation = parsed;
         notes = notes.substring(endIdx + 1).trim();
 
-        // Registra o posto automaticamente no cache local para ficar disponível em dropdowns e mapas
-        if (workplaceLocation) {
-          registerWorkplaceIfNew(workplaceLocation as any);
-        }
+        // Mantém workplaceLocation apenas no turno, sem poluir o catálogo de endereços de outros gestores/empresas
       } catch {}
     }
   }
