@@ -61,7 +61,7 @@ export function mapBneToShift(row: any): Shift {
 
 export async function getShiftsSupabase(employeeIds?: string[]): Promise<Shift[]> {
   try {
-    if (employeeIds && employeeIds.length === 0) {
+    if (!employeeIds || employeeIds.length === 0) {
       return [];
     }
 

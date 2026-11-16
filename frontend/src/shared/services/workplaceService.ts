@@ -9,20 +9,31 @@ import { searchAddressCoordinates } from '../utils/geolocation';
 import { WorkplaceLocation } from '@/types';
 export type { WorkplaceLocation };
 
-const STORAGE_KEY = 'pontuall_workplaces_v1';
+const STORAGE_KEY = 'pontuall_workplaces_isolated_v2';
 
 /**
- * Retorna a chave de armazenamento isolada por empresa/gestor ativo
+ * Retorna a chave de armazenamento estritamente isolada por empresa/gestor ativo
  */
 function getWorkplaceStorageKey(): string {
   try {
-    const rawUser = safeStorage.getItem('pontual_active_user');
+    const rawUser = safeStorage.getItem('pontual_active_user') || localStorage.getItem('pontual_active_user');
     if (rawUser) {
       const user = JSON.parse(rawUser);
-      const companyKey = user.companyId || user.company_id || user.empresa_id || user.cnpj || user.email;
+      const companyKey =
+        user.Idf_Empresa ||
+        user.companyId ||
+        user.company_id ||
+        user.empresa_id ||
+        user.Num_CNPJ ||
+        user.companyCnpj ||
+        user.cnpj ||
+        user.Eml_Corporativo ||
+        user.email ||
+        user.Idf_Colaborador ||
+        user.id;
       if (companyKey) {
         const sanitized = String(companyKey).replace(/[^a-zA-Z0-9_-]/g, '_');
-        return `pontuall_workplaces_${sanitized}`;
+        return `pontuall_workplaces_cmp_${sanitized}`;
       }
     }
   } catch (e) {
@@ -106,6 +117,15 @@ export function getStoredWorkplaces(): WorkplaceLocation[] {
     console.warn('Erro ao carregar locais de trabalho do storage:', err);
   }
   return DEFAULT_WORKPLACES;
+}
+
+/**
+ * Reseta os locais de trabalho da empresa ativa para apenas Home Office / Remoto
+ */
+export function resetWorkplacesToDefaultForActiveCompany(): void {
+  try {
+    saveWorkplaces(DEFAULT_WORKPLACES);
+  } catch {}
 }
 
 /**

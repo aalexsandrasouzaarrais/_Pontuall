@@ -5,6 +5,7 @@ import { Employee } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
 import { PasswordResetPage } from './PasswordResetPage';
 import { safeStorage } from '@/shared/utils/safeStorage';
+import { resetWorkplacesToDefaultForActiveCompany } from '@/shared/services/workplaceService';
 import bcrypt from 'bcryptjs';
 
 // Imagens originais idênticas ao login do projeto
@@ -499,6 +500,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         safeStorage.setItem('pontual_registered_users', JSON.stringify(filtered));
         safeStorage.setItem('pontual_role', 'manager');
         safeStorage.setItem('pontual_active_user', JSON.stringify(userRecord));
+        resetWorkplacesToDefaultForActiveCompany();
       } catch (storageErr) {
         console.warn('Erro ao salvar no storage local:', storageErr);
       }
