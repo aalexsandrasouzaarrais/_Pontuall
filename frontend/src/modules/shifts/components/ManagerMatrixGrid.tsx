@@ -237,7 +237,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     type: 'Atestado Médico',
     date: new Date().toLocaleDateString('pt-BR'),
     reason: '',
-    documentName: 'atestado.pdf',
+    documentName: '',
     status: 'Pendente' as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
     feedback: '',
   });
@@ -479,6 +479,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       const isEarlyLeaveJust = rLower.includes('saída antecipada') || rLower.includes('saida antecipada') || (j as any).justificationType === 'early_leave';
       const isEarlyEntryJust = rLower.includes('entrada antecipada') || (j as any).justificationType === 'early_entry';
       const isDelayJust = rLower.includes('atraso') || (j as any).justificationType === 'delay';
+      const isAbsenceJust = (j as any).justificationType === 'absence' || rLower.includes('ausência') || rLower.includes('ausencia') || rLower.includes('falta');
       const resolvedShiftId = j.shiftId || (shifts || []).find(s => s.employeeId === j.employeeId && s.date === j.date)?.id;
       const typeLabel = isOvertimeJust
         ? 'Hora Extra'
@@ -492,7 +493,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 ? 'Entrada Antecipada'
                 : isDelayJust
                   ? 'Atraso de Entrada'
-                  : 'Atestado Médico';
+                  : isAbsenceJust
+                    ? (j.status === 'approved' ? 'Falta Justificada' : 'Justificativa de Ausência')
+                    : 'Atestado Médico';
       const parsedDiff = (j as any).delayMinutes || (j.reason?.match(/(\d+)\s*min/)?.[1] ? Number(j.reason?.match(/(\d+)\s*min/)?.[1]) : undefined);
       return {
         id: j.id,
@@ -552,11 +555,32 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       const hasJustification = (justifications || []).some(j => 
         (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)
       );
+      // Se o colaborador já submeteu uma justificativa/atestado formal, ele é exibido via mappedJustifications
+      // preservando fielmente a justificativa original e anexos do colaborador sem duplicar ou sobrescrever
+      if (hasJustification) return false;
+
       const isJustified = s.attendanceStatus === 'justified';
-      return (isPast24h && !s.checkInTime && !hasJustification) || isJustified;
+      return (isPast24h && !s.checkInTime) || isJustified;
     }).map(s => {
       const emp = employees.find(e => e.id === s.employeeId);
       const isJustified = s.attendanceStatus === 'justified' || s.notes?.includes('ABONO GESTOR') || s.notes?.includes('Ausência Justificada');
+      
+      const matchingReq = (requests || []).find(r => 
+        r.employeeId === s.employeeId && r.date === s.date
+      );
+
+      const cleanNotes = (s.notes || '')
+        .replace(/\[ABONO GESTOR:[^\]]*\]/gi, '')
+        .replace(/\[HOMOLOGADO GESTOR:[^\]]*\]/gi, '')
+        .replace(/\[FALTA GESTOR:[^\]]*\]/gi, '')
+        .trim();
+
+      const reason = cleanNotes
+        || matchingReq?.reason
+        || (isJustified
+          ? 'Ausência abonada pelo gestor.'
+          : 'Colaborador escalado não registrou ponto de entrada/saída após 24h e não apresentou atestado/justificativa.');
+
       return {
         id: `absence-${s.id}`,
         shiftId: s.id,
@@ -566,9 +590,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         employeeDept: emp?.department || 'Geral',
         employeeAvatar: emp?.avatar || '',
         type: isJustified ? 'Falta Justificada' : 'Falta Não Justificada',
-        reason: isJustified ? 'Ausência abonada com justificativa ou atestado médico aceito.' : 'Colaborador escalado não registrou ponto de entrada/saída após 24h e não apresentou atestado/justificativa.',
+        reason,
         date: s.date,
-        documentName: isJustified ? 'Declaracao_ou_Atestado.pdf' : 'Sem anexo',
+        documentName: 'Sem anexo',
         documentUrl: undefined,
         status: (isJustified ? 'Aprovado' : 'Pendente') as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
         actionText: isJustified ? 'Abonada' : undefined,
@@ -1591,7 +1615,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       type: 'Atestado Médico',
       date: new Date().toLocaleDateString('pt-BR'),
       reason: '',
-      documentName: 'atestado.pdf',
+      documentName: '',
       status: 'Pendente',
       feedback: '',
     });
@@ -3474,7 +3498,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         // KPI calculations
         const pendingCount = approvalsData.filter(i => i.status === 'Pendente').length;
         const faltasCount = approvalsData.filter(i => i.status === 'Falta Lançada' || i.status === 'Recusado / Falta').length;
-        const atestadosCount = approvalsData.filter(i => i.documentName && i.documentName.toLowerCase().includes('.pdf')).length;
+        const atestadosCount = approvalsData.filter(i => i.documentName && i.documentName.toLowerCase().includes('.pdf') && i.documentName !== 'Sem anexo' && i.documentName !== 'Não se aplica').length;
 
         // Filter items
         const filteredApprovals = approvalsData.filter(row => {
@@ -4292,9 +4316,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           ? 'bg-[#0e0f12] border-white/10 text-slate-200' 
                           : 'bg-slate-50 border-slate-200 text-slate-800'
                       }`}>
-                        {selectedDetailOccurrence.type === 'Falta Não Justificada'
-                          ? 'Turno encerrado há mais de 24 horas sem registro de ponto e sem envio de atestado/justificativa pelo colaborador.'
-                          : (selectedDetailOccurrence.reason || 'Nenhuma justificativa detalhada foi fornecida.')}
+                        {selectedDetailOccurrence.reason || (
+                          selectedDetailOccurrence.type === 'Falta Não Justificada'
+                            ? 'Turno encerrado há mais de 24 horas sem registro de ponto e sem envio de atestado/justificativa pelo colaborador.'
+                            : 'Nenhuma justificativa detalhada foi fornecida.'
+                        )}
                       </div>
                     </div>
 
@@ -4303,7 +4329,10 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       <label className="text-[10px] font-bold font-mono tracking-wider uppercase text-slate-400 block">
                         COMPROVANTE / DOCUMENTO ANEXO
                       </label>
-                      {selectedDetailOccurrence.documentName && selectedDetailOccurrence.documentName.toLowerCase().includes('.pdf') ? (
+                      {selectedDetailOccurrence.documentName && 
+                       selectedDetailOccurrence.documentName.toLowerCase().includes('.pdf') &&
+                       selectedDetailOccurrence.documentName !== 'Sem anexo' &&
+                       selectedDetailOccurrence.documentName !== 'Não se aplica' ? (
                         <div className="flex items-center justify-between p-3 rounded-xl border border-[#f89847]/30 bg-[#f89847]/10">
                           <div className="flex items-center gap-2">
                             <Paperclip className="w-4 h-4 text-[#f89847]" />
@@ -4321,7 +4350,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         </div>
                       ) : (
                         <p className="text-xs text-slate-400 italic">
-                          {selectedDetailOccurrence.documentName || 'Sem comprovante anexado'}
+                          Sem comprovante anexado
                         </p>
                       )}
                     </div>
