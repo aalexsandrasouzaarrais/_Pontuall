@@ -350,16 +350,16 @@ export const PjNotepadSection: React.FC<PjNotepadSectionProps> = ({
 
   return (
     <section
-      className={`rounded-2xl border p-4 sm:p-5 space-y-4 transition-colors ${
+      className={`rounded-2xl border p-3.5 sm:p-4 space-y-3 transition-colors ${
         isDark
           ? 'bg-[#121622] border-white/10'
           : 'bg-white border-slate-200 shadow-sm'
       }`}
     >
       {/* Topo do Bloco de Notas (Estilo Imagem de Referência 1 com espaçamento compacto) */}
-      <div className="pj-bloco-notas-wrapper flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1 mb-2">
+      <div className="pj-bloco-notas-wrapper flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1 mb-1">
         <div>
-          <h3 className={`text-base sm:text-lg font-bold tracking-tight ${isDark ? 'text-white' : 'text-[#2c1d18]'}`}>
+          <h3 className={`text-base font-bold tracking-tight ${isDark ? 'text-white' : 'text-[#2c1d18]'}`}>
             Meu Bloco de Notas
           </h3>
         </div>
@@ -367,7 +367,7 @@ export const PjNotepadSection: React.FC<PjNotepadSectionProps> = ({
         <button
           type="button"
           onClick={handleNovaNota}
-          className="px-4 py-2 rounded-full text-xs font-bold text-white shadow-md hover:opacity-95 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+          className="px-3.5 py-1.5 rounded-full text-xs font-bold text-white shadow-md hover:opacity-95 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
           style={{
             background: '#670D20',
           }}
@@ -379,7 +379,7 @@ export const PjNotepadSection: React.FC<PjNotepadSectionProps> = ({
 
       {/* Quadro de Notas com Texturas e Presilhas */}
       <div
-        className="pj-bloco-notas-wrapper pt-2 sm:pt-4"
+        className="pj-bloco-notas-wrapper pt-1 sm:pt-2"
         style={
           {
             '--tex-vinho': `url(${papelVinho})`,

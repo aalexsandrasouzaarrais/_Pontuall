@@ -1,22 +1,22 @@
 .pj-bloco-notas-wrapper {
-  width: min(1040px, 100%);
+  width: min(960px, 100%);
   margin: 0 auto;
 }
 
 .pj-quadro-notas {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px 10px;
+  gap: 16px 8px;
   align-items: start;
 }
 
 .pj-nota {
   position: relative;
-  min-height: 250px;
-  border-radius: 16px;
+  min-height: 200px;
+  border-radius: 14px;
   overflow: visible;
   border: 0;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.16);
   background-repeat: no-repeat;
   background-position: center;
   background-size: 100% 100%;
@@ -24,7 +24,7 @@
 }
 
 .pj-nota:hover {
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.24);
 }
 
 /* Z-index decrescente na linha para que as presilhas da esquerda nunca fiquem escondidas atrás do card da direita */
@@ -54,7 +54,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  border-radius: 16px;
+  border-radius: 14px;
   z-index: 0;
   pointer-events: none;
   background: linear-gradient(135deg, rgba(64, 14, 24, 0.48), rgba(45, 10, 18, 0.42));
@@ -72,8 +72,8 @@
 .pj-nota-conteudo {
   position: relative;
   z-index: 2;
-  min-height: 250px;
-  padding: 16px 20px 12px 20px;
+  min-height: 200px;
+  padding: 12px 16px 10px 16px;
   display: flex;
   flex-direction: column;
 }
@@ -81,10 +81,10 @@
 /* Presilhas horizontais centralizadas entre os cards */
 .pj-espiral {
   position: absolute;
-  right: -20px;
+  right: -16px;
   top: 10%;
   bottom: 10%;
-  width: 32px;
+  width: 26px;
   display: none;
   flex-direction: column;
   justify-content: space-between;
@@ -100,9 +100,9 @@
 .pj-espiral span {
   position: relative;
   display: block;
-  width: 32px;
-  height: 12px;
-  flex: 0 0 12px;
+  width: 26px;
+  height: 9px;
+  flex: 0 0 9px;
   border-radius: 999px;
   background: #ffffff;
 }
@@ -110,17 +110,17 @@
 .pj-nota-topo {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 6px;
+  margin-bottom: 6px;
 }
 
 .pj-indicador {
-  width: 11px;
-  height: 11px;
+  width: 9px;
+  height: 9px;
   border-radius: 999px;
-  flex: 0 0 11px;
+  flex: 0 0 9px;
   background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 0 2.5px rgba(255, 255, 255, 0.18);
 }
 
 /* Sobrescreve regras globais do modo claro (index.css) para manter o título transparente sobre a nota */
@@ -136,9 +136,9 @@ body.light .pj-nota input.pj-titulo {
   background-color: transparent !important;
   box-shadow: none !important;
   color: #fffdf9 !important;
-  font-size: 1.12rem !important;
+  font-size: 0.98rem !important;
   font-weight: 800 !important;
-  padding: 4px 2px 6px !important;
+  padding: 2px 2px 4px !important;
   outline: none !important;
   text-shadow: 0 1px 2px rgba(38, 12, 18, 0.32);
 }
@@ -152,7 +152,7 @@ body.light .pj-nota input.pj-titulo {
 .pj-ferramentas-nota {
   display: flex;
   justify-content: flex-end;
-  margin: -2px 0 6px;
+  margin: -2px 0 4px;
 }
 
 .pj-botao-lista {
@@ -160,8 +160,8 @@ body.light .pj-nota input.pj-titulo {
   background: rgba(34, 10, 16, 0.14);
   color: rgba(255, 253, 249, 0.9) !important;
   border-radius: 999px;
-  padding: 2px 8px;
-  font-size: 0.68rem;
+  padding: 1.5px 7px;
+  font-size: 0.65rem;
   font-weight: 700;
   letter-spacing: 0.01em;
   cursor: pointer;
@@ -181,13 +181,13 @@ body.light .pj-nota input.pj-titulo {
 .pj-texto {
   width: 100%;
   flex: 1;
-  min-height: 130px;
+  min-height: 95px;
   resize: none;
   border: 0;
   background: transparent;
   color: #fffdf9 !important;
-  font-size: 0.96rem;
-  line-height: 1.5;
+  font-size: 0.88rem;
+  line-height: 1.45;
   font-weight: 600;
   outline: none;
   text-shadow: 0 1px 2px rgba(38, 12, 18, 0.28);
@@ -234,15 +234,15 @@ body.light .pj-nota input.pj-titulo {
 
 .pj-excluir {
   border: 1px solid rgba(255, 255, 255, 0.16);
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   border-radius: 999px;
   display: grid;
   place-items: center;
   cursor: pointer;
   color: rgba(255, 253, 249, 0.88) !important;
   background: rgba(33, 10, 15, 0.14);
-  font-size: 0.92rem;
+  font-size: 0.8rem;
   line-height: 1;
   flex-shrink: 0;
   opacity: 0.8;
@@ -260,11 +260,11 @@ body.light .pj-nota input.pj-titulo {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  padding-top: 8px;
-  margin-top: 6px;
+  gap: 6px;
+  padding-top: 6px;
+  margin-top: 4px;
   border-top: 1px solid rgba(255, 255, 255, 0.28);
-  font-size: 0.74rem;
+  font-size: 0.70rem;
   color: rgba(255, 252, 246, 0.94) !important;
   font-weight: 700;
 }
