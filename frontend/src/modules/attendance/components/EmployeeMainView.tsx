@@ -35,6 +35,7 @@ import { findWorkplaceByName, getStoredWorkplaces } from '@/shared/services/work
 import { supabase } from '@/shared/services/supabase';
 import { getPunchesSupabase } from '@/modules/shifts/services/shiftService';
 import { PjTimesheetTracker } from './PjTimesheetTracker';
+import { PjNotepadSection } from './PjNotepadSection';
 import { showPolishedToast } from '@/components/ui/halo-toast';
 
 const formatDistance = (meters?: number) => {
@@ -1838,6 +1839,9 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
         </div>
         );
       })()}
+
+      {/* 5. MEU BLOCO DE NOTAS DO COLABORADOR */}
+      <PjNotepadSection employeeId={employee.id} isDark={!isLightTheme} />
 
       {/* MODAL DE DETALHES DO LEMBRETE */}
       <ReminderDetailModal
