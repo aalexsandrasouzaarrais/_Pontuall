@@ -313,6 +313,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         return;
       }
 
+      // Verifica se é uma conta antiga já cadastrada antes da restrição de senhas genéricas e que ainda não redefiniu a senha
+      const isPreExistingLegacyAccount = Boolean(
+        !hasUserChangedPasswordLocal(matchedUser) &&
+        (!matchedUser.Dta_Cadastro || String(matchedUser.Dta_Cadastro) < '2026-11-17') &&
+        (!matchedUser.Dta_Atualizacao || matchedUser.Dta_Atualizacao === matchedUser.Dta_Cadastro)
+      );
+
       let senhaValida = false;
       if (isBcrypt) {
         try {
@@ -320,6 +327,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
           // Caso o colaborador digite a matrícula provisória em minúsculas apenas no 1º acesso (quando ainda não trocou a senha)
           if (!senhaValida && !alreadyChangedPassword && matriculaNorm && passNorm.toLowerCase() === matriculaNorm) {
             senhaValida = bcrypt.compareSync(passNorm.toUpperCase(), matchedUser.Des_Senha_Hash);
+          }
+          // Permite que contas já cadastradas anteriormente com a senha padrão (123456) continuem entrando até que alterem sua senha
+          if (!senhaValida && isPreExistingLegacyAccount && passNorm === '123456') {
+            senhaValida = true;
           }
         } catch {
           senhaValida = false;
@@ -329,7 +340,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         const storedPlain = matchedUser.Des_Senha_Hash ? String(matchedUser.Des_Senha_Hash).trim() : '';
         senhaValida =
           (Boolean(storedPlain) && storedPlain !== 'google_oauth_authenticated' && storedPlain === passNorm && !(alreadyChangedPassword && isPasswordEqualToMatricula)) ||
-          (!storedPlain && !alreadyChangedPassword && Boolean(matriculaNorm) && matriculaNorm === passNorm.toLowerCase());
+          (!storedPlain && !alreadyChangedPassword && Boolean(matriculaNorm) && matriculaNorm === passNorm.toLowerCase()) ||
+          (isPreExistingLegacyAccount && passNorm === '123456');
 
         // Se a senha estiver correta mas não estava hasheada, atualiza automaticamente no banco com bcrypt
         if (senhaValida && matchedUser.Idf_Colaborador) {
