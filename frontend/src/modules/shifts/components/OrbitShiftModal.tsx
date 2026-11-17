@@ -38,7 +38,7 @@ import {
   AbsenceConflictResult,
   InterjornadaResult
 } from '@/shared/utils/shiftValidation';
-import { getStoredWorkplaces, createWorkplaceFromAddress, deleteWorkplace, WorkplaceLocation } from '@/shared/services/workplaceService';
+import { getStoredWorkplaces, createWorkplaceFromAddress, deleteWorkplace, registerWorkplaceIfNew, getDeletedWorkplaceIds, WorkplaceLocation } from '@/shared/services/workplaceService';
 import { getSchedulableEmployees } from '@/shared/utils/employeeUtils';
 import { 
   searchAddressSuggestions, 
@@ -297,7 +297,25 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
   }, [employees, editingShift?.employeeId]);
 
   useEffect(() => {
-    const list = getStoredWorkplaces();
+    const list = [...getStoredWorkplaces()];
+    const deletedIds = getDeletedWorkplaceIds();
+
+    // Sincroniza todos os postos de trabalho encontrados na lista de turnos
+    (shifts || []).forEach(s => {
+      if (s.workplaceLocation && s.workplaceLocation.name) {
+        const wName = s.workplaceLocation.name.toLowerCase().trim();
+        if (!deletedIds.includes(s.workplaceLocation.id) && !deletedIds.includes(wName)) {
+          const exists = list.some(
+            w => w.id === s.workplaceLocation?.id || w.name.toLowerCase().trim() === wName
+          );
+          if (!exists) {
+            list.push(s.workplaceLocation);
+            registerWorkplaceIfNew(s.workplaceLocation);
+          }
+        }
+      }
+    });
+
     setWorkplacesList(list);
 
     if (editingShift) {
@@ -1446,7 +1464,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                     >
                       {workplacesList.map(w => (
                         <option key={w.id} value={w.id} style={optionStyle}>
-                          {w.name} {w.isRemote ? '(Flexível/Remoto)' : `(${w.address})`}
+                          {w.name} {w.isRemote ? '(Remoto/Flexível)' : `— ${w.address}`} ({w.radiusMeters || 200}m)
                         </option>
                       ))}
                     </select>

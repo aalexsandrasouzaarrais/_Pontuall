@@ -350,16 +350,16 @@ export const PjNotepadSection: React.FC<PjNotepadSectionProps> = ({
 
   return (
     <section
-      className={`rounded-3xl border p-5 sm:p-7 space-y-6 transition-colors ${
+      className={`rounded-2xl border p-4 sm:p-5 space-y-4 transition-colors ${
         isDark
           ? 'bg-[#121622] border-white/10'
           : 'bg-white border-slate-200 shadow-sm'
       }`}
     >
-      {/* Topo do Bloco de Notas (Estilo Imagem de Referência 1 com espaçamento adequado) */}
-      <div className="pj-bloco-notas-wrapper flex flex-col sm:flex-row sm:items-center justify-between gap-6 pb-2 mb-6">
+      {/* Topo do Bloco de Notas (Estilo Imagem de Referência 1 com espaçamento compacto) */}
+      <div className="pj-bloco-notas-wrapper flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1 mb-2">
         <div>
-          <h3 className={`text-lg sm:text-xl font-black tracking-tight ${isDark ? 'text-white' : 'text-[#2c1d18]'}`}>
+          <h3 className={`text-base sm:text-lg font-bold tracking-tight ${isDark ? 'text-white' : 'text-[#2c1d18]'}`}>
             Meu Bloco de Notas
           </h3>
         </div>
@@ -367,12 +367,12 @@ export const PjNotepadSection: React.FC<PjNotepadSectionProps> = ({
         <button
           type="button"
           onClick={handleNovaNota}
-          className="px-5 py-2.5 rounded-full text-xs sm:text-sm font-black text-white shadow-md hover:opacity-95 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
+          className="px-4 py-2 rounded-full text-xs font-bold text-white shadow-md hover:opacity-95 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
           style={{
             background: '#670D20',
           }}
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-3.5 h-3.5" />
           <span>Nova nota</span>
         </button>
       </div>
