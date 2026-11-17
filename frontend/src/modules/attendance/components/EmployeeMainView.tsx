@@ -35,6 +35,7 @@ import { findWorkplaceByName, getStoredWorkplaces } from '@/shared/services/work
 import { supabase } from '@/shared/services/supabase';
 import { getPunchesSupabase } from '@/modules/shifts/services/shiftService';
 import { PjTimesheetTracker } from './PjTimesheetTracker';
+import { PjNotepadSection } from './PjNotepadSection';
 import { showPolishedToast } from '@/components/ui/halo-toast';
 
 const formatDistance = (meters?: number) => {
@@ -1774,7 +1775,10 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
       </div>
 
       {/* 4. LEMBRETES & REUNIÕES DA GESTÃO */}
-      {reminders.length > 0 && (
+      {(() => {
+        const upcomingReminders = (reminders || []).filter(rem => !rem.date || normalizeDateToISO(rem.date) >= todayStr);
+        if (upcomingReminders.length === 0) return null;
+        return (
         <div
           className={`rounded-[28px] p-5 border transition-all duration-300 ${
             isLightTheme
@@ -1807,12 +1811,12 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                   isLightTheme ? 'text-[#96183c]' : 'text-[#f89642]'
                 }`}
               />
-              {reminders.length} compromissos
+              {upcomingReminders.length} compromissos
             </span>
           </div>
 
           <div className="space-y-2">
-            {reminders.map(rem => (
+            {upcomingReminders.map(rem => (
               <div
                 key={rem.id}
                 onClick={() => setSelectedReminder(rem)}
@@ -1874,7 +1878,11 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
             ))}
           </div>
         </div>
-      )}
+        );
+      })()}
+
+      {/* 5. MEU BLOCO DE NOTAS DO COLABORADOR */}
+      <PjNotepadSection employeeId={employee.id} isDark={!isLightTheme} />
 
       {/* MODAL DE DETALHES DO LEMBRETE */}
       <ReminderDetailModal
