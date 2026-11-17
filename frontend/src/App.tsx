@@ -542,7 +542,7 @@ function AppContent() {
 
   const { unreadCount: unreadChatCount, resetUnreadCount: resetUnreadChatCount } = useUnreadChatCount({
     activeEmployee,
-    isChatOpen: isChatModalOpen || isChatViewActive,
+    isChatOpen: isChatModalOpen || isChatViewActive || (currentRole === 'employee' && employeeTab === 'chat'),
   });
 
   // Monitora autenticação via Google Workspace (OAuth redirect)
@@ -1847,7 +1847,7 @@ function AppContent() {
         </div>
       ) : (
         /* EMPLOYEE VIEW */
-        <div className={`flex-1 flex flex-col md:flex-row overflow-hidden ${(employeeTab === 'requests' || employeeTab === 'justifications') && activeEmployee.contractType !== 'PJ' ? (!isDark ? 'bg-[#f4f5f8]' : 'colaborador-page-container') : (!isDark ? 'bg-[#f4f5f8]' : 'bg-[#050104]')}`}>
+        <div className={`flex-1 flex flex-col md:flex-row overflow-hidden ${(employeeTab === 'requests' || employeeTab === 'justifications') && activeEmployee.contractType !== 'PJ' ? (!isDark ? 'bg-[#f4f5f8]' : 'colaborador-page-container') : (!isDark ? 'bg-[#f4f5f8]' : (employeeTab === 'chat' ? 'bg-[#0F1117]' : 'bg-[#050104]'))}`}>
           {/* Full-height Collapsible Sidebar on Desktop / Horizontal Sub-Header Bar on Mobile */}
           <EmployeeSidebar
             activeTab={
@@ -1856,10 +1856,9 @@ function AppContent() {
                 : (employeeTab === 'pj_reports' ? 'overview' : employeeTab)
             }
             onTabChange={(tab) => {
+              setEmployeeTab(tab);
               if (tab === 'chat') {
-                setIsChatModalOpen(true);
-              } else {
-                setEmployeeTab(tab);
+                resetUnreadChatCount();
               }
             }}
             collapsed={sidebarCollapsed}
@@ -2594,33 +2593,17 @@ function AppContent() {
               </div>
             )}
 
-            {/* Tab 5: Chat da Equipe */}
+            {/* Tab 5: Chat da Equipe (Versão Grande igual ao do Gestor) */}
             {employeeTab === 'chat' && (
-              <div className="space-y-4">
-                <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center text-center space-y-4 min-h-[420px]">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#96183c] to-[#f89847] text-white flex items-center justify-center shadow-lg">
-                    <MessageSquare className="w-8 h-8 text-[#faf0ac]" />
-                  </div>
-                  <div className="max-w-md">
-                    <h2 className="text-lg font-extrabold text-slate-900">Chat da Equipe & Gestão em Tempo Real</h2>
-                    <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                      Conectado ao Supabase com canais corporativos (<span className="font-mono text-slate-700">#geral</span>, <span className="font-mono text-slate-700">#escalas</span>), grupos dinâmicos e conversa privada 1 a 1 com a gestão.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsChatModalOpen(true)}
-                    className="px-6 py-3 bg-gradient-to-r from-[#96183c] to-[#f89847] hover:brightness-110 text-white rounded-xl text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center gap-2"
-                  >
-                    <MessageSquare className="w-4 h-4 text-[#faf0ac]" />
-                    <span>Abrir Chat da Equipe</span>
-                    {unreadChatCount > 0 && (
-                      <span className="px-2 py-0.5 bg-white text-[#96183c] rounded-full text-[11px] font-extrabold shadow-sm">
-                        {unreadChatCount} {unreadChatCount === 1 ? 'nova' : 'novas'}
-                      </span>
-                    )}
-                  </button>
-                </div>
+              <div className={`w-full font-sans space-y-4 select-none manager-scope ${theme}`}>
+                <ChatModal
+                  isOpen={true}
+                  embedded={true}
+                  onClose={() => setEmployeeTab('overview')}
+                  currentEmployee={activeEmployee}
+                  employees={employees}
+                  isLightTheme={!isDark}
+                />
               </div>
             )}
 
