@@ -83,6 +83,19 @@ import { updateJustificativaStatusSupabase, updateSolicitacaoStatusSupabase } fr
 import { openDocumentSafe } from '@/shared/services/storageService';
 import { createNotificationSupabase } from '@/modules/notifications/services/notificationService';
 
+const parseDateSortTimestamp = (d?: string | Date | null): number => {
+  if (!d) return 0;
+  if (d instanceof Date) return isNaN(d.getTime()) ? 0 : d.getTime();
+  const clean = String(d).trim();
+  const iso = normalizeDateToISO(clean);
+  if (iso) {
+    const t = new Date(iso + 'T12:00:00').getTime();
+    if (!isNaN(t)) return t;
+  }
+  const fallback = new Date(clean).getTime();
+  return isNaN(fallback) ? 0 : fallback;
+};
+
 interface ManagerMatrixGridProps {
   employees: Employee[];
   shifts: Shift[];
@@ -775,7 +788,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
     // Central Unificada de Aprovações (Aba 2):
     // Reúne apenas ocorrências reais dos colaboradores vinculados a esta empresa/gestor
-    setApprovalsData([
+    const allApprovals = [
       ...mappedAbsences,
       ...mappedDelaysAndOvertimeFromShifts,
       ...mappedJustifications.map(j => ({
@@ -783,7 +796,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         type: j.type === 'Justificativa de Atraso' ? 'Atraso de Entrada' : j.type
       })),
       ...mappedRequests
-    ]);
+    ].sort((a, b) => {
+      const timeA = parseDateSortTimestamp(a.date);
+      const timeB = parseDateSortTimestamp(b.date);
+      return timeB - timeA;
+    });
+
+    setApprovalsData(allApprovals);
 
     // Ocorrências de Banco de Horas & Registro de Ponto (Exclusivo para jornada com trabalho efetivo)
     const mappedFromShifts: BancoHorasItem[] = (shifts || []).filter(s => {
@@ -3530,11 +3549,12 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           }
           return true;
         }).sort((a, b) => {
-          const dateA = a.date || '';
-          const dateB = b.date || '';
-          return approvalsDateSort === 'desc'
-            ? dateB.localeCompare(dateA)
-            : dateA.localeCompare(dateB);
+          const timeA = parseDateSortTimestamp(a.date);
+          const timeB = parseDateSortTimestamp(b.date);
+          if (timeA !== timeB) {
+            return approvalsDateSort === 'desc' ? timeB - timeA : timeA - timeB;
+          }
+          return a.employeeName.localeCompare(b.employeeName);
         });
 
         return (
@@ -4885,11 +4905,12 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         (relatorioStatus === 'pending' && row.status === 'Pendente');
                       return matchDept && matchStatus;
                     }).sort((a, b) => {
-                      const dateA = a.date || '';
-                      const dateB = b.date || '';
-                      return relatorioDateSort === 'desc'
-                        ? dateB.localeCompare(dateA)
-                        : dateA.localeCompare(dateB);
+                      const timeA = parseDateSortTimestamp(a.date);
+                      const timeB = parseDateSortTimestamp(b.date);
+                      if (timeA !== timeB) {
+                        return relatorioDateSort === 'desc' ? timeB - timeA : timeA - timeB;
+                      }
+                      return a.name.localeCompare(b.name);
                     }).map((row, idx) => (
                       <tr 
                         key={idx} 
