@@ -1,4 +1,4 @@
-import { getTodayDateString, evaluatePunchTolerance, formatDateBR } from '@/shared/utils/dateUtils';
+import { getTodayDateString, evaluatePunchTolerance, formatDateBR, normalizeDateToISO } from '@/shared/utils/dateUtils';
 import React, { useState, useEffect } from 'react';
 import { 
   EmployeeSidebar 
@@ -1903,8 +1903,10 @@ function AppContent() {
           <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 relative">
             {/* Tab 1: Overview & Digital Punch Clock (Apenas CLT / Temporário) */}
             {activeEmployee.contractType !== 'PJ' && (employeeTab === 'overview' || employeeTab === 'pj_reports') && (() => {
+              const todayIso = getTodayDateString();
               const filteredReminders = (reminders || []).filter(rem => {
                 if (rem.completed) return false;
+                if (rem.date && normalizeDateToISO(rem.date) < todayIso) return false;
                 if (!rem.assignedEmployeeIds || rem.assignedEmployeeIds.length === 0) return true;
                 return rem.assignedEmployeeIds.includes(activeEmployee.id);
               });
@@ -1930,8 +1932,10 @@ function AppContent() {
 
             {/* Tab PJ: Painel & Notas PJ (overview) OU Timesheet & Entregas PJ (pj_reports) */}
             {activeEmployee.contractType === 'PJ' && (employeeTab === 'pj_reports' || employeeTab === 'overview' || employeeTab === 'calendar' || employeeTab === 'requests' || employeeTab === 'justifications') && (() => {
+              const todayIso = getTodayDateString();
               const pjReminders = (reminders || []).filter(rem => {
                 if (rem.completed) return false;
+                if (rem.date && normalizeDateToISO(rem.date) < todayIso) return false;
                 if (!rem.assignedEmployeeIds || rem.assignedEmployeeIds.length === 0) return true;
                 return rem.assignedEmployeeIds.includes(activeEmployee.id);
               });
