@@ -893,59 +893,210 @@ export async function updateColaboradorSupabase(emp: Partial<Employee> & { id: s
   }
 }
 
+const PASSWORD_CHANGED_USERS_KEY = 'pontual_password_changed_users_v1';
+
+export function markUserPasswordChangedLocal(info: {
+  id?: string;
+  matricula?: string;
+  email?: string;
+}) {
+  try {
+    const raw = safeStorage.getItem(PASSWORD_CHANGED_USERS_KEY) || (typeof window !== 'undefined' ? window.localStorage.getItem(PASSWORD_CHANGED_USERS_KEY) : null);
+    const list: string[] = raw ? JSON.parse(raw) : [];
+    const set = new Set(list.map(s => String(s).toLowerCase().trim()));
+    if (info.id) set.add(String(info.id).toLowerCase().trim());
+    if (info.matricula) {
+      const mat = String(info.matricula).toLowerCase().trim();
+      set.add(mat);
+      const digits = mat.replace(/^pnt-|^gst-|^col-|^mat-/i, '');
+      if (digits.length >= 3) set.add(digits);
+    }
+    if (info.email) set.add(String(info.email).toLowerCase().trim());
+    const serialized = JSON.stringify(Array.from(set));
+    safeStorage.setItem(PASSWORD_CHANGED_USERS_KEY, serialized);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(PASSWORD_CHANGED_USERS_KEY, serialized);
+    }
+  } catch {}
+}
+
+export function hasUserChangedPasswordLocal(user: any): boolean {
+  if (!user) return false;
+  try {
+    const raw = safeStorage.getItem(PASSWORD_CHANGED_USERS_KEY) || (typeof window !== 'undefined' ? window.localStorage.getItem(PASSWORD_CHANGED_USERS_KEY) : null);
+    if (raw) {
+      const list: string[] = JSON.parse(raw);
+      const set = new Set(list.map(s => String(s).toLowerCase().trim()));
+      const id = String(user.Idf_Colaborador || user.id || '').toLowerCase().trim();
+      const mat = String(user.Cod_Matricula || user.registrationId || user.matricula || '').toLowerCase().trim();
+      const email = String(user.Eml_Corporativo || user.email || '').toLowerCase().trim();
+      if ((id && set.has(id)) || (mat && set.has(mat)) || (email && set.has(email))) {
+        return true;
+      }
+    }
+  } catch {}
+  if (user.Dta_Cadastro && user.Dta_Atualizacao) {
+    const tCad = new Date(user.Dta_Cadastro).getTime();
+    const tAtu = new Date(user.Dta_Atualizacao).getTime();
+    if (!isNaN(tCad) && !isNaN(tAtu) && Math.abs(tAtu - tCad) > 2000) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Atualiza a senha definitiva do colaborador no Supabase (substituindo a temporária)
 export async function updateColaboradorPasswordSupabase(identifier: string, novaSenha: string): Promise<boolean> {
   try {
     const cleanId = identifier.trim();
-    if (!cleanId) return false;
+    const cleanPass = novaSenha.trim();
+    if (!cleanId || !cleanPass) return false;
+
+    const cleanNoSpace = cleanId.replace(/\s+/g, '');
+    const cleanDigits = cleanNoSpace.replace(/^pnt-|^gst-|^col-|^mat-/i, '');
+
+    // Impede que o usuário defina a própria matrícula como nova senha
+    if (
+      cleanPass.toLowerCase() === cleanNoSpace.toLowerCase() ||
+      (cleanDigits.length >= 3 && cleanPass.toLowerCase() === cleanDigits.toLowerCase())
+    ) {
+      throw new Error('A nova senha não pode ser igual à sua matrícula. Crie uma senha pessoal exclusiva.');
+    }
+
+    // 1. Localiza o(s) registro(s) do colaborador no Supabase para validar matrícula e atualizar todos os vínculos
+    const isUuidVal = isUuid(cleanId);
+    let matchedRows: any[] = [];
+
+    try {
+      let findQuery = supabase.from('TAB_Colaborador').select('*');
+      if (isUuidVal) {
+        findQuery = findQuery.eq('Idf_Colaborador', cleanId);
+      } else if (cleanId.includes('@')) {
+        findQuery = findQuery.or(`Eml_Corporativo.ilike.${cleanId},Eml_Secundario.ilike.${cleanId}`);
+      } else {
+        findQuery = findQuery.or(`Cod_Matricula.ilike.%${cleanNoSpace}%,Eml_Corporativo.ilike.%${cleanId}%`);
+      }
+      const { data } = await findQuery;
+      if (data && data.length > 0) {
+        matchedRows = data;
+      }
+    } catch (findErr) {
+      console.warn('Aviso ao localizar colaborador para troca de senha:', findErr);
+    }
+
+    // Verifica se a nova senha coincide com a Cod_Matricula real do banco
+    for (const row of matchedRows) {
+      const rowMat = String(row.Cod_Matricula || '').trim().toLowerCase();
+      const rowMatDigits = rowMat.replace(/^pnt-|^gst-|^col-|^mat-/i, '');
+      if (
+        (rowMat && cleanPass.toLowerCase() === rowMat) ||
+        (rowMatDigits.length >= 3 && cleanPass.toLowerCase() === rowMatDigits)
+      ) {
+        throw new Error('A nova senha não pode ser igual à sua matrícula. Crie uma senha pessoal exclusiva.');
+      }
+    }
 
     // Gera o hash seguro com bcrypt
-    const senhaHash = bcrypt.hashSync(novaSenha, 10);
-
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(cleanId);
+    const senhaHash = bcrypt.hashSync(cleanPass, 10);
+    const nowIso = new Date().toISOString();
     let dbSuccess = false;
 
-    if (isUuid) {
-      const { error } = await supabase
+    if (matchedRows.length > 0) {
+      const targetIds = matchedRows.map(r => r.Idf_Colaborador).filter(Boolean);
+      const { data: updatedData, error } = await supabase
+        .from('TAB_Colaborador')
+        .update({ Des_Senha_Hash: senhaHash, Dta_Atualizacao: nowIso })
+        .in('Idf_Colaborador', targetIds)
+        .select('Idf_Colaborador');
+
+      dbSuccess = !error && Boolean(updatedData && updatedData.length > 0);
+      if (error) {
+        // Fallback caso Dta_Atualizacao não exista na tabela customizada
+        const retry = await supabase
+          .from('TAB_Colaborador')
+          .update({ Des_Senha_Hash: senhaHash })
+          .in('Idf_Colaborador', targetIds)
+          .select('Idf_Colaborador');
+        dbSuccess = !retry.error && Boolean(retry.data && retry.data.length > 0);
+      }
+
+      // Se o colaborador possuir outros registros com o mesmo e-mail no banco, atualiza todos para evitar conflito de login
+      const emails = Array.from(new Set(matchedRows.map(r => r.Eml_Corporativo?.trim().toLowerCase()).filter(Boolean)));
+      for (const eml of emails) {
+        await supabase
+          .from('TAB_Colaborador')
+          .update({ Des_Senha_Hash: senhaHash })
+          .ilike('Eml_Corporativo', eml);
+      }
+
+      matchedRows.forEach(r => {
+        markUserPasswordChangedLocal({
+          id: r.Idf_Colaborador,
+          matricula: r.Cod_Matricula,
+          email: r.Eml_Corporativo,
+        });
+      });
+    } else if (isUuidVal) {
+      const { data: updatedData, error } = await supabase
         .from('TAB_Colaborador')
         .update({ Des_Senha_Hash: senhaHash })
-        .eq('Idf_Colaborador', cleanId);
-      dbSuccess = !error;
-      if (error) console.warn('Erro ao atualizar senha por UUID no Supabase:', error.message);
+        .eq('Idf_Colaborador', cleanId)
+        .select('Idf_Colaborador');
+      dbSuccess = !error && Boolean(updatedData && updatedData.length > 0);
+      if (dbSuccess) {
+        markUserPasswordChangedLocal({ id: cleanId });
+      }
     } else {
-      const cleanNoSpace = cleanId.replace(/\s+/g, '');
-      const { error } = await supabase
+      const { data: updatedData, error } = await supabase
         .from('TAB_Colaborador')
         .update({ Des_Senha_Hash: senhaHash })
-        .or(`Cod_Matricula.ilike.%${cleanNoSpace}%,Eml_Corporativo.ilike.%${cleanId}%`);
-      dbSuccess = !error;
-      if (error) console.warn('Erro ao atualizar senha por Matrícula/Email no Supabase:', error.message);
+        .or(`Cod_Matricula.ilike.%${cleanNoSpace}%,Eml_Corporativo.ilike.%${cleanId}%`)
+        .select('Idf_Colaborador, Cod_Matricula, Eml_Corporativo');
+      dbSuccess = !error && Boolean(updatedData && updatedData.length > 0);
+      if (updatedData && updatedData.length > 0) {
+        updatedData.forEach((r: any) => {
+          markUserPasswordChangedLocal({
+            id: r.Idf_Colaborador,
+            matricula: r.Cod_Matricula,
+            email: r.Eml_Corporativo,
+          });
+        });
+      }
     }
 
     // Atualiza também no localStorage/safeStorage para suporte offline/local fallback
+    let localUpdatedAny = false;
     try {
-      const localUsersStr = safeStorage.getItem('pontual_registered_users');
-      if (localUsersStr) {
-        const localUsers = JSON.parse(localUsersStr);
-        let updatedAny = false;
+      const rawLocal = safeStorage.getItem('pontual_registered_users') || (typeof window !== 'undefined' ? window.localStorage.getItem('pontual_registered_users') : null);
+      if (rawLocal) {
+        const localUsers = JSON.parse(rawLocal);
         const updated = localUsers.map((u: any) => {
           const mat = (u.Cod_Matricula || u.matricula || '').toLowerCase();
           const eml = (u.Eml_Corporativo || u.email || '').toLowerCase();
-          if (mat.includes(cleanId.toLowerCase()) || eml.includes(cleanId.toLowerCase())) {
-            updatedAny = true;
-            return { ...u, Des_Senha_Hash: senhaHash, password: senhaHash };
+          if (mat.includes(cleanNoSpace.toLowerCase()) || eml.includes(cleanId.toLowerCase())) {
+            localUpdatedAny = true;
+            markUserPasswordChangedLocal({
+              id: u.Idf_Colaborador || u.id,
+              matricula: u.Cod_Matricula || u.matricula,
+              email: u.Eml_Corporativo || u.email,
+            });
+            return { ...u, Des_Senha_Hash: senhaHash, password: senhaHash, Dta_Atualizacao: nowIso };
           }
           return u;
         });
-        if (updatedAny) {
-          safeStorage.setItem('pontual_registered_users', JSON.stringify(updated));
+        if (localUpdatedAny) {
+          const serialized = JSON.stringify(updated);
+          safeStorage.setItem('pontual_registered_users', serialized);
+          if (typeof window !== 'undefined') {
+            window.localStorage.setItem('pontual_registered_users', serialized);
+          }
         }
       }
     } catch {}
 
-    return dbSuccess || true;
+    return dbSuccess || localUpdatedAny;
   } catch (err: any) {
     console.warn('Erro ao atualizar senha no Supabase:', err?.message || err);
-    return true;
+    throw err;
   }
 }
