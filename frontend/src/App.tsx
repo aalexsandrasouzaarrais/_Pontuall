@@ -2553,40 +2553,47 @@ function AppContent() {
                         <div className={`my-2.5 p-2.5 rounded-xl border flex items-center justify-between gap-2.5 ${
                           !isDark ? 'bg-slate-50 border-slate-200' : 'bg-[#0e0f12] border-[#282a33]'
                         }`}>
-                          <div className="min-w-0 flex-1">
-                            <span className={`text-[9px] uppercase font-bold tracking-wider block font-mono ${
-                              !isDark ? 'text-slate-500' : 'text-slate-400'
-                            }`}>
-                              {just.documentName ? 'Comprovante Anexado' : 'Parecer da Gestão'}
-                            </span>
-                            <span className={`font-medium truncate block text-xs ${
-                              !isDark ? 'text-slate-900' : 'text-white'
-                            }`}>
-                              {just.documentName || just.managerNotes || statusLabel}
-                            </span>
-                          </div>
+                          {(() => {
+                            const hasValidDoc = Boolean(just.documentUrl && just.documentUrl.trim() !== '' && just.documentUrl !== 'null' && just.documentUrl !== 'undefined');
+                            return (
+                              <>
+                                <div className="min-w-0 flex-1">
+                                  <span className={`text-[9px] uppercase font-bold tracking-wider block font-mono ${
+                                    !isDark ? 'text-slate-500' : 'text-slate-400'
+                                  }`}>
+                                    {hasValidDoc ? 'Comprovante Anexado' : 'Parecer da Gestão'}
+                                  </span>
+                                  <span className={`font-medium truncate block text-xs ${
+                                    !isDark ? 'text-slate-900' : 'text-white'
+                                  }`}>
+                                    {hasValidDoc ? (just.documentName || 'Comprovante') : (just.managerNotes || statusLabel)}
+                                  </span>
+                                </div>
 
-                          {just.documentName ? (
-                            <button
-                              type="button"
-                              onClick={() => openDocumentSafe(just.documentUrl, just.documentName)}
-                              className={`shrink-0 text-[10px] font-semibold px-2.5 py-1 rounded-md font-mono border cursor-pointer transition-opacity hover:opacity-80 ${
-                                !isDark
-                                  ? 'text-amber-800 bg-amber-50 border-amber-200'
-                                  : 'text-[#F9DE97] bg-[#F59242]/10 border-[#F59242]/20'
-                              }`}
-                            >
-                              Visualizar
-                            </button>
-                          ) : (
-                            <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-md font-mono border ${
-                              !isDark
-                                ? 'text-slate-600 bg-slate-200 border-slate-300'
-                                : 'text-slate-400 bg-white/5 border-white/10'
-                            }`}>
-                              {statusLabel}
-                            </span>
-                          )}
+                                {hasValidDoc ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => openDocumentSafe(just.documentUrl, just.documentName)}
+                                    className={`shrink-0 text-[10px] font-semibold px-2.5 py-1 rounded-md font-mono border cursor-pointer transition-opacity hover:opacity-80 ${
+                                      !isDark
+                                        ? 'text-amber-800 bg-amber-50 border-amber-200'
+                                        : 'text-[#F9DE97] bg-[#F59242]/10 border-[#F59242]/20'
+                                    }`}
+                                  >
+                                    Visualizar
+                                  </button>
+                                ) : (
+                                  <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-md font-mono border ${
+                                    !isDark
+                                      ? 'text-slate-600 bg-slate-200 border-slate-300'
+                                      : 'text-slate-400 bg-white/5 border-white/10'
+                                  }`}>
+                                    {statusLabel}
+                                  </span>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
 
                         {/* Footer Row: Date Pill & SubmittedAt */}

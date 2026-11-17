@@ -497,6 +497,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     ? (j.status === 'approved' ? 'Falta Justificada' : 'Justificativa de Ausência')
                     : 'Atestado Médico';
       const parsedDiff = (j as any).delayMinutes || (j.reason?.match(/(\d+)\s*min/)?.[1] ? Number(j.reason?.match(/(\d+)\s*min/)?.[1]) : undefined);
+      const hasDocUrl = Boolean(j.documentUrl && j.documentUrl.trim() !== '' && j.documentUrl !== 'null' && j.documentUrl !== 'undefined');
       return {
         id: j.id,
         shiftId: resolvedShiftId,
@@ -509,8 +510,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         diffMinutes: parsedDiff,
         reason: j.reason,
         date: j.date,
-        documentName: j.documentName || (j.documentUrl ? 'Comprovante.pdf' : undefined),
-        documentUrl: j.documentUrl || undefined,
+        documentName: hasDocUrl ? (j.documentName || 'Comprovante.pdf') : undefined,
+        documentUrl: hasDocUrl ? j.documentUrl : undefined,
         status: (j.status === 'approved' ? 'Aprovado' : j.status === 'rejected' ? 'Recusado / Falta' : 'Pendente') as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
         actionText: j.status === 'approved' ? 'Homologado' : j.status === 'rejected' ? 'Não homologado' : undefined,
         feedback: j.managerNotes || '',
@@ -3989,9 +3990,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           </div>
                         </td>
 
-                        {/* Comprovante (Apenas ícone do clips clicável) */}
+                        {/* Comprovante (Apenas ícone do clips clicável se houver arquivo/link válido) */}
                         <td className="p-3 text-center">
-                          {row.documentUrl || (row.documentName && row.documentName.toLowerCase().includes('.')) ? (
+                          {row.documentUrl && row.documentUrl.trim() !== '' && row.documentUrl !== 'null' && row.documentUrl !== 'undefined' ? (
                             <button
                               type="button"
                               onClick={() => openDocumentSafe(row.documentUrl, row.documentName)}
@@ -4329,15 +4330,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       <label className="text-[10px] font-bold font-mono tracking-wider uppercase text-slate-400 block">
                         COMPROVANTE / DOCUMENTO ANEXO
                       </label>
-                      {selectedDetailOccurrence.documentName && 
-                       selectedDetailOccurrence.documentName.toLowerCase().includes('.pdf') &&
-                       selectedDetailOccurrence.documentName !== 'Sem anexo' &&
-                       selectedDetailOccurrence.documentName !== 'Não se aplica' ? (
+                      {selectedDetailOccurrence.documentUrl && 
+                       selectedDetailOccurrence.documentUrl.trim() !== '' &&
+                       selectedDetailOccurrence.documentUrl !== 'null' &&
+                       selectedDetailOccurrence.documentUrl !== 'undefined' ? (
                         <div className="flex items-center justify-between p-3 rounded-xl border border-[#f89847]/30 bg-[#f89847]/10">
                           <div className="flex items-center gap-2">
                             <Paperclip className="w-4 h-4 text-[#f89847]" />
                             <span className="text-xs font-mono font-bold text-[#f89847]">
-                              {selectedDetailOccurrence.documentName}
+                              {selectedDetailOccurrence.documentName || 'Comprovante'}
                             </span>
                           </div>
                           <button
