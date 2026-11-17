@@ -42,7 +42,9 @@ import {
   MapPin,
   Image as ImageIcon,
   Smile,
-  Reply
+  Reply,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { Employee, Shift, TimeOffRequest, AbsenceJustification } from '@/types';
 import { supabase } from '@/shared/services/supabase';
@@ -193,6 +195,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   const [approvalsSearch, setApprovalsSearch] = useState('');
   const [approvalsDept, setApprovalsDept] = useState('all');
   const [approvalsTypeFilter, setApprovalsTypeFilter] = useState<'all' | 'swap' | 'medical' | 'delay' | 'overtime' | 'absent' | 'justified' | 'time_off'>('all');
+  const [approvalsDateSort, setApprovalsDateSort] = useState<'desc' | 'asc'>('desc');
   const [isNewOccurrenceModalOpen, setIsNewOccurrenceModalOpen] = useState(false);
   const [expandedReasons, setExpandedReasons] = useState<Record<string, boolean>>({});
   const [selectedDetailOccurrence, setSelectedDetailOccurrence] = useState<{
@@ -1580,6 +1583,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   const [relatorioDate, setRelatorioDate] = useState('');
   const [relatorioStatus, setRelatorioStatus] = useState('all');
   const [relatorioDept, setRelatorioDept] = useState('all');
+  const [relatorioDateSort, setRelatorioDateSort] = useState<'desc' | 'asc'>('desc');
 
   // Calcula se existem presenças próximas do limite de 60 dias (idade entre 50 e 60 dias)
   const expiringAttendanceInfo = useMemo(() => {
@@ -3525,6 +3529,12 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             return row.status === 'Recusado / Falta' || row.status === 'Falta Lançada';
           }
           return true;
+        }).sort((a, b) => {
+          const dateA = a.date || '';
+          const dateB = b.date || '';
+          return approvalsDateSort === 'desc'
+            ? dateB.localeCompare(dateA)
+            : dateA.localeCompare(dateB);
         });
 
         return (
@@ -3808,7 +3818,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   >
                     <th className="p-3">COLABORADOR</th>
                     <th className="p-3">TIPO & JUSTIFICATIVA</th>
-                    <th className="p-3">DATA</th>
+                    <th 
+                      className="p-3 cursor-pointer select-none transition-colors hover:text-[#f89847] dark:hover:text-amber-400"
+                      onClick={() => setApprovalsDateSort(prev => prev === 'desc' ? 'asc' : 'desc')}
+                      title="Clique para alternar ordem por data (mais recente / mais antigo)"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>DATA</span>
+                        {approvalsDateSort === 'desc' ? (
+                          <ArrowDown className="w-3.5 h-3.5 text-amber-500" />
+                        ) : (
+                          <ArrowUp className="w-3.5 h-3.5 text-amber-500" />
+                        )}
+                      </div>
+                    </th>
                     <th className="p-3 text-center">COMPROVANTE</th>
                     <th className="p-3 text-center">STATUS</th>
                     <th className="p-3">OBSERVAÇÃO / FEEDBACK</th>
@@ -4805,7 +4828,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         ? 'border-[#282a33] bg-[#101115] text-slate-400' 
                         : 'border-[#640C1E]/30 bg-gradient-to-r from-[#640C1E] to-[#9F243C] text-[#F9DE97] shadow-sm'
                     }`}>
-                      <th className="p-3.5 font-bold tracking-wider">DATA</th>
+                      <th 
+                        className="p-3.5 font-bold tracking-wider cursor-pointer select-none transition-opacity hover:opacity-80"
+                        onClick={() => setRelatorioDateSort(prev => prev === 'desc' ? 'asc' : 'desc')}
+                        title="Clique para alternar ordem por data (mais recente / mais antigo)"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>DATA</span>
+                          {relatorioDateSort === 'desc' ? (
+                            <ArrowDown className="w-3.5 h-3.5 text-[#F9DE97] dark:text-amber-400" />
+                          ) : (
+                            <ArrowUp className="w-3.5 h-3.5 text-[#F9DE97] dark:text-amber-400" />
+                          )}
+                        </div>
+                      </th>
                       <th className="p-3.5 font-bold tracking-wider">COLABORADOR</th>
                       <th className="p-3.5 font-bold tracking-wider">DEPARTAMENTO</th>
                       <th className="p-3.5 font-bold tracking-wider">ESCALA PREVISTA</th>
@@ -4848,6 +4884,12 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         (relatorioStatus === 'justified' && row.status === 'Justificado') ||
                         (relatorioStatus === 'pending' && row.status === 'Pendente');
                       return matchDept && matchStatus;
+                    }).sort((a, b) => {
+                      const dateA = a.date || '';
+                      const dateB = b.date || '';
+                      return relatorioDateSort === 'desc'
+                        ? dateB.localeCompare(dateA)
+                        : dateA.localeCompare(dateB);
                     }).map((row, idx) => (
                       <tr 
                         key={idx} 
