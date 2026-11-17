@@ -42,7 +42,9 @@ import {
   MapPin,
   Image as ImageIcon,
   Smile,
-  Reply
+  Reply,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { Employee, Shift, TimeOffRequest, AbsenceJustification } from '@/types';
 import { supabase } from '@/shared/services/supabase';
@@ -80,6 +82,19 @@ import {
 import { updateJustificativaStatusSupabase, updateSolicitacaoStatusSupabase } from '@/modules/requests/services/requestService';
 import { openDocumentSafe } from '@/shared/services/storageService';
 import { createNotificationSupabase } from '@/modules/notifications/services/notificationService';
+
+const parseDateSortTimestamp = (d?: string | Date | null): number => {
+  if (!d) return 0;
+  if (d instanceof Date) return isNaN(d.getTime()) ? 0 : d.getTime();
+  const clean = String(d).trim();
+  const iso = normalizeDateToISO(clean);
+  if (iso) {
+    const t = new Date(iso + 'T12:00:00').getTime();
+    if (!isNaN(t)) return t;
+  }
+  const fallback = new Date(clean).getTime();
+  return isNaN(fallback) ? 0 : fallback;
+};
 
 interface ManagerMatrixGridProps {
   employees: Employee[];
@@ -193,6 +208,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   const [approvalsSearch, setApprovalsSearch] = useState('');
   const [approvalsDept, setApprovalsDept] = useState('all');
   const [approvalsTypeFilter, setApprovalsTypeFilter] = useState<'all' | 'swap' | 'medical' | 'delay' | 'overtime' | 'absent' | 'justified' | 'time_off'>('all');
+  const [approvalsDateSort, setApprovalsDateSort] = useState<'desc' | 'asc'>('desc');
   const [isNewOccurrenceModalOpen, setIsNewOccurrenceModalOpen] = useState(false);
   const [expandedReasons, setExpandedReasons] = useState<Record<string, boolean>>({});
   const [selectedDetailOccurrence, setSelectedDetailOccurrence] = useState<{
@@ -221,13 +237,14 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     type: 'Atestado Médico',
     date: new Date().toLocaleDateString('pt-BR'),
     reason: '',
-    documentName: 'atestado.pdf',
+    documentName: '',
     status: 'Pendente' as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
     feedback: '',
   });
 
   const [approvalsData, setApprovalsData] = useState<Array<{
     id: string;
+    shiftId?: string;
     employeeId?: string;
     employeeName: string;
     employeeRole: string;
@@ -236,6 +253,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     type: string;
     reason: string;
     date: string;
+    diffMinutes?: number;
     documentName: string;
     documentUrl?: string;
     status: 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente';
@@ -454,17 +472,32 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     const mappedJustifications = (justifications || []).map(j => {
       const emp = employees.find(e => e.id === j.employeeId);
       const rLower = (j.reason || '').toLowerCase();
+      const isOvertimeJust = rLower.includes('hora extra') || (j as any).justificationType === 'overtime';
+      const isForgetfulnessJust = rLower.includes('esquecimento') || rLower.includes('esqueci') || (j as any).justificationType === 'forgetfulness';
+      const isEntryForgetfulness = isForgetfulnessJust && (rLower.includes('entrada') || (j as any).initialPunchType === 'entrada');
+      const isExitForgetfulness = isForgetfulnessJust && !isEntryForgetfulness;
       const isEarlyLeaveJust = rLower.includes('saída antecipada') || rLower.includes('saida antecipada') || (j as any).justificationType === 'early_leave';
       const isEarlyEntryJust = rLower.includes('entrada antecipada') || (j as any).justificationType === 'early_entry';
       const isDelayJust = rLower.includes('atraso') || (j as any).justificationType === 'delay';
+      const isAbsenceJust = (j as any).justificationType === 'absence' || rLower.includes('ausência') || rLower.includes('ausencia') || rLower.includes('falta');
       const resolvedShiftId = j.shiftId || (shifts || []).find(s => s.employeeId === j.employeeId && s.date === j.date)?.id;
-      const typeLabel = isEarlyLeaveJust
-        ? 'Saída Antecipada'
-        : isEarlyEntryJust
-          ? 'Entrada Antecipada'
-          : isDelayJust
-            ? 'Justificativa de Atraso'
-            : 'Atestado Médico';
+      const typeLabel = isOvertimeJust
+        ? 'Hora Extra'
+        : isEntryForgetfulness
+          ? 'Esquecimento de Entrada'
+          : isExitForgetfulness
+            ? 'Esquecimento de Saída'
+            : isEarlyLeaveJust
+              ? 'Saída Antecipada'
+              : isEarlyEntryJust
+                ? 'Entrada Antecipada'
+                : isDelayJust
+                  ? 'Atraso de Entrada'
+                  : isAbsenceJust
+                    ? (j.status === 'approved' ? 'Falta Justificada' : 'Justificativa de Ausência')
+                    : 'Atestado Médico';
+      const parsedDiff = (j as any).delayMinutes || (j.reason?.match(/(\d+)\s*min/)?.[1] ? Number(j.reason?.match(/(\d+)\s*min/)?.[1]) : undefined);
+      const hasDocUrl = Boolean(j.documentUrl && j.documentUrl.trim() !== '' && j.documentUrl !== 'null' && j.documentUrl !== 'undefined');
       return {
         id: j.id,
         shiftId: resolvedShiftId,
@@ -474,10 +507,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         employeeDept: emp?.department || 'Geral',
         employeeAvatar: emp?.avatar || j.employeeAvatar || '',
         type: typeLabel,
+        diffMinutes: parsedDiff,
         reason: j.reason,
         date: j.date,
-        documentName: j.documentName || ((isDelayJust || isEarlyEntryJust || isEarlyLeaveJust) ? 'Declaracao_Comparecimento_Horas.pdf' : 'atestado.pdf'),
-        documentUrl: j.documentUrl,
+        documentName: hasDocUrl ? (j.documentName || 'Comprovante.pdf') : undefined,
+        documentUrl: hasDocUrl ? j.documentUrl : undefined,
         status: (j.status === 'approved' ? 'Aprovado' : j.status === 'rejected' ? 'Recusado / Falta' : 'Pendente') as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
         actionText: j.status === 'approved' ? 'Homologado' : j.status === 'rejected' ? 'Não homologado' : undefined,
         feedback: j.managerNotes || '',
@@ -522,11 +556,32 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       const hasJustification = (justifications || []).some(j => 
         (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)
       );
+      // Se o colaborador já submeteu uma justificativa/atestado formal, ele é exibido via mappedJustifications
+      // preservando fielmente a justificativa original e anexos do colaborador sem duplicar ou sobrescrever
+      if (hasJustification) return false;
+
       const isJustified = s.attendanceStatus === 'justified';
-      return (isPast24h && !s.checkInTime && !hasJustification) || isJustified;
+      return (isPast24h && !s.checkInTime) || isJustified;
     }).map(s => {
       const emp = employees.find(e => e.id === s.employeeId);
       const isJustified = s.attendanceStatus === 'justified' || s.notes?.includes('ABONO GESTOR') || s.notes?.includes('Ausência Justificada');
+      
+      const matchingReq = (requests || []).find(r => 
+        r.employeeId === s.employeeId && r.date === s.date
+      );
+
+      const cleanNotes = (s.notes || '')
+        .replace(/\[ABONO GESTOR:[^\]]*\]/gi, '')
+        .replace(/\[HOMOLOGADO GESTOR:[^\]]*\]/gi, '')
+        .replace(/\[FALTA GESTOR:[^\]]*\]/gi, '')
+        .trim();
+
+      const reason = cleanNotes
+        || matchingReq?.reason
+        || (isJustified
+          ? 'Ausência abonada pelo gestor.'
+          : 'Colaborador escalado não registrou ponto de entrada/saída após 24h e não apresentou atestado/justificativa.');
+
       return {
         id: `absence-${s.id}`,
         shiftId: s.id,
@@ -536,9 +591,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         employeeDept: emp?.department || 'Geral',
         employeeAvatar: emp?.avatar || '',
         type: isJustified ? 'Falta Justificada' : 'Falta Não Justificada',
-        reason: isJustified ? 'Ausência abonada com justificativa ou atestado médico aceito.' : 'Colaborador escalado não registrou ponto de entrada/saída após 24h e não apresentou atestado/justificativa.',
+        reason,
         date: s.date,
-        documentName: isJustified ? 'Declaracao_ou_Atestado.pdf' : 'Sem anexo',
+        documentName: 'Sem anexo',
         documentUrl: undefined,
         status: (isJustified ? 'Aprovado' : 'Pendente') as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
         actionText: isJustified ? 'Abonada' : undefined,
@@ -591,6 +646,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         employeeDept: string;
         employeeAvatar: string;
         type: string;
+        diffMinutes?: number;
         reason: string;
         date: string;
         documentName: string;
@@ -608,18 +664,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           const jType = (j as any).justificationType;
           if (kind === 'early_entry') return rLower.includes('entrada antecipada') || jType === 'early_entry';
           if (kind === 'early_leave') return rLower.includes('saída antecipada') || rLower.includes('saida antecipada') || jType === 'early_leave';
-          if (kind === 'delay') return rLower.includes('atraso') || jType === 'delay';
+          if (kind === 'delay') return rLower.includes('atraso') || jType === 'delay' || (rLower.includes('esquecimento') && rLower.includes('entrada'));
+          if (kind === 'overtime') return rLower.includes('hora extra') || jType === 'overtime' || (rLower.includes('esquecimento') && !rLower.includes('entrada'));
           return false;
         });
 
-      // 1. Avaliar Entrada (Atraso ou Entrada Antecipada)
+      // 1. Avaliar Entrada (Atraso, Entrada Antecipada ou Esquecimento)
       const inTol = (s.startTime && s.checkInTime)
         ? evaluatePunchTolerance(s.startTime, s.checkInTime, 'entrada', 10)
         : null;
       const hasLate = Boolean(s.notes?.includes('[Atraso')) || s.attendanceStatus === 'late' || Boolean(inTol?.isLate);
       const hasEarlyEntry = !hasLate && (Boolean(s.notes?.includes('[Entrada Antecipada')) || Boolean(inTol?.isEarly));
+      const isForgetfulnessEntry = Boolean(s.notes?.includes('Esquecimento de Entrada'));
 
-      if (hasLate || hasEarlyEntry) {
+      if (hasLate || hasEarlyEntry || isForgetfulnessEntry) {
         const entryKind = hasLate ? 'delay' : 'early_entry';
         const existingJust = findJustForKind(entryKind);
         // Se já foi mapeada em mappedJustifications, evita duplicar na lista
@@ -649,10 +707,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             employeeRole: emp.role || 'Colaborador',
             employeeDept: emp.department || 'Geral',
             employeeAvatar: emp.avatar || '',
-            type: hasLate ? 'Atraso de Entrada' : 'Entrada Antecipada',
-            reason: hasLate
-              ? `Entrada às ${s.checkInTime || '--:--'} (previsto ${s.startTime})${diffMins ? ` • +${diffMins} min de atraso` : ''} — aguardando justificativa ou decisão do gestor.`
-              : `Entrada às ${s.checkInTime || '--:--'} (previsto ${s.startTime})${diffMins ? ` • ${diffMins} min antes do horário` : ''} — aguardando justificativa ou decisão do gestor.`,
+            type: isForgetfulnessEntry ? 'Esquecimento de Entrada' : hasLate ? 'Atraso de Entrada' : 'Entrada Antecipada',
+            diffMinutes: diffMins,
+            reason: isForgetfulnessEntry
+              ? `Entrada registrada às ${s.checkInTime || '--:--'} (previsto ${s.startTime})${diffMins ? ` • +${diffMins} min após início` : ''} — Esquecimento de batida declarado.`
+              : hasLate
+                ? `Entrada às ${s.checkInTime || '--:--'} (previsto ${s.startTime})${diffMins ? ` • +${diffMins} min de atraso` : ''} — aguardando justificativa ou decisão do gestor.`
+                : `Entrada às ${s.checkInTime || '--:--'} (previsto ${s.startTime})${diffMins ? ` • ${diffMins} min antes do horário` : ''} — aguardando justificativa ou decisão do gestor.`,
             date: s.date,
             documentName: 'Sem anexo',
             documentUrl: undefined,
@@ -663,14 +724,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         }
       }
 
-      // 2. Avaliar Saída (Hora Extra ou Saída Antecipada)
+      // 2. Avaliar Saída (Hora Extra, Saída Antecipada ou Esquecimento)
       const outTol = (s.endTime && s.checkOutTime)
         ? evaluatePunchTolerance(s.endTime, s.checkOutTime, 'saida', 10)
         : null;
       const hasHe = Boolean(s.notes?.includes('[HE')) || Boolean(outTol?.isOvertime);
       const hasEarlyLeave = !hasHe && (Boolean(s.notes?.includes('[Saída Antecipada') || s.notes?.includes('[Saida Antecipada')) || Boolean(outTol?.isEarlyLeave));
+      const isForgetfulnessExit = Boolean(s.notes?.includes('Esquecimento de Saída') || s.notes?.includes('Justificativa Esquecimento'));
 
-      if (hasHe || hasEarlyLeave) {
+      if (hasHe || hasEarlyLeave || isForgetfulnessExit) {
         const exitKind = hasEarlyLeave ? 'early_leave' : 'overtime';
         const existingJust = findJustForKind(exitKind);
         if (!existingJust) {
@@ -697,10 +759,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             employeeRole: emp.role || 'Colaborador',
             employeeDept: emp.department || 'Geral',
             employeeAvatar: emp.avatar || '',
-            type: hasEarlyLeave ? 'Saída Antecipada' : 'Hora Extra',
+            type: hasEarlyLeave ? 'Saída Antecipada' : isForgetfulnessExit ? 'Esquecimento de Saída' : 'Hora Extra',
+            diffMinutes: diffMins,
             reason: hasEarlyLeave
               ? `Saída às ${s.checkOutTime || '--:--'} (previsto ${s.endTime})${diffMins ? ` • -${diffMins} min antes do término` : ''} — aguardando justificativa ou decisão do gestor.`
-              : `Saída às ${s.checkOutTime || '--:--'} (previsto ${s.endTime})${diffMins ? ` • +${diffMins} min após o término` : ''}.`,
+              : isForgetfulnessExit
+                ? `Saída registrada às ${s.checkOutTime || '--:--'} (previsto ${s.endTime})${diffMins ? ` • +${diffMins} min após o término` : ''} — Esquecimento de batida declarado.`
+                : `Saída às ${s.checkOutTime || '--:--'} (previsto ${s.endTime})${diffMins ? ` • +${diffMins} min após o término` : ''}.`,
             date: s.date,
             documentName: 'Sem anexo',
             documentUrl: undefined,
@@ -748,7 +813,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
     // Central Unificada de Aprovações (Aba 2):
     // Reúne apenas ocorrências reais dos colaboradores vinculados a esta empresa/gestor
-    setApprovalsData([
+    const allApprovals = [
       ...mappedAbsences,
       ...mappedDelaysAndOvertimeFromShifts,
       ...mappedJustifications.map(j => ({
@@ -756,7 +821,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         type: j.type === 'Justificativa de Atraso' ? 'Atraso de Entrada' : j.type
       })),
       ...mappedRequests
-    ]);
+    ].sort((a, b) => {
+      const timeA = parseDateSortTimestamp(a.date);
+      const timeB = parseDateSortTimestamp(b.date);
+      return timeB - timeA;
+    });
+
+    setApprovalsData(allApprovals);
 
     // Ocorrências de Banco de Horas & Registro de Ponto (Exclusivo para jornada com trabalho efetivo)
     const mappedFromShifts: BancoHorasItem[] = (shifts || []).filter(s => {
@@ -967,6 +1038,28 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         id: 'abono-atraso-success',
         title: isEarlyLeave ? 'Saída Antecipada Abonada!' : isEarlyEntry ? 'Entrada Antecipada Abonada!' : 'Atraso Abonado com Sucesso!',
         description: 'A ocorrência foi abonada pelo gestor com base no comprovante e não gerará débito.',
+        rimVariant: 'success',
+        duration: 4000,
+      });
+      return;
+    }
+
+    const isForgetfulness = Boolean(targetItem?.type?.includes('Esquecimento'));
+    if (isForgetfulness) {
+      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace(/^shift-occ-(?:in-|out-)?/, '') : undefined);
+      if (shiftId) {
+        const targetShift = shifts.find(s => s.id === shiftId);
+        if (targetShift) {
+          onOpenEditShift?.({
+            ...targetShift,
+            notes: `${targetShift.notes || ''} [HOMOLOGADO GESTOR: Esquecimento Homologado / Horário Normal Ajustado]`
+          });
+        }
+      }
+      showPolishedToast({
+        id: 'homologar-esquecimento-success',
+        title: 'Esquecimento Homologado!',
+        description: 'O registro foi ajustado para o horário normal da escala, sem gerar débito ou hora extra indevida.',
         rimVariant: 'success',
         duration: 4000,
       });
@@ -1523,7 +1616,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       type: 'Atestado Médico',
       date: new Date().toLocaleDateString('pt-BR'),
       reason: '',
-      documentName: 'atestado.pdf',
+      documentName: '',
       status: 'Pendente',
       feedback: '',
     });
@@ -1534,6 +1627,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   const [relatorioDate, setRelatorioDate] = useState('');
   const [relatorioStatus, setRelatorioStatus] = useState('all');
   const [relatorioDept, setRelatorioDept] = useState('all');
+  const [relatorioDateSort, setRelatorioDateSort] = useState<'desc' | 'asc'>('desc');
 
   // Calcula se existem presenças próximas do limite de 60 dias (idade entre 50 e 60 dias)
   const expiringAttendanceInfo = useMemo(() => {
@@ -1655,12 +1749,31 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             : `${Math.round(s.checkOutLocation.distanceMeters)} m`;
         }
 
+        let scheduledMin = 0;
+        let scheduledHoursFormatted = '—';
+        if (s.startTime && s.endTime) {
+          const [sInH, sInM] = s.startTime.split(':').map(Number);
+          const [sOutH, sOutM] = s.endTime.split(':').map(Number);
+          let diff = (sOutH * 60 + sOutM) - (sInH * 60 + sInM);
+          if (diff < 0) diff += 24 * 60;
+          if (s.breakMinutes) diff = Math.max(0, diff - s.breakMinutes);
+          scheduledMin = diff;
+          const sH = Math.floor(diff / 60);
+          const sM = diff % 60;
+          scheduledHoursFormatted = `${sH}h${sM > 0 ? ` ${sM}m` : ''}`;
+        }
+
+        let workedMin = 0;
         let calculatedHours = '—';
         if (s.checkInTime && hasRealExit) {
           const [inH, inM] = s.checkInTime.split(':').map(Number);
           const [outH, outM] = s.checkOutTime!.split(':').map(Number);
           let diffMin = (outH * 60 + outM) - (inH * 60 + inM);
           if (diffMin < 0) diffMin += 24 * 60;
+          if (s.breakMinutes && diffMin > s.breakMinutes + 60) {
+            diffMin = Math.max(0, diffMin - s.breakMinutes);
+          }
+          workedMin = diffMin;
           const h = Math.floor(diffMin / 60);
           const m = diffMin % 60;
           calculatedHours = diffMin === 0 ? '< 1m' : `${h}h${m > 0 ? ` ${m}m` : ''}`;
@@ -1669,6 +1782,46 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         } else if (!s.checkInTime) {
           calculatedHours = '0h';
         }
+
+        let apuracaoSaldo = 'Regular';
+        let apuracaoKind: 'overtime' | 'deficit' | 'regular' | 'falta' | 'pending' = 'regular';
+
+        if (!s.checkInTime) {
+          apuracaoSaldo = 'Falta (0h)';
+          apuracaoKind = 'falta';
+        } else if (!hasRealExit) {
+          apuracaoSaldo = 'Em andamento';
+          apuracaoKind = 'pending';
+        } else if (scheduledMin > 0) {
+          const balance = workedMin - scheduledMin;
+          // CLT Art. 58 § 1º: tolerância geral de até 10 minutos no dia
+          if (balance > 10) {
+            const extraH = Math.floor(balance / 60);
+            const extraM = balance % 60;
+            apuracaoSaldo = `Hora Extra (+${extraH > 0 ? `${extraH}h ` : ''}${extraM}m)`;
+            apuracaoKind = 'overtime';
+          } else if (balance < -10) {
+            const absBal = Math.abs(balance);
+            const defH = Math.floor(absBal / 60);
+            const defM = absBal % 60;
+            apuracaoSaldo = `Déficit (-${defH > 0 ? `${defH}h ` : ''}${defM}m)`;
+            apuracaoKind = 'deficit';
+          } else {
+            apuracaoSaldo = 'Regular (No horário)';
+            apuracaoKind = 'regular';
+          }
+        } else {
+          apuracaoSaldo = 'Trabalhado';
+          apuracaoKind = 'regular';
+        }
+
+        const scheduledShift = (s.startTime && s.endTime)
+          ? `${s.startTime} às ${s.endTime}${scheduledHoursFormatted !== '—' ? ` (${scheduledHoursFormatted})` : ''}`
+          : 'Sem escala definida';
+
+        const punchReal = s.checkInTime
+          ? `${s.checkInTime}${hasRealExit ? ` → ${s.checkOutTime}` : ' (Em andamento)'}`
+          : 'Sem registro';
 
         const isPast24h = isShiftPast24hWithoutPunch(s);
         const just = (justifications || []).find(j => 
@@ -1731,13 +1884,17 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           name: emp?.name || 'Colaborador',
           role: emp?.role || 'Colaborador',
           dept: emp?.department || 'Geral',
+          scheduledShift,
+          punchReal,
           time: s.checkInTime 
             ? `${s.checkInTime}${hasRealExit ? ` → ${s.checkOutTime}` : ' (Entrada)'}` 
             : `${s.startTime} – ${s.endTime}`,
           hours: calculatedHours,
           status: finalReportStatus,
           isDecisionPending,
-          type: s.type === 'regular' ? 'Regular' : 'Extra',
+          type: apuracaoSaldo,
+          apuracao: apuracaoSaldo,
+          apuracaoKind,
           checkInLocation: s.checkInLocation,
           checkOutLocation: s.checkOutLocation,
           isGpsOutside,
@@ -3342,7 +3499,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         // KPI calculations
         const pendingCount = approvalsData.filter(i => i.status === 'Pendente').length;
         const faltasCount = approvalsData.filter(i => i.status === 'Falta Lançada' || i.status === 'Recusado / Falta').length;
-        const atestadosCount = approvalsData.filter(i => i.documentName && i.documentName.toLowerCase().includes('.pdf')).length;
+        const atestadosCount = approvalsData.filter(i => i.documentName && i.documentName.toLowerCase().includes('.pdf') && i.documentName !== 'Sem anexo' && i.documentName !== 'Não se aplica').length;
 
         // Filter items
         const filteredApprovals = approvalsData.filter(row => {
@@ -3416,6 +3573,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             return row.status === 'Recusado / Falta' || row.status === 'Falta Lançada';
           }
           return true;
+        }).sort((a, b) => {
+          const timeA = parseDateSortTimestamp(a.date);
+          const timeB = parseDateSortTimestamp(b.date);
+          if (timeA !== timeB) {
+            return approvalsDateSort === 'desc' ? timeB - timeA : timeA - timeB;
+          }
+          return a.employeeName.localeCompare(b.employeeName);
         });
 
         return (
@@ -3699,7 +3863,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   >
                     <th className="p-3">COLABORADOR</th>
                     <th className="p-3">TIPO & JUSTIFICATIVA</th>
-                    <th className="p-3">DATA</th>
+                    <th 
+                      className="p-3 cursor-pointer select-none transition-colors hover:text-[#f89847] dark:hover:text-amber-400"
+                      onClick={() => setApprovalsDateSort(prev => prev === 'desc' ? 'asc' : 'desc')}
+                      title="Clique para alternar ordem por data (mais recente / mais antigo)"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>DATA</span>
+                        {approvalsDateSort === 'desc' ? (
+                          <ArrowDown className="w-3.5 h-3.5 text-amber-500" />
+                        ) : (
+                          <ArrowUp className="w-3.5 h-3.5 text-amber-500" />
+                        )}
+                      </div>
+                    </th>
                     <th className="p-3 text-center">COMPROVANTE</th>
                     <th className="p-3 text-center">STATUS</th>
                     <th className="p-3">OBSERVAÇÃO / FEEDBACK</th>
@@ -3759,12 +3936,22 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                               }`}>{row.type}</span>
                               {row.type === 'Atraso de Entrada' && (
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/15 text-amber-500 dark:text-amber-300 border border-amber-500/30">
-                                  -35 min
+                                  -{row.diffMinutes || (row.reason.match(/(\d+)\s*min/)?.[1]) || 15} min
                                 </span>
                               )}
                               {row.type === 'Hora Extra' && (
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30">
-                                  +39 min
+                                  +{row.diffMinutes || (row.reason.match(/\+(\d+)\s*min/)?.[1]) || (row.reason.match(/(\d+)\s*min/)?.[1]) || 15} min
+                                </span>
+                              )}
+                              {row.type === 'Saída Antecipada' && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-orange-500/15 text-orange-500 dark:text-orange-300 border border-orange-500/30">
+                                  -{row.diffMinutes || (row.reason.match(/-(\d+)\s*min/)?.[1]) || (row.reason.match(/(\d+)\s*min/)?.[1]) || 15} min
+                                </span>
+                              )}
+                              {(row.type === 'Esquecimento de Saída' || row.type === 'Esquecimento de Entrada' || row.type === 'Esquecimento de Ponto') && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/15 text-purple-600 dark:text-purple-300 border border-purple-500/30">
+                                  Esquecimento
                                 </span>
                               )}
                               <button
@@ -3803,9 +3990,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           </div>
                         </td>
 
-                        {/* Comprovante (Apenas ícone do clips clicável) */}
+                        {/* Comprovante (Apenas ícone do clips clicável se houver arquivo/link válido) */}
                         <td className="p-3 text-center">
-                          {row.documentUrl || (row.documentName && row.documentName.toLowerCase().includes('.')) ? (
+                          {row.documentUrl && row.documentUrl.trim() !== '' && row.documentUrl !== 'null' && row.documentUrl !== 'undefined' ? (
                             <button
                               type="button"
                               onClick={() => openDocumentSafe(row.documentUrl, row.documentName)}
@@ -3910,12 +4097,12 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                     <span>Debitar</span>
                                   </button>
                                 </>
-                              ) : row.type === 'Hora Extra' ? (
+                              ) : (row.type === 'Hora Extra' || row.type?.includes('Esquecimento')) ? (
                                 <>
                                   <button
                                     type="button"
                                     onClick={() => handleApproveOccurrence(row.id)}
-                                    title="Homologar Hora Extra: Aprova para crédito no Banco de Horas ou pagamento em Folha"
+                                    title={row.type?.includes('Esquecimento') ? "Homologar Esquecimento: Ajusta para o horário contratual sem gerar débito ou hora extra indevida" : "Homologar Hora Extra: Aprova para crédito no Banco de Horas ou pagamento em Folha"}
                                     className="approvals-light-approve px-2.5 py-1.5 rounded-xl font-bold text-xs text-white transition-all shadow-md flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
                                     style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
                                   >
@@ -4130,9 +4317,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           ? 'bg-[#0e0f12] border-white/10 text-slate-200' 
                           : 'bg-slate-50 border-slate-200 text-slate-800'
                       }`}>
-                        {selectedDetailOccurrence.type === 'Falta Não Justificada'
-                          ? 'Turno encerrado há mais de 24 horas sem registro de ponto e sem envio de atestado/justificativa pelo colaborador.'
-                          : (selectedDetailOccurrence.reason || 'Nenhuma justificativa detalhada foi fornecida.')}
+                        {selectedDetailOccurrence.reason || (
+                          selectedDetailOccurrence.type === 'Falta Não Justificada'
+                            ? 'Turno encerrado há mais de 24 horas sem registro de ponto e sem envio de atestado/justificativa pelo colaborador.'
+                            : 'Nenhuma justificativa detalhada foi fornecida.'
+                        )}
                       </div>
                     </div>
 
@@ -4141,12 +4330,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       <label className="text-[10px] font-bold font-mono tracking-wider uppercase text-slate-400 block">
                         COMPROVANTE / DOCUMENTO ANEXO
                       </label>
-                      {selectedDetailOccurrence.documentName && selectedDetailOccurrence.documentName.toLowerCase().includes('.pdf') ? (
+                      {selectedDetailOccurrence.documentUrl && 
+                       selectedDetailOccurrence.documentUrl.trim() !== '' &&
+                       selectedDetailOccurrence.documentUrl !== 'null' &&
+                       selectedDetailOccurrence.documentUrl !== 'undefined' ? (
                         <div className="flex items-center justify-between p-3 rounded-xl border border-[#f89847]/30 bg-[#f89847]/10">
                           <div className="flex items-center gap-2">
                             <Paperclip className="w-4 h-4 text-[#f89847]" />
                             <span className="text-xs font-mono font-bold text-[#f89847]">
-                              {selectedDetailOccurrence.documentName}
+                              {selectedDetailOccurrence.documentName || 'Comprovante'}
                             </span>
                           </div>
                           <button
@@ -4159,7 +4351,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         </div>
                       ) : (
                         <p className="text-xs text-slate-400 italic">
-                          {selectedDetailOccurrence.documentName || 'Sem comprovante anexado'}
+                          Sem comprovante anexado
                         </p>
                       )}
                     </div>
@@ -4242,7 +4434,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                               <span>Abonar Atraso</span>
                             </button>
                           </>
-                        ) : selectedDetailOccurrence.type === 'Hora Extra' ? (
+                        ) : (selectedDetailOccurrence.type === 'Hora Extra' || selectedDetailOccurrence.type?.includes('Esquecimento')) ? (
                           <>
                             <button
                               type="button"
@@ -4266,7 +4458,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                               style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
                             >
                               <CheckCircle2 className="w-4 h-4" />
-                              <span>Homologar Hora Extra</span>
+                              <span>{selectedDetailOccurrence.type?.includes('Esquecimento') ? 'Homologar Esquecimento' : 'Homologar Hora Extra'}</span>
                             </button>
                           </>
                         ) : (
@@ -4686,13 +4878,27 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         ? 'border-[#282a33] bg-[#101115] text-slate-400' 
                         : 'border-[#640C1E]/30 bg-gradient-to-r from-[#640C1E] to-[#9F243C] text-[#F9DE97] shadow-sm'
                     }`}>
-                      <th className="p-3.5 font-bold tracking-wider">DATA</th>
+                      <th 
+                        className="p-3.5 font-bold tracking-wider cursor-pointer select-none transition-opacity hover:opacity-80"
+                        onClick={() => setRelatorioDateSort(prev => prev === 'desc' ? 'asc' : 'desc')}
+                        title="Clique para alternar ordem por data (mais recente / mais antigo)"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>DATA</span>
+                          {relatorioDateSort === 'desc' ? (
+                            <ArrowDown className="w-3.5 h-3.5 text-[#F9DE97] dark:text-amber-400" />
+                          ) : (
+                            <ArrowUp className="w-3.5 h-3.5 text-[#F9DE97] dark:text-amber-400" />
+                          )}
+                        </div>
+                      </th>
                       <th className="p-3.5 font-bold tracking-wider">COLABORADOR</th>
                       <th className="p-3.5 font-bold tracking-wider">DEPARTAMENTO</th>
-                      <th className="p-3.5 font-bold tracking-wider">HORÁRIO</th>
+                      <th className="p-3.5 font-bold tracking-wider">ESCALA PREVISTA</th>
+                      <th className="p-3.5 font-bold tracking-wider">PONTO REALIZADO</th>
                       <th className="p-3.5 font-bold tracking-wider">CARGA</th>
                       <th className="p-3.5 font-bold tracking-wider text-center">STATUS</th>
-                      <th className="p-3.5 font-bold tracking-wider">TIPO</th>
+                      <th className="p-3.5 font-bold tracking-wider">APURAÇÃO / SALDO</th>
                       <th className="p-3.5 font-bold tracking-wider">OBSERVAÇÕES</th>
                     </tr>
                   </thead>
@@ -4714,7 +4920,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         const matchDateRaw = row.date.toLowerCase().includes(q);
                         const matchDateFormatted = formattedRowDate.toLowerCase().includes(q);
                         const matchDateSlash = formattedRowDate.replace(/-/g, '/').toLowerCase().includes(q);
-                        if (!matchName && !matchDept && !matchRole && !matchDateRaw && !matchDateFormatted && !matchDateSlash) {
+                        const matchApuracao = (row.apuracao || '').toLowerCase().includes(q);
+                        if (!matchName && !matchDept && !matchRole && !matchDateRaw && !matchDateFormatted && !matchDateSlash && !matchApuracao) {
                           return false;
                         }
                       }
@@ -4727,6 +4934,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         (relatorioStatus === 'justified' && row.status === 'Justificado') ||
                         (relatorioStatus === 'pending' && row.status === 'Pendente');
                       return matchDept && matchStatus;
+                    }).sort((a, b) => {
+                      const timeA = parseDateSortTimestamp(a.date);
+                      const timeB = parseDateSortTimestamp(b.date);
+                      if (timeA !== timeB) {
+                        return relatorioDateSort === 'desc' ? timeB - timeA : timeA - timeB;
+                      }
+                      return a.name.localeCompare(b.name);
                     }).map((row, idx) => (
                       <tr 
                         key={idx} 
@@ -4765,7 +4979,14 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           </div>
                         </td>
                         <td className={`p-3.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{row.dept}</td>
-                        <td className={`p-3.5 font-mono text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{row.time}</td>
+                        <td className={`p-3.5 font-mono text-[11px] whitespace-nowrap ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          <span>{row.scheduledShift}</span>
+                        </td>
+                        <td className={`p-3.5 font-mono text-[11px] whitespace-nowrap ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          <span className={row.punchReal === 'Sem registro' ? (isDark ? 'text-slate-500 italic' : 'text-slate-400 italic') : ''}>
+                            {row.punchReal}
+                          </span>
+                        </td>
                         <td className={`p-3.5 font-mono font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{row.hours}</td>
                         <td className="p-3.5 text-center">
                           <div className="flex items-center justify-center">
@@ -4787,7 +5008,31 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             />
                           </div>
                         </td>
-                        <td className={`p-3.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{row.type}</td>
+                        <td className="p-3.5 text-[11px] whitespace-nowrap">
+                          {row.apuracaoKind === 'overtime' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                              {row.apuracao}
+                            </span>
+                          ) : row.apuracaoKind === 'deficit' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                              {row.apuracao}
+                            </span>
+                          ) : row.apuracaoKind === 'falta' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                              {row.apuracao}
+                            </span>
+                          ) : row.apuracaoKind === 'pending' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                              {row.apuracao}
+                            </span>
+                          ) : (
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium ${
+                              isDark ? 'bg-white/5 text-slate-300 border border-white/10' : 'bg-slate-100 text-slate-700 border border-slate-200'
+                            }`}>
+                              {row.apuracao}
+                            </span>
+                          )}
+                        </td>
                         <td className={`p-3.5 text-[11px] max-w-[280px] ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                           <div className="flex items-center gap-2 truncate" title={row.obsFull || row.cleanObs}>
                             {row.isGpsOutside && (

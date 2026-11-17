@@ -475,7 +475,7 @@ function AppContent() {
     shiftId?: string; 
     date?: string; 
     reason?: string; 
-    type?: 'absence' | 'delay' | 'early_entry' | 'early_leave';
+    type?: 'absence' | 'delay' | 'early_entry' | 'early_leave' | 'overtime' | 'forgetfulness';
     delayMinutes?: number;
   } | null>(null);
   const [editingRequest, setEditingRequest] = useState<TimeOffRequest | null>(null);
@@ -527,7 +527,7 @@ function AppContent() {
   const handleOpenJustificationModal = (
     shiftId?: string, 
     date?: string, 
-    type: 'absence' | 'delay' | 'early_entry' | 'early_leave' = 'absence', 
+    type: 'absence' | 'delay' | 'early_entry' | 'early_leave' | 'overtime' | 'forgetfulness' = 'absence', 
     delayMinutes?: number,
     reason?: string
   ) => {
@@ -834,7 +834,9 @@ function AppContent() {
             .replace(/^\s*\|\s*|\s*\|\s*$/g, '')
             .trim();
           if (lateDiffMinutes > 0) {
-            const lateTag = `[Atraso ${lateDiffMinutes}m: ${notesOrReason || 'Aguardando justificativa'}]`;
+            const lateTag = isForgetfulness
+              ? `[Esquecimento de Entrada: Chegada real no horário previsto (${s.startTime || '08:00'}) - Batida às ${timeStr}]`
+              : `[Atraso ${lateDiffMinutes}m: ${notesOrReason || 'Aguardando justificativa'}]`;
             updatedNotes = updatedNotes ? `${updatedNotes} | ${lateTag}` : lateTag;
           } else if (earlyEntryDiffMinutes > 0) {
             const earlyEntryTag = `[Entrada Antecipada ${earlyEntryDiffMinutes}m: ${notesOrReason || 'Aguardando justificativa'}]`;
@@ -1054,12 +1056,14 @@ function AppContent() {
   };
 
   // Submit absence or delay justification
-  const handleSubmitJustification = async (just: Partial<AbsenceJustification> & { justificationType?: 'absence' | 'delay' | 'early_entry' | 'early_leave' }) => {
+  const handleSubmitJustification = async (just: Partial<AbsenceJustification> & { justificationType?: 'absence' | 'delay' | 'early_entry' | 'early_leave' | 'overtime' | 'forgetfulness' }) => {
     const jType = just.justificationType || 'absence';
     const isDelayJustification = jType === 'delay';
     const isEarlyEntryJustification = jType === 'early_entry';
     const isEarlyLeaveJustification = jType === 'early_leave';
-    const isTimeDeviation = isDelayJustification || isEarlyEntryJustification || isEarlyLeaveJustification;
+    const isOvertimeJustification = jType === 'overtime';
+    const isForgetfulnessJustification = jType === 'forgetfulness';
+    const isTimeDeviation = isDelayJustification || isEarlyEntryJustification || isEarlyLeaveJustification || isOvertimeJustification || isForgetfulnessJustification;
 
     const rawReason = (just.reason || '').trim();
     const lowerReason = rawReason.toLowerCase();
@@ -1070,6 +1074,10 @@ function AppContent() {
       finalReason = `[Saída Antecipada] ${rawReason}`;
     } else if (isDelayJustification && !lowerReason.includes('atraso')) {
       finalReason = `[Atraso] ${rawReason}`;
+    } else if (isOvertimeJustification && !lowerReason.includes('hora extra')) {
+      finalReason = `[Hora Extra] ${rawReason}`;
+    } else if (isForgetfulnessJustification && !lowerReason.includes('esquecimento') && !lowerReason.includes('esqueci')) {
+      finalReason = `[Esquecimento de Ponto] ${rawReason}`;
     }
 
     const tempId = `just-${Date.now()}`;
@@ -1094,7 +1102,11 @@ function AppContent() {
         ? 'Justificativa Entrada Antecipada'
         : isEarlyLeaveJustification
           ? 'Justificativa Saída Antecipada'
-          : 'Justificativa Atraso';
+          : isDelayJustification
+            ? 'Justificativa Atraso'
+            : isOvertimeJustification
+              ? 'Justificativa Hora Extra'
+              : 'Justificativa Esquecimento';
       setShifts(prev => prev.map(s => {
         if (s.id === just.shiftId) {
           const updatedNotes = s.notes
@@ -1116,7 +1128,11 @@ function AppContent() {
         ? 'entrada antecipada'
         : isEarlyLeaveJustification
           ? 'saída antecipada'
-          : 'atraso';
+          : isDelayJustification
+            ? 'atraso'
+            : isOvertimeJustification
+              ? 'hora extra'
+              : 'esquecimento de ponto';
       showToast('Justificativa Enviada', `Sua justificativa de ${labelToast} foi registrada e enviada para o Gestor.`, 'success');
     }
 
@@ -1132,7 +1148,11 @@ function AppContent() {
             ? 'Nova Justificativa de Saída Antecipada'
             : isDelayJustification
               ? 'Nova Justificativa de Atraso'
-              : 'Novo Atestado / Justificativa';
+              : isOvertimeJustification
+                ? 'Nova Justificativa de Hora Extra'
+                : isForgetfulnessJustification
+                  ? 'Nova Justificativa de Esquecimento de Ponto'
+                  : 'Novo Atestado / Justificativa';
         const notifMsg = isTimeDeviation
           ? `${activeEmployee.name} enviou justificativa (${notifTitle.replace('Nova Justificativa de ', '')}) no dia ${just.date || ''}: "${rawReason}".`
           : `${activeEmployee.name} enviou atestado/comprovante para ${just.date || 'data de ausência'}.`;
@@ -2536,40 +2556,47 @@ function AppContent() {
                         <div className={`my-2.5 p-2.5 rounded-xl border flex items-center justify-between gap-2.5 ${
                           !isDark ? 'bg-slate-50 border-slate-200' : 'bg-[#0e0f12] border-[#282a33]'
                         }`}>
-                          <div className="min-w-0 flex-1">
-                            <span className={`text-[9px] uppercase font-bold tracking-wider block font-mono ${
-                              !isDark ? 'text-slate-500' : 'text-slate-400'
-                            }`}>
-                              {just.documentName ? 'Comprovante Anexado' : 'Parecer da Gestão'}
-                            </span>
-                            <span className={`font-medium truncate block text-xs ${
-                              !isDark ? 'text-slate-900' : 'text-white'
-                            }`}>
-                              {just.documentName || just.managerNotes || statusLabel}
-                            </span>
-                          </div>
+                          {(() => {
+                            const hasValidDoc = Boolean(just.documentUrl && just.documentUrl.trim() !== '' && just.documentUrl !== 'null' && just.documentUrl !== 'undefined');
+                            return (
+                              <>
+                                <div className="min-w-0 flex-1">
+                                  <span className={`text-[9px] uppercase font-bold tracking-wider block font-mono ${
+                                    !isDark ? 'text-slate-500' : 'text-slate-400'
+                                  }`}>
+                                    {hasValidDoc ? 'Comprovante Anexado' : 'Parecer da Gestão'}
+                                  </span>
+                                  <span className={`font-medium truncate block text-xs ${
+                                    !isDark ? 'text-slate-900' : 'text-white'
+                                  }`}>
+                                    {hasValidDoc ? (just.documentName || 'Comprovante') : (just.managerNotes || statusLabel)}
+                                  </span>
+                                </div>
 
-                          {just.documentName ? (
-                            <button
-                              type="button"
-                              onClick={() => openDocumentSafe(just.documentUrl, just.documentName)}
-                              className={`shrink-0 text-[10px] font-semibold px-2.5 py-1 rounded-md font-mono border cursor-pointer transition-opacity hover:opacity-80 ${
-                                !isDark
-                                  ? 'text-amber-800 bg-amber-50 border-amber-200'
-                                  : 'text-[#F9DE97] bg-[#F59242]/10 border-[#F59242]/20'
-                              }`}
-                            >
-                              Visualizar
-                            </button>
-                          ) : (
-                            <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-md font-mono border ${
-                              !isDark
-                                ? 'text-slate-600 bg-slate-200 border-slate-300'
-                                : 'text-slate-400 bg-white/5 border-white/10'
-                            }`}>
-                              {statusLabel}
-                            </span>
-                          )}
+                                {hasValidDoc ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => openDocumentSafe(just.documentUrl, just.documentName)}
+                                    className={`shrink-0 text-[10px] font-semibold px-2.5 py-1 rounded-md font-mono border cursor-pointer transition-opacity hover:opacity-80 ${
+                                      !isDark
+                                        ? 'text-amber-800 bg-amber-50 border-amber-200'
+                                        : 'text-[#F9DE97] bg-[#F59242]/10 border-[#F59242]/20'
+                                    }`}
+                                  >
+                                    Visualizar
+                                  </button>
+                                ) : (
+                                  <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-md font-mono border ${
+                                    !isDark
+                                      ? 'text-slate-600 bg-slate-200 border-slate-300'
+                                      : 'text-slate-400 bg-white/5 border-white/10'
+                                  }`}>
+                                    {statusLabel}
+                                  </span>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
 
                         {/* Footer Row: Date Pill & SubmittedAt */}
