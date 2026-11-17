@@ -834,7 +834,9 @@ function AppContent() {
             .replace(/^\s*\|\s*|\s*\|\s*$/g, '')
             .trim();
           if (lateDiffMinutes > 0) {
-            const lateTag = `[Atraso ${lateDiffMinutes}m: ${notesOrReason || 'Aguardando justificativa'}]`;
+            const lateTag = isForgetfulness
+              ? `[Esquecimento de Entrada: Chegada real no horário previsto (${s.startTime || '08:00'}) - Batida às ${timeStr}]`
+              : `[Atraso ${lateDiffMinutes}m: ${notesOrReason || 'Aguardando justificativa'}]`;
             updatedNotes = updatedNotes ? `${updatedNotes} | ${lateTag}` : lateTag;
           } else if (earlyEntryDiffMinutes > 0) {
             const earlyEntryTag = `[Entrada Antecipada ${earlyEntryDiffMinutes}m: ${notesOrReason || 'Aguardando justificativa'}]`;

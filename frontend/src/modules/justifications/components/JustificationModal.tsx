@@ -142,11 +142,23 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
     const chosenShift = shifts.find(s => s.id === selectedShiftId);
     const finalDate = absenceDate || chosenShift?.date || getTodayDateString();
 
+    let formattedReason = reason;
+    if (selectedCategory === 'forgetfulness') {
+      const isExit = justificationType === 'overtime';
+      const refTime = isExit ? (chosenShift?.endTime || '17:00') : (chosenShift?.startTime || '08:00');
+      const tag = isExit
+        ? `[Esquecimento de Saída: Saída real no horário previsto (${refTime})]`
+        : `[Esquecimento de Entrada: Chegada real no horário previsto (${refTime})]`;
+      if (!formattedReason.includes('[Esquecimento')) {
+        formattedReason = `${tag} ${formattedReason}`;
+      }
+    }
+
     if (editingJustification && onUpdateJustification) {
       onUpdateJustification(editingJustification.id, {
         shiftId: selectedShiftId || undefined,
         date: finalDate,
-        reason,
+        reason: formattedReason,
         documentName: documentName || editingJustification.documentName,
         documentUrl: documentUrl || editingJustification.documentUrl,
       });
@@ -157,13 +169,14 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
         employeeAvatar: currentEmployee.avatar,
         shiftId: selectedShiftId || undefined,
         date: finalDate,
-        reason,
+        reason: formattedReason,
         documentName: documentName || undefined,
         documentType: documentName ? 'application/pdf' : undefined,
         documentUrl: documentUrl || undefined,
         status: 'pending',
-        justificationType: selectedCategory
-      });
+        justificationType: selectedCategory,
+        delayMinutes: delayMinutes || undefined,
+      } as any);
     }
 
     handleClose();
@@ -174,7 +187,7 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
   const occurrenceLabel = isOvertime
     ? `Hora Extra / Extensão ${delayMinutes ? `(+${delayMinutes} min)` : ''}`
     : isForgetfulness
-      ? 'Esquecimento de Ponto'
+      ? (justificationType === 'overtime' ? 'Esquecimento de Saída' : 'Esquecimento de Entrada')
       : isDelay
         ? `Atraso de Entrada ${delayMinutes ? `(+${delayMinutes} min)` : ''}`
         : isEarlyEntry
@@ -188,7 +201,7 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
     : isOvertime
       ? 'Justificar / Solicitar Hora Extra'
       : isForgetfulness
-        ? 'Justificar Esquecimento de Ponto'
+        ? (justificationType === 'overtime' ? 'Justificar Esquecimento de Saída' : 'Justificar Esquecimento de Entrada')
         : isDelay
           ? 'Justificar Atraso de Entrada'
           : isEarlyEntry
@@ -200,7 +213,9 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
   const modalSubtitle = isOvertime
     ? 'Informe a demanda, urgência ou chamado que motivou o tempo adicional trabalhado.'
     : isForgetfulness
-      ? 'Informe o horário real em que você trabalhou e relate o motivo do esquecimento do ponto.'
+      ? (justificationType === 'overtime'
+          ? `Declare que você encerrou o expediente no horário contratual (${chosenShift?.endTime || '17:00'}) e relate o motivo da batida posterior.`
+          : `Declare que você iniciou o expediente no horário contratual (${chosenShift?.startTime || '08:00'}) e relate o motivo da batida posterior.`)
       : isDelay
         ? (delayMinutes ? `Atraso registrado de +${delayMinutes} min. Informe o motivo para o gestor.` : 'Informe o motivo do atraso e anexe declaração/comprovante se aplicável.')
         : isEarlyEntry
@@ -270,6 +285,111 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
 
         {/* Form Body com scroll interno independente */}
         <form onSubmit={handleSubmit} className={`p-5 space-y-4 overflow-y-auto flex-1 ${isLightTheme ? 'text-slate-800' : 'text-white'}`}>
+          {/* Seletor Contextual de Categoria (Quando veio pré-selecionado de Entrada ou Saída tardia) */}
+          {isPreselectedOccurrence && (justificationType === 'delay' || justificationType === 'overtime') && (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className={`block text-[10px] font-semibold uppercase tracking-wider ${
+                  isLightTheme ? 'text-slate-600' : 'text-white/60'
+                }`}>
+                  {justificationType === 'overtime'
+                    ? 'O que motivou o registro após o horário previsto?'
+                    : 'O que motivou a entrada após o horário previsto?'}
+                </label>
+                <span className="text-[10px] font-bold text-amber-500">
+                  Defina a realidade do fato
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {justificationType === 'overtime' ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategory('overtime')}
+                      className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all text-left flex items-center gap-2 cursor-pointer ${
+                        selectedCategory === 'overtime'
+                          ? isLightTheme
+                            ? 'border-emerald-600 bg-emerald-50 text-emerald-900 shadow-xs'
+                            : 'border-emerald-500 bg-emerald-500/20 text-emerald-300 shadow-md'
+                          : isLightTheme
+                            ? 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                            : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'
+                      }`}
+                    >
+                      <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${selectedCategory === 'overtime' ? 'bg-emerald-500 shadow-xs' : 'bg-slate-400/50'}`} />
+                      <div className="truncate">
+                        <div className="truncate font-bold">Fiz Hora Extra</div>
+                        <div className="text-[10px] font-normal opacity-80 truncate">Trabalhei após o expediente</div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategory('forgetfulness')}
+                      className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all text-left flex items-center gap-2 cursor-pointer ${
+                        selectedCategory === 'forgetfulness'
+                          ? isLightTheme
+                            ? 'border-purple-600 bg-purple-50 text-purple-900 shadow-xs'
+                            : 'border-purple-500 bg-purple-500/20 text-purple-300 shadow-md'
+                          : isLightTheme
+                            ? 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                            : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'
+                      }`}
+                    >
+                      <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${selectedCategory === 'forgetfulness' ? 'bg-purple-500 shadow-xs' : 'bg-slate-400/50'}`} />
+                      <div className="truncate">
+                        <div className="truncate font-bold">Esqueci de Bater</div>
+                        <div className="text-[10px] font-normal opacity-80 truncate">Saí no horário contratual</div>
+                      </div>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategory('delay')}
+                      className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all text-left flex items-center gap-2 cursor-pointer ${
+                        selectedCategory === 'delay'
+                          ? isLightTheme
+                            ? 'border-amber-600 bg-amber-50 text-amber-900 shadow-xs'
+                            : 'border-amber-500 bg-amber-500/20 text-amber-300 shadow-md'
+                          : isLightTheme
+                            ? 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                            : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'
+                      }`}
+                    >
+                      <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${selectedCategory === 'delay' ? 'bg-amber-500 shadow-xs' : 'bg-slate-400/50'}`} />
+                      <div className="truncate">
+                        <div className="truncate font-bold">Cheguei com Atraso</div>
+                        <div className="text-[10px] font-normal opacity-80 truncate">Tive imprevisto / consulta</div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategory('forgetfulness')}
+                      className={`px-3 py-2.5 rounded-xl text-xs font-bold border transition-all text-left flex items-center gap-2 cursor-pointer ${
+                        selectedCategory === 'forgetfulness'
+                          ? isLightTheme
+                            ? 'border-purple-600 bg-purple-50 text-purple-900 shadow-xs'
+                            : 'border-purple-500 bg-purple-500/20 text-purple-300 shadow-md'
+                          : isLightTheme
+                            ? 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                            : 'border-white/10 bg-white/5 text-white/60 hover:bg-white/10'
+                      }`}
+                    >
+                      <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${selectedCategory === 'forgetfulness' ? 'bg-purple-500 shadow-xs' : 'bg-slate-400/50'}`} />
+                      <div className="truncate">
+                        <div className="truncate font-bold">Esqueci de Bater</div>
+                        <div className="text-[10px] font-normal opacity-80 truncate">Cheguei no horário regular</div>
+                      </div>
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Categoria / Tipo de Ocorrência Selector (Apenas quando não veio pré-selecionado de um card) */}
           {!isPreselectedOccurrence && (
             <div>

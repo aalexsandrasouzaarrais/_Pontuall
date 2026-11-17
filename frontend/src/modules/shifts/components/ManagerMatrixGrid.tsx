@@ -228,6 +228,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
   const [approvalsData, setApprovalsData] = useState<Array<{
     id: string;
+    shiftId?: string;
     employeeId?: string;
     employeeName: string;
     employeeRole: string;
@@ -236,6 +237,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     type: string;
     reason: string;
     date: string;
+    diffMinutes?: number;
     documentName: string;
     documentUrl?: string;
     status: 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente';
@@ -456,21 +458,26 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       const rLower = (j.reason || '').toLowerCase();
       const isOvertimeJust = rLower.includes('hora extra') || (j as any).justificationType === 'overtime';
       const isForgetfulnessJust = rLower.includes('esquecimento') || rLower.includes('esqueci') || (j as any).justificationType === 'forgetfulness';
+      const isEntryForgetfulness = isForgetfulnessJust && (rLower.includes('entrada') || (j as any).initialPunchType === 'entrada');
+      const isExitForgetfulness = isForgetfulnessJust && !isEntryForgetfulness;
       const isEarlyLeaveJust = rLower.includes('saída antecipada') || rLower.includes('saida antecipada') || (j as any).justificationType === 'early_leave';
       const isEarlyEntryJust = rLower.includes('entrada antecipada') || (j as any).justificationType === 'early_entry';
       const isDelayJust = rLower.includes('atraso') || (j as any).justificationType === 'delay';
       const resolvedShiftId = j.shiftId || (shifts || []).find(s => s.employeeId === j.employeeId && s.date === j.date)?.id;
       const typeLabel = isOvertimeJust
         ? 'Hora Extra'
-        : isForgetfulnessJust
-          ? 'Esquecimento de Saída'
-          : isEarlyLeaveJust
-            ? 'Saída Antecipada'
-            : isEarlyEntryJust
-              ? 'Entrada Antecipada'
-              : isDelayJust
-                ? 'Justificativa de Atraso'
-                : 'Atestado Médico';
+        : isEntryForgetfulness
+          ? 'Esquecimento de Entrada'
+          : isExitForgetfulness
+            ? 'Esquecimento de Saída'
+            : isEarlyLeaveJust
+              ? 'Saída Antecipada'
+              : isEarlyEntryJust
+                ? 'Entrada Antecipada'
+                : isDelayJust
+                  ? 'Atraso de Entrada'
+                  : 'Atestado Médico';
+      const parsedDiff = (j as any).delayMinutes || (j.reason?.match(/(\d+)\s*min/)?.[1] ? Number(j.reason?.match(/(\d+)\s*min/)?.[1]) : undefined);
       return {
         id: j.id,
         shiftId: resolvedShiftId,
@@ -480,6 +487,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         employeeDept: emp?.department || 'Geral',
         employeeAvatar: emp?.avatar || j.employeeAvatar || '',
         type: typeLabel,
+        diffMinutes: parsedDiff,
         reason: j.reason,
         date: j.date,
         documentName: j.documentName || (j.documentUrl ? 'Comprovante.pdf' : undefined),
@@ -597,6 +605,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         employeeDept: string;
         employeeAvatar: string;
         type: string;
+        diffMinutes?: number;
         reason: string;
         date: string;
         documentName: string;
@@ -614,18 +623,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           const jType = (j as any).justificationType;
           if (kind === 'early_entry') return rLower.includes('entrada antecipada') || jType === 'early_entry';
           if (kind === 'early_leave') return rLower.includes('saída antecipada') || rLower.includes('saida antecipada') || jType === 'early_leave';
-          if (kind === 'delay') return rLower.includes('atraso') || jType === 'delay';
+          if (kind === 'delay') return rLower.includes('atraso') || jType === 'delay' || (rLower.includes('esquecimento') && rLower.includes('entrada'));
+          if (kind === 'overtime') return rLower.includes('hora extra') || jType === 'overtime' || (rLower.includes('esquecimento') && !rLower.includes('entrada'));
           return false;
         });
 
-      // 1. Avaliar Entrada (Atraso ou Entrada Antecipada)
+      // 1. Avaliar Entrada (Atraso, Entrada Antecipada ou Esquecimento)
       const inTol = (s.startTime && s.checkInTime)
         ? evaluatePunchTolerance(s.startTime, s.checkInTime, 'entrada', 10)
         : null;
       const hasLate = Boolean(s.notes?.includes('[Atraso')) || s.attendanceStatus === 'late' || Boolean(inTol?.isLate);
       const hasEarlyEntry = !hasLate && (Boolean(s.notes?.includes('[Entrada Antecipada')) || Boolean(inTol?.isEarly));
+      const isForgetfulnessEntry = Boolean(s.notes?.includes('Esquecimento de Entrada'));
 
-      if (hasLate || hasEarlyEntry) {
+      if (hasLate || hasEarlyEntry || isForgetfulnessEntry) {
         const entryKind = hasLate ? 'delay' : 'early_entry';
         const existingJust = findJustForKind(entryKind);
         // Se já foi mapeada em mappedJustifications, evita duplicar na lista
@@ -655,10 +666,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             employeeRole: emp.role || 'Colaborador',
             employeeDept: emp.department || 'Geral',
             employeeAvatar: emp.avatar || '',
-            type: hasLate ? 'Atraso de Entrada' : 'Entrada Antecipada',
-            reason: hasLate
-              ? `Entrada às ${s.checkInTime || '--:--'} (previsto ${s.startTime})${diffMins ? ` • +${diffMins} min de atraso` : ''} — aguardando justificativa ou decisão do gestor.`
-              : `Entrada às ${s.checkInTime || '--:--'} (previsto ${s.startTime})${diffMins ? ` • ${diffMins} min antes do horário` : ''} — aguardando justificativa ou decisão do gestor.`,
+            type: isForgetfulnessEntry ? 'Esquecimento de Entrada' : hasLate ? 'Atraso de Entrada' : 'Entrada Antecipada',
+            diffMinutes: diffMins,
+            reason: isForgetfulnessEntry
+              ? `Entrada registrada às ${s.checkInTime || '--:--'} (previsto ${s.startTime})${diffMins ? ` • +${diffMins} min após início` : ''} — Esquecimento de batida declarado.`
+              : hasLate
+                ? `Entrada às ${s.checkInTime || '--:--'} (previsto ${s.startTime})${diffMins ? ` • +${diffMins} min de atraso` : ''} — aguardando justificativa ou decisão do gestor.`
+                : `Entrada às ${s.checkInTime || '--:--'} (previsto ${s.startTime})${diffMins ? ` • ${diffMins} min antes do horário` : ''} — aguardando justificativa ou decisão do gestor.`,
             date: s.date,
             documentName: 'Sem anexo',
             documentUrl: undefined,
@@ -669,14 +683,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         }
       }
 
-      // 2. Avaliar Saída (Hora Extra ou Saída Antecipada)
+      // 2. Avaliar Saída (Hora Extra, Saída Antecipada ou Esquecimento)
       const outTol = (s.endTime && s.checkOutTime)
         ? evaluatePunchTolerance(s.endTime, s.checkOutTime, 'saida', 10)
         : null;
       const hasHe = Boolean(s.notes?.includes('[HE')) || Boolean(outTol?.isOvertime);
       const hasEarlyLeave = !hasHe && (Boolean(s.notes?.includes('[Saída Antecipada') || s.notes?.includes('[Saida Antecipada')) || Boolean(outTol?.isEarlyLeave));
+      const isForgetfulnessExit = Boolean(s.notes?.includes('Esquecimento de Saída') || s.notes?.includes('Justificativa Esquecimento'));
 
-      if (hasHe || hasEarlyLeave) {
+      if (hasHe || hasEarlyLeave || isForgetfulnessExit) {
         const exitKind = hasEarlyLeave ? 'early_leave' : 'overtime';
         const existingJust = findJustForKind(exitKind);
         if (!existingJust) {
@@ -703,10 +718,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             employeeRole: emp.role || 'Colaborador',
             employeeDept: emp.department || 'Geral',
             employeeAvatar: emp.avatar || '',
-            type: hasEarlyLeave ? 'Saída Antecipada' : 'Hora Extra',
+            type: hasEarlyLeave ? 'Saída Antecipada' : isForgetfulnessExit ? 'Esquecimento de Saída' : 'Hora Extra',
+            diffMinutes: diffMins,
             reason: hasEarlyLeave
               ? `Saída às ${s.checkOutTime || '--:--'} (previsto ${s.endTime})${diffMins ? ` • -${diffMins} min antes do término` : ''} — aguardando justificativa ou decisão do gestor.`
-              : `Saída às ${s.checkOutTime || '--:--'} (previsto ${s.endTime})${diffMins ? ` • +${diffMins} min após o término` : ''}.`,
+              : isForgetfulnessExit
+                ? `Saída registrada às ${s.checkOutTime || '--:--'} (previsto ${s.endTime})${diffMins ? ` • +${diffMins} min após o término` : ''} — Esquecimento de batida declarado.`
+                : `Saída às ${s.checkOutTime || '--:--'} (previsto ${s.endTime})${diffMins ? ` • +${diffMins} min após o término` : ''}.`,
             date: s.date,
             documentName: 'Sem anexo',
             documentUrl: undefined,
@@ -973,6 +991,28 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         id: 'abono-atraso-success',
         title: isEarlyLeave ? 'Saída Antecipada Abonada!' : isEarlyEntry ? 'Entrada Antecipada Abonada!' : 'Atraso Abonado com Sucesso!',
         description: 'A ocorrência foi abonada pelo gestor com base no comprovante e não gerará débito.',
+        rimVariant: 'success',
+        duration: 4000,
+      });
+      return;
+    }
+
+    const isForgetfulness = Boolean(targetItem?.type?.includes('Esquecimento'));
+    if (isForgetfulness) {
+      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace(/^shift-occ-(?:in-|out-)?/, '') : undefined);
+      if (shiftId) {
+        const targetShift = shifts.find(s => s.id === shiftId);
+        if (targetShift) {
+          onOpenEditShift?.({
+            ...targetShift,
+            notes: `${targetShift.notes || ''} [HOMOLOGADO GESTOR: Esquecimento Homologado / Horário Normal Ajustado]`
+          });
+        }
+      }
+      showPolishedToast({
+        id: 'homologar-esquecimento-success',
+        title: 'Esquecimento Homologado!',
+        description: 'O registro foi ajustado para o horário normal da escala, sem gerar débito ou hora extra indevida.',
         rimVariant: 'success',
         duration: 4000,
       });
@@ -3828,12 +3868,22 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                               }`}>{row.type}</span>
                               {row.type === 'Atraso de Entrada' && (
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/15 text-amber-500 dark:text-amber-300 border border-amber-500/30">
-                                  -35 min
+                                  -{row.diffMinutes || (row.reason.match(/(\d+)\s*min/)?.[1]) || 15} min
                                 </span>
                               )}
                               {row.type === 'Hora Extra' && (
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30">
-                                  +39 min
+                                  +{row.diffMinutes || (row.reason.match(/\+(\d+)\s*min/)?.[1]) || (row.reason.match(/(\d+)\s*min/)?.[1]) || 15} min
+                                </span>
+                              )}
+                              {row.type === 'Saída Antecipada' && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-orange-500/15 text-orange-500 dark:text-orange-300 border border-orange-500/30">
+                                  -{row.diffMinutes || (row.reason.match(/-(\d+)\s*min/)?.[1]) || (row.reason.match(/(\d+)\s*min/)?.[1]) || 15} min
+                                </span>
+                              )}
+                              {(row.type === 'Esquecimento de Saída' || row.type === 'Esquecimento de Entrada' || row.type === 'Esquecimento de Ponto') && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/15 text-purple-600 dark:text-purple-300 border border-purple-500/30">
+                                  Esquecimento
                                 </span>
                               )}
                               <button
@@ -3979,12 +4029,12 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                     <span>Debitar</span>
                                   </button>
                                 </>
-                              ) : row.type === 'Hora Extra' ? (
+                              ) : (row.type === 'Hora Extra' || row.type?.includes('Esquecimento')) ? (
                                 <>
                                   <button
                                     type="button"
                                     onClick={() => handleApproveOccurrence(row.id)}
-                                    title="Homologar Hora Extra: Aprova para crédito no Banco de Horas ou pagamento em Folha"
+                                    title={row.type?.includes('Esquecimento') ? "Homologar Esquecimento: Ajusta para o horário contratual sem gerar débito ou hora extra indevida" : "Homologar Hora Extra: Aprova para crédito no Banco de Horas ou pagamento em Folha"}
                                     className="approvals-light-approve px-2.5 py-1.5 rounded-xl font-bold text-xs text-white transition-all shadow-md flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
                                     style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
                                   >
@@ -4311,7 +4361,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                               <span>Abonar Atraso</span>
                             </button>
                           </>
-                        ) : selectedDetailOccurrence.type === 'Hora Extra' ? (
+                        ) : (selectedDetailOccurrence.type === 'Hora Extra' || selectedDetailOccurrence.type?.includes('Esquecimento')) ? (
                           <>
                             <button
                               type="button"
@@ -4335,7 +4385,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                               style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
                             >
                               <CheckCircle2 className="w-4 h-4" />
-                              <span>Homologar Hora Extra</span>
+                              <span>{selectedDetailOccurrence.type?.includes('Esquecimento') ? 'Homologar Esquecimento' : 'Homologar Hora Extra'}</span>
                             </button>
                           </>
                         ) : (
