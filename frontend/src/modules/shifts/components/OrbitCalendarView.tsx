@@ -1990,6 +1990,7 @@ export const OrbitCalendarView: React.FC<OrbitCalendarViewProps> = ({
         employees={employees}
         currentWeekStart={weekStart}
         currentWeekShifts={filteredShifts}
+        allShifts={shifts}
         onApplyTemplate={handleApplyTemplate}
         theme={theme}
       />

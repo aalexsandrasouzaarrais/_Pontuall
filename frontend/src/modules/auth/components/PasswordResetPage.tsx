@@ -61,6 +61,17 @@ export const PasswordResetPage: React.FC<PasswordResetPageProps> = ({
       return;
     }
 
+    const matClean = cleanMatricula.replace(/\s+/g, '').toLowerCase();
+    const matDigits = matClean.replace(/^pnt-|^gst-|^col-|^mat-/i, '');
+    const passClean = novaSenha.trim().toLowerCase();
+    if (passClean === matClean || (matDigits.length >= 3 && passClean === matDigits)) {
+      setFeedback({
+        message: 'A nova senha não pode ser igual à sua matrícula. Crie uma senha pessoal exclusiva.',
+        type: 'error'
+      });
+      return;
+    }
+
     if (novaSenha !== confirmarSenha) {
       setFeedback({ message: 'A confirmação de senha não coincide com a nova senha digitada.', type: 'error' });
       return;

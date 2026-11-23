@@ -28,7 +28,10 @@ export function mapBneToShift(row: any): Shift {
         workplaceLocation = parsed;
         notes = notes.substring(endIdx + 1).trim();
 
-        // Mantém workplaceLocation apenas no turno, sem poluir o catálogo de endereços de outros gestores/empresas
+        // Registra o posto automaticamente no armazenamento isolado da empresa para ficar disponível em dropdowns e templates
+        if (workplaceLocation) {
+          registerWorkplaceIfNew(workplaceLocation);
+        }
       } catch {}
     }
   }

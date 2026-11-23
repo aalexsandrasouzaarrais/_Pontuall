@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/shared/services/supabase';
-import { mapBneToEmployee, createGestorSupabase, checkEmailExists } from '../services/colaboradorService';
+import { mapBneToEmployee, createGestorSupabase, checkEmailExists, hasUserChangedPasswordLocal } from '../services/colaboradorService';
 import { Employee } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
 import { PasswordResetPage } from './PasswordResetPage';
@@ -222,9 +222,29 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         query = query.or(`Cod_Matricula.ilike.%${cleanInput}%,Cod_Matricula.ilike.${cleanInput}`);
       }
 
-      const { data, error } = await query.maybeSingle();
+      const { data: rows } = await query.limit(10);
 
-      let matchedUser: any = data;
+      let matchedUser: any = null;
+      if (rows && rows.length > 0) {
+        const normInput = cleanInput.toLowerCase();
+        // Se houver mais de um registro correspondente, prioriza correspondência exata e registros que já atualizaram a senha
+        const exactMatches = rows.filter((r: any) => {
+          const eml = String(r.Eml_Corporativo || '').trim().toLowerCase();
+          const sec = String(r.Eml_Secundario || '').trim().toLowerCase();
+          const mat = String(r.Cod_Matricula || '').trim().toLowerCase();
+          return eml === normInput || sec === normInput || mat === normInput;
+        });
+        const pool = exactMatches.length > 0 ? exactMatches : rows;
+        const withCustomPass = pool.find((r: any) => {
+          if (!r.Des_Senha_Hash || !r.Cod_Matricula) return false;
+          try {
+            return !bcrypt.compareSync(String(r.Cod_Matricula).trim(), r.Des_Senha_Hash);
+          } catch {
+            return false;
+          }
+        });
+        matchedUser = withCustomPass || pool[0];
+      }
 
       // Se não encontrou no Supabase, busca nos gestores registrados localmente no navegador
       if (!matchedUser) {
@@ -238,8 +258,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
           );
         } catch {}
       }
-
-
 
       if (!matchedUser) {
         showFeedback('Usuário não cadastrado. Verifique o email ou ID informado.', 'error');
@@ -259,6 +277,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
       // 3. Validação segura da senha com hash bcrypt:
       const passNorm = password.trim();
       const matriculaNorm = matchedUser.Cod_Matricula ? matchedUser.Cod_Matricula.trim().toLowerCase() : '';
+      const matriculaDigits = matriculaNorm.replace(/^pnt-|^gst-|^col-|^mat-/i, '');
+      const isPasswordEqualToMatricula = Boolean(
+        matriculaNorm && (
+          passNorm.toLowerCase() === matriculaNorm ||
+          (matriculaDigits.length >= 3 && passNorm.toLowerCase() === matriculaDigits)
+        )
+      );
       const isBcrypt = Boolean(
         matchedUser.Des_Senha_Hash && (
           matchedUser.Des_Senha_Hash.startsWith('$2a$') ||
@@ -267,14 +292,45 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         )
       );
 
+      // Verifica se o usuário já alterou sua senha provisória (hash no banco não é mais o da matrícula ou já possui registro de troca)
+      let hashStillMatchesMatricula = false;
+      if (isBcrypt && matriculaNorm) {
+        try {
+          hashStillMatchesMatricula =
+            bcrypt.compareSync(matchedUser.Cod_Matricula.trim(), matchedUser.Des_Senha_Hash) ||
+            bcrypt.compareSync(matchedUser.Cod_Matricula.trim().toUpperCase(), matchedUser.Des_Senha_Hash);
+        } catch {
+          hashStillMatchesMatricula = false;
+        }
+      }
+      const alreadyChangedPassword = !hashStillMatchesMatricula || hasUserChangedPasswordLocal(matchedUser);
+
+      // REGRA ESTRITA: Quando a pessoa muda a senha, não é mais possível logar utilizando a matrícula
+      if (alreadyChangedPassword && isPasswordEqualToMatricula) {
+        showFeedback('Sua senha já foi alterada. Não é mais possível fazer login utilizando a matrícula. Digite sua nova senha.', 'error');
+        setIsLoading(false);
+        passwordInputRef.current?.focus();
+        return;
+      }
+
+      // Verifica se é uma conta antiga já cadastrada antes da restrição de senhas genéricas e que ainda não redefiniu a senha
+      const isPreExistingLegacyAccount = Boolean(
+        !hasUserChangedPasswordLocal(matchedUser) &&
+        (!matchedUser.Dta_Cadastro || String(matchedUser.Dta_Cadastro) < '2026-11-17') &&
+        (!matchedUser.Dta_Atualizacao || matchedUser.Dta_Atualizacao === matchedUser.Dta_Cadastro)
+      );
+
       let senhaValida = false;
       if (isBcrypt) {
         try {
           senhaValida = bcrypt.compareSync(passNorm, matchedUser.Des_Senha_Hash);
-          // Caso o colaborador digite a matrícula provisória em minúsculas no 1º acesso (ex: pnt-1234 vs PNT-1234),
-          // compara em maiúsculas contra o próprio hash do banco (só passa se o hash ainda for o da matrícula)
-          if (!senhaValida && matriculaNorm && passNorm.toLowerCase() === matriculaNorm) {
+          // Caso o colaborador digite a matrícula provisória em minúsculas apenas no 1º acesso (quando ainda não trocou a senha)
+          if (!senhaValida && !alreadyChangedPassword && matriculaNorm && passNorm.toLowerCase() === matriculaNorm) {
             senhaValida = bcrypt.compareSync(passNorm.toUpperCase(), matchedUser.Des_Senha_Hash);
+          }
+          // Permite que contas já cadastradas anteriormente com a senha padrão (123456) continuem entrando até que alterem sua senha
+          if (!senhaValida && isPreExistingLegacyAccount && passNorm === '123456') {
+            senhaValida = true;
           }
         } catch {
           senhaValida = false;
@@ -283,8 +339,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         // Suporte retrocompatível apenas se a senha no banco ainda estiver em texto plano ou vazia no 1º acesso
         const storedPlain = matchedUser.Des_Senha_Hash ? String(matchedUser.Des_Senha_Hash).trim() : '';
         senhaValida =
-          (Boolean(storedPlain) && storedPlain !== 'google_oauth_authenticated' && storedPlain === passNorm) ||
-          (!storedPlain && Boolean(matriculaNorm) && matriculaNorm === passNorm.toLowerCase());
+          (Boolean(storedPlain) && storedPlain !== 'google_oauth_authenticated' && storedPlain === passNorm && !(alreadyChangedPassword && isPasswordEqualToMatricula)) ||
+          (!storedPlain && !alreadyChangedPassword && Boolean(matriculaNorm) && matriculaNorm === passNorm.toLowerCase()) ||
+          (isPreExistingLegacyAccount && passNorm === '123456');
 
         // Se a senha estiver correta mas não estava hasheada, atualiza automaticamente no banco com bcrypt
         if (senhaValida && matchedUser.Idf_Colaborador) {
@@ -300,7 +357,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
       }
 
       if (!senhaValida) {
-        showFeedback('Senha incorreta. Verifique sua senha ou, no primeiro acesso de colaborador, utilize a matrícula recebida.', 'error');
+        showFeedback('Senha incorreta. Verifique sua senha ou, caso ainda não tenha definido uma senha, utilize a matrícula no primeiro acesso.', 'error');
         setIsLoading(false);
         passwordInputRef.current?.focus();
         return;
@@ -605,6 +662,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
   if (viewMode === 'reset-password') {
     return (
       <PasswordResetPage
+        matriculaInicial={loginInput}
         onBackToLogin={() => {
           if (typeof window !== 'undefined' && window.history?.replaceState) {
             window.history.replaceState({}, document.title, window.location.pathname);

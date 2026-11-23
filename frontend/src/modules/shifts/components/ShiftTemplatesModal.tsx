@@ -12,7 +12,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { Employee, Shift, ShiftTemplate, ShiftType } from '@/types';
-import { getStoredWorkplaces, getScopedDepartmentsStorageKey, WorkplaceLocation } from '@/shared/services/workplaceService';
+import { getStoredWorkplaces, getScopedDepartmentsStorageKey, registerWorkplaceIfNew, getDeletedWorkplaceIds, WorkplaceLocation } from '@/shared/services/workplaceService';
 import { getSchedulableEmployees } from '@/shared/utils/employeeUtils';
 
 export interface ShiftTemplatesModalProps {
@@ -21,6 +21,7 @@ export interface ShiftTemplatesModalProps {
   employees: Employee[];
   currentWeekStart: Date;
   currentWeekShifts: Shift[];
+  allShifts?: Shift[];
   onApplyTemplate: (template: ShiftTemplate, selectedEmployeeIds: string[]) => void;
   onSaveNewTemplate?: (newTemplate: ShiftTemplate) => void;
   theme?: 'light' | 'dark';
@@ -105,6 +106,7 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
   employees,
   currentWeekStart,
   currentWeekShifts,
+  allShifts,
   onApplyTemplate,
   onSaveNewTemplate,
   theme = 'dark',
@@ -173,20 +175,26 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
   React.useEffect(() => {
     if (isOpen) {
       const list = [...getStoredWorkplaces()];
-      (currentWeekShifts || []).forEach(s => {
+      const deletedIds = getDeletedWorkplaceIds();
+      const shiftsPool = allShifts && allShifts.length > 0 ? allShifts : (currentWeekShifts || []);
+      shiftsPool.forEach(s => {
         if (s.workplaceLocation && s.workplaceLocation.name) {
-          const exists = list.some(
-            w => w.id === s.workplaceLocation?.id || w.name.toLowerCase() === s.workplaceLocation?.name.toLowerCase()
-          );
-          if (!exists) {
-            list.push(s.workplaceLocation);
+          const wName = s.workplaceLocation.name.toLowerCase().trim();
+          if (!deletedIds.includes(s.workplaceLocation.id) && !deletedIds.includes(wName)) {
+            const exists = list.some(
+              w => w.id === s.workplaceLocation?.id || w.name.toLowerCase().trim() === wName
+            );
+            if (!exists) {
+              list.push(s.workplaceLocation);
+              registerWorkplaceIfNew(s.workplaceLocation);
+            }
           }
         }
       });
       setWorkplacesList(list);
       setSelectedWorkplaceId(prev => (list.some(w => w.id === prev) ? prev : (list[0]?.id || '')));
     }
-  }, [isOpen, currentWeekShifts]);
+  }, [isOpen, currentWeekShifts, allShifts]);
 
   // Filtra colaboradores excluindo gestores e PJ da alocação de escalas em lote
   const schedulableEmployees = useMemo(() => {
