@@ -12,6 +12,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onGoToLogin }) => {
     document.title = 'Pontual | Gestão de equipes';
 
     const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
       const data = event.data;
       if (!data || typeof data !== 'object') return;
 

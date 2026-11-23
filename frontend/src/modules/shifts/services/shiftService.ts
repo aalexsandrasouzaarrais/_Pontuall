@@ -85,12 +85,16 @@ export async function getShiftsSupabase(employeeIds?: string[]): Promise<Shift[]
     if (data && data.length > 0) {
       const baseShifts = data.map(mapBneToShift);
 
-      // Busca os registros de ponto para anexar check-in e geolocalização reais
+      // Busca apenas os registros de ponto pertencentes aos colaboradores listados na empresa
       try {
-        const { data: punches } = await supabase
-          .from('TAB_Registro_Ponto')
-          .select('*')
-          .order('Dta_Hora_Registro', { ascending: false });
+        const employeeIds = Array.from(new Set(baseShifts.map(s => s.employeeId).filter(id => isValidUuid(id))));
+        const { data: punches } = employeeIds.length > 0
+          ? await supabase
+              .from('TAB_Registro_Ponto')
+              .select('*')
+              .in('Idf_Colaborador', employeeIds)
+              .order('Dta_Hora_Registro', { ascending: false })
+          : { data: [] as any[] };
 
         if (punches && punches.length > 0) {
           return baseShifts.map(s => {
@@ -179,20 +183,6 @@ function isValidUuid(id?: string): boolean {
 
 async function resolveValidEmployeeUuid(employeeId?: string): Promise<string | null> {
   if (isValidUuid(employeeId)) return employeeId!;
-  try {
-    const { data } = await supabase
-      .from('TAB_Colaborador')
-      .select('Idf_Colaborador')
-      .eq('Flg_Ativo', true)
-      .limit(1)
-      .maybeSingle();
-
-    if (data?.Idf_Colaborador && isValidUuid(data.Idf_Colaborador)) {
-      return data.Idf_Colaborador;
-    }
-  } catch (err) {
-    console.warn('Erro ao resolver UUID de colaborador no Supabase:', err);
-  }
   return null;
 }
 

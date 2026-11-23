@@ -128,6 +128,7 @@ import logoWideLight from './assets/logo-pontual-wide.png';
 
 function AppContent() {
   const { theme, isDark, toggleTheme } = useTheme();
+  const [headerLogoError, setHeaderLogoError] = useState(false);
   
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
@@ -137,6 +138,7 @@ function AppContent() {
           urlParams.get('primeiro_acesso') === 'true' || 
           urlParams.get('reset') === 'true' || 
           urlParams.get('type') === 'recovery' || 
+          Boolean(urlParams.get('token')) ||
           window.location.pathname.includes('/redefinir-senha');
 
         if (isResetOrFirstAccess) {
@@ -144,11 +146,14 @@ function AppContent() {
           safeStorage.removeItem('pontual_active_user');
           safeStorage.removeItem('pontual_role');
           safeStorage.removeItem('pontual_google_avatar');
+          safeStorage.removeItem('pontual_auth_token');
           try {
             window.sessionStorage.removeItem('pontual_active_user');
             window.sessionStorage.removeItem('pontual_role');
+            window.sessionStorage.removeItem('pontual_auth_token');
             window.localStorage.removeItem('pontual_active_user');
             window.localStorage.removeItem('pontual_role');
+            window.localStorage.removeItem('pontual_auth_token');
           } catch {}
           return false;
         }
@@ -167,17 +172,21 @@ function AppContent() {
         urlParams.get('primeiro_acesso') === 'true' || 
         urlParams.get('reset') === 'true' || 
         urlParams.get('type') === 'recovery' || 
+        Boolean(urlParams.get('token')) ||
         window.location.pathname.includes('/redefinir-senha');
 
       if (isResetOrFirstAccess) {
         safeStorage.removeItem('pontual_active_user');
         safeStorage.removeItem('pontual_role');
         safeStorage.removeItem('pontual_google_avatar');
+        safeStorage.removeItem('pontual_auth_token');
         try {
           window.sessionStorage.removeItem('pontual_active_user');
           window.sessionStorage.removeItem('pontual_role');
+          window.sessionStorage.removeItem('pontual_auth_token');
           window.localStorage.removeItem('pontual_active_user');
           window.localStorage.removeItem('pontual_role');
+          window.localStorage.removeItem('pontual_auth_token');
         } catch {}
         setIsAuthenticated(false);
       }
@@ -197,6 +206,7 @@ function AppContent() {
           search.includes('reset=true') ||
           search.includes('type=recovery') ||
           search.includes('primeiro_acesso=true') ||
+          search.includes('token=') ||
           search.includes('matricula=') ||
           search.includes('code=') ||
           hash.includes('access_token=') ||
@@ -625,7 +635,9 @@ function AppContent() {
         return;
       }
 
-      const isManager = emp.isMasterManager || emp.role?.toLowerCase().includes('gestor') || session.user.email.includes('gestor') || session.user.email.includes('kamile');
+      const isManager = Boolean(
+        emp.isMasterManager || emp.isRh || emp.roleType === 'gestor' || emp.roleType === 'rh'
+      );
       const systemRole: 'manager' | 'employee' = isManager ? 'manager' : 'employee';
 
       safeStorage.setItem('pontual_role', systemRole);
@@ -633,7 +645,7 @@ function AppContent() {
         Idf_Colaborador: emp.id,
         Nme_Colaborador: emp.name,
         Eml_Corporativo: emp.email,
-        Tpo_Perfil: isManager ? 'gestor' : 'colaborador',
+        Tpo_Perfil: emp.roleType || (isManager ? 'gestor' : 'colaborador'),
         Tpo_Cargo: emp.role,
         Des_Departamento: emp.department,
         Des_Avatar_Url: emp.avatar,
@@ -1609,14 +1621,17 @@ function AppContent() {
       safeStorage.removeItem('pontual_active_user');
       safeStorage.removeItem('pontual_role');
       safeStorage.removeItem('pontual_google_avatar');
+      safeStorage.removeItem('pontual_auth_token');
 
       if (typeof window !== 'undefined') {
         window.sessionStorage.removeItem('pontual_active_user');
         window.sessionStorage.removeItem('pontual_role');
         window.sessionStorage.removeItem('pontual_google_avatar');
+        window.sessionStorage.removeItem('pontual_auth_token');
         window.localStorage.removeItem('pontual_active_user');
         window.localStorage.removeItem('pontual_role');
         window.localStorage.removeItem('pontual_google_avatar');
+        window.localStorage.removeItem('pontual_auth_token');
 
         // Limpa tokens de autenticação do Supabase residuais no storage
         try {
@@ -1755,19 +1770,18 @@ function AppContent() {
           title="Ir para o Painel Inicial"
           aria-label="Ir para o Painel Inicial"
         >
-          <img
-            src={!isDark ? logoWideDark : logoWideLight}
-            alt="Pontual"
-            className="h-6 sm:h-7 w-auto object-contain select-none"
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              target.style.display = 'none';
-              const parent = target.parentElement;
-              if (parent) {
-                parent.innerHTML = `<span class="${!isDark ? 'text-slate-900' : 'text-white'} font-extrabold text-sm tracking-tight">Pontual</span>`;
-              }
-            }}
-          />
+          {!headerLogoError ? (
+            <img
+              src={!isDark ? logoWideDark : logoWideLight}
+              alt="Pontual"
+              className="h-6 sm:h-7 w-auto object-contain select-none"
+              onError={() => setHeaderLogoError(true)}
+            />
+          ) : (
+            <span className={`${!isDark ? 'text-slate-900' : 'text-white'} font-extrabold text-sm tracking-tight`}>
+              Pontual
+            </span>
+          )}
         </button>
 
         {/* Right: Perfil (mobile) + Tema + Sair (desktop) */}

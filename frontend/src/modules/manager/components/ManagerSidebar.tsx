@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   CheckCircle2,
   FileText,
@@ -65,6 +65,7 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
   onOpenProfile,
 }) => {
   const isLightTheme = theme === 'light';
+  const [logoError, setLogoError] = useState(false);
 
   const navItems: SidebarItem[] = [
     {
@@ -259,20 +260,18 @@ export const ManagerSidebar: React.FC<ManagerSidebarProps> = ({
         }`}
       >
         <div className="w-[60px] min-w-[60px] h-[70px] flex items-center justify-center flex-shrink-0">
-          <img
-            src={isLightTheme ? logoColaboradorLight : logoPainel}
-            alt="Logo Pontual"
-            className={`w-10 h-10 object-contain select-none transition-transform ${isLightTheme ? 'scale-[1.6]' : 'scale-100'}`}
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              target.style.display = 'none';
-              const parent = target.parentElement;
-              if (parent) {
-                parent.innerHTML =
-                  '<div style="width:36px;height:36px;background:linear-gradient(135deg,#96183C,#F89847);border-radius:10px;display:flex;align-items:center;justify-content:center;color:white;font-weight:900;font-size:16px;">P</div>';
-              }
-            }}
-          />
+          {!logoError ? (
+            <img
+              src={isLightTheme ? logoColaboradorLight : logoPainel}
+              alt="Logo Pontual"
+              className={`w-10 h-10 object-contain select-none transition-transform ${isLightTheme ? 'scale-[1.6]' : 'scale-100'}`}
+              onError={() => setLogoError(true)}
+            />
+          ) : (
+            <div className="w-9 h-9 rounded-[10px] bg-gradient-to-br from-[#96183C] to-[#F89847] flex items-center justify-center text-white font-black text-base select-none">
+              P
+            </div>
+          )}
         </div>
 
         <div

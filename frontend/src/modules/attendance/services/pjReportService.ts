@@ -6,6 +6,7 @@ function isUuid(id?: string): boolean {
 import { supabase } from '@/shared/services/supabase';
 import { createNotificationSupabase } from '@/modules/notifications/services/notificationService';
 import { safeStorage } from '@/shared/utils/safeStorage';
+import { sanitizeCsvCell, sanitizeSpreadsheetFormulaText } from '@/shared/utils/security';
 import { PjDeliverableReport, PjReportLink, PjTimesheetEntry, PjActiveTimerState } from '@/types';
 
 const STORAGE_KEY_PJ_REPORTS = 'pontual_pj_reports';
@@ -602,10 +603,7 @@ export function exportPjTimesheetSpreadsheet(params: {
       'Links de Comprovacao',
     ];
 
-    const escapeCsv = (val: any) => {
-      const str = String(val ?? '').replace(/"/g, '""');
-      return `"${str}"`;
-    };
+    const escapeCsv = sanitizeCsvCell;
 
     const rows = entries.map((e, idx) => {
       const taskCode = e.taskCode || `TK-${String(idx + 1).padStart(3, '0')}`;
@@ -669,7 +667,7 @@ export function exportPjTimesheetSpreadsheet(params: {
 
   // Formato Excel (.xls com tabela HTML estilizada compatível com Microsoft Excel / LibreOffice / Google Sheets)
   const escapeHtml = (val: any) =>
-    String(val ?? '')
+    sanitizeSpreadsheetFormulaText(val)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')

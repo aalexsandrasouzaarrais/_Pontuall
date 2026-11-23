@@ -8,8 +8,9 @@
 -- Sem acentuação em nomes de identificadores
 -- ============================================================================
 
--- Habilita a extensão para geração de UUID
+-- Habilita a extensão para geração de UUID e hashing bcrypt
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ----------------------------------------------------------------------------
 -- 1. TABELA DE EMPRESAS MULTILOCATÁRIAS
@@ -226,7 +227,7 @@ INSERT INTO "TAB_Colaborador" (
     'Camila Duarte',
     'gestor@pontual.com',
     'camila.duarte@employer.com.br',
-    '123456', -- Em producao substituir por hash bcrypt
+    crypt('Alterar@PrimeiroAcesso1!', gen_salt('bf', 12)),
     'gestor',
     'Gerente Geral de Escalas',
     'Gestao de Pessoas & Operacoes',
@@ -252,7 +253,7 @@ INSERT INTO "TAB_Colaborador" (
     'Lucas Silva',
     'colaborador@pontual.com',
     'lucas.silva@employer.com.br',
-    '123456',
+    crypt('Alterar@PrimeiroAcesso1!', gen_salt('bf', 12)),
     'colaborador',
     'Analista de Atendimento',
     'Atendimento',
@@ -264,7 +265,7 @@ INSERT INTO "TAB_Colaborador" (
     'Beatriz Santos',
     'beatriz.santos@employer.com.br',
     'beatriz@pontual.com',
-    '123456',
+    crypt('Alterar@PrimeiroAcesso1!', gen_salt('bf', 12)),
     'colaborador',
     'Especialista de Suporte',
     'Suporte Tecnico',
@@ -276,7 +277,7 @@ INSERT INTO "TAB_Colaborador" (
     'Rafael Mendes',
     'rafael.mendes@employer.com.br',
     'rafael@pontual.com',
-    '123456',
+    crypt('Alterar@PrimeiroAcesso1!', gen_salt('bf', 12)),
     'colaborador',
     'Operador de Escala',
     'Operacoes',

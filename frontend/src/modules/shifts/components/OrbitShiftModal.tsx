@@ -1,5 +1,6 @@
 import { getTodayDateString } from '@/shared/utils/dateUtils';
 import React, { useState, useEffect, useMemo } from 'react';
+import { sanitizeSafeUrl } from '@/shared/utils/security';
 import { 
   Calendar, 
   Clock, 
@@ -777,15 +778,17 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                     <MapPin className="w-3.5 h-3.5 text-[#f89847]" />
                     LOCAL DE ATUAÇÃO
                   </span>
-                  <a
-                    href={mapsLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[11px] font-semibold text-sky-400 hover:text-sky-300 flex items-center gap-1 transition-colors"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                    Ver Maps
-                  </a>
+                  {sanitizeSafeUrl(mapsLink, { fallback: '' }) && (
+                    <a
+                      href={sanitizeSafeUrl(mapsLink)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] font-semibold text-sky-400 hover:text-sky-300 flex items-center gap-1 transition-colors"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      Ver Maps
+                    </a>
+                  )}
                 </div>
                 <div>
                   <div className={`text-xs sm:text-sm font-bold truncate ${
@@ -878,15 +881,17 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                     <p className={`text-[11px] truncate ${isLight ? 'text-emerald-700' : 'text-emerald-400/80'}`}>{meetingLink}</p>
                   </div>
                 </div>
-                <a
-                  href={meetingLink}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-500 transition-colors flex items-center gap-1.5 shrink-0 shadow-sm"
-                >
-                  <span>Acessar</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
+                {sanitizeSafeUrl(meetingLink, { fallback: '' }) && (
+                  <a
+                    href={sanitizeSafeUrl(meetingLink)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-500 transition-colors flex items-center gap-1.5 shrink-0 shadow-sm"
+                  >
+                    <span>Acessar</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
               </div>
             )}
 
@@ -1387,11 +1392,11 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                 style={labelStyle}
               >
                 <span>🔗 LINK DA REUNIÃO (MEET / ZOOM)</span>
-                {meetingLink && (
+                {meetingLink && sanitizeSafeUrl(meetingLink, { fallback: '' }) && (
                   <a
-                    href={meetingLink}
+                    href={sanitizeSafeUrl(meetingLink)}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="text-xs flex items-center gap-1 hover:opacity-80 transition-all font-bold"
                     style={{ color: "#48bb78" }}
                   >

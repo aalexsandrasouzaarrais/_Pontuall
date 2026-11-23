@@ -108,21 +108,21 @@ async function saveAssignments(reminderId: string, employeeIds: string[], replac
 
 
 /**
- * Expurga automaticamente do banco registros de lembretes com mais de 60 dias
+ * Expurga automaticamente do banco registros de lembretes da empresa com mais de 60 dias (fail-closed)
  */
 export async function purgeExpiredRemindersSupabase(companyId?: string): Promise<boolean> {
+  if (!companyId || !isUuid(companyId)) {
+    return false;
+  }
+
   try {
     const cutoff60 = toLocalDateString(addDaysLocal(new Date(), -60));
-    let q = supabase
+    const { error } = await supabase
       .from('TAB_Lembrete')
       .delete()
+      .eq('Idf_Empresa', companyId)
       .lt('Dta_Lembrete', cutoff60);
 
-    if (companyId && isUuid(companyId)) {
-      q = q.eq('Idf_Empresa', companyId);
-    }
-
-    const { error } = await q;
     if (error) {
       console.warn('Aviso ao expurgar lembretes com mais de 60 dias:', error.message);
       return false;

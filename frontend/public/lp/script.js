@@ -15,14 +15,14 @@ function toggleSiteTheme() {
         htmlElement.classList.add('modo-escuro');
         localStorage.setItem('pontual-theme', 'dark');
         localStorage.setItem('pontual_theme_preference', 'dark');
-        if (window.parent && window.parent !== window) { window.parent.postMessage({ type: 'PONTUAL_THEME_CHANGE', theme: 'dark' }, '*'); }
+        if (window.parent && window.parent !== window) { window.parent.postMessage({ type: 'PONTUAL_THEME_CHANGE', theme: 'dark' }, window.location.origin); }
     } else {
         htmlElement.setAttribute('data-theme', 'light');
         htmlElement.classList.remove('modo-escuro');
         htmlElement.classList.add('modo-claro');
         localStorage.setItem('pontual-theme', 'light');
         localStorage.setItem('pontual_theme_preference', 'light');
-        if (window.parent && window.parent !== window) { window.parent.postMessage({ type: 'PONTUAL_THEME_CHANGE', theme: 'light' }, '*'); }
+        if (window.parent && window.parent !== window) { window.parent.postMessage({ type: 'PONTUAL_THEME_CHANGE', theme: 'light' }, window.location.origin); }
     }
 }
 
@@ -73,7 +73,7 @@ function navigateToLoginPage(e) {
     } catch (_) {}
 
     if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: 'PONTUAL_OPEN_LOGIN', theme: currentTheme }, '*');
+        window.parent.postMessage({ type: 'PONTUAL_OPEN_LOGIN', theme: currentTheme }, window.location.origin);
     } else {
         window.location.href = '/?login=true';
     }
@@ -89,7 +89,7 @@ botoesLogin.forEach(botao => {
 
 // Sincroniza título da página com a janela principal quando dentro de container
 if (window.parent && window.parent !== window) {
-    window.parent.postMessage({ type: 'PONTUAL_TITLE_CHANGE', title: document.title }, '*');
+    window.parent.postMessage({ type: 'PONTUAL_TITLE_CHANGE', title: document.title }, window.location.origin);
 }
 
 

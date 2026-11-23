@@ -1,7 +1,13 @@
 import { supabase } from '@/shared/services/supabase';
 import { Employee, ContractType } from '@/types';
 import { safeStorage } from '@/shared/utils/safeStorage';
+import { quotePostgrestValue } from '@/shared/utils/security';
 import bcrypt from 'bcryptjs';
+
+export const SAFE_COLABORADOR_COLUMNS =
+  'Idf_Colaborador, Idf_Empresa, Cod_Matricula, Nme_Colaborador, Eml_Corporativo, Eml_Secundario, Tpo_Perfil, Tpo_Cargo, Des_Departamento, Des_Avatar_Url, Num_Telefone, Num_Horas_Semanais, Flg_Gestor_Master, Flg_Ativo, Tpo_Contrato, Dta_Inicio_Contrato, Dta_Fim_Contrato, Num_Cota_Horas_Mensal, Vlr_Hora_Pj';
+export const SAFE_COLABORADOR_BASE_COLUMNS =
+  'Idf_Colaborador, Idf_Empresa, Cod_Matricula, Nme_Colaborador, Eml_Corporativo, Eml_Secundario, Tpo_Perfil, Tpo_Cargo, Des_Departamento, Des_Avatar_Url, Num_Telefone, Num_Horas_Semanais, Flg_Gestor_Master, Flg_Ativo';
 
 const PJ_CONTRACT_PARAMS_KEY = 'pontual_pj_contract_params_v1';
 
@@ -246,16 +252,27 @@ async function getEmpresaDoColaborador(colaboradorId?: string): Promise<string |
   return data?.Idf_Empresa || null;
 }
 
-// Busca um colaborador pelo ID (usado para reidratar a sessão após F5)
+// Busca um colaborador pelo ID (usado para reidratar a sessão após F5 — nunca seleciona Des_Senha_Hash)
 export async function getColaboradorByIdSupabase(colaboradorId: string): Promise<Employee | null> {
   if (!isUuid(colaboradorId)) return null;
   try {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('TAB_Colaborador')
-      .select('*')
+      .select(SAFE_COLABORADOR_COLUMNS)
       .eq('Idf_Colaborador', colaboradorId)
       .eq('Flg_Ativo', true)
       .maybeSingle();
+
+    if (error && (error.code === '42703' || error.message?.includes('does not exist'))) {
+      const retry = await supabase
+        .from('TAB_Colaborador')
+        .select(SAFE_COLABORADOR_BASE_COLUMNS)
+        .eq('Idf_Colaborador', colaboradorId)
+        .eq('Flg_Ativo', true)
+        .maybeSingle();
+      data = retry.data as any;
+      error = retry.error;
+    }
     if (error || !data) return null;
     const links = await getManagerLinksMap([colaboradorId]);
     await loadPjContractParamsFromSupabase([colaboradorId]);
@@ -285,26 +302,38 @@ export async function getColaboradoresSupabase(filter?: { companyId?: string; ge
       return [];
     }
 
-    let query = supabase
-      .from('TAB_Colaborador')
-      .select('*')
-      .eq('Flg_Ativo', true);
+    const buildColabQuery = (cols: string) => {
+      let q = supabase
+        .from('TAB_Colaborador')
+        .select(cols)
+        .eq('Flg_Ativo', true);
+      if (filter?.companyId && isUuid(filter.companyId)) {
+        q = q.eq('Idf_Empresa', filter.companyId);
+      } else if (linkedFilterIds) {
+        q = q.in('Idf_Colaborador', linkedFilterIds);
+      }
+      return q.order('Nme_Colaborador');
+    };
 
-    if (filter?.companyId && isUuid(filter.companyId)) {
-      query = query.eq('Idf_Empresa', filter.companyId);
-    } else if (filter?.gestorId && isUuid(filter.gestorId)) {
-      // Se não tiver Idf_Empresa válido mas tiver gestorId, busca apenas vínculos desse gestor
-      const { data: gestorLinks } = await supabase
-        .from('TAB_Gestor_Colaborador')
-        .select('Idf_Colaborador')
-        .eq('Idf_Gestor', filter.gestorId);
-      const linkedIds = Array.from(new Set([filter.gestorId, ...(gestorLinks || []).map((l: any) => l.Idf_Colaborador)])).filter(isUuid);
-      query = query.in('Idf_Colaborador', linkedIds);
-    } else {
-      return [];
+    let linkedFilterIds: string[] | null = null;
+    if (!(filter?.companyId && isUuid(filter.companyId))) {
+      if (filter?.gestorId && isUuid(filter.gestorId)) {
+        const { data: gestorLinks } = await supabase
+          .from('TAB_Gestor_Colaborador')
+          .select('Idf_Colaborador')
+          .eq('Idf_Gestor', filter.gestorId);
+        linkedFilterIds = Array.from(new Set([filter.gestorId, ...(gestorLinks || []).map((l: any) => l.Idf_Colaborador)])).filter(isUuid);
+      } else {
+        return [];
+      }
     }
 
-    const { data, error } = await query.order('Nme_Colaborador');
+    let { data, error } = await buildColabQuery(SAFE_COLABORADOR_COLUMNS);
+    if (error && (error.code === '42703' || error.message?.includes('does not exist'))) {
+      const retry = await buildColabQuery(SAFE_COLABORADOR_BASE_COLUMNS);
+      data = retry.data as any;
+      error = retry.error;
+    }
 
     if (error) {
       console.warn('Aviso ao buscar colaboradores do Supabase:', error.message);
@@ -327,12 +356,22 @@ export async function getColaboradoresSupabase(filter?: { companyId?: string; ge
         .filter((id: any) => !known.has(id)) as string[];
 
       if (candidateIds.length > 0) {
-        const { data: orphans } = await supabase
+        let { data: orphans, error: orphanErr } = await supabase
           .from('TAB_Colaborador')
-          .select('*')
+          .select(SAFE_COLABORADOR_COLUMNS)
           .in('Idf_Colaborador', candidateIds)
           .is('Idf_Empresa', null)
           .eq('Flg_Ativo', true);
+
+        if (orphanErr && (orphanErr.code === '42703' || orphanErr.message?.includes('does not exist'))) {
+          const orphanRetry = await supabase
+            .from('TAB_Colaborador')
+            .select(SAFE_COLABORADOR_BASE_COLUMNS)
+            .in('Idf_Colaborador', candidateIds)
+            .is('Idf_Empresa', null)
+            .eq('Flg_Ativo', true);
+          orphans = orphanRetry.data as any;
+        }
 
         if (orphans && orphans.length > 0) {
           rows = [...rows, ...orphans].sort((a, b) =>
@@ -397,10 +436,11 @@ export async function checkEmailExists(email?: string, excludeId?: string): Prom
 
   // 2. Consulta no Supabase (TAB_Colaborador)
   try {
+    const quotedEmail = quotePostgrestValue(cleanEmail);
     let query = supabase
       .from('TAB_Colaborador')
       .select('Idf_Colaborador, Eml_Corporativo, Eml_Secundario')
-      .or(`Eml_Corporativo.ilike.${cleanEmail},Eml_Secundario.ilike.${cleanEmail}`)
+      .or(`Eml_Corporativo.ilike.${quotedEmail},Eml_Secundario.ilike.${quotedEmail}`)
       .limit(1);
 
     if (excludeId && isUuid(excludeId)) {
@@ -469,20 +509,20 @@ export async function createColaboradorSupabase(emp: Employee, creatorGestorId?:
     Flg_Ativo: true
   };
 
-  let { data: novoColaborador, error } = await supabase
+  let { data: novoColaborador, error }: { data: any; error: any } = await supabase
     .from('TAB_Colaborador')
     .insert(basePayload)
-    .select()
+    .select(SAFE_COLABORADOR_COLUMNS)
     .single();
 
   // Caso a coluna Vlr_Hora_Pj ainda não tenha sido migrada no banco do cliente, tenta novamente sem ela
-  if (error && error.message && error.message.includes('Vlr_Hora_Pj')) {
+  if (error && (error.message?.includes('Vlr_Hora_Pj') || error.code === '42703' || error.message?.includes('does not exist'))) {
     const fallbackPayload = { ...basePayload };
     delete fallbackPayload.Vlr_Hora_Pj;
     const retry = await supabase
       .from('TAB_Colaborador')
       .insert(fallbackPayload)
-      .select()
+      .select(SAFE_COLABORADOR_BASE_COLUMNS)
       .single();
     novoColaborador = retry.data;
     error = retry.error;
@@ -571,7 +611,7 @@ export async function createGestorSupabase(gestorData: {
       }
 
       if (empExistente) {
-        companyId = empExistente.Idf_Empresa;
+        throw new Error('DUPLICATE_CNPJ: Este CNPJ já possui uma organização cadastrada no sistema. Solicite o acesso diretamente ao gestor administrador da empresa.');
       } else {
         const finalName = companyNameVal || `Empresa ${companyCnpj}`;
         const { data: novaEmp, error: empErr } = await supabase
@@ -619,7 +659,7 @@ export async function createGestorSupabase(gestorData: {
   const { data, error } = await supabase
     .from('TAB_Colaborador')
     .insert(payload)
-    .select()
+    .select(SAFE_COLABORADOR_BASE_COLUMNS)
     .single();
 
   if (error) {
@@ -703,40 +743,35 @@ export async function syncGoogleUserWithSupabase(googleUser: {
   const email = googleUser.email.toLowerCase().trim();
 
   try {
-    // 1. Verifica se a conta já existe na tabela TAB_Colaborador e está ativa
+    // 1. Verifica se a conta já existe na tabela TAB_Colaborador e está ativa (sem dump global SELECT *)
     let existing: any = null;
+    const quotedEmail = quotePostgrestValue(email);
     try {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('TAB_Colaborador')
-        .select('*')
-        .or(`Eml_Corporativo.ilike.${email},Eml_Secundario.ilike.${email}`)
+        .select(SAFE_COLABORADOR_COLUMNS)
+        .or(`Eml_Corporativo.ilike.${quotedEmail},Eml_Secundario.ilike.${quotedEmail}`)
         .eq('Flg_Ativo', true)
+        .limit(1)
         .maybeSingle();
+
+      if (error && (error.code === '42703' || error.message?.includes('does not exist'))) {
+        const retry = await supabase
+          .from('TAB_Colaborador')
+          .select(SAFE_COLABORADOR_BASE_COLUMNS)
+          .or(`Eml_Corporativo.ilike.${quotedEmail},Eml_Secundario.ilike.${quotedEmail}`)
+          .eq('Flg_Ativo', true)
+          .limit(1)
+          .maybeSingle();
+        data = retry.data as any;
+        error = retry.error;
+      }
 
       if (!error && data) {
         existing = data;
       }
     } catch (queryErr) {
       console.warn('Aviso ao consultar usuário Google via filtro direto:', queryErr);
-    }
-
-    // Se a query or direta falhou ou não encontrou, busca na lista de ativos para comparar com trim()
-    if (!existing) {
-      try {
-        const { data: allActive } = await supabase
-          .from('TAB_Colaborador')
-          .select('*')
-          .eq('Flg_Ativo', true);
-
-        if (allActive && allActive.length > 0) {
-          existing = allActive.find((u: any) => 
-            (u.Eml_Corporativo && u.Eml_Corporativo.toLowerCase().trim() === email) ||
-            (u.Eml_Secundario && u.Eml_Secundario.toLowerCase().trim() === email)
-          );
-        }
-      } catch (listErr) {
-        console.warn('Aviso ao consultar lista de colaboradores:', listErr);
-      }
     }
 
     // Se encontrou no Supabase:
@@ -945,158 +980,102 @@ export function hasUserChangedPasswordLocal(user: any): boolean {
   return false;
 }
 
-// Atualiza a senha definitiva do colaborador no Supabase (substituindo a temporária)
-export async function updateColaboradorPasswordSupabase(identifier: string, novaSenha: string): Promise<boolean> {
-  try {
-    const cleanId = identifier.trim();
-    const cleanPass = novaSenha.trim();
-    if (!cleanId || !cleanPass) return false;
+function getBackendAuthEndpoints(path: string): string[] {
+  const backendBase = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+  return [
+    ...(backendBase ? [`${backendBase}/api/auth${path}`] : []),
+    `/api/auth${path}`,
+    `http://localhost:5000/api/auth${path}`,
+  ];
+}
 
-    const cleanNoSpace = cleanId.replace(/\s+/g, '');
-    const cleanDigits = cleanNoSpace.replace(/^pnt-|^gst-|^col-|^mat-/i, '');
-
-    // Impede que o usuário defina a própria matrícula como nova senha
-    if (
-      cleanPass.toLowerCase() === cleanNoSpace.toLowerCase() ||
-      (cleanDigits.length >= 3 && cleanPass.toLowerCase() === cleanDigits.toLowerCase())
-    ) {
-      throw new Error('A nova senha não pode ser igual à sua matrícula. Crie uma senha pessoal exclusiva.');
-    }
-
-    // 1. Localiza o(s) registro(s) do colaborador no Supabase para validar matrícula e atualizar todos os vínculos
-    const isUuidVal = isUuid(cleanId);
-    let matchedRows: any[] = [];
-
-    try {
-      let findQuery = supabase.from('TAB_Colaborador').select('*');
-      if (isUuidVal) {
-        findQuery = findQuery.eq('Idf_Colaborador', cleanId);
-      } else if (cleanId.includes('@')) {
-        findQuery = findQuery.or(`Eml_Corporativo.ilike.${cleanId},Eml_Secundario.ilike.${cleanId}`);
-      } else {
-        findQuery = findQuery.or(`Cod_Matricula.ilike.%${cleanNoSpace}%,Eml_Corporativo.ilike.%${cleanId}%`);
-      }
-      const { data } = await findQuery;
-      if (data && data.length > 0) {
-        matchedRows = data;
-      }
-    } catch (findErr) {
-      console.warn('Aviso ao localizar colaborador para troca de senha:', findErr);
-    }
-
-    // Verifica se a nova senha coincide com a Cod_Matricula real do banco
-    for (const row of matchedRows) {
-      const rowMat = String(row.Cod_Matricula || '').trim().toLowerCase();
-      const rowMatDigits = rowMat.replace(/^pnt-|^gst-|^col-|^mat-/i, '');
-      if (
-        (rowMat && cleanPass.toLowerCase() === rowMat) ||
-        (rowMatDigits.length >= 3 && cleanPass.toLowerCase() === rowMatDigits)
-      ) {
-        throw new Error('A nova senha não pode ser igual à sua matrícula. Crie uma senha pessoal exclusiva.');
-      }
-    }
-
-    // Gera o hash seguro com bcrypt
-    const senhaHash = bcrypt.hashSync(cleanPass, 10);
-    const nowIso = new Date().toISOString();
-    let dbSuccess = false;
-
-    if (matchedRows.length > 0) {
-      const targetIds = matchedRows.map(r => r.Idf_Colaborador).filter(Boolean);
-      const { data: updatedData, error } = await supabase
-        .from('TAB_Colaborador')
-        .update({ Des_Senha_Hash: senhaHash, Dta_Atualizacao: nowIso })
-        .in('Idf_Colaborador', targetIds)
-        .select('Idf_Colaborador');
-
-      dbSuccess = !error && Boolean(updatedData && updatedData.length > 0);
-      if (error) {
-        // Fallback caso Dta_Atualizacao não exista na tabela customizada
-        const retry = await supabase
-          .from('TAB_Colaborador')
-          .update({ Des_Senha_Hash: senhaHash })
-          .in('Idf_Colaborador', targetIds)
-          .select('Idf_Colaborador');
-        dbSuccess = !retry.error && Boolean(retry.data && retry.data.length > 0);
-      }
-
-      // Se o colaborador possuir outros registros com o mesmo e-mail no banco, atualiza todos para evitar conflito de login
-      const emails = Array.from(new Set(matchedRows.map(r => r.Eml_Corporativo?.trim().toLowerCase()).filter(Boolean)));
-      for (const eml of emails) {
-        await supabase
-          .from('TAB_Colaborador')
-          .update({ Des_Senha_Hash: senhaHash })
-          .ilike('Eml_Corporativo', eml);
-      }
-
-      matchedRows.forEach(r => {
-        markUserPasswordChangedLocal({
-          id: r.Idf_Colaborador,
-          matricula: r.Cod_Matricula,
-          email: r.Eml_Corporativo,
-        });
-      });
-    } else if (isUuidVal) {
-      const { data: updatedData, error } = await supabase
-        .from('TAB_Colaborador')
-        .update({ Des_Senha_Hash: senhaHash })
-        .eq('Idf_Colaborador', cleanId)
-        .select('Idf_Colaborador');
-      dbSuccess = !error && Boolean(updatedData && updatedData.length > 0);
-      if (dbSuccess) {
-        markUserPasswordChangedLocal({ id: cleanId });
-      }
-    } else {
-      const { data: updatedData, error } = await supabase
-        .from('TAB_Colaborador')
-        .update({ Des_Senha_Hash: senhaHash })
-        .or(`Cod_Matricula.ilike.%${cleanNoSpace}%,Eml_Corporativo.ilike.%${cleanId}%`)
-        .select('Idf_Colaborador, Cod_Matricula, Eml_Corporativo');
-      dbSuccess = !error && Boolean(updatedData && updatedData.length > 0);
-      if (updatedData && updatedData.length > 0) {
-        updatedData.forEach((r: any) => {
-          markUserPasswordChangedLocal({
-            id: r.Idf_Colaborador,
-            matricula: r.Cod_Matricula,
-            email: r.Eml_Corporativo,
-          });
-        });
-      }
-    }
-
-    // Atualiza também no localStorage/safeStorage para suporte offline/local fallback
-    let localUpdatedAny = false;
-    try {
-      const rawLocal = safeStorage.getItem('pontual_registered_users') || (typeof window !== 'undefined' ? window.localStorage.getItem('pontual_registered_users') : null);
-      if (rawLocal) {
-        const localUsers = JSON.parse(rawLocal);
-        const updated = localUsers.map((u: any) => {
-          const mat = (u.Cod_Matricula || u.matricula || '').toLowerCase();
-          const eml = (u.Eml_Corporativo || u.email || '').toLowerCase();
-          if (mat.includes(cleanNoSpace.toLowerCase()) || eml.includes(cleanId.toLowerCase())) {
-            localUpdatedAny = true;
-            markUserPasswordChangedLocal({
-              id: u.Idf_Colaborador || u.id,
-              matricula: u.Cod_Matricula || u.matricula,
-              email: u.Eml_Corporativo || u.email,
-            });
-            return { ...u, Des_Senha_Hash: senhaHash, password: senhaHash, Dta_Atualizacao: nowIso };
-          }
-          return u;
-        });
-        if (localUpdatedAny) {
-          const serialized = JSON.stringify(updated);
-          safeStorage.setItem('pontual_registered_users', serialized);
-          if (typeof window !== 'undefined') {
-            window.localStorage.setItem('pontual_registered_users', serialized);
-          }
-        }
-      }
-    } catch {}
-
-    return dbSuccess || localUpdatedAny;
-  } catch (err: any) {
-    console.warn('Erro ao atualizar senha no Supabase:', err?.message || err);
-    throw err;
+// Solicita link seguro de redefinição de senha com token criptográfico enviado por e-mail
+export async function requestPasswordResetToken(email: string): Promise<{ success: boolean; message: string }> {
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    return { success: false, message: 'Informe um e-mail corporativo válido.' };
   }
+
+  for (const endpoint of getBackendAuthEndpoints('/request-password-reset')) {
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail }),
+      });
+      const json = await response.json().catch(() => null);
+      if (response.ok) {
+        return {
+          success: true,
+          message:
+            json?.message ||
+            'Se o e-mail estiver cadastrado, enviaremos um link seguro de redefinição de senha válido por 30 minutos.',
+        };
+      }
+      if (response.status >= 400 && response.status < 500) {
+        return {
+          success: false,
+          message: json?.message || json?.error || 'Não foi possível solicitar a redefinição de senha.',
+        };
+      }
+    } catch {
+      // tenta próximo endpoint
+    }
+  }
+
+  return {
+    success: false,
+    message: 'Serviço de redefinição de senha indisponível no momento. Tente novamente ou contate o RH.',
+  };
+}
+
+// Confirma a nova senha usando o token criptográfico de uso único recebido por e-mail
+export async function confirmPasswordResetWithToken(
+  token: string,
+  novaSenha: string
+): Promise<{ success: boolean; message: string }> {
+  const cleanToken = String(token || '').trim();
+  const cleanPass = String(novaSenha || '').trim();
+
+  if (!cleanToken) {
+    return { success: false, message: 'Token de redefinição ausente ou inválido.' };
+  }
+  if (cleanPass.length < 6) {
+    return { success: false, message: 'A nova senha deve ter no mínimo 6 caracteres.' };
+  }
+
+  for (const endpoint of getBackendAuthEndpoints('/reset-password')) {
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: cleanToken, novaSenha: cleanPass }),
+      });
+      const json = await response.json().catch(() => null);
+      if (response.ok) {
+        return {
+          success: true,
+          message: json?.message || 'Senha redefinida com sucesso! Faça login com sua nova senha.',
+        };
+      }
+      if (response.status >= 400 && response.status < 500) {
+        return {
+          success: false,
+          message: json?.message || json?.error || 'Link de redefinição inválido ou expirado.',
+        };
+      }
+    } catch {
+      // tenta próximo endpoint
+    }
+  }
+
+  return {
+    success: false,
+    message: 'Não foi possível conectar ao servidor para concluir a redefinição de senha.',
+  };
+}
+
+// Desativada por segurança: impede sobrescrita direta de senha sem token validado no servidor
+export async function updateColaboradorPasswordSupabase(_identifier: string, _novaSenha: string): Promise<boolean> {
+  throw new Error('Redefinição direta desativada por segurança. Utilize o link com token enviado ao seu e-mail.');
 }

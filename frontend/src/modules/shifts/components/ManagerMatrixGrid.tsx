@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { sanitizeSafeUrl, sanitizeCsvCell, quotePostgrestValue } from '@/shared/utils/security';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -1263,7 +1264,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       'Fundamentação Legal'
     ];
 
-    const escapeCsv = (val: any) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+    const escapeCsv = sanitizeCsvCell;
 
     const rows = rowsToExport.map(row => {
       const isHe = row.type === 'hora_extra';
@@ -1356,7 +1357,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       'Observação / Feedback do Gestor'
     ];
 
-    const escapeCsv = (val: any) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+    const escapeCsv = sanitizeCsvCell;
 
     const rows = rowsToExport.map(row => {
       let statusFormatted = row.status || 'Pendente';
@@ -2014,7 +2015,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     targetDept: string = 'all',
     mode: 'consolidated_employees_dept' | 'consolidated_dept' = 'consolidated_employees_dept'
   ) => {
-    const escapeCsv = (val: any) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+    const escapeCsv = sanitizeCsvCell;
     const formatMinToHHMM = (min: number) => {
       const h = Math.floor(min / 60);
       const m = min % 60;
@@ -2582,7 +2583,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         const { data: groupMsgs } = await supabase
           .from('messages')
           .select('channel, recipient_id, attachment, text')
-          .or(`channel.like.${groupPrefix},recipient_id.like.group_meta%`)
+          .or(`channel.like.${quotePostgrestValue(groupPrefix)},recipient_id.like.group_meta%`)
           .order('created_at', { ascending: true });
 
         if (groupMsgs && groupMsgs.length > 0) {
@@ -2671,7 +2672,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       let query = supabase.from('messages').select('*');
       if (activeChatMode === 'direct' && activeEmployee?.id && selectedDirectEmployee?.id) {
         const pair = [activeEmployee.id, selectedDirectEmployee.id].sort().join('_');
-        query = query.or(`channel.eq.direct_${pair},channel.like.%direct_${pair},and(sender_id.eq.${activeEmployee.id},recipient_id.eq.${selectedDirectEmployee.id}),and(sender_id.eq.${selectedDirectEmployee.id},recipient_id.eq.${activeEmployee.id})`);
+        const qDirect = quotePostgrestValue(`direct_${pair}`);
+        const qDirectLike = quotePostgrestValue(`%direct_${pair}`);
+        const qSelf = quotePostgrestValue(activeEmployee.id);
+        const qOther = quotePostgrestValue(selectedDirectEmployee.id);
+        query = query.or(`channel.eq.${qDirect},channel.like.${qDirectLike},and(sender_id.eq.${qSelf},recipient_id.eq.${qOther}),and(sender_id.eq.${qOther},recipient_id.eq.${qSelf})`);
       } else {
         query = query.eq('channel', currentChatChannel);
       }
@@ -3047,11 +3052,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     const scopedGroupId = getScopedChatChannel(activeEmployee?.companyId, groupId);
 
     try {
-      await supabase.from('messages').delete().or(`channel.eq.${scopedGroupId},channel.eq.${groupId},recipient_id.eq.group_meta_id:${groupId},recipient_id.like.%${groupId}%`);
+      await supabase.from('messages').delete().or(`channel.eq.${quotePostgrestValue(scopedGroupId)},channel.eq.${quotePostgrestValue(groupId)},recipient_id.eq.${quotePostgrestValue(`group_meta_id:${groupId}`)},recipient_id.like.${quotePostgrestValue(`%${groupId}%`)}`);
     } catch {}
 
     try {
-      await supabase.from('chat_channels').delete().or(`id.eq.${scopedGroupId},id.eq.${groupId},name.eq.${groupName}`);
+      await supabase.from('chat_channels').delete().or(`id.eq.${quotePostgrestValue(scopedGroupId)},id.eq.${quotePostgrestValue(groupId)},name.eq.${quotePostgrestValue(groupName)}`);
     } catch {}
 
     try {
@@ -5545,11 +5550,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           </div>
                         </div>
 
-                        {rem.link ? (
+                        {rem.link && sanitizeSafeUrl(rem.link, { fallback: '' }) ? (
                           <a
-                            href={rem.link}
+                            href={sanitizeSafeUrl(rem.link)}
                             target="_blank"
-                            rel="noreferrer"
+                            rel="noopener noreferrer"
                             className="reminder-call-button px-3.5 py-1.5 rounded-xl font-bold text-[11px] flex items-center gap-1.5 transition-all hover:opacity-80 shadow-sm text-white"
                             style={{
                               background: '#1d5c42',
@@ -6523,7 +6528,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                     title="Clique para ampliar a imagem"
                                   >
                                     <img
-                                      src={parsed.attachment.url}
+                                      src={sanitizeSafeUrl(parsed.attachment.url, { allowDataImage: true, allowBlob: true })}
                                       alt={parsed.attachment.name}
                                       className="w-full max-h-52 object-cover group-hover/img:scale-102 transition-transform duration-200"
                                       loading="lazy"
@@ -6533,8 +6538,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                         <Eye className="w-3.5 h-3.5" />
                                       </span>
                                       <a
-                                        href={parsed.attachment.url}
+                                        href={sanitizeSafeUrl(parsed.attachment.url, { allowDataImage: true, allowBlob: true })}
                                         download={parsed.attachment.name}
+                                        rel="noopener noreferrer"
                                         onClick={(e) => e.stopPropagation()}
                                         className="p-1.5 rounded-lg bg-black/60 hover:bg-black/80"
                                         title="Baixar imagem"
@@ -6966,8 +6972,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     <span className="font-semibold truncate max-w-[200px] sm:max-w-md">{managerPreviewModalImage.name}</span>
                     <div className="flex items-center gap-2">
                       <a
-                        href={managerPreviewModalImage.url}
+                        href={sanitizeSafeUrl(managerPreviewModalImage.url, { allowDataImage: true, allowBlob: true })}
                         download={managerPreviewModalImage.name}
+                        rel="noopener noreferrer"
                         className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors"
                         title="Baixar imagem"
                       >

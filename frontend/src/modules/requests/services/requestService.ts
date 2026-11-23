@@ -1,6 +1,7 @@
 import { getTodayDateString } from '@/shared/utils/dateUtils';
 import { supabase } from '@/shared/services/supabase';
 import { TimeOffRequest, AbsenceJustification, Employee } from '@/types';
+import { quotePostgrestValue } from '@/shared/utils/security';
 import bcrypt from 'bcryptjs';
 
 function isValidUuid(id?: string): boolean {
@@ -19,10 +20,12 @@ export async function ensureColaboradorUuidSupabase(activeEmp?: Employee): Promi
   const cleanEmail = activeEmp.email?.trim().toLowerCase();
   if (cleanEmail) {
     try {
+      const quotedEmail = quotePostgrestValue(cleanEmail);
       const { data: empData } = await supabase
         .from('TAB_Colaborador')
         .select('Idf_Colaborador')
-        .or(`Eml_Corporativo.ilike.${cleanEmail},Eml_Secundario.ilike.${cleanEmail}`)
+        .or(`Eml_Corporativo.ilike.${quotedEmail},Eml_Secundario.ilike.${quotedEmail}`)
+        .limit(1)
         .maybeSingle();
 
       if (empData?.Idf_Colaborador && isValidUuid(empData.Idf_Colaborador)) {

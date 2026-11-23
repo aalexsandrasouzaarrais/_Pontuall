@@ -18,6 +18,7 @@ import {
   ChevronRight,
   LogOut
 } from 'lucide-react';
+import { validateUploadFile } from '@/shared/utils/security';
 import { Employee } from '@/types';
 import { updateColaboradorAvatarSupabase } from '@/modules/auth/services/colaboradorService';
 import { safeStorage } from '@/shared/utils/safeStorage';
@@ -109,9 +110,10 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Limita tamanho (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      setErrorMessage('O arquivo de imagem deve ter no máximo 5 MB.');
+    const validation = validateUploadFile(file, { mode: 'image', maxSizeBytes: 5 * 1024 * 1024 });
+    if (!validation.valid) {
+      setErrorMessage(validation.error || 'Formato de imagem inválido (use PNG, JPG, WEBP ou GIF até 5 MB).');
+      e.target.value = '';
       return;
     }
 

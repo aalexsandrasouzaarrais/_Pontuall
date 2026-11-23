@@ -10,7 +10,8 @@ const memoryStorageFallback: Record<string, string> = {};
 const SESSION_KEYS = new Set([
   'pontual_active_user',
   'pontual_role',
-  'pontual_google_avatar'
+  'pontual_google_avatar',
+  'pontual_auth_token'
 ]);
 
 const isSessionKey = (key: string): boolean => {
@@ -23,6 +24,7 @@ try {
     window.localStorage.removeItem('pontual_active_user');
     window.localStorage.removeItem('pontual_role');
     window.localStorage.removeItem('pontual_google_avatar');
+    window.localStorage.removeItem('pontual_auth_token');
   }
 } catch {}
 

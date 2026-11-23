@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/shared/services/supabase';
-import { mapBneToEmployee, createGestorSupabase, checkEmailExists, hasUserChangedPasswordLocal } from '../services/colaboradorService';
+import { mapBneToEmployee, createGestorSupabase, checkEmailExists, hasUserChangedPasswordLocal, getColaboradorByIdSupabase } from '../services/colaboradorService';
 import { Employee } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
 import { PasswordResetPage } from './PasswordResetPage';
 import { safeStorage } from '@/shared/utils/safeStorage';
+import { quotePostgrestValue } from '@/shared/utils/security';
 import { resetWorkplacesToDefaultForActiveCompany } from '@/shared/services/workplaceService';
 import bcrypt from 'bcryptjs';
 
@@ -34,8 +35,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
       const urlParams = new URLSearchParams(window.location.search);
       const isRecovery = urlParams.get('reset') === 'true' || urlParams.get('type') === 'recovery';
       const isPrimeiroAcesso = urlParams.get('primeiro_acesso') === 'true';
+      const hasResetToken = Boolean(urlParams.get('token'));
       const isResetPath = typeof window !== 'undefined' && window.location.pathname.includes('/redefinir-senha');
-      if (isRecovery || isPrimeiroAcesso || isResetPath) {
+      if (isRecovery || isPrimeiroAcesso || hasResetToken || isResetPath) {
         return 'reset-password';
       }
     } catch {}
@@ -212,14 +214,123 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
     setIsLoading(true);
 
     try {
-      // 1. Busca na tabela TAB_Colaborador do Supabase
+      const passNorm = password.trim();
+
+      // 0. Fluxo Server-First para login via e-mail corporativo (sem expor Des_Senha_Hash no cliente)
+      if (cleanInput.includes('@') && typeof fetch !== 'undefined') {
+        const backendBase = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+        const authEndpoints = [
+          ...(backendBase ? [`${backendBase}/api/auth/login`] : []),
+          '/api/auth/login',
+          ...(import.meta.env.DEV ? ['http://localhost:5000/api/auth/login'] : []),
+        ];
+
+        for (const authEndpoint of authEndpoints) {
+          try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 3500);
+            const res = await fetch(authEndpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: cleanInput.toLowerCase(), senha: passNorm }),
+              signal: controller.signal,
+            });
+            clearTimeout(timer);
+
+            if (res.status === 401 || res.status === 403 || res.status === 429) {
+              const errJson = await res.json().catch(() => null);
+              showFeedback(errJson?.error || 'E-mail, matrícula ou senha inválidos.', 'error');
+              setIsLoading(false);
+              passwordInputRef.current?.focus();
+              return;
+            }
+
+            if (res.ok) {
+              const json = await res.json().catch(() => null);
+              if (json?.token && json?.colaborador) {
+                const c = json.colaborador;
+                const perfilLower = String(c.perfil || 'colaborador').toLowerCase();
+                const isRhUserServer = perfilLower === 'rh' || c.isMasterManager === true;
+                const systemRoleServer: 'manager' | 'employee' =
+                  perfilLower === 'rh' || perfilLower === 'gestor' || perfilLower === 'manager' ? 'manager' : 'employee';
+
+                if (perfilLower !== currentRole && currentRole !== 'gestor') {
+                  setCurrentRole(systemRoleServer === 'manager' ? 'gestor' : 'colaborador');
+                }
+
+                try {
+                  const { data: sessionData } = await supabase.auth.getSession();
+                  if (sessionData?.session && sessionData.session.user?.email?.toLowerCase() !== String(c.email || '').toLowerCase()) {
+                    await supabase.auth.signOut();
+                  }
+                } catch {}
+
+                let employeeObj: Employee = {
+                  id: c.id,
+                  name: c.nome || 'Colaborador',
+                  role: c.cargo || 'Colaborador',
+                  department: c.departamento || 'Geral',
+                  avatar: c.avatar || '',
+                  email: c.email || '',
+                  phone: '',
+                  standardHoursPerWeek: Number(c.horasSemanais) || 40,
+                  registrationId: c.matricula || '',
+                  companyId: c.companyId || '',
+                  companyCnpj: c.companyCnpj,
+                  isMasterManager: Boolean(c.isMasterManager),
+                  isRh: isRhUserServer,
+                  roleType: perfilLower === 'rh' ? 'rh' : perfilLower === 'gestor' ? 'gestor' : 'colaborador',
+                  managerIds: Array.isArray(c.managerIds) ? c.managerIds : [],
+                };
+
+                try {
+                  const detailed = await getColaboradorByIdSupabase(c.id);
+                  if (detailed) {
+                    employeeObj = { ...employeeObj, ...detailed, companyCnpj: detailed.companyCnpj || c.companyCnpj };
+                  }
+                } catch {}
+
+                safeStorage.setItem('pontual_auth_token', json.token);
+                safeStorage.setItem('pontual_role', systemRoleServer);
+                safeStorage.setItem('pontual_active_user', JSON.stringify({
+                  Idf_Colaborador: employeeObj.id,
+                  Nme_Colaborador: employeeObj.name,
+                  Eml_Corporativo: employeeObj.email,
+                  Cod_Matricula: employeeObj.registrationId,
+                  Tpo_Perfil: employeeObj.roleType,
+                  Tpo_Cargo: employeeObj.role,
+                  Des_Departamento: employeeObj.department,
+                  Des_Avatar_Url: employeeObj.avatar,
+                  Idf_Empresa: employeeObj.companyId,
+                  Flg_Gestor_Master: isRhUserServer,
+                  ...employeeObj,
+                }));
+
+                setIsSuccess(true);
+                showFeedback(`Bem-vindo(a), ${employeeObj.name}! Redirecionando...`, 'success');
+                setTimeout(() => {
+                  onLoginSuccess(employeeObj, systemRoleServer);
+                }, 600);
+                return;
+              }
+            }
+          } catch {
+            // Endpoint indisponível; tenta próximo endpoint ou contingência
+          }
+        }
+      }
+
+      // 1. Contingência (matrícula ou ambiente sem endpoint server): busca sanitizada na tabela TAB_Colaborador
       let query = supabase.from('TAB_Colaborador').select('*').eq('Flg_Ativo', true);
 
       if (cleanInput.includes('@')) {
-        query = query.or(`Eml_Corporativo.ilike.${cleanInput},Eml_Secundario.ilike.${cleanInput}`);
+        const quotedEmail = quotePostgrestValue(cleanInput.toLowerCase());
+        query = query.or(`Eml_Corporativo.ilike.${quotedEmail},Eml_Secundario.ilike.${quotedEmail}`);
       } else {
-        // Busca flexível por matrícula (ex: "3862" encontra "PNT-3862", sem estourar erro de UUID)
-        query = query.or(`Cod_Matricula.ilike.%${cleanInput}%,Cod_Matricula.ilike.${cleanInput}`);
+        // Busca flexível por matrícula (ex: "3862" encontra "PNT-3862") com filtro sanitizado
+        const quotedLike = quotePostgrestValue(`%${cleanInput}%`);
+        const quotedExact = quotePostgrestValue(cleanInput);
+        query = query.or(`Cod_Matricula.ilike.${quotedLike},Cod_Matricula.ilike.${quotedExact}`);
       }
 
       const { data: rows } = await query.limit(10);
@@ -260,14 +371,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
       }
 
       if (!matchedUser) {
-        showFeedback('Usuário não cadastrado. Verifique o email ou ID informado.', 'error');
+        showFeedback('E-mail, matrícula ou senha inválidos.', 'error');
         setIsLoading(false);
-        emailInputRef.current?.focus();
+        passwordInputRef.current?.focus();
         return;
       }
 
       // 2. Detecção automática de perfil (RH, Gestor ou Colaborador)
-      const isRhUser = matchedUser.Tpo_Perfil === 'rh' || matchedUser.Flg_Gestor_Master === true || matchedUser.isRh === true || matchedUser.Eml_Corporativo?.toLowerCase() === 'gestor@pontual.com';
+      const isRhUser = matchedUser.Tpo_Perfil === 'rh' || matchedUser.Flg_Gestor_Master === true || matchedUser.isRh === true;
       const userPerfil = isRhUser ? 'rh' : (matchedUser.Tpo_Perfil || matchedUser.perfil || 'colaborador').toLowerCase();
 
       if (userPerfil !== currentRole && currentRole !== 'gestor') {
@@ -275,7 +386,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
       }
 
       // 3. Validação segura da senha com hash bcrypt:
-      const passNorm = password.trim();
       const matriculaNorm = matchedUser.Cod_Matricula ? matchedUser.Cod_Matricula.trim().toLowerCase() : '';
       const matriculaDigits = matriculaNorm.replace(/^pnt-|^gst-|^col-|^mat-/i, '');
       const isPasswordEqualToMatricula = Boolean(
@@ -313,13 +423,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         return;
       }
 
-      // Verifica se é uma conta antiga já cadastrada antes da restrição de senhas genéricas e que ainda não redefiniu a senha
-      const isPreExistingLegacyAccount = Boolean(
-        !hasUserChangedPasswordLocal(matchedUser) &&
-        (!matchedUser.Dta_Cadastro || String(matchedUser.Dta_Cadastro) < '2026-11-17') &&
-        (!matchedUser.Dta_Atualizacao || matchedUser.Dta_Atualizacao === matchedUser.Dta_Cadastro)
-      );
-
       let senhaValida = false;
       if (isBcrypt) {
         try {
@@ -327,10 +430,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
           // Caso o colaborador digite a matrícula provisória em minúsculas apenas no 1º acesso (quando ainda não trocou a senha)
           if (!senhaValida && !alreadyChangedPassword && matriculaNorm && passNorm.toLowerCase() === matriculaNorm) {
             senhaValida = bcrypt.compareSync(passNorm.toUpperCase(), matchedUser.Des_Senha_Hash);
-          }
-          // Permite que contas já cadastradas anteriormente com a senha padrão (123456) continuem entrando até que alterem sua senha
-          if (!senhaValida && isPreExistingLegacyAccount && passNorm === '123456') {
-            senhaValida = true;
           }
         } catch {
           senhaValida = false;
@@ -340,8 +439,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         const storedPlain = matchedUser.Des_Senha_Hash ? String(matchedUser.Des_Senha_Hash).trim() : '';
         senhaValida =
           (Boolean(storedPlain) && storedPlain !== 'google_oauth_authenticated' && storedPlain === passNorm && !(alreadyChangedPassword && isPasswordEqualToMatricula)) ||
-          (!storedPlain && !alreadyChangedPassword && Boolean(matriculaNorm) && matriculaNorm === passNorm.toLowerCase()) ||
-          (isPreExistingLegacyAccount && passNorm === '123456');
+          (!storedPlain && !alreadyChangedPassword && Boolean(matriculaNorm) && matriculaNorm === passNorm.toLowerCase());
 
         // Se a senha estiver correta mas não estava hasheada, atualiza automaticamente no banco com bcrypt
         if (senhaValida && matchedUser.Idf_Colaborador) {
@@ -357,7 +455,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
       }
 
       if (!senhaValida) {
-        showFeedback('Senha incorreta. Verifique sua senha ou, caso ainda não tenha definido uma senha, utilize a matrícula no primeiro acesso.', 'error');
+        showFeedback('E-mail, matrícula ou senha inválidos.', 'error');
         setIsLoading(false);
         passwordInputRef.current?.focus();
         return;
@@ -382,11 +480,46 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         employeeObj.isMasterManager = true;
       }
 
+      // Obtém JWT assinado do backend (best-effort, timeout de 3s) para autenticar ações administrativas como envio de e-mails
+      try {
+        const backendBase = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+        const authEndpoints = [
+          ...(backendBase ? [`${backendBase}/api/auth/login`] : []),
+          '/api/auth/login',
+          ...(import.meta.env.DEV ? ['http://localhost:5000/api/auth/login'] : []),
+        ];
+        if (employeeObj.email && typeof fetch !== 'undefined') {
+          for (const authEndpoint of authEndpoints) {
+            try {
+              const controller = new AbortController();
+              const timer = setTimeout(() => controller.abort(), 3000);
+              const res = await fetch(authEndpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: employeeObj.email, senha: passNorm }),
+                signal: controller.signal,
+              });
+              clearTimeout(timer);
+              if (res.ok) {
+                const json = await res.json().catch(() => null);
+                if (json?.token) {
+                  safeStorage.setItem('pontual_auth_token', json.token);
+                  break;
+                }
+              }
+            } catch {
+              // ignora e tenta próximo endpoint sem bloquear o login
+            }
+          }
+        }
+      } catch {}
+
       const systemRole: 'manager' | 'employee' = (userPerfil === 'rh' || userPerfil === 'gestor' || userPerfil === 'manager') ? 'manager' : 'employee';
+      const { Des_Senha_Hash: _omittedHash, ...safeMatchedUser } = matchedUser;
 
       safeStorage.setItem('pontual_role', systemRole);
       safeStorage.setItem('pontual_active_user', JSON.stringify({
-        ...matchedUser,
+        ...safeMatchedUser,
         id: employeeObj.id,
         name: employeeObj.name,
         role: employeeObj.role,
@@ -495,6 +628,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
       } catch (dbErr: any) {
         console.warn('Supabase offline ou retorno com aviso, operando com contingência local:', dbErr?.message);
 
+        if (dbErr?.message && dbErr.message.includes('DUPLICATE_CNPJ')) {
+          showFeedback('Este CNPJ já possui uma organização cadastrada no sistema. Solicite o acesso diretamente ao gestor administrador da empresa.', 'error');
+          setIsRegLoading(false);
+          return;
+        }
+
         if (
           dbErr?.message &&
           (dbErr.message.includes('unique') ||
@@ -554,11 +693,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
           Flg_Ativo: true,
         };
 
+        const { Des_Senha_Hash: _omitRegHash, ...safeActiveRecord } = userRecord;
         const filtered = registeredUsers.filter((u: any) => u.Eml_Corporativo?.toLowerCase() !== cleanEmail);
         filtered.push(userRecord);
         safeStorage.setItem('pontual_registered_users', JSON.stringify(filtered));
         safeStorage.setItem('pontual_role', 'manager');
-        safeStorage.setItem('pontual_active_user', JSON.stringify(userRecord));
+        safeStorage.setItem('pontual_active_user', JSON.stringify(safeActiveRecord));
         resetWorkplacesToDefaultForActiveCompany();
       } catch (storageErr) {
         console.warn('Erro ao salvar no storage local:', storageErr);
@@ -585,41 +725,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
 
       const isFileProtocol = typeof window !== 'undefined' && (window.location.protocol === 'file:' || !window.location.origin || window.location.origin === 'null');
 
-      // Se estiver em arquivo local (file://), Google OAuth não aceita redirecionamento web.
-      // Nesse ambiente, autentica diretamente com o perfil Google cadastrado no sistema.
+      // Em file://, o Google OAuth não suporta redirecionamento web; não há login automático por segurança.
       if (isFileProtocol) {
-        try {
-          const { data: dbKamile } = await supabase
-            .from('TAB_Colaborador')
-            .select('*')
-            .eq('Eml_Corporativo', 'kamilealvss@gmail.com')
-            .maybeSingle();
-
-          const targetUser = dbKamile || {
-            Idf_Colaborador: 'google-kamile',
-            Nme_Colaborador: 'Kamile Silva',
-            Eml_Corporativo: 'kamilealvss@gmail.com',
-            Tpo_Perfil: 'gestor',
-            Tpo_Cargo: 'Gestora Geral',
-            Des_Departamento: 'Gestão de Pessoas & Operações',
-            Des_Avatar_Url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-            Flg_Gestor_Master: true,
-            Flg_Ativo: true,
-            Cod_Matricula: 'GST-3862'
-          };
-
-          const emp = mapBneToEmployee(targetUser);
-          safeStorage.setItem('pontual_role', 'manager');
-          safeStorage.setItem('pontual_active_user', JSON.stringify(targetUser));
-
-          showFeedback(`Conectado com Google Workspace como ${targetUser.Nme_Colaborador}!`, 'success');
-          setTimeout(() => {
-            onLoginSuccess(emp, 'manager');
-          }, 600);
-          return;
-        } catch (fileErr) {
-          console.warn('Erro ao autenticar local via Google:', fileErr);
-        }
+        showFeedback(
+          'O login com Google Workspace exige acesso via servidor web (HTTPS ou localhost). Acesse pela URL oficial da aplicação ou utilize e-mail corporativo e senha.',
+          'error'
+        );
+        setIsLoading(false);
+        return;
       }
 
       const redirectUrl = typeof window !== 'undefined'
@@ -669,17 +782,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
           }
           setViewMode('login');
         }}
-        onSuccess={(colaboradorData) => {
+        onSuccess={() => {
           if (typeof window !== 'undefined' && window.history?.replaceState) {
             window.history.replaceState({}, document.title, window.location.pathname);
           }
-          if (colaboradorData) {
-            const emp = mapBneToEmployee(colaboradorData);
-            const isManager = colaboradorData.Tpo_Perfil === 'gestor' || colaboradorData.perfil === 'gestor' || colaboradorData.isRh;
-            onLoginSuccess(emp, isManager ? 'manager' : 'employee');
-          } else {
-            setViewMode('login');
-          }
+          setViewMode('login');
+          showFeedback('Senha redefinida com sucesso! Faça login com sua nova senha.', 'success');
         }}
       />
     );
