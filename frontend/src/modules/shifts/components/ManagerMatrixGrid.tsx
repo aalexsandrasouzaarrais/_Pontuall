@@ -72,6 +72,7 @@ import { EmployeesManagementView } from '@/modules/manager/components/EmployeesM
 import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
 import { DeleteShiftsModal } from './DeleteShiftsModal';
 import { addDaysLocal, startOfWeekMonday, toLocalDateString, getTodayDateString, formatDateBR, normalizeDateToISO, isShiftPast24hWithoutPunch, evaluatePunchTolerance, parseDateSortTimestamp, matchesDateSearchQuery } from '@/shared/utils/dateUtils';
+import { resolveAttendanceReportStatusAndObs } from '@/shared/utils/attendanceUtils';
 import { showPolishedToast } from '@/components/ui/halo-toast';
 import {
   ReminderItem,
@@ -112,8 +113,8 @@ interface ManagerMatrixGridProps {
   requests?: TimeOffRequest[];
   onApproveRequest?: (id: string, customFeedback?: string) => void;
   onRejectRequest?: (id: string, customFeedback?: string) => void;
-  onApproveJustification?: (id: string, customFeedback?: string) => void;
-  onRejectJustification?: (id: string, customFeedback?: string) => void;
+  onApproveJustification?: (id: string, customFeedback?: string, silentToast?: boolean) => void | Promise<void>;
+  onRejectJustification?: (id: string, customFeedback?: string, silentToast?: boolean) => void | Promise<void>;
 }
 
 export interface BancoHorasItem {
@@ -249,6 +250,37 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     actionText?: string;
     feedback: string;
   }>>([]);
+
+  useEffect(() => {
+    setSelectedDetailOccurrence(prev => {
+      if (!prev) return null;
+      const exactMatch = approvalsData.find(a => a.id === prev.id);
+      const fallbackMatch = !exactMatch && prev.id.startsWith('shift-occ-')
+        ? approvalsData.find(a =>
+            !a.id.startsWith('shift-occ-') &&
+            a.employeeId === prev.employeeId &&
+            a.date === prev.date &&
+            a.type === prev.type
+          )
+        : undefined;
+      const latest = exactMatch || fallbackMatch;
+      if (!latest) return prev;
+      if (
+        latest.id === prev.id &&
+        latest.status === prev.status &&
+        latest.reason === prev.reason &&
+        latest.actionText === prev.actionText &&
+        latest.documentUrl === prev.documentUrl
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        ...latest,
+        feedback: prev.feedback || latest.feedback,
+      };
+    });
+  }, [approvalsData]);
 
   // Tab 3 (Relatórios) & Banco de Horas States
   const [relatorioSubTab, setRelatorioSubTab] = useState<'geral' | 'banco_horas'>('geral');
@@ -1017,7 +1049,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
       if (matchingJust) {
         if (onApproveJustification) {
-          onApproveJustification(matchingJust.id, customFeedback || 'Ocorrência abonada pelo gestor');
+          await onApproveJustification(matchingJust.id, customFeedback || 'Ocorrência abonada pelo gestor', true);
         } else {
           await updateJustificativaStatusSupabase(matchingJust.id, 'approved', customFeedback || 'Ocorrência abonada pelo gestor');
         }
@@ -1047,7 +1079,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       if (matchingJust) {
         // Persiste a homologação na justificativa (Supabase) — o handler do App também anota o turno
         if (onApproveJustification) {
-          await onApproveJustification(matchingJust.id, customFeedback || 'Esquecimento homologado pelo gestor');
+          await onApproveJustification(matchingJust.id, customFeedback || 'Esquecimento homologado pelo gestor', true);
         } else {
           await updateJustificativaStatusSupabase(matchingJust.id, 'approved', customFeedback || 'Esquecimento homologado pelo gestor');
         }
@@ -1078,7 +1110,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       const matchingJust = id.startsWith('shift-occ-') ? undefined : justifications.find(j => j.id === id);
       if (matchingJust) {
         if (onApproveJustification) {
-          await onApproveJustification(matchingJust.id, customFeedback || 'Hora extra homologada pelo gestor');
+          await onApproveJustification(matchingJust.id, customFeedback || 'Hora extra homologada pelo gestor', true);
         } else {
           await updateJustificativaStatusSupabase(matchingJust.id, 'approved', customFeedback || 'Hora extra homologada pelo gestor');
         }
@@ -1112,7 +1144,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           await updateSolicitacaoStatusSupabase(id, 'approved', customFeedback || 'Aprovado pelo gestor');
         }
       } else if (onApproveJustification) {
-        onApproveJustification(id, customFeedback);
+        await onApproveJustification(id, customFeedback, true);
       } else {
         await updateJustificativaStatusSupabase(id, 'approved', customFeedback || 'Homologado pelo gestor');
       }
@@ -1175,7 +1207,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
       if (matchingJust) {
         if (onRejectJustification) {
-          onRejectJustification(matchingJust.id, customFeedback || 'Ocorrência não abonada pelo gestor');
+          await onRejectJustification(matchingJust.id, customFeedback || 'Ocorrência não abonada pelo gestor', true);
         } else {
           await updateJustificativaStatusSupabase(matchingJust.id, 'rejected', customFeedback || 'Ocorrência não abonada pelo gestor');
         }
@@ -1204,7 +1236,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       const matchingJust = id.startsWith('shift-occ-') ? undefined : justifications.find(j => j.id === id);
       if (matchingJust) {
         if (onRejectJustification) {
-          await onRejectJustification(matchingJust.id, customFeedback || 'Esquecimento não aceito pelo gestor');
+          await onRejectJustification(matchingJust.id, customFeedback || 'Esquecimento não aceito pelo gestor', true);
         } else {
           await updateJustificativaStatusSupabase(matchingJust.id, 'rejected', customFeedback || 'Esquecimento não aceito pelo gestor');
         }
@@ -1235,7 +1267,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       const matchingJust = id.startsWith('shift-occ-') ? undefined : justifications.find(j => j.id === id);
       if (matchingJust) {
         if (onRejectJustification) {
-          await onRejectJustification(matchingJust.id, customFeedback || 'Hora extra não homologada pelo gestor');
+          await onRejectJustification(matchingJust.id, customFeedback || 'Hora extra não homologada pelo gestor', true);
         } else {
           await updateJustificativaStatusSupabase(matchingJust.id, 'rejected', customFeedback || 'Hora extra não homologada pelo gestor');
         }
@@ -1269,7 +1301,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           await updateSolicitacaoStatusSupabase(id, 'rejected', customFeedback || 'Recusado pelo gestor');
         }
       } else if (onRejectJustification) {
-        onRejectJustification(id, customFeedback);
+        await onRejectJustification(id, customFeedback, true);
       } else {
         await updateJustificativaStatusSupabase(id, 'rejected', customFeedback || 'Recusado pelo gestor');
       }
@@ -1785,13 +1817,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         }
 
         const emp = employees.find(e => e.id === s.employeeId);
-        const statusMap: Record<string, string> = {
-          present: 'Presente',
-          absent: 'Ausente',
-          justified: 'Justificado',
-          late: 'Atrasado',
-          pending: 'Pendente'
-        };
         const hasRealExit = Boolean(s.checkOutTime);
 
         // GPS fora do posto detectado de forma discreta
@@ -1885,50 +1910,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           : 'Sem registro';
 
         const isPast24h = isShiftPast24hWithoutPunch(s);
-        const just = (justifications || []).find(j => 
+        const shiftJusts = (justifications || []).filter(j =>
           (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)
         );
-
-        let finalReportStatus = statusMap[s.attendanceStatus || 'pending'] || 'Pendente';
-        let isDecisionPending = false;
-
-        if (s.attendanceStatus === 'justified' || just?.status === 'approved') {
-          finalReportStatus = 'Justificado';
-        } else if (Boolean(s.checkInTime) || Boolean(s.checkOutTime) || s.attendanceStatus === 'present' || s.attendanceStatus === 'late') {
-          finalReportStatus = s.attendanceStatus === 'late' ? 'Atrasado' : 'Presente';
-        } else if (just) {
-          if (just.status === 'rejected') {
-            finalReportStatus = 'Ausente';
-          } else {
-            finalReportStatus = (isPast24h || s.attendanceStatus === 'absent') ? 'Ausente' : 'Pendente';
-            isDecisionPending = true;
-          }
-        } else if (isPast24h || s.attendanceStatus === 'absent') {
-          finalReportStatus = 'Ausente';
-          isDecisionPending = true;
-        }
-
-        // Observação concisa e limpa (sem acúmulo de textos concatenados)
-        let cleanObs = '';
-        if (finalReportStatus === 'Ausente') {
-          if (just && just.status === 'pending') {
-            cleanObs = `Justificativa: "${just.reason || 'Em análise'}"`;
-          } else {
-            cleanObs = 'Não bateu ponto';
-          }
-        } else if (finalReportStatus === 'Justificado') {
-          cleanObs = 'Ausência abonada';
-        } else if (s.notes) {
-          if (s.notes.includes('AJUSTE GESTOR')) {
-            cleanObs = 'Ajustado p/ horário normal';
-          } else if (s.notes.includes('HOMOLOGADO GESTOR')) {
-            cleanObs = 'Homologado no banco';
-          } else if (s.notes.includes('Esquecimento')) {
-            cleanObs = 'Esquecimento de saída';
-          } else {
-            cleanObs = s.notes.replace(/\[.*?\]/g, '').trim() || s.notes;
-          }
-        }
+        const {
+          status: finalReportStatus,
+          isDecisionPending,
+          cleanObs,
+        } = resolveAttendanceReportStatusAndObs({
+          hasWorkedPunch: Boolean(s.checkInTime) || Boolean(s.checkOutTime),
+          attendanceStatus: s.attendanceStatus,
+          notes: s.notes,
+          isPast24h,
+          justifications: shiftJusts,
+        });
 
         const obsParts: string[] = [];
         if (isGpsOutside) {

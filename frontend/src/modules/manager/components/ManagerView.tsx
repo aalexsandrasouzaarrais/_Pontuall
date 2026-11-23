@@ -43,8 +43,8 @@ interface ManagerViewProps {
   pjReports?: PjDeliverableReport[];
   onApproveRequest?: (id: string, customFeedback?: string) => void;
   onRejectRequest?: (id: string, customFeedback?: string) => void;
-  onApproveJustification?: (id: string, customFeedback?: string) => void;
-  onRejectJustification?: (id: string, customFeedback?: string) => void;
+  onApproveJustification?: (id: string, customFeedback?: string, silentToast?: boolean) => void | Promise<void>;
+  onRejectJustification?: (id: string, customFeedback?: string, silentToast?: boolean) => void | Promise<void>;
   onApprovePjReport?: (id: string) => void;
   onRejectPjReport?: (id: string, reason?: string) => void;
   activeTab?: ManagerTabId;
