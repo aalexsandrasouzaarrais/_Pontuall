@@ -753,8 +753,8 @@ function AppContent() {
 
 
 
-  // Check-In / Check-Out handler for employee
-  const handleCheckIn = (
+  // Check-In / Check-Out handler for employee (server-first para timestamp e geofence oficiais)
+  const handleCheckIn = async (
     shiftId: string,
     locationData: {
       address: string;
@@ -770,11 +770,22 @@ function AppContent() {
     simulatedTime?: string
   ) => {
     const now = new Date();
-    const timeStr = simulatedTime || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const targetShift = shifts.find(s => s.id === shiftId);
 
-    // Avaliação de tolerância conforme Art. 58 § 1º CLT
-    let punchAttendanceStatus: 'present' | 'late' = 'present';
+    // Envia ponto primeiro para o backend calcular timestamp, Haversine geofence e status oficial
+    const serverRes = await registerPunchSupabase(shiftId, activeEmployee.id, locationData, punchType);
+    if (serverRes.fromServer && !serverRes.ok) {
+      showToast('Erro ao registrar ponto', serverRes.error || 'Não foi possível validar o registro no servidor.', 'error');
+      return;
+    }
+
+    const officialTimestamp = serverRes.serverTimestamp || now.toISOString();
+    const timeStr = simulatedTime || serverRes.serverTimeHHMM || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const officialGpsValidated = typeof serverRes.gpsValidated === 'boolean' ? serverRes.gpsValidated : locationData.gpsValidated;
+    const officialDistanceMeters = serverRes.distanceMeters ?? locationData.distanceMeters;
+
+    // Avaliação de tolerância conforme Art. 58 § 1º CLT (usando horário oficial retornado pelo servidor)
+    let punchAttendanceStatus: 'present' | 'late' = serverRes.attendanceStatus || 'present';
     let lateDiffMinutes = 0;
     let earlyEntryDiffMinutes = 0;
     let overtimeDiffMinutes = 0;
@@ -782,7 +793,7 @@ function AppContent() {
 
     if (punchType === 'entrada' && targetShift?.startTime) {
       const tol = evaluatePunchTolerance(targetShift.startTime, timeStr, 'entrada', 10);
-      if (tol.isLate) {
+      if (serverRes.attendanceStatus === 'late' || tol.isLate) {
         punchAttendanceStatus = 'late';
         lateDiffMinutes = tol.diffMinutes;
       } else if (tol.isEarly) {
@@ -796,10 +807,8 @@ function AppContent() {
         earlyLeaveDiffMinutes = tol.diffMinutes;
       }
     }
-    
-    // Salva o registro de ponto na TAB_Registro_Ponto no Supabase com coordenadas reais e tipo
-    registerPunchSupabase(shiftId, activeEmployee.id, locationData, punchType);
-    if (punchType === 'entrada') {
+
+    if (punchType === 'entrada' && !serverRes.fromServer) {
       updateShiftAttendanceStatusSupabase(shiftId, punchAttendanceStatus);
     }
 
@@ -826,14 +835,14 @@ function AppContent() {
             checkOutTime: timeStr,
             notes: updatedNotes,
             checkOutLocation: {
-              latitude: locationData.latitude ?? -23.5505,
-              longitude: locationData.longitude ?? -46.6333,
+              latitude: locationData.latitude,
+              longitude: locationData.longitude,
               address: locationData.address,
-              gpsValidated: locationData.gpsValidated,
+              gpsValidated: officialGpsValidated,
               accuracy: locationData.accuracy,
-              distanceMeters: locationData.distanceMeters,
+              distanceMeters: officialDistanceMeters,
               reportedWorkplace: locationData.reportedWorkplace,
-              timestamp: now.toISOString(),
+              timestamp: officialTimestamp,
             }
           };
           if (updatedNotes !== (s.notes || '')) {
@@ -860,14 +869,14 @@ function AppContent() {
             checkInTime: timeStr,
             notes: updatedNotes,
             checkInLocation: {
-              latitude: locationData.latitude ?? -23.5505,
-              longitude: locationData.longitude ?? -46.6333,
+              latitude: locationData.latitude,
+              longitude: locationData.longitude,
               address: locationData.address,
-              gpsValidated: locationData.gpsValidated,
+              gpsValidated: officialGpsValidated,
               accuracy: locationData.accuracy,
-              distanceMeters: locationData.distanceMeters,
+              distanceMeters: officialDistanceMeters,
               reportedWorkplace: locationData.reportedWorkplace,
-              timestamp: now.toISOString(),
+              timestamp: officialTimestamp,
             }
           };
           if (updatedNotes !== (s.notes || '')) {
@@ -883,14 +892,16 @@ function AppContent() {
     let statusMsg = 'GPS Validado no Posto';
     if (locationData.reportedWorkplace) {
       statusMsg = `Posto declarado: ${locationData.reportedWorkplace}`;
-    } else if (!locationData.gpsValidated && locationData.distanceMeters) {
-      statusMsg = `Aviso: Ponto registrado a ${locationData.distanceMeters}m do posto alocado`;
+    } else if (!officialGpsValidated && officialDistanceMeters) {
+      statusMsg = `Aviso: Ponto registrado a ${officialDistanceMeters}m do posto alocado`;
+    } else if (!officialGpsValidated) {
+      statusMsg = 'Aviso: Localização GPS não validada';
     }
 
     const isExit = punchType === 'saida';
     let notifTitle = isExit
-      ? (locationData.gpsValidated ? 'Saída Registrada com Sucesso!' : 'Saída Registrada (Aviso de Perímetro)')
-      : (locationData.gpsValidated ? 'Entrada Registrada com Sucesso!' : 'Entrada Registrada (Aviso de Perímetro)');
+      ? (officialGpsValidated ? 'Saída Registrada com Sucesso!' : 'Saída Registrada (Aviso de Perímetro)')
+      : (officialGpsValidated ? 'Entrada Registrada com Sucesso!' : 'Entrada Registrada (Aviso de Perímetro)');
     
     if (punchType === 'entrada' && lateDiffMinutes > 0) {
       notifTitle = `Entrada Registrada (Atraso de ${lateDiffMinutes} min)`;
@@ -1612,6 +1623,20 @@ function AppContent() {
   };
 
   const handleLogout = async () => {
+    try {
+      const backendBase = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+      const logoutEndpoints = [
+        ...(backendBase ? [`${backendBase}/api/auth/logout`] : []),
+        '/api/auth/logout',
+        ...(import.meta.env.DEV ? ['http://localhost:5000/api/auth/logout'] : []),
+      ];
+      for (const endpoint of logoutEndpoints) {
+        try {
+          const res = await fetch(endpoint, { method: 'POST', credentials: 'include' });
+          if (res.ok) break;
+        } catch {}
+      }
+    } catch {}
     try {
       await supabase.auth.signOut();
     } catch (err) {

@@ -3,6 +3,18 @@ import { Shift, WorkplaceLocation } from '@/types';
 import { findWorkplaceByName, registerWorkplaceIfNew } from '@/shared/services/workplaceService';
 import { calculateHaversineDistance } from '@/shared/utils/geolocation';
 import { evaluatePunchTolerance } from '@/shared/utils/dateUtils';
+import { safeStorage } from '@/shared/utils/safeStorage';
+
+export interface PunchRegistrationResult {
+  ok: boolean;
+  fromServer: boolean;
+  serverTimestamp?: string;
+  serverTimeHHMM?: string;
+  gpsValidated?: boolean;
+  distanceMeters?: number;
+  attendanceStatus?: 'present' | 'late';
+  error?: string;
+}
 
 function encodeShiftNotesWithWorkplace(notes?: string, workplace?: string, workplaceLocation?: WorkplaceLocation): string {
   const wpObj = workplaceLocation || (workplace ? findWorkplaceByName(workplace) : undefined) || (workplace ? { name: workplace } : undefined);
@@ -303,41 +315,112 @@ export async function registerPunchSupabase(
     reportedWorkplace?: string;
   },
   punchType: 'entrada' | 'saida' = 'entrada'
-) {
+): Promise<PunchRegistrationResult> {
+  let fullAddressDesc = locationData.address;
+  if (locationData.reportedWorkplace) {
+    fullAddressDesc = `[Posto: ${locationData.reportedWorkplace}] ${locationData.address}`;
+  } else if (!locationData.gpsValidated && locationData.distanceMeters) {
+    fullAddressDesc = `[Aviso: Fora do Raio (${locationData.distanceMeters}m)] ${locationData.address}`;
+  }
+
+  // 1. Fluxo Server-First: validação de geofence, timestamp e autoria autenticada no backend
+  if (typeof fetch !== 'undefined') {
+    const backendBase = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+    const checkInEndpoints = [
+      ...(backendBase ? [`${backendBase}/api/attendance/check-in`] : []),
+      '/api/attendance/check-in',
+      ...(import.meta.env.DEV ? ['http://localhost:5000/api/attendance/check-in'] : []),
+    ];
+
+    let authToken = safeStorage.getItem('pontual_auth_token');
+    if (!authToken) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        authToken = data?.session?.access_token || null;
+      } catch {}
+    }
+
+    for (const endpoint of checkInEndpoints) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 4500);
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
+          body: JSON.stringify({
+            idf_turno: isValidUuid(shiftId) ? shiftId : null,
+            tpo_registro: punchType,
+            num_latitude: locationData.latitude ?? null,
+            num_longitude: locationData.longitude ?? null,
+            des_endereco: fullAddressDesc,
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+
+        if (response.ok) {
+          const json = await response.json().catch(() => null);
+          return {
+            ok: true,
+            fromServer: true,
+            serverTimestamp: json?.serverTimestamp,
+            serverTimeHHMM: json?.serverTimeHHMM,
+            gpsValidated: typeof json?.gpsValidated === 'boolean' ? json.gpsValidated : locationData.gpsValidated,
+            distanceMeters: typeof json?.distanceMeters === 'number' ? json.distanceMeters : locationData.distanceMeters,
+            attendanceStatus: json?.attendanceStatus,
+          };
+        }
+
+        if (response.status === 400 || response.status === 403) {
+          const errJson = await response.json().catch(() => null);
+          return {
+            ok: false,
+            fromServer: true,
+            error: errJson?.error || 'Não foi possível validar o registro de ponto no servidor.',
+          };
+        }
+      } catch {
+        // Endpoint indisponível; tenta próximo endpoint ou contingência
+      }
+    }
+  }
+
+  // 2. Contingência direta ao Supabase (sem fabricar coordenadas padrão)
   try {
     const colabUuid = await resolveValidEmployeeUuid(employeeId);
     if (!colabUuid) {
       console.warn('Idf_Colaborador não é um UUID válido no Supabase. Não foi possível registrar o ponto.');
-      return;
+      return { ok: false, fromServer: false, error: 'Colaborador sem UUID válido.' };
     }
 
-    let fullAddressDesc = locationData.address;
-    if (locationData.reportedWorkplace) {
-      fullAddressDesc = `[Posto: ${locationData.reportedWorkplace}] ${locationData.address}`;
-    } else if (!locationData.gpsValidated && locationData.distanceMeters) {
-      fullAddressDesc = `[Aviso: Fora do Raio (${locationData.distanceMeters}m)] ${locationData.address}`;
-    }
+    const hasRealCoords = typeof locationData.latitude === 'number' && typeof locationData.longitude === 'number';
+    const validatedFlag = Boolean(hasRealCoords && locationData.gpsValidated);
 
-    // 1. Salva na TAB_Registro_Ponto com coordenadas reais e flag de validação
     await supabase.from('TAB_Registro_Ponto').insert({
       Idf_Turno: isValidUuid(shiftId) ? shiftId : null,
       Idf_Colaborador: colabUuid,
       Tpo_Registro: punchType,
-      Num_Latitude: locationData.latitude ?? -23.5505,
-      Num_Longitude: locationData.longitude ?? -46.6333,
+      Num_Latitude: hasRealCoords ? locationData.latitude : null,
+      Num_Longitude: hasRealCoords ? locationData.longitude : null,
       Des_Endereco: fullAddressDesc,
-      Flg_Gps_Validado: locationData.gpsValidated
+      Flg_Gps_Validado: validatedFlag,
     });
 
-    // 2. Se o turno for um UUID válido no banco, atualiza presença
     if (isValidUuid(shiftId)) {
       await supabase
         .from('TAB_Escala_Turno')
         .update({ Tpo_Status_Presenca: 'present' })
         .eq('Idf_Turno', shiftId);
     }
+
+    return { ok: true, fromServer: false, gpsValidated: validatedFlag };
   } catch (err: any) {
     console.warn('Erro ao salvar registro de ponto no Supabase:', err.message);
+    return { ok: false, fromServer: false, error: err?.message || 'Falha ao salvar registro de ponto.' };
   }
 }
 

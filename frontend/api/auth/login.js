@@ -6,6 +6,7 @@ import {
   isValidEmail,
   quotePostgrestValue,
   safeTimingEqual,
+  setSessionCookie,
   signHs256Jwt,
 } from './_security.js';
 
@@ -31,39 +32,88 @@ export default async function handler(req, res) {
 
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
-    const { email, senha, perfil } = body;
+    const { identificador, email, senha, perfil } = body;
+    const rawIdent = String(identificador ?? email ?? '').trim();
 
-    if (!email || !senha || typeof senha !== 'string') {
-      return res.status(400).json({ error: 'E-mail e senha são obrigatórios.' });
+    if (!rawIdent || !senha || typeof senha !== 'string') {
+      return res.status(400).json({ error: 'E-mail/matrícula e senha são obrigatórios.' });
     }
 
-    if (!isValidEmail(email)) {
-      return res.status(400).json({ error: 'Informe um e-mail corporativo válido.' });
-    }
+    let usuario = null;
 
-    const cleanEmail = email.trim().toLowerCase();
-    const quotedEmail = quotePostgrestValue(cleanEmail);
+    if (rawIdent.includes('@')) {
+      if (!isValidEmail(rawIdent)) {
+        return res.status(400).json({ error: 'Informe um e-mail corporativo válido.' });
+      }
 
-    const { data: usuario, error } = await supabaseAdmin
-      .from('TAB_Colaborador')
-      .select('Idf_Colaborador, Cod_Matricula, Nme_Colaborador, Eml_Corporativo, Tpo_Perfil, Tpo_Cargo, Des_Departamento, Des_Avatar_Url, Num_Horas_Semanais, Idf_Empresa, Flg_Gestor_Master, Des_Senha_Hash, Flg_Ativo')
-      .or(`Eml_Corporativo.ilike.${quotedEmail},Eml_Secundario.ilike.${quotedEmail}`)
-      .eq('Flg_Ativo', true)
-      .limit(1)
-      .maybeSingle();
+      const cleanEmail = rawIdent.toLowerCase();
+      const quotedEmail = quotePostgrestValue(cleanEmail);
 
-    if (error) {
-      return res.status(500).json({ error: 'Erro interno ao processar autenticação.' });
+      const { data, error } = await supabaseAdmin
+        .from('TAB_Colaborador')
+        .select('Idf_Colaborador, Cod_Matricula, Nme_Colaborador, Eml_Corporativo, Tpo_Perfil, Tpo_Cargo, Des_Departamento, Des_Avatar_Url, Num_Horas_Semanais, Idf_Empresa, Flg_Gestor_Master, Des_Senha_Hash, Flg_Ativo')
+        .or(`Eml_Corporativo.ilike.${quotedEmail},Eml_Secundario.ilike.${quotedEmail}`)
+        .eq('Flg_Ativo', true)
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        return res.status(500).json({ error: 'Erro interno ao processar autenticação.' });
+      }
+      usuario = data;
+    } else {
+      if (rawIdent.length > 60) {
+        return res.status(400).json({ error: 'Matrícula inválida.' });
+      }
+
+      const quotedExact = quotePostgrestValue(rawIdent);
+      const quotedLike = quotePostgrestValue(`%${rawIdent}%`);
+
+      const { data: rows, error } = await supabaseAdmin
+        .from('TAB_Colaborador')
+        .select('Idf_Colaborador, Cod_Matricula, Nme_Colaborador, Eml_Corporativo, Tpo_Perfil, Tpo_Cargo, Des_Departamento, Des_Avatar_Url, Num_Horas_Semanais, Idf_Empresa, Flg_Gestor_Master, Des_Senha_Hash, Flg_Ativo')
+        .or(`Cod_Matricula.ilike.${quotedLike},Cod_Matricula.ilike.${quotedExact}`)
+        .eq('Flg_Ativo', true)
+        .limit(10);
+
+      if (error) {
+        return res.status(500).json({ error: 'Erro interno ao processar autenticação.' });
+      }
+
+      if (rows && rows.length > 0) {
+        const normIdent = rawIdent.toLowerCase();
+        const exactMatches = rows.filter(
+          (r) => String(r.Cod_Matricula || '').trim().toLowerCase() === normIdent
+        );
+        const pool = exactMatches.length > 0 ? exactMatches : rows;
+        const withCustomPass = pool.find((r) => {
+          if (!r.Des_Senha_Hash || !r.Cod_Matricula) return false;
+          try {
+            return !bcrypt.compareSync(String(r.Cod_Matricula).trim(), r.Des_Senha_Hash);
+          } catch {
+            return false;
+          }
+        });
+        usuario = withCustomPass || pool[0];
+      }
     }
 
     if (!usuario) {
-      return res.status(401).json({ error: 'E-mail ou senha inválidos.' });
+      return res.status(401).json({ error: 'E-mail, matrícula ou senha inválidos.' });
     }
 
     const isBcrypt = usuario.Des_Senha_Hash?.startsWith('$2');
     let senhaValida = false;
     if (isBcrypt) {
       senhaValida = await bcrypt.compare(senha, usuario.Des_Senha_Hash);
+      if (!senhaValida && usuario.Cod_Matricula) {
+        const matTrim = String(usuario.Cod_Matricula).trim();
+        if (senha.trim().toLowerCase() === matTrim.toLowerCase()) {
+          senhaValida =
+            (await bcrypt.compare(matTrim, usuario.Des_Senha_Hash)) ||
+            (await bcrypt.compare(matTrim.toUpperCase(), usuario.Des_Senha_Hash));
+        }
+      }
     } else if (typeof usuario.Des_Senha_Hash === 'string' && usuario.Des_Senha_Hash.length > 0) {
       senhaValida = safeTimingEqual(usuario.Des_Senha_Hash, senha);
       if (senhaValida) {
@@ -76,7 +126,7 @@ export default async function handler(req, res) {
     }
 
     if (!senhaValida) {
-      return res.status(401).json({ error: 'E-mail ou senha inválidos.' });
+      return res.status(401).json({ error: 'E-mail, matrícula ou senha inválidos.' });
     }
 
     if (perfil && usuario.Tpo_Perfil !== perfil) {
@@ -117,6 +167,8 @@ export default async function handler(req, res) {
     if (!token) {
       return res.status(503).json({ error: 'JWT_SECRET não configurado no servidor.' });
     }
+
+    setSessionCookie(req, res, token);
 
     return res.status(200).json({
       success: true,

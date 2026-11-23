@@ -7,7 +7,9 @@ import {
   AuthenticatedRequest,
   signAuthToken,
   requireAuth,
-  requireManagerOrRhAuth,
+  requireRole,
+  setSessionCookie,
+  clearSessionCookie,
   escapeHtml,
   isValidEmail,
   maskEmail,
@@ -92,48 +94,96 @@ const registerLimiter = rateLimit({
   message: { error: 'Muitas tentativas de cadastro. Aguarde 15 minutos.' },
 });
 
-// Login de colaborador ou gestor
+// Login de colaborador ou gestor (suporta e-mail corporativo ou matrícula)
 authRoutes.post('/login', loginLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, senha, perfil } = req.body;
+    const { identificador, email, senha, perfil } = req.body || {};
+    const rawIdent = String(identificador ?? email ?? '').trim();
 
-    if (!email || !senha || typeof senha !== 'string') {
-      res.status(400).json({ error: 'E-mail e senha são obrigatórios.' });
+    if (!rawIdent || !senha || typeof senha !== 'string') {
+      res.status(400).json({ error: 'E-mail/matrícula e senha são obrigatórios.' });
       return;
     }
 
-    if (!isValidEmail(email)) {
-      res.status(400).json({ error: 'Informe um e-mail corporativo válido.' });
-      return;
-    }
+    let usuario: any = null;
 
-    const cleanEmail = email.trim().toLowerCase();
-    const quotedEmail = quotePostgrestValue(cleanEmail);
+    if (rawIdent.includes('@')) {
+      if (!isValidEmail(rawIdent)) {
+        res.status(400).json({ error: 'Informe um e-mail corporativo válido.' });
+        return;
+      }
 
-    // Busca usuário na tabela TAB_Colaborador sem filtro vulnerável
-    const { data: usuario, error } = await supabaseAdmin
-      .from('TAB_Colaborador')
-      .select('Idf_Colaborador, Cod_Matricula, Nme_Colaborador, Eml_Corporativo, Tpo_Perfil, Tpo_Cargo, Des_Departamento, Des_Avatar_Url, Num_Horas_Semanais, Idf_Empresa, Flg_Gestor_Master, Des_Senha_Hash, Flg_Ativo')
-      .or(`Eml_Corporativo.ilike.${quotedEmail},Eml_Secundario.ilike.${quotedEmail}`)
-      .eq('Flg_Ativo', true)
-      .limit(1)
-      .maybeSingle();
+      const cleanEmail = rawIdent.toLowerCase();
+      const quotedEmail = quotePostgrestValue(cleanEmail);
 
-    if (error) {
-      res.status(500).json({ error: 'Erro interno ao processar autenticação.' });
-      return;
+      const { data, error } = await supabaseAdmin
+        .from('TAB_Colaborador')
+        .select('Idf_Colaborador, Cod_Matricula, Nme_Colaborador, Eml_Corporativo, Eml_Secundario, Tpo_Perfil, Tpo_Cargo, Des_Departamento, Des_Avatar_Url, Num_Horas_Semanais, Idf_Empresa, Flg_Gestor_Master, Des_Senha_Hash, Flg_Ativo')
+        .or(`Eml_Corporativo.ilike.${quotedEmail},Eml_Secundario.ilike.${quotedEmail}`)
+        .eq('Flg_Ativo', true)
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        res.status(500).json({ error: 'Erro interno ao processar autenticação.' });
+        return;
+      }
+      usuario = data;
+    } else {
+      if (rawIdent.length > 60) {
+        res.status(400).json({ error: 'Matrícula inválida.' });
+        return;
+      }
+
+      const quotedExact = quotePostgrestValue(rawIdent);
+      const quotedLike = quotePostgrestValue(`%${rawIdent}%`);
+
+      const { data: rows, error } = await supabaseAdmin
+        .from('TAB_Colaborador')
+        .select('Idf_Colaborador, Cod_Matricula, Nme_Colaborador, Eml_Corporativo, Eml_Secundario, Tpo_Perfil, Tpo_Cargo, Des_Departamento, Des_Avatar_Url, Num_Horas_Semanais, Idf_Empresa, Flg_Gestor_Master, Des_Senha_Hash, Flg_Ativo')
+        .or(`Cod_Matricula.ilike.${quotedLike},Cod_Matricula.ilike.${quotedExact}`)
+        .eq('Flg_Ativo', true)
+        .limit(10);
+
+      if (error) {
+        res.status(500).json({ error: 'Erro interno ao processar autenticação.' });
+        return;
+      }
+
+      if (rows && rows.length > 0) {
+        const normIdent = rawIdent.toLowerCase();
+        const exactMatches = rows.filter(
+          (r: any) => String(r.Cod_Matricula || '').trim().toLowerCase() === normIdent
+        );
+        const pool = exactMatches.length > 0 ? exactMatches : rows;
+        const withCustomPass = pool.find((r: any) => {
+          if (!r.Des_Senha_Hash || !r.Cod_Matricula) return false;
+          try {
+            return !bcrypt.compareSync(String(r.Cod_Matricula).trim(), r.Des_Senha_Hash);
+          } catch {
+            return false;
+          }
+        });
+        usuario = withCustomPass || pool[0];
+      }
     }
 
     if (!usuario) {
-      res.status(401).json({ error: 'E-mail ou senha inválidos.' });
+      res.status(401).json({ error: 'E-mail, matrícula ou senha inválidos.' });
       return;
     }
 
-    // Validação de senha segura com bcrypt (e migração automática de legado em tempo constante)
+    // Validação de senha segura com bcrypt (e suporte de 1º acesso se senha provisória for matrícula em caixa distinta)
     const isBcrypt = usuario.Des_Senha_Hash?.startsWith('$2');
     let senhaValida = false;
     if (isBcrypt) {
       senhaValida = await bcrypt.compare(senha, usuario.Des_Senha_Hash);
+      if (!senhaValida && usuario.Cod_Matricula) {
+        const matTrim = String(usuario.Cod_Matricula).trim();
+        if (senha.trim().toLowerCase() === matTrim.toLowerCase()) {
+          senhaValida = await bcrypt.compare(matTrim, usuario.Des_Senha_Hash) || await bcrypt.compare(matTrim.toUpperCase(), usuario.Des_Senha_Hash);
+        }
+      }
     } else if (typeof usuario.Des_Senha_Hash === 'string' && usuario.Des_Senha_Hash.length > 0) {
       senhaValida = safeTimingEqual(usuario.Des_Senha_Hash, senha);
       if (senhaValida) {
@@ -146,7 +196,7 @@ authRoutes.post('/login', loginLimiter, async (req: Request, res: Response): Pro
     }
 
     if (!senhaValida) {
-      res.status(401).json({ error: 'E-mail ou senha inválidos.' });
+      res.status(401).json({ error: 'E-mail, matrícula ou senha inválidos.' });
       return;
     }
 
@@ -190,6 +240,8 @@ authRoutes.post('/login', loginLimiter, async (req: Request, res: Response): Pro
       companyId: usuario.Idf_Empresa || null,
     });
 
+    setSessionCookie(req, res, token);
+
     // Retorna os dados do usuário autenticado (sem Des_Senha_Hash) e token JWT
     res.json({
       success: true,
@@ -213,6 +265,12 @@ authRoutes.post('/login', loginLimiter, async (req: Request, res: Response): Pro
   } catch {
     res.status(500).json({ error: 'Erro interno no servidor.' });
   }
+});
+
+// Encerra sessão autenticada limpando cookie HttpOnly
+authRoutes.post('/logout', (req: Request, res: Response): void => {
+  clearSessionCookie(req, res);
+  res.json({ success: true, message: 'Sessão encerrada com sucesso.' });
 });
 
 // Retorna perfil do usuário autenticado via JWT
@@ -331,7 +389,7 @@ authRoutes.get('/colaboradores', requireAuth, async (req: Request, res: Response
 // Cadastro de novo gestor com criação exclusiva de empresa por CNPJ
 authRoutes.post('/registro-gestor', registerLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { nome, email, senha, cnpj, cargo, departamento, telefone } = req.body || {};
+    const { nome, email, senha, cnpj, companyName, cargo, departamento, telefone, isRh } = req.body || {};
 
     if (!nome || !email || !senha || typeof senha !== 'string') {
       res.status(400).json({ error: 'Nome, e-mail e senha são obrigatórios.' });
@@ -359,6 +417,7 @@ authRoutes.post('/registro-gestor', registerLimiter, async (req: Request, res: R
     const cleanEmail = email.trim().toLowerCase();
     const quotedEmail = quotePostgrestValue(cleanEmail);
     const cleanCnpj = cnpj ? String(cnpj).replace(/\D/g, '') : '';
+    const cleanCompanyName = companyName ? String(companyName).trim().slice(0, 140) : '';
 
     if (cleanCnpj.length !== 14) {
       res.status(400).json({ error: 'Informe um CNPJ válido com 14 dígitos.' });
@@ -374,7 +433,10 @@ authRoutes.post('/registro-gestor', registerLimiter, async (req: Request, res: R
       .maybeSingle();
 
     if (existente) {
-      res.status(409).json({ error: 'Este e-mail corporativo já está cadastrado no sistema. Não é possível cadastrar novamente.' });
+      res.status(409).json({
+        code: 'DUPLICATE_EMAIL',
+        error: 'Este e-mail corporativo já está cadastrado no sistema. Não é possível cadastrar novamente.'
+      });
       return;
     }
 
@@ -390,17 +452,19 @@ authRoutes.post('/registro-gestor', registerLimiter, async (req: Request, res: R
 
     if (empresaExistente) {
       res.status(409).json({
+        code: 'DUPLICATE_CNPJ',
         error: 'Este CNPJ já possui uma organização cadastrada no sistema. Solicite o convite diretamente ao gestor administrador da empresa.'
       });
       return;
     }
 
+    const displayCompanyName = cleanCompanyName || `Organização ${cnpjFormatado}`;
     const { data: novaEmpresa, error: empError } = await supabaseAdmin
       .from('TAB_Empresa')
       .insert({
         Num_CNPJ: cnpjFormatado,
-        Nme_Razao_Social: `Empresa ${cnpjFormatado}`,
-        Nme_Fantasia: `Organização ${cnpjFormatado}`,
+        Nme_Razao_Social: cleanCompanyName || `Empresa ${cnpjFormatado}`,
+        Nme_Fantasia: displayCompanyName,
         Flg_Ativa: true
       })
       .select()
@@ -413,6 +477,7 @@ authRoutes.post('/registro-gestor', registerLimiter, async (req: Request, res: R
 
     const idfEmpresa = novaEmpresa.Idf_Empresa;
     const isMasterManager = true;
+    const perfilInicial = isRh ? 'rh' : 'gestor';
     const matricula = generateSecureMatricula('GST');
     const senhaHash = await bcrypt.hash(cleanPass, 12);
 
@@ -424,9 +489,9 @@ authRoutes.post('/registro-gestor', registerLimiter, async (req: Request, res: R
         Nme_Colaborador: cleanNome,
         Eml_Corporativo: cleanEmail,
         Des_Senha_Hash: senhaHash,
-        Tpo_Perfil: 'gestor',
-        Tpo_Cargo: cargo ? String(cargo).trim().slice(0, 80) : 'Gestor Geral',
-        Des_Departamento: departamento ? String(departamento).trim().slice(0, 80) : 'Gestão de Pessoas & Operações',
+        Tpo_Perfil: perfilInicial,
+        Tpo_Cargo: cargo ? String(cargo).trim().slice(0, 80) : (isRh ? 'Gerente de RH & Administração Geral' : 'Gestor Geral'),
+        Des_Departamento: departamento ? String(departamento).trim().slice(0, 80) : (isRh ? 'Recursos Humanos & Gestão Geral' : 'Gestão de Pessoas & Operações'),
         Des_Avatar_Url: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
         Num_Telefone: telefone ? String(telefone).trim().slice(0, 30) : '(11) 98765-4321',
         Num_Horas_Semanais: 44,
@@ -452,6 +517,8 @@ authRoutes.post('/registro-gestor', registerLimiter, async (req: Request, res: R
       companyId: idfEmpresa,
     });
 
+    setSessionCookie(req, res, token);
+
     res.status(201).json({
       success: true,
       message: 'Gestor cadastrado com sucesso!',
@@ -465,6 +532,7 @@ authRoutes.post('/registro-gestor', registerLimiter, async (req: Request, res: R
         cargo: novoGestor.Tpo_Cargo,
         departamento: novoGestor.Des_Departamento,
         companyId: idfEmpresa,
+        companyCnpj: cnpjFormatado,
         isMasterManager
       }
     });
@@ -474,7 +542,7 @@ authRoutes.post('/registro-gestor', registerLimiter, async (req: Request, res: R
 });
 
 // Vincular Colaborador a um Gestor (restrito a Gestor/RH da mesma empresa)
-authRoutes.post('/vincular-colaborador', requireManagerOrRhAuth, async (req: Request, res: Response): Promise<void> => {
+authRoutes.post('/vincular-colaborador', requireRole('gestor', 'rh', 'admin'), async (req: Request, res: Response): Promise<void> => {
   try {
     const authUser = (req as AuthenticatedRequest).authUser;
     if (!authUser?.companyId) {
@@ -531,7 +599,7 @@ authRoutes.post('/vincular-colaborador', requireManagerOrRhAuth, async (req: Req
 });
 
 // Envio de E-mail de Boas-Vindas com link seguro de ativação (restrito a Gestores e RH)
-authRoutes.post('/send-welcome-email', requireManagerOrRhAuth, welcomeEmailLimiter, async (req: Request, res: Response): Promise<void> => {
+authRoutes.post('/send-welcome-email', requireRole('gestor', 'rh', 'admin'), welcomeEmailLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, nome, matricula } = req.body || {};
 

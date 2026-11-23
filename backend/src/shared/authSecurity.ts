@@ -31,6 +31,97 @@ const EMAIL_STRICT_RE = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 const FORBIDDEN_EMAIL_CHARS_RE = /[\r\n,;<>()\s]/;
 const UUID_STRICT_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+export const SESSION_COOKIE_NAME = 'pontual_session';
+
+export function parseCookies(cookieHeader?: string): Record<string, string> {
+  const cookies: Record<string, string> = {};
+  if (!cookieHeader || typeof cookieHeader !== 'string') return cookies;
+  for (const part of cookieHeader.split(';')) {
+    const eqIdx = part.indexOf('=');
+    if (eqIdx <= 0) continue;
+    const key = part.slice(0, eqIdx).trim();
+    const rawVal = part.slice(eqIdx + 1).trim();
+    if (!key) continue;
+    try {
+      cookies[key] = decodeURIComponent(rawVal);
+    } catch {
+      cookies[key] = rawVal;
+    }
+  }
+  return cookies;
+}
+
+function isHttpsRequest(req: Request): boolean {
+  const xfProto = String(req.headers['x-forwarded-proto'] || '').toLowerCase();
+  return process.env.NODE_ENV === 'production' || req.secure || xfProto.split(',').some(p => p.trim() === 'https');
+}
+
+export function setSessionCookie(req: Request, res: Response, token: string, ttlSeconds = 8 * 3600): void {
+  const parts = [
+    `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    'HttpOnly',
+    'Path=/',
+    'SameSite=Lax',
+    `Max-Age=${Math.max(1, Math.floor(ttlSeconds))}`,
+  ];
+  if (isHttpsRequest(req)) {
+    parts.push('Secure');
+  }
+  res.append('Set-Cookie', parts.join('; '));
+}
+
+export function clearSessionCookie(req: Request, res: Response): void {
+  const parts = [
+    `${SESSION_COOKIE_NAME}=`,
+    'HttpOnly',
+    'Path=/',
+    'SameSite=Lax',
+    'Max-Age=0',
+    'Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+  ];
+  if (isHttpsRequest(req)) {
+    parts.push('Secure');
+  }
+  res.append('Set-Cookie', parts.join('; '));
+}
+
+export function getSaoPauloTimeHHMM(date: Date = new Date()): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'America/Sao_Paulo',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(date);
+    const h = parts.find((p) => p.type === 'hour')?.value || '00';
+    const m = parts.find((p) => p.type === 'minute')?.value || '00';
+    return `${h === '24' ? '00' : h}:${m}`;
+  } catch {
+    return `${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}`;
+  }
+}
+
+export function evaluateServerEntryTolerance(
+  scheduledStart?: string | null,
+  serverTimeHHMM?: string,
+  toleranceMinutes = 10
+): 'present' | 'late' {
+  if (!scheduledStart || !serverTimeHHMM) return 'present';
+  const parseMins = (hhmm: string): number | null => {
+    const m = String(hhmm).trim().match(/^(\d{1,2}):(\d{2})/);
+    if (!m) return null;
+    const h = Number(m[1]);
+    const min = Number(m[2]);
+    if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+    return h * 60 + min;
+  };
+  const schedMins = parseMins(scheduledStart);
+  const actualMins = parseMins(serverTimeHHMM);
+  if (schedMins === null || actualMins === null) return 'present';
+  const diff = actualMins - schedMins;
+  return diff > toleranceMinutes && diff < 720 ? 'late' : 'present';
+}
+
 export function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID_STRICT_RE.test(value.trim());
 }
@@ -139,7 +230,10 @@ async function resolveAuthenticatedUser(
 ): Promise<{ ok: true; user: AuthTokenPayload } | { ok: false; status: number; error: string }> {
   const authHeader = req.headers.authorization;
   const match = typeof authHeader === 'string' ? authHeader.match(/^Bearer\s+(.+)$/i) : null;
-  const token = match?.[1]?.trim();
+  const bearerToken = match?.[1]?.trim();
+  const cookies = parseCookies(req.headers.cookie);
+  const cookieToken = cookies[SESSION_COOKIE_NAME]?.trim();
+  const token = bearerToken || cookieToken;
 
   if (!token) {
     return { ok: false, status: 401, error: 'Autenticação obrigatória.' };
@@ -225,28 +319,39 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   next();
 }
 
-export async function requireManagerOrRhAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
-  const result = await resolveAuthenticatedUser(req);
-  if (!result.ok) {
-    res.status(result.status).json({ success: false, error: result.error });
-    return;
-  }
+export function requireRole(...allowedRoles: string[]) {
+  const normalizedAllowed = new Set(
+    allowedRoles.map((r) => String(r || '').trim().toLowerCase()).filter(Boolean)
+  );
 
-  const perfilLower = String(result.user.perfil || '').toLowerCase();
-  const isManagerOrRh =
-    perfilLower === 'gestor' ||
-    perfilLower === 'rh' ||
-    perfilLower === 'admin' ||
-    result.user.isMasterManager === true;
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const result = await resolveAuthenticatedUser(req);
+    if (!result.ok) {
+      res.status(result.status).json({ success: false, error: result.error });
+      return;
+    }
 
-  if (!isManagerOrRh) {
-    res.status(403).json({ success: false, error: 'Acesso restrito a gestores e RH.' });
-    return;
-  }
+    const perfilLower = String(result.user.perfil || '').toLowerCase();
+    const allowsManagerial =
+      normalizedAllowed.has('gestor') ||
+      normalizedAllowed.has('rh') ||
+      normalizedAllowed.has('admin');
 
-  (req as AuthenticatedRequest).authUser = result.user;
-  next();
+    const hasRole =
+      normalizedAllowed.has(perfilLower) ||
+      (allowsManagerial && result.user.isMasterManager === true);
+
+    if (!hasRole) {
+      res.status(403).json({ success: false, error: 'Permissão insuficiente para executar esta ação.' });
+      return;
+    }
+
+    (req as AuthenticatedRequest).authUser = result.user;
+    next();
+  };
 }
+
+export const requireManagerOrRhAuth = requireRole('gestor', 'rh', 'admin');
 
 export function escapeHtml(value: string): string {
   return String(value ?? '')

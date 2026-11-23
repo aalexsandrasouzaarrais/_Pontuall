@@ -56,6 +56,7 @@ app.use(cors({
     }
     callback(new Error('Origem não autorizada pela política CORS.'));
   },
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));

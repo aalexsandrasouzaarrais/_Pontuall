@@ -51,13 +51,14 @@ export async function sendWelcomeEmail(payload: SendWelcomeEmailPayload): Promis
   const endpoints = [
     ...(backendBase ? [`${backendBase}/api/auth/send-welcome-email`, `${backendBase}/send-welcome-email`] : []),
     '/api/auth/send-welcome-email',
-    'http://localhost:5000/api/auth/send-welcome-email',
+    ...(import.meta.env.DEV ? ['http://localhost:5000/api/auth/send-welcome-email'] : []),
   ];
 
   for (const endpoint of endpoints) {
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
+        credentials: 'include',
         headers,
         body: JSON.stringify(requestBody),
       });

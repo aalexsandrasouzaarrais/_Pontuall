@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { sanitizeSafeUrl, sanitizeCsvCell, quotePostgrestValue } from '@/shared/utils/security';
+import { isUuid } from '@/modules/auth/services/colaboradorService';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -1670,11 +1671,19 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
   useEffect(() => {
     let mounted = true;
+    const employeeIds = Array.from(new Set(employees.map(e => e.id).filter(isUuid)));
+
     const fetchLivePunches = async () => {
+      if (employeeIds.length === 0) {
+        if (mounted) setLivePunches([]);
+        return;
+      }
+
       try {
         const { data } = await supabase
           .from('TAB_Registro_Ponto')
           .select('*')
+          .in('Idf_Colaborador', employeeIds)
           .order('Dta_Hora_Registro', { ascending: true });
         if (mounted && data) {
           setLivePunches(data);
@@ -1688,7 +1697,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       mounted = false;
       clearInterval(timer);
     };
-  }, [activeTab]);
+  }, [activeTab, employees]);
 
   const reportRows = useMemo(() => {
     if (shifts && shifts.length > 0) {

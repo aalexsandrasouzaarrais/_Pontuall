@@ -831,13 +831,13 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
       setTimeout(() => setCheckInSuccess(false), 5000);
       loadPunches();
     } catch (err: any) {
-      console.warn('Fallback de GPS para registro de ponto:', err);
-      // Fallback gracioso para garantir registro mesmo se GPS bloqueado no navegador
+      console.warn('GPS indisponível no dispositivo ao registrar ponto:', err);
+      // Nunca fabrica coordenadas geográficas falsas quando o GPS não está disponível
       onCheckIn(targetShiftId, {
-        address: 'Localização Registrada (Modo Navegador)',
-        gpsValidated: true,
-        latitude: -23.5505,
-        longitude: -46.6333,
+        address: 'GPS indisponível no dispositivo',
+        gpsValidated: false,
+        latitude: undefined,
+        longitude: undefined,
       }, punchType, notesOrReason, simulatedTime);
       setCheckInSuccess(true);
       setTimeout(() => setCheckInSuccess(false), 5000);

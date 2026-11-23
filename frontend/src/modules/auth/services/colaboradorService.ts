@@ -985,7 +985,7 @@ function getBackendAuthEndpoints(path: string): string[] {
   return [
     ...(backendBase ? [`${backendBase}/api/auth${path}`] : []),
     `/api/auth${path}`,
-    `http://localhost:5000/api/auth${path}`,
+    ...(import.meta.env.DEV ? [`http://localhost:5000/api/auth${path}`] : []),
   ];
 }
 
@@ -1000,6 +1000,7 @@ export async function requestPasswordResetToken(email: string): Promise<{ succes
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: cleanEmail }),
       });
@@ -1048,6 +1049,7 @@ export async function confirmPasswordResetWithToken(
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: cleanToken, novaSenha: cleanPass }),
       });

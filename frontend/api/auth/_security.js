@@ -44,6 +44,121 @@ export function quotePostgrestValue(value) {
   return `"${escaped}"`;
 }
 
+export const SESSION_COOKIE_NAME = 'pontual_session';
+const UUID_STRICT_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isUuid(value) {
+  return typeof value === 'string' && UUID_STRICT_RE.test(value.trim());
+}
+
+export function generateSecureMatricula(prefix = 'GST') {
+  return `${prefix}-${crypto.randomInt(100000, 999999)}`;
+}
+
+export function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371e3;
+  const phi1 = (lat1 * Math.PI) / 180;
+  const phi2 = (lat2 * Math.PI) / 180;
+  const deltaPhi = ((lat2 - lat1) * Math.PI) / 180;
+  const deltaLambda = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+    Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export function getSaoPauloTimeHHMM(date = new Date()) {
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'America/Sao_Paulo',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(date);
+    const h = parts.find((p) => p.type === 'hour')?.value || '00';
+    const m = parts.find((p) => p.type === 'minute')?.value || '00';
+    return `${h === '24' ? '00' : h}:${m}`;
+  } catch {
+    return `${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}`;
+  }
+}
+
+export function evaluateServerEntryTolerance(scheduledStart, serverTimeHHMM, toleranceMinutes = 10) {
+  if (!scheduledStart || !serverTimeHHMM) return 'present';
+  const parseMins = (hhmm) => {
+    const m = String(hhmm).trim().match(/^(\d{1,2}):(\d{2})/);
+    if (!m) return null;
+    const h = Number(m[1]);
+    const min = Number(m[2]);
+    if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+    return h * 60 + min;
+  };
+  const schedMins = parseMins(scheduledStart);
+  const actualMins = parseMins(serverTimeHHMM);
+  if (schedMins === null || actualMins === null) return 'present';
+  const diff = actualMins - schedMins;
+  return diff > toleranceMinutes && diff < 720 ? 'late' : 'present';
+}
+
+export function parseCookies(cookieHeader) {
+  const cookies = {};
+  if (!cookieHeader || typeof cookieHeader !== 'string') return cookies;
+  for (const part of cookieHeader.split(';')) {
+    const eqIdx = part.indexOf('=');
+    if (eqIdx <= 0) continue;
+    const key = part.slice(0, eqIdx).trim();
+    const rawVal = part.slice(eqIdx + 1).trim();
+    if (!key) continue;
+    try {
+      cookies[key] = decodeURIComponent(rawVal);
+    } catch {
+      cookies[key] = rawVal;
+    }
+  }
+  return cookies;
+}
+
+function isHttpsReq(req) {
+  const xfProto = String(req.headers['x-forwarded-proto'] || '').toLowerCase();
+  return process.env.NODE_ENV === 'production' || xfProto.split(',').some((p) => p.trim() === 'https');
+}
+
+function appendSetCookie(res, cookieStr) {
+  const existing = res.getHeader?.('Set-Cookie');
+  if (Array.isArray(existing)) {
+    res.setHeader('Set-Cookie', [...existing, cookieStr]);
+  } else if (typeof existing === 'string' && existing) {
+    res.setHeader('Set-Cookie', [existing, cookieStr]);
+  } else {
+    res.setHeader('Set-Cookie', cookieStr);
+  }
+}
+
+export function setSessionCookie(req, res, token, ttlSeconds = 8 * 3600) {
+  const parts = [
+    `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    'HttpOnly',
+    'Path=/',
+    'SameSite=Lax',
+    `Max-Age=${Math.max(1, Math.floor(ttlSeconds))}`,
+  ];
+  if (isHttpsReq(req)) parts.push('Secure');
+  appendSetCookie(res, parts.join('; '));
+}
+
+export function clearSessionCookie(req, res) {
+  const parts = [
+    `${SESSION_COOKIE_NAME}=`,
+    'HttpOnly',
+    'Path=/',
+    'SameSite=Lax',
+    'Max-Age=0',
+    'Expires=Thu, 01 Jan 1970 00:00:00 GMT',
+  ];
+  if (isHttpsReq(req)) parts.push('Secure');
+  appendSetCookie(res, parts.join('; '));
+}
+
 export function safeTimingEqual(a, b) {
   const hashA = crypto.createHash('sha256').update(String(a ?? '')).digest();
   const hashB = crypto.createHash('sha256').update(String(b ?? '')).digest();
@@ -100,14 +215,14 @@ export function getAllowedCorsOrigin(reqOrigin) {
   return null;
 }
 
-export function applyCorsHeaders(req, res) {
+export function applyCorsHeaders(req, res, methods = 'POST,OPTIONS') {
   const allowedOrigin = getAllowedCorsOrigin(req.headers.origin);
   if (allowedOrigin) {
     res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Vary', 'Origin');
   }
-  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', methods);
   res.setHeader(
     'Access-Control-Allow-Headers',
     'Authorization, Content-Type, X-CSRF-Token, X-Requested-With, Accept'
@@ -223,10 +338,13 @@ export function verifyHs256Jwt(token) {
   }
 }
 
-export async function authorizeManagerOrRh(req) {
+export async function authenticateRequest(req) {
   const authHeader = req.headers.authorization;
   const match = typeof authHeader === 'string' ? authHeader.match(/^Bearer\s+(.+)$/i) : null;
-  const token = match?.[1]?.trim();
+  const bearerToken = match?.[1]?.trim();
+  const cookies = parseCookies(req.headers.cookie);
+  const cookieToken = cookies[SESSION_COOKIE_NAME]?.trim();
+  const token = bearerToken || cookieToken;
   if (!token) return { status: 401, error: 'Autenticação obrigatória.' };
 
   const supabaseAdmin = getSupabaseAdmin();
@@ -236,11 +354,12 @@ export async function authorizeManagerOrRh(req) {
     let perfil = String(decoded.perfil || '').toLowerCase();
     let isMaster = decoded.isMasterManager === true;
     let companyId = decoded.companyId || null;
+    let email = decoded.email || '';
 
     if (supabaseAdmin && decoded.sub) {
       const { data: activeColab } = await supabaseAdmin
         .from('TAB_Colaborador')
-        .select('Idf_Colaborador, Tpo_Perfil, Flg_Gestor_Master, Idf_Empresa, Flg_Ativo')
+        .select('Idf_Colaborador, Eml_Corporativo, Tpo_Perfil, Flg_Gestor_Master, Idf_Empresa, Flg_Ativo')
         .eq('Idf_Colaborador', decoded.sub)
         .eq('Flg_Ativo', true)
         .maybeSingle();
@@ -251,11 +370,19 @@ export async function authorizeManagerOrRh(req) {
       perfil = String(activeColab.Tpo_Perfil || '').toLowerCase();
       isMaster = activeColab.Flg_Gestor_Master === true;
       companyId = activeColab.Idf_Empresa || null;
+      email = activeColab.Eml_Corporativo || email;
     }
 
-    const allowed = perfil === 'gestor' || perfil === 'rh' || perfil === 'admin' || isMaster;
-    if (!allowed) return { status: 403, error: 'Acesso restrito a gestores e RH.' };
-    return { status: 200, user: { ...decoded, perfil, isMasterManager: isMaster, companyId } };
+    return {
+      status: 200,
+      user: {
+        sub: decoded.sub,
+        email,
+        perfil,
+        isMasterManager: isMaster,
+        companyId,
+      },
+    };
   }
 
   if (!supabaseAdmin) {
@@ -280,8 +407,6 @@ export async function authorizeManagerOrRh(req) {
 
     if (!colab) return { status: 401, error: 'Usuário não autorizado ou inativo.' };
     const perfil = String(colab.Tpo_Perfil || '').toLowerCase();
-    const allowed = perfil === 'gestor' || perfil === 'rh' || perfil === 'admin' || colab.Flg_Gestor_Master === true;
-    if (!allowed) return { status: 403, error: 'Acesso restrito a gestores e RH.' };
 
     return {
       status: 200,
@@ -296,6 +421,26 @@ export async function authorizeManagerOrRh(req) {
   } catch {
     return { status: 401, error: 'Falha ao validar sessão.' };
   }
+}
+
+export async function authorizeRoles(req, allowedRoles = ['gestor', 'rh', 'admin']) {
+  const auth = await authenticateRequest(req);
+  if (auth.status !== 200) return auth;
+
+  const normalizedAllowed = new Set(allowedRoles.map((r) => String(r || '').trim().toLowerCase()).filter(Boolean));
+  const perfilLower = String(auth.user.perfil || '').toLowerCase();
+  const allowsManagerial = normalizedAllowed.has('gestor') || normalizedAllowed.has('rh') || normalizedAllowed.has('admin');
+
+  const allowed = normalizedAllowed.has(perfilLower) || (allowsManagerial && auth.user.isMasterManager === true);
+  if (!allowed) {
+    return { status: 403, error: 'Permissão insuficiente para executar esta ação.' };
+  }
+
+  return auth;
+}
+
+export async function authorizeManagerOrRh(req) {
+  return authorizeRoles(req, ['gestor', 'rh', 'admin']);
 }
 
 function hashToken(rawToken) {

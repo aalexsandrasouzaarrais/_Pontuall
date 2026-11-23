@@ -216,8 +216,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
     try {
       const passNorm = password.trim();
 
-      // 0. Fluxo Server-First para login via e-mail corporativo (sem expor Des_Senha_Hash no cliente)
-      if (cleanInput.includes('@') && typeof fetch !== 'undefined') {
+      // 0. Fluxo Server-First para login via e-mail OU matrícula (sem expor Des_Senha_Hash no cliente)
+      if (typeof fetch !== 'undefined') {
         const backendBase = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
         const authEndpoints = [
           ...(backendBase ? [`${backendBase}/api/auth/login`] : []),
@@ -231,8 +231,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
             const timer = setTimeout(() => controller.abort(), 3500);
             const res = await fetch(authEndpoint, {
               method: 'POST',
+              credentials: 'include',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email: cleanInput.toLowerCase(), senha: passNorm }),
+              body: JSON.stringify({
+                identificador: cleanInput,
+                ...(cleanInput.includes('@') ? { email: cleanInput.toLowerCase() } : {}),
+                senha: passNorm,
+              }),
               signal: controller.signal,
             });
             clearTimeout(timer);
@@ -495,6 +500,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
               const timer = setTimeout(() => controller.abort(), 3000);
               const res = await fetch(authEndpoint, {
                 method: 'POST',
+                credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email: employeeObj.email, senha: passNorm }),
                 signal: controller.signal,
@@ -610,59 +616,136 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
     } catch {}
 
     try {
-      let createdEmployee: Employee;
+      let createdEmployee: Employee | null = null;
+      let registeredViaServer = false;
       const matricula = `GST-${Math.floor(1000 + Math.random() * 9000)}`;
 
-      // 1. Salva na TAB_Empresa e TAB_Colaborador do Supabase
-      try {
-        createdEmployee = await createGestorSupabase({
-          name: cleanNome,
-          email: cleanEmail,
-          password: regSenha,
-          cnpj: cleanCnpj,
-          companyName: cleanEmpresa || undefined,
-          role: regCargo.trim() || 'Gerente de RH & Administração Geral',
-          department: 'Recursos Humanos & Gestão Geral',
-          isRh: true
-        });
-      } catch (dbErr: any) {
-        console.warn('Supabase offline ou retorno com aviso, operando com contingência local:', dbErr?.message);
+      // 0. Fluxo Server-First: criação da empresa/gestor + cookie HttpOnly no backend
+      if (typeof fetch !== 'undefined') {
+        const backendBase = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+        const registerEndpoints = [
+          ...(backendBase ? [`${backendBase}/api/auth/registro-gestor`] : []),
+          '/api/auth/registro-gestor',
+          ...(import.meta.env.DEV ? ['http://localhost:5000/api/auth/registro-gestor'] : []),
+        ];
 
-        if (dbErr?.message && dbErr.message.includes('DUPLICATE_CNPJ')) {
-          showFeedback('Este CNPJ já possui uma organização cadastrada no sistema. Solicite o acesso diretamente ao gestor administrador da empresa.', 'error');
-          setIsRegLoading(false);
-          return;
+        for (const registerEndpoint of registerEndpoints) {
+          try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 5000);
+            const res = await fetch(registerEndpoint, {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                nome: cleanNome,
+                email: cleanEmail,
+                senha: regSenha,
+                cnpj: cleanCnpj,
+                companyName: cleanEmpresa || undefined,
+                cargo: regCargo.trim() || 'Gerente de RH & Administração Geral',
+                departamento: 'Recursos Humanos & Gestão Geral',
+                isRh: true,
+              }),
+              signal: controller.signal,
+            });
+            clearTimeout(timer);
+
+            if (res.status === 409 || res.status === 400 || res.status === 429) {
+              const errJson = await res.json().catch(() => null);
+              showFeedback(
+                errJson?.error || 'Não foi possível concluir o cadastro com os dados informados.',
+                'error'
+              );
+              setIsRegLoading(false);
+              return;
+            }
+
+            if (res.ok) {
+              const json = await res.json().catch(() => null);
+              if (json?.gestor) {
+                const g = json.gestor;
+                createdEmployee = {
+                  id: g.id,
+                  name: g.nome || cleanNome,
+                  role: g.cargo || regCargo.trim() || 'Gerente de RH & Administração Geral',
+                  department: g.departamento || 'Recursos Humanos & Gestão Geral',
+                  avatar: g.avatar || 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
+                  email: g.email || cleanEmail,
+                  phone: '(11) 98765-4321',
+                  standardHoursPerWeek: Number(g.horasSemanais) || 44,
+                  registrationId: g.matricula || matricula,
+                  companyId: g.companyId || '',
+                  companyCnpj: g.companyCnpj || cleanCnpj || undefined,
+                  isRh: true,
+                  isMasterManager: true,
+                  roleType: 'rh',
+                };
+                if (json?.token) {
+                  safeStorage.setItem('pontual_auth_token', json.token);
+                }
+                registeredViaServer = true;
+                break;
+              }
+            }
+          } catch {
+            // Endpoint indisponível; tenta próximo endpoint ou contingência
+          }
         }
+      }
 
-        if (
-          dbErr?.message &&
-          (dbErr.message.includes('unique') ||
-            dbErr.message.includes('23505') ||
-            dbErr.message.includes('already exists') ||
-            dbErr.message.includes('DUPLICATE_EMAIL') ||
-            dbErr.message.includes('já está cadastrado'))
-        ) {
-          showFeedback('Este e-mail corporativo já está cadastrado no sistema. Não é possível se cadastrar novamente. Faça login para acessar sua conta.', 'error');
-          setIsRegLoading(false);
-          return;
+      // 1. Contingência: Salva na TAB_Empresa e TAB_Colaborador do Supabase caso backend não responda
+      if (!createdEmployee) {
+        try {
+          createdEmployee = await createGestorSupabase({
+            name: cleanNome,
+            email: cleanEmail,
+            password: regSenha,
+            cnpj: cleanCnpj,
+            companyName: cleanEmpresa || undefined,
+            role: regCargo.trim() || 'Gerente de RH & Administração Geral',
+            department: 'Recursos Humanos & Gestão Geral',
+            isRh: true
+          });
+        } catch (dbErr: any) {
+          console.warn('Supabase offline ou retorno com aviso, operando com contingência local:', dbErr?.message);
+
+          if (dbErr?.message && dbErr.message.includes('DUPLICATE_CNPJ')) {
+            showFeedback('Este CNPJ já possui uma organização cadastrada no sistema. Solicite o acesso diretamente ao gestor administrador da empresa.', 'error');
+            setIsRegLoading(false);
+            return;
+          }
+
+          if (
+            dbErr?.message &&
+            (dbErr.message.includes('unique') ||
+              dbErr.message.includes('23505') ||
+              dbErr.message.includes('already exists') ||
+              dbErr.message.includes('DUPLICATE_EMAIL') ||
+              dbErr.message.includes('já está cadastrado'))
+          ) {
+            showFeedback('Este e-mail corporativo já está cadastrado no sistema. Não é possível se cadastrar novamente. Faça login para acessar sua conta.', 'error');
+            setIsRegLoading(false);
+            return;
+          }
+
+          createdEmployee = {
+            id: `mgr-${Date.now()}`,
+            name: cleanNome,
+            role: regCargo.trim() || 'Gerente de RH & Administração Geral',
+            department: 'Recursos Humanos & Gestão Geral',
+            avatar: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
+            email: cleanEmail,
+            phone: '(11) 98765-4321',
+            standardHoursPerWeek: 44,
+            registrationId: matricula,
+            companyId: cleanCnpj ? `emp-${cleanCnpj}` : `emp-${Date.now()}`,
+            companyCnpj: cleanCnpj || undefined,
+            isRh: true,
+            isMasterManager: true,
+            roleType: 'rh'
+          };
         }
-
-        createdEmployee = {
-          id: `mgr-${Date.now()}`,
-          name: cleanNome,
-          role: regCargo.trim() || 'Gerente de RH & Administração Geral',
-          department: 'Recursos Humanos & Gestão Geral',
-          avatar: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
-          email: cleanEmail,
-          phone: '(11) 98765-4321',
-          standardHoursPerWeek: 44,
-          registrationId: matricula,
-          companyId: cleanCnpj ? `emp-${cleanCnpj}` : `emp-${Date.now()}`,
-          companyCnpj: cleanCnpj || undefined,
-          isRh: true,
-          isMasterManager: true,
-          roleType: 'rh'
-        };
       }
 
       if (!createdEmployee.companyId) {
@@ -672,14 +755,12 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         createdEmployee.companyCnpj = cleanCnpj;
       }
 
-      // 2. Registra também no storage para suporte offline/local
+      // 2. Registra apenas dados seguros na sessão (só grava hash local em contingência offline)
       try {
-        const registeredUsers = JSON.parse(safeStorage.getItem('pontual_registered_users') || '[]');
-        const userRecord = {
+        const userRecord: Record<string, any> = {
           Idf_Colaborador: createdEmployee.id,
           Nme_Colaborador: createdEmployee.name,
           Eml_Corporativo: createdEmployee.email,
-          Des_Senha_Hash: bcrypt.hashSync(regSenha, 10),
           Cod_Matricula: createdEmployee.registrationId || matricula,
           Tpo_Perfil: 'rh',
           Tpo_Cargo: createdEmployee.role,
@@ -693,12 +774,19 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
           Flg_Ativo: true,
         };
 
-        const { Des_Senha_Hash: _omitRegHash, ...safeActiveRecord } = userRecord;
-        const filtered = registeredUsers.filter((u: any) => u.Eml_Corporativo?.toLowerCase() !== cleanEmail);
-        filtered.push(userRecord);
-        safeStorage.setItem('pontual_registered_users', JSON.stringify(filtered));
+        if (!registeredViaServer) {
+          const registeredUsers = JSON.parse(safeStorage.getItem('pontual_registered_users') || '[]');
+          const offlineRecord = {
+            ...userRecord,
+            Des_Senha_Hash: bcrypt.hashSync(regSenha, 10),
+          };
+          const filtered = registeredUsers.filter((u: any) => u.Eml_Corporativo?.toLowerCase() !== cleanEmail);
+          filtered.push(offlineRecord);
+          safeStorage.setItem('pontual_registered_users', JSON.stringify(filtered));
+        }
+
         safeStorage.setItem('pontual_role', 'manager');
-        safeStorage.setItem('pontual_active_user', JSON.stringify(safeActiveRecord));
+        safeStorage.setItem('pontual_active_user', JSON.stringify(userRecord));
         resetWorkplacesToDefaultForActiveCompany();
       } catch (storageErr) {
         console.warn('Erro ao salvar no storage local:', storageErr);

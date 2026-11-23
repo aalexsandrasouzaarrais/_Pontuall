@@ -5,6 +5,8 @@ import {
   requireAuth,
   isUuid,
   calculateHaversineDistance,
+  getSaoPauloTimeHHMM,
+  evaluateServerEntryTolerance,
 } from '../../shared/authSecurity.js';
 
 export const attendanceRoutes = Router();
@@ -31,7 +33,7 @@ function parseWorkplaceFromNotes(notes?: string | null): {
   }
 }
 
-// Registro de Ponto Digital autenticado com validação de GPS no servidor
+// Registro de Ponto Digital autenticado com timestamp e geofence validados no servidor
 attendanceRoutes.post('/check-in', requireAuth, async (req: Request, res: Response): Promise<void> => {
   try {
     const authUser = (req as AuthenticatedRequest).authUser;
@@ -47,6 +49,10 @@ attendanceRoutes.post('/check-in', requireAuth, async (req: Request, res: Respon
       num_longitude,
       des_endereco
     } = req.body || {};
+
+    const serverNow = new Date();
+    const serverTimestampIso = serverNow.toISOString();
+    const serverTimeHHMM = getSaoPauloTimeHHMM(serverNow);
 
     const cleanTipo = ALLOWED_PUNCH_TYPES.has(String(tpo_registro || '').trim())
       ? String(tpo_registro).trim()
@@ -73,12 +79,15 @@ attendanceRoutes.post('/check-in', requireAuth, async (req: Request, res: Respon
       validLon = lonNum;
     }
 
-    // Validação do turno pertencente ao usuário e cálculo da cerca geográfica no servidor
+    // Validação do turno pertencente ao usuário, geofence e tolerância no servidor
     let gpsValidadoNoServidor = validLat !== null && validLon !== null;
+    let distanceMeters: number | undefined = undefined;
+    let scheduledStart: string | null = null;
+
     if (idf_turno) {
       const { data: turno } = await supabaseAdmin
         .from('TAB_Escala_Turno')
-        .select('Idf_Turno, Idf_Colaborador, Des_Observacao')
+        .select('Idf_Turno, Idf_Colaborador, Dta_Hora_Inicio, Des_Observacao')
         .eq('Idf_Turno', idf_turno)
         .eq('Flg_Ativo', true)
         .maybeSingle();
@@ -93,34 +102,37 @@ attendanceRoutes.post('/check-in', requireAuth, async (req: Request, res: Respon
         return;
       }
 
+      scheduledStart = turno.Dta_Hora_Inicio || null;
       const wp = parseWorkplaceFromNotes(turno.Des_Observacao);
       if (wp?.isRemote) {
         gpsValidadoNoServidor = true;
       } else if (wp && typeof wp.latitude === 'number' && typeof wp.longitude === 'number') {
         if (validLat === null || validLon === null) {
-          res.status(400).json({ error: 'Geolocalização obrigatória para registro de ponto presencial.' });
-          return;
-        }
-        const radius = Number(wp.radiusMeters) > 0 ? Number(wp.radiusMeters) : 200;
-        const distance = calculateHaversineDistance(validLat, validLon, wp.latitude, wp.longitude);
-        gpsValidadoNoServidor = distance <= radius;
-        if (!gpsValidadoNoServidor) {
-          res.status(403).json({ error: 'Localização fora do raio permitido pelo posto de trabalho.' });
-          return;
+          gpsValidadoNoServidor = false;
+        } else {
+          const radius = Number(wp.radiusMeters) > 0 ? Number(wp.radiusMeters) : 200;
+          distanceMeters = Math.round(calculateHaversineDistance(validLat, validLon, wp.latitude, wp.longitude));
+          gpsValidadoNoServidor = distanceMeters <= radius;
         }
       }
     }
 
-    // Salva o registro na TAB_Registro_Ponto vinculando exclusivamente authUser.sub
+    const baseEndereco = des_endereco ? String(des_endereco).trim().slice(0, 200) : 'Localização capturada';
+    const finalEndereco = !gpsValidadoNoServidor && distanceMeters !== undefined
+      ? `[Fora do Raio: ${distanceMeters}m] ${baseEndereco}`.slice(0, 250)
+      : baseEndereco;
+
+    // Salva o registro na TAB_Registro_Ponto com authUser.sub, timestamp e Flg_Gps_Validado do servidor
     const { data: registro, error: erroPonto } = await supabaseAdmin
       .from('TAB_Registro_Ponto')
       .insert({
         Idf_Colaborador: authUser.sub,
         Idf_Turno: idf_turno || null,
+        Dta_Hora_Registro: serverTimestampIso,
         Tpo_Registro: cleanTipo,
         Num_Latitude: validLat,
         Num_Longitude: validLon,
-        Des_Endereco: des_endereco ? String(des_endereco).trim().slice(0, 250) : 'Localização capturada',
+        Des_Endereco: finalEndereco,
         Flg_Gps_Validado: gpsValidadoNoServidor
       })
       .select()
@@ -131,11 +143,13 @@ attendanceRoutes.post('/check-in', requireAuth, async (req: Request, res: Respon
       return;
     }
 
-    // Se houver turno associado válido, atualiza o status de presença para 'present'
-    if (idf_turno) {
+    // Na entrada com turno vinculado, calcula presença/atraso pela hora oficial do servidor
+    let attendanceStatus: 'present' | 'late' | undefined = undefined;
+    if (idf_turno && (cleanTipo === 'entrada' || cleanTipo === 'in')) {
+      attendanceStatus = evaluateServerEntryTolerance(scheduledStart, serverTimeHHMM, 10);
       await supabaseAdmin
         .from('TAB_Escala_Turno')
-        .update({ Tpo_Status_Presenca: 'present' })
+        .update({ Tpo_Status_Presenca: attendanceStatus })
         .eq('Idf_Turno', idf_turno)
         .eq('Idf_Colaborador', authUser.sub);
     }
@@ -143,6 +157,11 @@ attendanceRoutes.post('/check-in', requireAuth, async (req: Request, res: Respon
     res.status(201).json({
       success: true,
       message: 'Ponto registrado com sucesso!',
+      serverTimestamp: serverTimestampIso,
+      serverTimeHHMM,
+      gpsValidated: gpsValidadoNoServidor,
+      distanceMeters,
+      attendanceStatus,
       registro
     });
   } catch {
