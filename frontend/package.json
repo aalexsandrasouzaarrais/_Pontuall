@@ -9,7 +9,8 @@
     "build": "vite build",
     "build:singlefile": "vite build -c vite.singlefile.config.ts && node -e \"const fs = require('fs'); fs.copyFileSync('dist-singlefile/index.html', '../CLIQUE_AQUI_PARA_ABRIR.html');\"",
     "preview": "vite preview",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
@@ -40,6 +41,7 @@
     "autoprefixer": "^10.4.21",
     "tailwindcss": "^4.1.14",
     "typescript": "~5.8.2",
-    "vite-plugin-singlefile": "^2.3.3"
+    "vite-plugin-singlefile": "^2.3.3",
+    "vitest": "^3.2.7"
   }
 }

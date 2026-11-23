@@ -742,7 +742,7 @@ function AppContent() {
 
 
   // Check-In / Check-Out handler for employee
-  const handleCheckIn = (
+  const handleCheckIn = async (
     shiftId: string,
     locationData: {
       address: string;
@@ -756,10 +756,20 @@ function AppContent() {
     punchType: 'entrada' | 'saida' = 'entrada',
     notesOrReason?: string,
     simulatedTime?: string
-  ) => {
+  ): Promise<string> => {
     const now = new Date();
-    const timeStr = simulatedTime || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    let effectiveNowIso = now.toISOString();
+    let timeStr = simulatedTime || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const targetShift = shifts.find(s => s.id === shiftId);
+
+    // Salva na TAB_Registro_Ponto primeiro e usa o horário oficial do servidor para evitar drift cliente x banco
+    const savedPunch = await registerPunchSupabase(shiftId, activeEmployee.id, locationData, punchType);
+    if (!simulatedTime && savedPunch?.timeStr) {
+      timeStr = savedPunch.timeStr;
+    }
+    if (!simulatedTime && savedPunch?.timestamp) {
+      effectiveNowIso = savedPunch.timestamp;
+    }
 
     // Avaliação de tolerância conforme Art. 58 § 1º CLT
     let punchAttendanceStatus: 'present' | 'late' = 'present';
@@ -784,9 +794,7 @@ function AppContent() {
         earlyLeaveDiffMinutes = tol.diffMinutes;
       }
     }
-    
-    // Salva o registro de ponto na TAB_Registro_Ponto no Supabase com coordenadas reais e tipo
-    registerPunchSupabase(shiftId, activeEmployee.id, locationData, punchType);
+
     if (punchType === 'entrada') {
       updateShiftAttendanceStatusSupabase(shiftId, punchAttendanceStatus);
     }
@@ -821,7 +829,7 @@ function AppContent() {
               accuracy: locationData.accuracy,
               distanceMeters: locationData.distanceMeters,
               reportedWorkplace: locationData.reportedWorkplace,
-              timestamp: now.toISOString(),
+              timestamp: effectiveNowIso,
             }
           };
           if (updatedNotes !== (s.notes || '')) {
@@ -855,7 +863,7 @@ function AppContent() {
               accuracy: locationData.accuracy,
               distanceMeters: locationData.distanceMeters,
               reportedWorkplace: locationData.reportedWorkplace,
-              timestamp: now.toISOString(),
+              timestamp: effectiveNowIso,
             }
           };
           if (updatedNotes !== (s.notes || '')) {
@@ -963,6 +971,8 @@ function AppContent() {
         });
       });
     }
+
+    return timeStr;
   };
 
   const handleUpdateEmployee = async (updated: Employee) => {
@@ -1445,7 +1455,10 @@ function AppContent() {
     const lowerReason = (target?.reason || '').toLowerCase();
     const isEarlyLeaveTarget = lowerReason.includes('saída antecipada') || lowerReason.includes('saida antecipada');
     const isEarlyEntryTarget = lowerReason.includes('entrada antecipada');
-    let isTimeDeviationTarget = lowerReason.includes('atraso') || isEarlyLeaveTarget || isEarlyEntryTarget;
+    const isForgetfulnessTarget = lowerReason.includes('[esquecimento') || (target as any)?.justificationType === 'forgetfulness';
+    const isForgetExitTarget = isForgetfulnessTarget && (lowerReason.includes('esquecimento de saída') || lowerReason.includes('esquecimento de saida'));
+    const isOvertimeTarget = !isForgetfulnessTarget && (lowerReason.includes('hora extra') || (target as any)?.justificationType === 'overtime');
+    let isTimeDeviationTarget = lowerReason.includes('atraso') || isEarlyLeaveTarget || isEarlyEntryTarget || isForgetfulnessTarget || isOvertimeTarget;
 
     if (target) {
       let targetShift = target.shiftId ? shifts.find(s => s.id === target.shiftId) : undefined;
@@ -1458,11 +1471,17 @@ function AppContent() {
         isTimeDeviationTarget = isTimeDeviationTarget || hasWorkedPunch;
 
         if (hasWorkedPunch) {
-          const abonoLabel = isEarlyLeaveTarget
-            ? '[ABONO GESTOR: Saída Antecipada Abonada]'
-            : isEarlyEntryTarget
-              ? '[ABONO GESTOR: Entrada Antecipada Abonada]'
-              : '[ABONO GESTOR: Atraso Abonado]';
+          const abonoLabel = isForgetfulnessTarget
+            ? (isForgetExitTarget
+                ? '[HOMOLOGADO GESTOR: Esquecimento de Saída Homologado / Horário Normal Ajustado]'
+                : '[HOMOLOGADO GESTOR: Esquecimento de Entrada Homologado / Horário Normal Ajustado]')
+            : isOvertimeTarget
+              ? '[HOMOLOGADO GESTOR: Hora Extra Aprovada]'
+              : isEarlyLeaveTarget
+                ? '[ABONO GESTOR: Saída Antecipada Abonada]'
+                : isEarlyEntryTarget
+                  ? '[ABONO GESTOR: Entrada Antecipada Abonada]'
+                  : '[ABONO GESTOR: Atraso Abonado]';
           const updatedNotes = targetShift.notes?.includes(abonoLabel)
             ? targetShift.notes
             : `${targetShift.notes ? `${targetShift.notes} | ` : ''}${abonoLabel}`;
@@ -1505,7 +1524,10 @@ function AppContent() {
     const lowerReason = (target?.reason || '').toLowerCase();
     const isEarlyLeaveTarget = lowerReason.includes('saída antecipada') || lowerReason.includes('saida antecipada');
     const isEarlyEntryTarget = lowerReason.includes('entrada antecipada');
-    let isTimeDeviationTarget = lowerReason.includes('atraso') || isEarlyLeaveTarget || isEarlyEntryTarget;
+    const isForgetfulnessTarget = lowerReason.includes('[esquecimento') || (target as any)?.justificationType === 'forgetfulness';
+    const isForgetExitTarget = isForgetfulnessTarget && (lowerReason.includes('esquecimento de saída') || lowerReason.includes('esquecimento de saida'));
+    const isOvertimeTarget = !isForgetfulnessTarget && (lowerReason.includes('hora extra') || (target as any)?.justificationType === 'overtime');
+    let isTimeDeviationTarget = lowerReason.includes('atraso') || isEarlyLeaveTarget || isEarlyEntryTarget || isForgetfulnessTarget || isOvertimeTarget;
 
     if (target) {
       let targetShift = target.shiftId ? shifts.find(s => s.id === target.shiftId) : undefined;
@@ -1519,11 +1541,17 @@ function AppContent() {
 
         if (hasWorkedPunch) {
           // Colaborador trabalhou no dia: mantém status trabalhado (não transforma dia trabalhado em falta)
-          const rejectLabel = isEarlyLeaveTarget
-            ? '[AJUSTE GESTOR: Saída Antecipada Não Abonada]'
-            : isEarlyEntryTarget
-              ? '[AJUSTE GESTOR: Entrada Antecipada Não Homologada]'
-              : '[AJUSTE GESTOR: Débito de Atraso Confirmado]';
+          const rejectLabel = isForgetfulnessTarget
+            ? (isForgetExitTarget
+                ? '[AJUSTE GESTOR: Esquecimento de Saída Não Aceito]'
+                : '[AJUSTE GESTOR: Esquecimento de Entrada Não Aceito]')
+            : isOvertimeTarget
+              ? '[AJUSTE GESTOR: Hora Extra Não Homologada]'
+              : isEarlyLeaveTarget
+                ? '[AJUSTE GESTOR: Saída Antecipada Não Abonada]'
+                : isEarlyEntryTarget
+                  ? '[AJUSTE GESTOR: Entrada Antecipada Não Homologada]'
+                  : '[AJUSTE GESTOR: Débito de Atraso Confirmado]';
           const updatedNotes = targetShift.notes?.includes(rejectLabel)
             ? targetShift.notes
             : `${targetShift.notes ? `${targetShift.notes} | ` : ''}${rejectLabel}`;

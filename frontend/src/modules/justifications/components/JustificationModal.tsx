@@ -189,7 +189,7 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
     : isForgetfulness
       ? (justificationType === 'overtime' ? 'Esquecimento de Saída' : 'Esquecimento de Entrada')
       : isDelay
-        ? `Atraso de Entrada ${delayMinutes ? `(+${delayMinutes} min)` : ''}`
+        ? `Atraso de Entrada ${delayMinutes ? `(-${delayMinutes} min)` : ''}`
         : isEarlyEntry
           ? `Entrada Antecipada ${delayMinutes ? `(-${delayMinutes} min)` : ''}`
           : isEarlyLeave
@@ -217,7 +217,7 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
           ? `Declare que você encerrou o expediente no horário contratual (${chosenShift?.endTime || '17:00'}) e relate o motivo da batida posterior.`
           : `Declare que você iniciou o expediente no horário contratual (${chosenShift?.startTime || '08:00'}) e relate o motivo da batida posterior.`)
       : isDelay
-        ? (delayMinutes ? `Atraso registrado de +${delayMinutes} min. Informe o motivo para o gestor.` : 'Informe o motivo do atraso e anexe declaração/comprovante se aplicável.')
+        ? (delayMinutes ? `Atraso registrado de -${delayMinutes} min. Informe o motivo para o gestor.` : 'Informe o motivo do atraso e anexe declaração/comprovante se aplicável.')
         : isEarlyEntry
           ? (delayMinutes ? `Entrada registrada ${delayMinutes} min antes do horário previsto. Informe o motivo para o gestor.` : 'Informe o motivo da entrada antecipada para análise do gestor.')
           : isEarlyLeave
