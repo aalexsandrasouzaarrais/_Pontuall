@@ -110,9 +110,10 @@ export async function getShiftsSupabase(employeeIds?: string[]): Promise<Shift[]
 
         if (punches && punches.length > 0) {
           return baseShifts.map(s => {
-            const shiftPunches = punches.filter(p => 
-              p.Idf_Turno === s.id || 
-              (p.Idf_Colaborador === s.employeeId && p.Dta_Hora_Registro?.startsWith(s.date))
+            const shiftPunches = punches.filter(p =>
+              p.Idf_Turno
+                ? p.Idf_Turno === s.id
+                : (p.Idf_Colaborador === s.employeeId && p.Dta_Hora_Registro?.startsWith(s.date))
             ).sort((a, b) => new Date(a.Dta_Hora_Registro).getTime() - new Date(b.Dta_Hora_Registro).getTime());
 
             if (shiftPunches.length === 0) return s;
@@ -389,7 +390,7 @@ export async function registerPunchSupabase(
     }
   }
 
-  // 2. Contingência direta ao Supabase (sem fabricar coordenadas padrão)
+  // 2. Contingência direta ao Supabase (sem fabricar coordenadas padrão, retornando timestamp oficial do banco)
   try {
     const colabUuid = await resolveValidEmployeeUuid(employeeId);
     if (!colabUuid) {
@@ -400,15 +401,23 @@ export async function registerPunchSupabase(
     const hasRealCoords = typeof locationData.latitude === 'number' && typeof locationData.longitude === 'number';
     const validatedFlag = Boolean(hasRealCoords && locationData.gpsValidated);
 
-    await supabase.from('TAB_Registro_Ponto').insert({
-      Idf_Turno: isValidUuid(shiftId) ? shiftId : null,
-      Idf_Colaborador: colabUuid,
-      Tpo_Registro: punchType,
-      Num_Latitude: hasRealCoords ? locationData.latitude : null,
-      Num_Longitude: hasRealCoords ? locationData.longitude : null,
-      Des_Endereco: fullAddressDesc,
-      Flg_Gps_Validado: validatedFlag,
-    });
+    const { data: insertedPunch, error: insertError } = await supabase
+      .from('TAB_Registro_Ponto')
+      .insert({
+        Idf_Turno: isValidUuid(shiftId) ? shiftId : null,
+        Idf_Colaborador: colabUuid,
+        Tpo_Registro: punchType,
+        Num_Latitude: hasRealCoords ? locationData.latitude : null,
+        Num_Longitude: hasRealCoords ? locationData.longitude : null,
+        Des_Endereco: fullAddressDesc,
+        Flg_Gps_Validado: validatedFlag,
+      })
+      .select('Dta_Hora_Registro')
+      .single();
+
+    if (insertError) {
+      console.warn('Aviso ao inserir em TAB_Registro_Ponto:', insertError.message);
+    }
 
     if (isValidUuid(shiftId)) {
       await supabase
@@ -417,7 +426,21 @@ export async function registerPunchSupabase(
         .eq('Idf_Turno', shiftId);
     }
 
-    return { ok: true, fromServer: false, gpsValidated: validatedFlag };
+    let serverTimeHHMM: string | undefined;
+    if (insertedPunch?.Dta_Hora_Registro) {
+      const dt = new Date(insertedPunch.Dta_Hora_Registro);
+      if (!isNaN(dt.getTime())) {
+        serverTimeHHMM = `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
+      }
+    }
+
+    return {
+      ok: true,
+      fromServer: false,
+      serverTimestamp: insertedPunch?.Dta_Hora_Registro || undefined,
+      serverTimeHHMM,
+      gpsValidated: validatedFlag,
+    };
   } catch (err: any) {
     console.warn('Erro ao salvar registro de ponto no Supabase:', err.message);
     return { ok: false, fromServer: false, error: err?.message || 'Falha ao salvar registro de ponto.' };

@@ -378,3 +378,32 @@ export function isShiftPast24hWithoutPunch(
     return false;
   }
 }
+
+/**
+ * Converte data em timestamp numérico (meio-dia local) para ordenação cronológica consistente.
+ */
+export function parseDateSortTimestamp(d?: string | Date | null): number {
+  if (!d) return 0;
+  if (d instanceof Date) return isNaN(d.getTime()) ? 0 : d.getTime();
+  const clean = String(d).trim();
+  const iso = normalizeDateToISO(clean);
+  if (iso) {
+    const t = new Date(iso + 'T12:00:00').getTime();
+    if (!isNaN(t)) return t;
+  }
+  const fallback = new Date(clean).getTime();
+  return isNaN(fallback) ? 0 : fallback;
+}
+
+/**
+ * Verifica se a data de uma linha corresponde ao termo buscado (YYYY-MM-DD, DD/MM/AAAA ou DD-MM-AAAA).
+ */
+export function matchesDateSearchQuery(rowDate: string | undefined | null, query: string): boolean {
+  const q = (query || '').toLowerCase().trim();
+  if (!q || !rowDate) return false;
+  const raw = String(rowDate).toLowerCase();
+  const formatted = formatDateBR(rowDate).toLowerCase();
+  const slash = formatted.replace(/-/g, '/');
+  const dash = formatted.replace(/\//g, '-');
+  return raw.includes(q) || formatted.includes(q) || slash.includes(q) || dash.includes(q);
+}
