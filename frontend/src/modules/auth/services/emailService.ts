@@ -37,10 +37,15 @@ export async function sendWelcomeEmail(payload: SendWelcomeEmailPayload): Promis
 
   // 1. Tenta disparar através do Backend Express ou API configurada
   const backendBase = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+  const isLocalViteDev =
+    import.meta.env.DEV &&
+    typeof window !== 'undefined' &&
+    ['localhost', '127.0.0.1'].includes(window.location.hostname);
+
   const endpoints = [
     ...(backendBase ? [`${backendBase}/api/auth/send-welcome-email`, `${backendBase}/send-welcome-email`] : []),
-    '/api/auth/send-welcome-email',
-    'http://localhost:5000/api/auth/send-welcome-email'
+    ...(!isLocalViteDev || Boolean(backendBase) ? ['/api/auth/send-welcome-email'] : []),
+    ...(import.meta.env.VITE_ENABLE_LOCAL_EMAIL_SERVER === 'true' ? ['http://localhost:5000/api/auth/send-welcome-email'] : []),
   ];
 
   for (const endpoint of endpoints) {
@@ -72,21 +77,23 @@ export async function sendWelcomeEmail(payload: SendWelcomeEmailPayload): Promis
   }
 
   // 2. Fallback: Tenta disparar através da Edge Function do Supabase (caso implantada)
-  try {
-    const { data, error } = await supabase.functions.invoke('send-welcome-email', {
-      body: requestBody
-    });
+  if (!isLocalViteDev || import.meta.env.VITE_ENABLE_EMAIL_EDGE_FUNCTION === 'true') {
+    try {
+      const { data, error } = await supabase.functions.invoke('send-welcome-email', {
+        body: requestBody
+      });
 
-    if (!error && data) {
-      return {
-        success: true,
-        simulated: data.simulated,
-        message: 'E-mail enviado via Supabase Edge Function com sucesso!',
-        id: data.id
-      };
+      if (!error && data) {
+        return {
+          success: true,
+          simulated: data.simulated,
+          message: 'E-mail enviado via Supabase Edge Function com sucesso!',
+          id: data.id
+        };
+      }
+    } catch (supabaseErr) {
+      console.warn('Supabase Edge Function indisponível:', supabaseErr);
     }
-  } catch (supabaseErr) {
-    console.warn('Supabase Edge Function indisponível:', supabaseErr);
   }
 
   // 3. Fallback de Demonstração / Local

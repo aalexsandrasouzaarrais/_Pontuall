@@ -96,7 +96,6 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [temporaryWorkplaceName, setTemporaryWorkplaceName] = useState('');
   const [checkInSuccess, setCheckInSuccess] = useState(false);
-  const [isResettingPunch, setIsResettingPunch] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<'all' | 'presencas' | 'faltas' | 'atrasos' | 'justificados'>('all');
   const [dbPunches, setDbPunches] = useState<any[]>([]);
@@ -774,36 +773,6 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
     const h = Math.floor(diffMinutes / 60);
     const m = diffMinutes % 60;
     return `${h}h${m > 0 ? ` ${m}m` : ''}`;
-  };
-
-  const handleResetTodayPunch = async () => {
-    if (!todayShift) return;
-    setIsResettingPunch(true);
-    try {
-      if (todayShift.id) {
-        await supabase.from('TAB_Registro_Ponto').delete().eq('Idf_Turno', todayShift.id);
-      }
-      if (employee.id) {
-        await supabase
-          .from('TAB_Registro_Ponto')
-          .delete()
-          .eq('Idf_Colaborador', employee.id)
-          .gte('Dta_Hora_Registro', `${todayStr}T00:00:00`);
-      }
-    } catch (err) {
-      console.warn('Erro ao limpar ponto:', err);
-    } finally {
-      setIsResettingPunch(false);
-    }
-    todayShift.attendanceStatus = 'pending';
-    todayShift.checkInTime = undefined;
-    todayShift.checkInLocation = undefined;
-    todayShift.checkOutTime = undefined;
-    todayShift.checkOutLocation = undefined;
-    onCheckIn(todayShift.id, {
-      address: '',
-      gpsValidated: false,
-    }, 'entrada');
   };
 
   const showPunchToleranceToast = (punchType: 'entrada' | 'saida', shift: Shift, timeStr: string) => {

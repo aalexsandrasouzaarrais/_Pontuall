@@ -358,23 +358,20 @@ function AppContent() {
 
         setEmployees(finalEmployees);
 
-        // Busca turnos estritamente dos colaboradores pertencentes à empresa/equipe
+        // Busca turnos, lembretes, solicitações e justificativas em paralelo para evitar flash de estado intermediário
         const empIds = finalEmployees.map(e => e.id);
-        const dbShifts = await getShiftsSupabase(empIds);
-        setShifts(dbShifts || []);
-
-        // Busca lembretes da gestão no Supabase filtrados por empresa e equipe
-        const dbReminders = await getRemindersSupabase({
-          companyId: currentEmp.companyId,
-          creatorId: currentEmp.id,
-          visibleEmployeeIds: empIds
-        });
-        setReminders(dbReminders || []);
-
-        // Busca solicitações e justificativas salvas no Supabase estritamente vinculadas à equipe
         const validScopeIds = empIds.filter(isUuid);
-        const dbRequests = validScopeIds.length > 0 ? await getSolicitacoesSupabase(validScopeIds) : [];
-        const dbJustifications = validScopeIds.length > 0 ? await getJustificativasSupabase(validScopeIds) : [];
+
+        const [dbShifts, dbReminders, dbRequests, dbJustifications] = await Promise.all([
+          getShiftsSupabase(empIds),
+          getRemindersSupabase({
+            companyId: currentEmp.companyId,
+            creatorId: currentEmp.id,
+            visibleEmployeeIds: empIds
+          }),
+          validScopeIds.length > 0 ? getSolicitacoesSupabase(validScopeIds) : Promise.resolve([]),
+          validScopeIds.length > 0 ? getJustificativasSupabase(validScopeIds) : Promise.resolve([]),
+        ]);
 
         const enrichedRequests = (dbRequests || []).map(r => {
           const emp = finalEmployees.find(e => e.id === r.employeeId || (e.email && currentEmp.email && e.email.toLowerCase() === currentEmp.email.toLowerCase())) 
@@ -398,6 +395,8 @@ function AppContent() {
           };
         });
 
+        setShifts(dbShifts || []);
+        setReminders(dbReminders || []);
         setRequests(enrichedRequests);
         setJustifications(enrichedJustifications);
 
@@ -1446,7 +1445,7 @@ function AppContent() {
     showToast('Solicitação Recusada', 'A solicitação foi recusada no Supabase.', 'info');
   };
 
-  const handleApproveJustification = async (id: string, customFeedback?: string) => {
+  const handleApproveJustification = async (id: string, customFeedback?: string, silentToast: boolean = false) => {
     const feedback = customFeedback || 'Homologado pelo RH';
     const target = justifications.find(j => j.id === id);
     setJustifications(prev => prev.map(j => j.id === id ? { ...j, status: 'approved', managerNotes: feedback } : j));
@@ -1506,16 +1505,18 @@ function AppContent() {
         type: 'justification',
       });
     }
-    showToast(
-      isTimeDeviationTarget ? 'Ocorrência Abonada' : 'Atestado Homologado',
-      isTimeDeviationTarget
-        ? 'A justificativa de horário foi homologada pelo gestor.'
-        : 'O atestado/justificativa foi homologado e o turno atualizado no sistema.',
-      'success'
-    );
+    if (!silentToast) {
+      showToast(
+        isTimeDeviationTarget ? 'Ocorrência Abonada' : 'Atestado Homologado',
+        isTimeDeviationTarget
+          ? 'A justificativa de horário foi homologada pelo gestor.'
+          : 'O atestado/justificativa foi homologado e o turno atualizado no sistema.',
+        'success'
+      );
+    }
   };
 
-  const handleRejectJustification = async (id: string, customFeedback?: string) => {
+  const handleRejectJustification = async (id: string, customFeedback?: string, silentToast: boolean = false) => {
     const feedback = customFeedback || 'Não homologado';
     const target = justifications.find(j => j.id === id);
     setJustifications(prev => prev.map(j => j.id === id ? { ...j, status: 'rejected', managerNotes: feedback } : j));
@@ -1576,11 +1577,13 @@ function AppContent() {
         type: 'justification',
       });
     }
-    showToast(
-      isTimeDeviationTarget ? 'Justificativa Recusada' : 'Atestado Recusado',
-      'A justificativa foi marcada como não homologada no Supabase.',
-      'info'
-    );
+    if (!silentToast) {
+      showToast(
+        isTimeDeviationTarget ? 'Justificativa Recusada' : 'Atestado Recusado',
+        'A justificativa foi marcada como não homologada no Supabase.',
+        'info'
+      );
+    }
   };
 
   const handleApprovePjReport = async (id: string) => {

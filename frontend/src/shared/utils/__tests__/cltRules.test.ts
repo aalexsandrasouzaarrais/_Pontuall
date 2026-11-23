@@ -10,6 +10,7 @@ import {
 import {
   selectActiveTodayShift,
   isDirectionalForgetfulnessMatch,
+  resolveAttendanceReportStatusAndObs,
 } from '@/shared/utils/attendanceUtils';
 
 describe('evaluatePunchTolerance (CLT Art. 58 § 1º)', () => {
@@ -110,5 +111,76 @@ describe('isShiftPast24hWithoutPunch', () => {
     expect(isShiftPast24hWithoutPunch({ date: '2026-11-22', startTime: '15:00' }, now)).toBe(true);
     expect(isShiftPast24hWithoutPunch({ date: '2026-11-22', startTime: '15:00', checkInTime: '15:05' }, now)).toBe(false);
     expect(isShiftPast24hWithoutPunch({ date: '2026-11-23', startTime: '08:00' }, now)).toBe(false);
+  });
+});
+
+describe('resolveAttendanceReportStatusAndObs', () => {
+  it('keeps worked day as Presente/Homologado no banco when deviation justification is approved', () => {
+    const res = resolveAttendanceReportStatusAndObs({
+      hasWorkedPunch: true,
+      attendanceStatus: 'present',
+      notes: '[Esquecimento de Saída: Saída real no horário previsto (15:05) - Batida às 15:23] | [HOMOLOGADO GESTOR: Esquecimento de Saída Homologado / Horário Normal Ajustado]',
+      isPast24h: false,
+      justifications: [{ status: 'approved', reason: '[Esquecimento de Saída]' }],
+    });
+    expect(res.status).toBe('Presente');
+    expect(res.cleanObs).toBe('Homologado no banco');
+  });
+
+  it('promotes late punch to Presente when delay is abono-approved', () => {
+    const res = resolveAttendanceReportStatusAndObs({
+      hasWorkedPunch: true,
+      attendanceStatus: 'late',
+      notes: '[Atraso 35m: consulta] | [ABONO GESTOR: Atraso Abonado]',
+      isPast24h: false,
+      justifications: [{ status: 'approved' }],
+    });
+    expect(res.status).toBe('Presente');
+    expect(res.cleanObs).toBe('Homologado no banco');
+  });
+
+  it('distinguishes pending entry forgetfulness from exit forgetfulness on worked shifts', () => {
+    const entryRes = resolveAttendanceReportStatusAndObs({
+      hasWorkedPunch: true,
+      attendanceStatus: 'late',
+      notes: '[Esquecimento de Entrada: Chegada real no horário previsto (08:00) - Batida às 08:35]',
+      isPast24h: false,
+      justifications: [{ status: 'pending' }],
+    });
+    expect(entryRes.status).toBe('Atrasado');
+    expect(entryRes.cleanObs).toBe('Esquecimento de entrada');
+
+    const exitRes = resolveAttendanceReportStatusAndObs({
+      hasWorkedPunch: true,
+      attendanceStatus: 'present',
+      notes: '[Esquecimento de Saída: Saída real no horário previsto (17:00) - Batida às 17:20]',
+      isPast24h: false,
+      justifications: [{ status: 'pending' }],
+    });
+    expect(exitRes.status).toBe('Presente');
+    expect(exitRes.cleanObs).toBe('Esquecimento de saída');
+  });
+
+  it('classifies unworked shift with approved justification as Justificado / Ausência abonada', () => {
+    const res = resolveAttendanceReportStatusAndObs({
+      hasWorkedPunch: false,
+      attendanceStatus: 'justified',
+      isPast24h: true,
+      justifications: [{ status: 'approved' }],
+    });
+    expect(res.status).toBe('Justificado');
+    expect(res.cleanObs).toBe('Ausência abonada');
+  });
+
+  it('classifies unworked shift past 24h without justification as Ausente', () => {
+    const res = resolveAttendanceReportStatusAndObs({
+      hasWorkedPunch: false,
+      attendanceStatus: 'pending',
+      isPast24h: true,
+      justifications: [],
+    });
+    expect(res.status).toBe('Ausente');
+    expect(res.isDecisionPending).toBe(true);
+    expect(res.cleanObs).toBe('Não bateu ponto');
   });
 });
