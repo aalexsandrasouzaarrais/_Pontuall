@@ -42,7 +42,9 @@ import {
   MapPin,
   Image as ImageIcon,
   Smile,
-  Reply
+  Reply,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { Employee, Shift, TimeOffRequest, AbsenceJustification } from '@/types';
 import { supabase } from '@/shared/services/supabase';
@@ -67,7 +69,7 @@ import {
 import { EmployeesManagementView } from '@/modules/manager/components/EmployeesManagementView';
 import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
 import { DeleteShiftsModal } from './DeleteShiftsModal';
-import { addDaysLocal, startOfWeekMonday, toLocalDateString, getTodayDateString, formatDateBR, normalizeDateToISO, isShiftPast24hWithoutPunch } from '@/shared/utils/dateUtils';
+import { addDaysLocal, startOfWeekMonday, toLocalDateString, getTodayDateString, formatDateBR, normalizeDateToISO, isShiftPast24hWithoutPunch, evaluatePunchTolerance } from '@/shared/utils/dateUtils';
 import { showPolishedToast } from '@/components/ui/halo-toast';
 import {
   ReminderItem,
@@ -81,6 +83,19 @@ import { updateJustificativaStatusSupabase, updateSolicitacaoStatusSupabase } fr
 import { openDocumentSafe } from '@/shared/services/storageService';
 import { createNotificationSupabase } from '@/modules/notifications/services/notificationService';
 
+const parseDateSortTimestamp = (d?: string | Date | null): number => {
+  if (!d) return 0;
+  if (d instanceof Date) return isNaN(d.getTime()) ? 0 : d.getTime();
+  const clean = String(d).trim();
+  const iso = normalizeDateToISO(clean);
+  if (iso) {
+    const t = new Date(iso + 'T12:00:00').getTime();
+    if (!isNaN(t)) return t;
+  }
+  const fallback = new Date(clean).getTime();
+  return isNaN(fallback) ? 0 : fallback;
+};
+
 interface ManagerMatrixGridProps {
   employees: Employee[];
   shifts: Shift[];
@@ -89,7 +104,7 @@ interface ManagerMatrixGridProps {
   onOpenEditShift: (shift: Shift) => void;
   onOpenRequests: () => void;
   onOpenPjModal: () => void;
-  onExportCsv: (targetMonth?: string) => void;
+  onExportCsv: (targetMonth?: string, targetDept?: string) => void;
   onAddEmployee: () => void;
   onSwitchToEmployee?: () => void;
   onOpenChat?: () => void;
@@ -193,6 +208,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   const [approvalsSearch, setApprovalsSearch] = useState('');
   const [approvalsDept, setApprovalsDept] = useState('all');
   const [approvalsTypeFilter, setApprovalsTypeFilter] = useState<'all' | 'swap' | 'medical' | 'delay' | 'overtime' | 'absent' | 'justified' | 'time_off'>('all');
+  const [approvalsDateSort, setApprovalsDateSort] = useState<'desc' | 'asc'>('desc');
   const [isNewOccurrenceModalOpen, setIsNewOccurrenceModalOpen] = useState(false);
   const [expandedReasons, setExpandedReasons] = useState<Record<string, boolean>>({});
   const [selectedDetailOccurrence, setSelectedDetailOccurrence] = useState<{
@@ -221,13 +237,14 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     type: 'Atestado Médico',
     date: new Date().toLocaleDateString('pt-BR'),
     reason: '',
-    documentName: 'atestado.pdf',
+    documentName: '',
     status: 'Pendente' as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
     feedback: '',
   });
 
   const [approvalsData, setApprovalsData] = useState<Array<{
     id: string;
+    shiftId?: string;
     employeeId?: string;
     employeeName: string;
     employeeRole: string;
@@ -236,6 +253,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     type: string;
     reason: string;
     date: string;
+    diffMinutes?: number;
     documentName: string;
     documentUrl?: string;
     status: 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente';
@@ -260,6 +278,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   // Estados e cálculos para exportação mensal de presenças e aprovações
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportModalContext, setExportModalContext] = useState<'attendance' | 'approvals'>('attendance');
+  const [exportReportFormat, setExportReportFormat] = useState<'detailed' | 'consolidated_employees_dept' | 'consolidated_dept'>('consolidated_employees_dept');
+  const [selectedExportDept, setSelectedExportDept] = useState<string>('all');
   const [selectedExportMonth, setSelectedExportMonth] = useState<string>(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -451,19 +471,47 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
     const mappedJustifications = (justifications || []).map(j => {
       const emp = employees.find(e => e.id === j.employeeId);
-      const isDelayJust = j.reason?.toLowerCase().includes('atraso') || (j as any).justificationType === 'delay';
+      const rLower = (j.reason || '').toLowerCase();
+      const isOvertimeJust = rLower.includes('hora extra') || (j as any).justificationType === 'overtime';
+      const isForgetfulnessJust = rLower.includes('esquecimento') || rLower.includes('esqueci') || (j as any).justificationType === 'forgetfulness';
+      const isEntryForgetfulness = isForgetfulnessJust && (rLower.includes('entrada') || (j as any).initialPunchType === 'entrada');
+      const isExitForgetfulness = isForgetfulnessJust && !isEntryForgetfulness;
+      const isEarlyLeaveJust = rLower.includes('saída antecipada') || rLower.includes('saida antecipada') || (j as any).justificationType === 'early_leave';
+      const isEarlyEntryJust = rLower.includes('entrada antecipada') || (j as any).justificationType === 'early_entry';
+      const isDelayJust = rLower.includes('atraso') || (j as any).justificationType === 'delay';
+      const isAbsenceJust = (j as any).justificationType === 'absence' || rLower.includes('ausência') || rLower.includes('ausencia') || rLower.includes('falta');
+      const resolvedShiftId = j.shiftId || (shifts || []).find(s => s.employeeId === j.employeeId && s.date === j.date)?.id;
+      const typeLabel = isOvertimeJust
+        ? 'Hora Extra'
+        : isEntryForgetfulness
+          ? 'Esquecimento de Entrada'
+          : isExitForgetfulness
+            ? 'Esquecimento de Saída'
+            : isEarlyLeaveJust
+              ? 'Saída Antecipada'
+              : isEarlyEntryJust
+                ? 'Entrada Antecipada'
+                : isDelayJust
+                  ? 'Atraso de Entrada'
+                  : isAbsenceJust
+                    ? (j.status === 'approved' ? 'Falta Justificada' : 'Justificativa de Ausência')
+                    : 'Atestado Médico';
+      const parsedDiff = (j as any).delayMinutes || (j.reason?.match(/(\d+)\s*min/)?.[1] ? Number(j.reason?.match(/(\d+)\s*min/)?.[1]) : undefined);
+      const hasDocUrl = Boolean(j.documentUrl && j.documentUrl.trim() !== '' && j.documentUrl !== 'null' && j.documentUrl !== 'undefined');
       return {
         id: j.id,
+        shiftId: resolvedShiftId,
         employeeId: j.employeeId,
         employeeName: emp?.name || j.employeeName || 'Colaborador',
         employeeRole: emp?.role || 'Colaborador',
         employeeDept: emp?.department || 'Geral',
         employeeAvatar: emp?.avatar || j.employeeAvatar || '',
-        type: isDelayJust ? 'Justificativa de Atraso' : 'Atestado Médico',
+        type: typeLabel,
+        diffMinutes: parsedDiff,
         reason: j.reason,
         date: j.date,
-        documentName: j.documentName || (isDelayJust ? 'Declaracao_Comparecimento_Horas.pdf' : 'atestado.pdf'),
-        documentUrl: j.documentUrl,
+        documentName: hasDocUrl ? (j.documentName || 'Comprovante.pdf') : undefined,
+        documentUrl: hasDocUrl ? j.documentUrl : undefined,
         status: (j.status === 'approved' ? 'Aprovado' : j.status === 'rejected' ? 'Recusado / Falta' : 'Pendente') as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
         actionText: j.status === 'approved' ? 'Homologado' : j.status === 'rejected' ? 'Não homologado' : undefined,
         feedback: j.managerNotes || '',
@@ -508,11 +556,32 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       const hasJustification = (justifications || []).some(j => 
         (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)
       );
+      // Se o colaborador já submeteu uma justificativa/atestado formal, ele é exibido via mappedJustifications
+      // preservando fielmente a justificativa original e anexos do colaborador sem duplicar ou sobrescrever
+      if (hasJustification) return false;
+
       const isJustified = s.attendanceStatus === 'justified';
-      return (isPast24h && !s.checkInTime && !hasJustification) || isJustified;
+      return (isPast24h && !s.checkInTime) || isJustified;
     }).map(s => {
       const emp = employees.find(e => e.id === s.employeeId);
       const isJustified = s.attendanceStatus === 'justified' || s.notes?.includes('ABONO GESTOR') || s.notes?.includes('Ausência Justificada');
+      
+      const matchingReq = (requests || []).find(r => 
+        r.employeeId === s.employeeId && r.date === s.date
+      );
+
+      const cleanNotes = (s.notes || '')
+        .replace(/\[ABONO GESTOR:[^\]]*\]/gi, '')
+        .replace(/\[HOMOLOGADO GESTOR:[^\]]*\]/gi, '')
+        .replace(/\[FALTA GESTOR:[^\]]*\]/gi, '')
+        .trim();
+
+      const reason = cleanNotes
+        || matchingReq?.reason
+        || (isJustified
+          ? 'Ausência abonada pelo gestor.'
+          : 'Colaborador escalado não registrou ponto de entrada/saída após 24h e não apresentou atestado/justificativa.');
+
       return {
         id: `absence-${s.id}`,
         shiftId: s.id,
@@ -522,9 +591,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         employeeDept: emp?.department || 'Geral',
         employeeAvatar: emp?.avatar || '',
         type: isJustified ? 'Falta Justificada' : 'Falta Não Justificada',
-        reason: isJustified ? 'Ausência abonada com justificativa ou atestado médico aceito.' : 'Colaborador escalado não registrou ponto de entrada/saída após 24h e não apresentou atestado/justificativa.',
+        reason,
         date: s.date,
-        documentName: isJustified ? 'Declaracao_ou_Atestado.pdf' : 'Sem anexo',
+        documentName: 'Sem anexo',
         documentUrl: undefined,
         status: (isJustified ? 'Aprovado' : 'Pendente') as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
         actionText: isJustified ? 'Abonada' : undefined,
@@ -565,57 +634,149 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       feedback: 'Atestado válido homologado pelo gestor.',
     }];
 
-    // Ocorrências de Atraso e Horas Extras apuradas para a Central Única de Aprovações
-    const mappedDelaysAndOvertimeFromShifts = (shifts || []).filter(s => {
-      const hasHe = s.notes && s.notes.includes('[HE');
-      const hasLate = (s.notes && s.notes.includes('[Atraso')) || s.attendanceStatus === 'late';
-      return hasHe || hasLate;
-    }).map(s => {
+    // Ocorrências de Atraso, Antecipação e Horas Extras apuradas imediatamente pelas batidas e notas para a Central Única de Aprovações
+    const mappedDelaysAndOvertimeFromShifts = (shifts || []).flatMap(s => {
       const emp = employees.find(e => e.id === s.employeeId) || emp1;
-      const isHe = Boolean(s.notes?.includes('[HE'));
-      const isLate = (Boolean(s.notes?.includes('[Atraso')) || s.attendanceStatus === 'late') && !isHe;
-      
-      const type = isLate ? 'Atraso de Entrada' : 'Hora Extra';
-      let diffStr = '';
-      if (isLate) {
-        const lateMatch = s.notes?.match(/\[Atraso (\d+)m/);
-        diffStr = lateMatch ? ` (-${lateMatch[1]} min)` : ' (-35 min)';
-      } else {
-        const heMatch = s.notes?.match(/\[HE \+(\d+)m/);
-        diffStr = heMatch ? ` (+${heMatch[1]} min)` : ' (+39 min)';
+      const results: Array<{
+        id: string;
+        shiftId: string;
+        employeeId: string;
+        employeeName: string;
+        employeeRole: string;
+        employeeDept: string;
+        employeeAvatar: string;
+        type: string;
+        diffMinutes?: number;
+        reason: string;
+        date: string;
+        documentName: string;
+        documentUrl?: string;
+        status: 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente';
+        actionText?: string;
+        feedback: string;
+      }> = [];
+
+      const findJustForKind = (kind: 'delay' | 'early_entry' | 'early_leave' | 'overtime') =>
+        (justifications || []).find(j => {
+          const matchesShift = (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date);
+          if (!matchesShift) return false;
+          const rLower = (j.reason || '').toLowerCase();
+          const jType = (j as any).justificationType;
+          if (kind === 'early_entry') return rLower.includes('entrada antecipada') || jType === 'early_entry';
+          if (kind === 'early_leave') return rLower.includes('saída antecipada') || rLower.includes('saida antecipada') || jType === 'early_leave';
+          if (kind === 'delay') return rLower.includes('atraso') || jType === 'delay' || (rLower.includes('esquecimento') && rLower.includes('entrada'));
+          if (kind === 'overtime') return rLower.includes('hora extra') || jType === 'overtime' || (rLower.includes('esquecimento') && !rLower.includes('entrada'));
+          return false;
+        });
+
+      // 1. Avaliar Entrada (Atraso, Entrada Antecipada ou Esquecimento)
+      const inTol = (s.startTime && s.checkInTime)
+        ? evaluatePunchTolerance(s.startTime, s.checkInTime, 'entrada', 10)
+        : null;
+      const hasLate = Boolean(s.notes?.includes('[Atraso')) || s.attendanceStatus === 'late' || Boolean(inTol?.isLate);
+      const hasEarlyEntry = !hasLate && (Boolean(s.notes?.includes('[Entrada Antecipada')) || Boolean(inTol?.isEarly));
+      const isForgetfulnessEntry = Boolean(s.notes?.includes('Esquecimento de Entrada'));
+
+      if (hasLate || hasEarlyEntry || isForgetfulnessEntry) {
+        const entryKind = hasLate ? 'delay' : 'early_entry';
+        const existingJust = findJustForKind(entryKind);
+        // Se já foi mapeada em mappedJustifications, evita duplicar na lista
+        if (!existingJust) {
+          const lateMatch = s.notes?.match(/\[Atraso (\d+)m/);
+          const earlyMatch = s.notes?.match(/\[Entrada Antecipada (\d+)m/);
+          const diffMins = hasLate
+            ? (lateMatch ? Number(lateMatch[1]) : (inTol?.isLate ? inTol.diffMinutes : 0))
+            : (earlyMatch ? Number(earlyMatch[1]) : (inTol?.isEarly ? inTol.diffMinutes : 0));
+
+          const isHomologated = Boolean(
+            s.notes?.includes('HOMOLOGADO') ||
+            (hasLate && s.notes?.includes('[ABONO GESTOR: Atraso')) ||
+            (hasEarlyEntry && s.notes?.includes('[ABONO GESTOR: Entrada Antecipada')) ||
+            s.attendanceStatus === 'justified'
+          );
+          const isAdjusted = Boolean(
+            (hasLate && s.notes?.includes('Débito de Atraso Confirmado')) ||
+            (hasEarlyEntry && s.notes?.includes('Entrada Antecipada Não Homologada'))
+          );
+
+          results.push({
+            id: `shift-occ-in-${s.id}`,
+            shiftId: s.id,
+            employeeId: s.employeeId,
+            employeeName: emp.name,
+            employeeRole: emp.role || 'Colaborador',
+            employeeDept: emp.department || 'Geral',
+            employeeAvatar: emp.avatar || '',
+            type: isForgetfulnessEntry ? 'Esquecimento de Entrada' : hasLate ? 'Atraso de Entrada' : 'Entrada Antecipada',
+            diffMinutes: diffMins,
+            reason: isForgetfulnessEntry
+              ? `Entrada registrada às ${s.checkInTime || '--:--'} (previsto ${s.startTime})${diffMins ? ` • +${diffMins} min após início` : ''} — Esquecimento de batida declarado.`
+              : hasLate
+                ? `Entrada às ${s.checkInTime || '--:--'} (previsto ${s.startTime})${diffMins ? ` • +${diffMins} min de atraso` : ''} — aguardando justificativa ou decisão do gestor.`
+                : `Entrada às ${s.checkInTime || '--:--'} (previsto ${s.startTime})${diffMins ? ` • ${diffMins} min antes do horário` : ''} — aguardando justificativa ou decisão do gestor.`,
+            date: s.date,
+            documentName: 'Sem anexo',
+            documentUrl: undefined,
+            status: isHomologated ? 'Aprovado' : isAdjusted ? 'Recusado / Falta' : 'Pendente',
+            actionText: isHomologated ? 'Abonado' : isAdjusted ? 'Debitado' : undefined,
+            feedback: '',
+          });
+        }
       }
 
-      const shiftJust = (justifications || []).find(j => 
-        (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)
-      );
+      // 2. Avaliar Saída (Hora Extra, Saída Antecipada ou Esquecimento)
+      const outTol = (s.endTime && s.checkOutTime)
+        ? evaluatePunchTolerance(s.endTime, s.checkOutTime, 'saida', 10)
+        : null;
+      const hasHe = Boolean(s.notes?.includes('[HE')) || Boolean(outTol?.isOvertime);
+      const hasEarlyLeave = !hasHe && (Boolean(s.notes?.includes('[Saída Antecipada') || s.notes?.includes('[Saida Antecipada')) || Boolean(outTol?.isEarlyLeave));
+      const isForgetfulnessExit = Boolean(s.notes?.includes('Esquecimento de Saída') || s.notes?.includes('Justificativa Esquecimento'));
 
-      const isHomologated = s.notes?.includes('HOMOLOGADO') || shiftJust?.status === 'approved';
-      const isAdjusted = s.notes?.includes('AJUSTE GESTOR') || shiftJust?.status === 'rejected';
+      if (hasHe || hasEarlyLeave || isForgetfulnessExit) {
+        const exitKind = hasEarlyLeave ? 'early_leave' : 'overtime';
+        const existingJust = findJustForKind(exitKind);
+        if (!existingJust) {
+          const heMatch = s.notes?.match(/\[HE \+(\d+)m/);
+          const earlyLeaveMatch = s.notes?.match(/\[Sa[íi]da Antecipada (\d+)m/);
+          const diffMins = hasHe
+            ? (heMatch ? Number(heMatch[1]) : (outTol?.isOvertime ? outTol.diffMinutes : 0))
+            : (earlyLeaveMatch ? Number(earlyLeaveMatch[1]) : (outTol?.isEarlyLeave ? outTol.diffMinutes : 0));
 
-      const statusVal = isHomologated ? 'Aprovado' : isAdjusted ? 'Recusado / Falta' : 'Pendente';
-      const actionText = isHomologated 
-        ? (isLate ? 'Abonado' : 'Homologado')
-        : isAdjusted 
-        ? (isLate ? 'Debitado' : 'Ajustado')
-        : undefined;
+          const isHomologated = Boolean(
+            s.notes?.includes('HOMOLOGADO') ||
+            (hasEarlyLeave && s.notes?.includes('[ABONO GESTOR: Saída Antecipada'))
+          );
+          const isAdjusted = Boolean(
+            s.notes?.includes('AJUSTE GESTOR') ||
+            (hasEarlyLeave && s.notes?.includes('Saída Antecipada Não Abonada'))
+          );
 
-      return {
-        id: `shift-occ-${s.id}`,
-        shiftId: s.id,
-        employeeId: s.employeeId,
-        employeeName: emp.name,
-        employeeRole: emp.role || 'Colaborador',
-        employeeDept: emp.department || 'Geral',
-        employeeAvatar: emp.avatar || '',
-        type,
-        reason: shiftJust?.reason || s.notes || (isLate ? `Entrada com atraso${diffStr}` : `Permanência com hora extra${diffStr}`),
-        date: s.date,
-        documentName: shiftJust?.documentName || (isLate ? 'Declaracao_Comparecimento_Horas.pdf' : 'Não se aplica'),
-        documentUrl: shiftJust?.documentUrl,
-        status: statusVal as 'Aprovado' | 'Recusado / Falta' | 'Falta Lançada' | 'Pendente',
-        actionText,
-        feedback: shiftJust?.managerNotes || '',
-      };
+          results.push({
+            id: `shift-occ-out-${s.id}`,
+            shiftId: s.id,
+            employeeId: s.employeeId,
+            employeeName: emp.name,
+            employeeRole: emp.role || 'Colaborador',
+            employeeDept: emp.department || 'Geral',
+            employeeAvatar: emp.avatar || '',
+            type: hasEarlyLeave ? 'Saída Antecipada' : isForgetfulnessExit ? 'Esquecimento de Saída' : 'Hora Extra',
+            diffMinutes: diffMins,
+            reason: hasEarlyLeave
+              ? `Saída às ${s.checkOutTime || '--:--'} (previsto ${s.endTime})${diffMins ? ` • -${diffMins} min antes do término` : ''} — aguardando justificativa ou decisão do gestor.`
+              : isForgetfulnessExit
+                ? `Saída registrada às ${s.checkOutTime || '--:--'} (previsto ${s.endTime})${diffMins ? ` • +${diffMins} min após o término` : ''} — Esquecimento de batida declarado.`
+                : `Saída às ${s.checkOutTime || '--:--'} (previsto ${s.endTime})${diffMins ? ` • +${diffMins} min após o término` : ''}.`,
+            date: s.date,
+            documentName: 'Sem anexo',
+            documentUrl: undefined,
+            status: isHomologated ? 'Aprovado' : isAdjusted ? 'Recusado / Falta' : 'Pendente',
+            actionText: isHomologated ? (hasEarlyLeave ? 'Abonado' : 'Homologado') : isAdjusted ? (hasEarlyLeave ? 'Debitado' : 'Ajustado') : undefined,
+            feedback: '',
+          });
+        }
+      }
+
+      return results;
     });
 
     const demoDelayItem = (mappedDelaysAndOvertimeFromShifts.some(i => i.type === 'Atraso de Entrada') || mappedJustifications.some(j => j.type === 'Atraso de Entrada' || j.type === 'Justificativa de Atraso')) ? [] : [{
@@ -651,12 +812,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     }];
 
     // Central Unificada de Aprovações (Aba 2):
-    // Reúne Atestados Médicos, Faltas Não Justificadas, Justificados, Atrasos de Entrada, Horas Extras, Trocas de Turno e Folgas
-    setApprovalsData([
-      ...demoAbsenceItem,
-      ...demoJustifiedItem,
-      ...demoDelayItem,
-      ...demoOvertimeItem,
+    // Reúne apenas ocorrências reais dos colaboradores vinculados a esta empresa/gestor
+    const allApprovals = [
       ...mappedAbsences,
       ...mappedDelaysAndOvertimeFromShifts,
       ...mappedJustifications.map(j => ({
@@ -664,7 +821,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         type: j.type === 'Justificativa de Atraso' ? 'Atraso de Entrada' : j.type
       })),
       ...mappedRequests
-    ]);
+    ].sort((a, b) => {
+      const timeA = parseDateSortTimestamp(a.date);
+      const timeB = parseDateSortTimestamp(b.date);
+      return timeB - timeA;
+    });
+
+    setApprovalsData(allApprovals);
 
     // Ocorrências de Banco de Horas & Registro de Ponto (Exclusivo para jornada com trabalho efetivo)
     const mappedFromShifts: BancoHorasItem[] = (shifts || []).filter(s => {
@@ -702,7 +865,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         diffBadge = `+${diffMinutes} min`;
       }
 
-      const isHomologated = s.notes?.includes('HOMOLOGADO');
+      const isHomologated = s.notes?.includes('HOMOLOGADO') || s.notes?.includes('ABONO GESTOR');
       const isAdjusted = s.notes?.includes('AJUSTE GESTOR');
       const defaultReason = isLate ? 'Entrada com atraso superior à tolerância CLT' : 'Ocorrência de jornada';
 
@@ -804,15 +967,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     };
 
     const finalBancoHoras: BancoHorasItem[] = [...mappedFromShifts];
-    if (!finalBancoHoras.some(b => b.type === 'hora_extra')) {
-      finalBancoHoras.unshift(demoHoraExtra);
-    }
-    if (!finalBancoHoras.some(b => b.type === 'atraso')) {
-      finalBancoHoras.splice(1, 0, demoAtraso);
-    }
-    if (!finalBancoHoras.some(b => b.type === 'esquecimento')) {
-      finalBancoHoras.push(demoEsquecimento);
-    }
     setBancoHorasData(finalBancoHoras);
   }, [employees, justifications, requests, shifts]);
 
@@ -820,7 +974,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   const handleApproveOccurrence = async (id: string) => {
     const targetItem = approvalsData.find(i => i.id === id);
     const isFalta = targetItem?.type === 'Falta Não Justificada' || id.startsWith('absence-');
-    const isAtraso = targetItem?.type === 'Atraso de Entrada' || targetItem?.type === 'Justificativa de Atraso';
+    const isEarlyEntry = targetItem?.type === 'Entrada Antecipada';
+    const isEarlyLeave = targetItem?.type === 'Saída Antecipada';
+    const isAtraso = targetItem?.type === 'Atraso de Entrada' || targetItem?.type === 'Justificativa de Atraso' || isEarlyEntry || isEarlyLeave;
     const isHe = targetItem?.type === 'Hora Extra';
     const customFeedback = targetItem?.feedback?.trim() || undefined;
 
@@ -854,20 +1010,56 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     }
 
     if (isAtraso) {
-      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace('shift-occ-', '') : undefined);
-      if (shiftId) {
+      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace(/^shift-occ-(?:in-|out-)?/, '') : undefined);
+      const matchingJust = id.startsWith('shift-occ-') ? undefined : justifications.find(j => j.id === id);
+
+      const abonoTag = isEarlyLeave
+        ? '[ABONO GESTOR: Saída Antecipada Abonada]'
+        : isEarlyEntry
+          ? '[ABONO GESTOR: Entrada Antecipada Abonada]'
+          : '[ABONO GESTOR: Atraso Abonado]';
+
+      if (matchingJust) {
+        if (onApproveJustification) {
+          onApproveJustification(matchingJust.id, customFeedback || 'Ocorrência abonada pelo gestor');
+        } else {
+          await updateJustificativaStatusSupabase(matchingJust.id, 'approved', customFeedback || 'Ocorrência abonada pelo gestor');
+        }
+      } else if (shiftId) {
         const targetShift = shifts.find(s => s.id === shiftId);
         if (targetShift) {
           onOpenEditShift?.({
             ...targetShift,
-            notes: `${targetShift.notes || ''} [ABONO GESTOR: Atraso Abonado]`
+            notes: `${targetShift.notes || ''} ${abonoTag}`
           });
         }
       }
       showPolishedToast({
         id: 'abono-atraso-success',
-        title: 'Atraso Abonado com Sucesso!',
-        description: 'O atraso foi abonado pelo gestor com base no comprovante e não gerará débito.',
+        title: isEarlyLeave ? 'Saída Antecipada Abonada!' : isEarlyEntry ? 'Entrada Antecipada Abonada!' : 'Atraso Abonado com Sucesso!',
+        description: 'A ocorrência foi abonada pelo gestor com base no comprovante e não gerará débito.',
+        rimVariant: 'success',
+        duration: 4000,
+      });
+      return;
+    }
+
+    const isForgetfulness = Boolean(targetItem?.type?.includes('Esquecimento'));
+    if (isForgetfulness) {
+      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace(/^shift-occ-(?:in-|out-)?/, '') : undefined);
+      if (shiftId) {
+        const targetShift = shifts.find(s => s.id === shiftId);
+        if (targetShift) {
+          onOpenEditShift?.({
+            ...targetShift,
+            notes: `${targetShift.notes || ''} [HOMOLOGADO GESTOR: Esquecimento Homologado / Horário Normal Ajustado]`
+          });
+        }
+      }
+      showPolishedToast({
+        id: 'homologar-esquecimento-success',
+        title: 'Esquecimento Homologado!',
+        description: 'O registro foi ajustado para o horário normal da escala, sem gerar débito ou hora extra indevida.',
         rimVariant: 'success',
         duration: 4000,
       });
@@ -875,7 +1067,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     }
 
     if (isHe) {
-      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace('shift-occ-', '') : undefined);
+      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace(/^shift-occ-(?:in-|out-)?/, '') : undefined);
       if (shiftId) {
         const targetShift = shifts.find(s => s.id === shiftId);
         if (targetShift) {
@@ -923,7 +1115,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   const handleRejectOccurrence = async (id: string) => {
     const targetItem = approvalsData.find(i => i.id === id);
     const isFalta = targetItem?.type === 'Falta Não Justificada' || id.startsWith('absence-');
-    const isAtraso = targetItem?.type === 'Atraso de Entrada' || targetItem?.type === 'Justificativa de Atraso';
+    const isEarlyEntry = targetItem?.type === 'Entrada Antecipada';
+    const isEarlyLeave = targetItem?.type === 'Saída Antecipada';
+    const isAtraso = targetItem?.type === 'Atraso de Entrada' || targetItem?.type === 'Justificativa de Atraso' || isEarlyEntry || isEarlyLeave;
     const isHe = targetItem?.type === 'Hora Extra';
     const customFeedback = targetItem?.feedback?.trim() || undefined;
 
@@ -956,20 +1150,34 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     }
 
     if (isAtraso) {
-      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace('shift-occ-', '') : undefined);
-      if (shiftId) {
+      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace(/^shift-occ-(?:in-|out-)?/, '') : undefined);
+      const matchingJust = id.startsWith('shift-occ-') ? undefined : justifications.find(j => j.id === id);
+
+      const rejectTag = isEarlyLeave
+        ? '[AJUSTE GESTOR: Saída Antecipada Não Abonada]'
+        : isEarlyEntry
+          ? '[AJUSTE GESTOR: Entrada Antecipada Não Homologada]'
+          : '[AJUSTE GESTOR: Débito de Atraso Confirmado]';
+
+      if (matchingJust) {
+        if (onRejectJustification) {
+          onRejectJustification(matchingJust.id, customFeedback || 'Ocorrência não abonada pelo gestor');
+        } else {
+          await updateJustificativaStatusSupabase(matchingJust.id, 'rejected', customFeedback || 'Ocorrência não abonada pelo gestor');
+        }
+      } else if (shiftId) {
         const targetShift = shifts.find(s => s.id === shiftId);
         if (targetShift) {
           onOpenEditShift?.({
             ...targetShift,
-            notes: `${targetShift.notes || ''} [AJUSTE GESTOR: Débito de Atraso Confirmado]`
+            notes: `${targetShift.notes || ''} ${rejectTag}`
           });
         }
       }
       showPolishedToast({
         id: 'debito-atraso-confirm',
-        title: 'Débito de Atraso Confirmado',
-        description: 'Os minutos de atraso foram confirmados para débito/compensação no Banco de Horas.',
+        title: isEarlyLeave ? 'Saída Antecipada Não Abonada' : isEarlyEntry ? 'Entrada Antecipada Não Homologada' : 'Débito de Atraso Confirmado',
+        description: 'Os minutos foram confirmados para registro/compensação no Banco de Horas.',
         rimVariant: 'default',
         duration: 4000,
       });
@@ -977,7 +1185,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     }
 
     if (isHe) {
-      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace('shift-occ-', '') : undefined);
+      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace(/^shift-occ-(?:in-|out-)?/, '') : undefined);
       if (shiftId) {
         const targetShift = shifts.find(s => s.id === shiftId);
         if (targetShift) {
@@ -1024,10 +1232,19 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
   // Ações do Gestor para Banco de Horas e Ajustes CLT (Aba Relatório de Presenças)
   // Exportação especializada de Fechamento de Folha & Banco de Horas para o RH (Padrão Contábil / eSocial)
+  const getEmployeeMatricula = (empId?: string, empName?: string): string => {
+    const found = employees.find(
+      e => (empId && e.id === empId) || (empName && e.name.toLowerCase() === empName.toLowerCase())
+    );
+    if (found?.registrationId) return found.registrationId;
+    if (empId && !/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(empId)) return empId;
+    return '—';
+  };
+
   const handleExportBancoHorasCsv = (rowsToExport: BancoHorasItem[]) => {
     const headers = [
       'Colaborador',
-      'Matrícula / ID',
+      'Matrícula',
       'Departamento',
       'Cargo',
       'Data',
@@ -1076,10 +1293,10 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
       return [
         escapeCsv(row.employeeName),
-        escapeCsv(row.employeeId),
+        escapeCsv(getEmployeeMatricula(row.employeeId, row.employeeName)),
         escapeCsv(row.employeeDept),
         escapeCsv(row.employeeRole),
-        escapeCsv(formatDateToDDMMAAAA(row.date)),
+        `="${formatDateToDDMMAAAA(row.date)}"`,
         escapeCsv(row.scheduledTime),
         escapeCsv(row.punchTime),
         escapeCsv(row.typeLabel),
@@ -1127,7 +1344,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
     const headers = [
       'Colaborador',
-      'Matrícula / ID',
+      'Matrícula',
       'Departamento',
       'Cargo',
       'Data da Ocorrência',
@@ -1157,10 +1374,10 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
       return [
         escapeCsv(row.employeeName),
-        escapeCsv(row.employeeId || '—'),
+        escapeCsv(getEmployeeMatricula(row.employeeId, row.employeeName)),
         escapeCsv(row.employeeDept),
         escapeCsv(row.employeeRole),
-        escapeCsv(dateFormatted),
+        `="${dateFormatted}"`,
         escapeCsv(row.type),
         escapeCsv(row.reason),
         escapeCsv(row.documentName || 'Sem anexo'),
@@ -1399,7 +1616,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       type: 'Atestado Médico',
       date: new Date().toLocaleDateString('pt-BR'),
       reason: '',
-      documentName: 'atestado.pdf',
+      documentName: '',
       status: 'Pendente',
       feedback: '',
     });
@@ -1410,6 +1627,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
   const [relatorioDate, setRelatorioDate] = useState('');
   const [relatorioStatus, setRelatorioStatus] = useState('all');
   const [relatorioDept, setRelatorioDept] = useState('all');
+  const [relatorioDateSort, setRelatorioDateSort] = useState<'desc' | 'asc'>('desc');
 
   // Calcula se existem presenças próximas do limite de 60 dias (idade entre 50 e 60 dias)
   const expiringAttendanceInfo = useMemo(() => {
@@ -1446,12 +1664,65 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     };
   }, [shifts]);
 
+  // Sincronização em tempo real das batidas de entrada e saída (TAB_Registro_Ponto)
+  const [livePunches, setLivePunches] = useState<any[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchLivePunches = async () => {
+      try {
+        const { data } = await supabase
+          .from('TAB_Registro_Ponto')
+          .select('*')
+          .order('Dta_Hora_Registro', { ascending: true });
+        if (mounted && data) {
+          setLivePunches(data);
+        }
+      } catch {}
+    };
+
+    fetchLivePunches();
+    const timer = setInterval(fetchLivePunches, 5000);
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
+  }, [activeTab]);
+
   const reportRows = useMemo(() => {
     if (shifts && shifts.length > 0) {
       const cutoff60 = toLocalDateString(addDaysLocal(new Date(), -60));
       return shifts
         .filter(s => !s.date || normalizeDateToISO(s.date) >= cutoff60)
-        .map(s => {
+        .map(rawShift => {
+        // Mescla batidas ao vivo do banco caso o estado local ainda não tenha recebido a saída
+        let s = rawShift;
+        if (livePunches.length > 0 && (!s.checkInTime || !s.checkOutTime)) {
+          const matching = livePunches.filter(p => {
+            if (p.Idf_Turno && p.Idf_Turno === s.id) return true;
+            if (p.Idf_Colaborador === s.employeeId && p.Dta_Hora_Registro) {
+              const dt = new Date(p.Dta_Hora_Registro);
+              const localIso = !isNaN(dt.getTime()) ? toLocalDateString(dt) : p.Dta_Hora_Registro.slice(0, 10);
+              return localIso === normalizeDateToISO(s.date);
+            }
+            return false;
+          });
+          if (matching.length > 0) {
+            const inRec = matching.find(p => p.Tpo_Registro?.toLowerCase() === 'entrada') || matching[0];
+            const outRec = [...matching].reverse().find(p => p.Tpo_Registro?.toLowerCase() === 'saida');
+            const fmtTime = (rec: any) => {
+              const dt = new Date(rec.Dta_Hora_Registro);
+              if (isNaN(dt.getTime())) return undefined;
+              return `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
+            };
+            s = {
+              ...s,
+              checkInTime: s.checkInTime || (inRec ? fmtTime(inRec) : undefined),
+              checkOutTime: s.checkOutTime || (outRec && outRec !== inRec ? fmtTime(outRec) : undefined),
+            };
+          }
+        }
+
         const emp = employees.find(e => e.id === s.employeeId);
         const statusMap: Record<string, string> = {
           present: 'Presente',
@@ -1460,7 +1731,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           late: 'Atrasado',
           pending: 'Pendente'
         };
-        const hasRealExit = Boolean(s.checkOutTime) && s.checkOutTime !== s.checkInTime;
+        const hasRealExit = Boolean(s.checkOutTime);
 
         // GPS fora do posto detectado de forma discreta
         const isCheckInOutside = Boolean(s.checkInLocation && !s.checkInLocation.gpsValidated);
@@ -1478,20 +1749,79 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             : `${Math.round(s.checkOutLocation.distanceMeters)} m`;
         }
 
+        let scheduledMin = 0;
+        let scheduledHoursFormatted = '—';
+        if (s.startTime && s.endTime) {
+          const [sInH, sInM] = s.startTime.split(':').map(Number);
+          const [sOutH, sOutM] = s.endTime.split(':').map(Number);
+          let diff = (sOutH * 60 + sOutM) - (sInH * 60 + sInM);
+          if (diff < 0) diff += 24 * 60;
+          if (s.breakMinutes) diff = Math.max(0, diff - s.breakMinutes);
+          scheduledMin = diff;
+          const sH = Math.floor(diff / 60);
+          const sM = diff % 60;
+          scheduledHoursFormatted = `${sH}h${sM > 0 ? ` ${sM}m` : ''}`;
+        }
+
+        let workedMin = 0;
         let calculatedHours = '—';
         if (s.checkInTime && hasRealExit) {
           const [inH, inM] = s.checkInTime.split(':').map(Number);
           const [outH, outM] = s.checkOutTime!.split(':').map(Number);
           let diffMin = (outH * 60 + outM) - (inH * 60 + inM);
           if (diffMin < 0) diffMin += 24 * 60;
+          if (s.breakMinutes && diffMin > s.breakMinutes + 60) {
+            diffMin = Math.max(0, diffMin - s.breakMinutes);
+          }
+          workedMin = diffMin;
           const h = Math.floor(diffMin / 60);
           const m = diffMin % 60;
-          calculatedHours = `${h}h${m > 0 ? ` ${m}m` : ''}`;
+          calculatedHours = diffMin === 0 ? '< 1m' : `${h}h${m > 0 ? ` ${m}m` : ''}`;
         } else if (s.checkInTime && !hasRealExit) {
           calculatedHours = 'Em andamento';
         } else if (!s.checkInTime) {
           calculatedHours = '0h';
         }
+
+        let apuracaoSaldo = 'Regular';
+        let apuracaoKind: 'overtime' | 'deficit' | 'regular' | 'falta' | 'pending' = 'regular';
+
+        if (!s.checkInTime) {
+          apuracaoSaldo = 'Falta (0h)';
+          apuracaoKind = 'falta';
+        } else if (!hasRealExit) {
+          apuracaoSaldo = 'Em andamento';
+          apuracaoKind = 'pending';
+        } else if (scheduledMin > 0) {
+          const balance = workedMin - scheduledMin;
+          // CLT Art. 58 § 1º: tolerância geral de até 10 minutos no dia
+          if (balance > 10) {
+            const extraH = Math.floor(balance / 60);
+            const extraM = balance % 60;
+            apuracaoSaldo = `Hora Extra (+${extraH > 0 ? `${extraH}h ` : ''}${extraM}m)`;
+            apuracaoKind = 'overtime';
+          } else if (balance < -10) {
+            const absBal = Math.abs(balance);
+            const defH = Math.floor(absBal / 60);
+            const defM = absBal % 60;
+            apuracaoSaldo = `Déficit (-${defH > 0 ? `${defH}h ` : ''}${defM}m)`;
+            apuracaoKind = 'deficit';
+          } else {
+            apuracaoSaldo = 'Regular (No horário)';
+            apuracaoKind = 'regular';
+          }
+        } else {
+          apuracaoSaldo = 'Trabalhado';
+          apuracaoKind = 'regular';
+        }
+
+        const scheduledShift = (s.startTime && s.endTime)
+          ? `${s.startTime} às ${s.endTime}${scheduledHoursFormatted !== '—' ? ` (${scheduledHoursFormatted})` : ''}`
+          : 'Sem escala definida';
+
+        const punchReal = s.checkInTime
+          ? `${s.checkInTime}${hasRealExit ? ` → ${s.checkOutTime}` : ' (Em andamento)'}`
+          : 'Sem registro';
 
         const isPast24h = isShiftPast24hWithoutPunch(s);
         const just = (justifications || []).find(j => 
@@ -1501,19 +1831,17 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         let finalReportStatus = statusMap[s.attendanceStatus || 'pending'] || 'Pendente';
         let isDecisionPending = false;
 
-        if (just) {
-          if (just.status === 'approved' || s.attendanceStatus === 'justified') {
-            finalReportStatus = 'Justificado';
-          } else if (just.status === 'rejected') {
+        if (s.attendanceStatus === 'justified' || just?.status === 'approved') {
+          finalReportStatus = 'Justificado';
+        } else if (Boolean(s.checkInTime) || Boolean(s.checkOutTime) || s.attendanceStatus === 'present' || s.attendanceStatus === 'late') {
+          finalReportStatus = s.attendanceStatus === 'late' ? 'Atrasado' : 'Presente';
+        } else if (just) {
+          if (just.status === 'rejected') {
             finalReportStatus = 'Ausente';
           } else {
             finalReportStatus = (isPast24h || s.attendanceStatus === 'absent') ? 'Ausente' : 'Pendente';
             isDecisionPending = true;
           }
-        } else if (s.attendanceStatus === 'justified') {
-          finalReportStatus = 'Justificado';
-        } else if (s.attendanceStatus === 'present' || Boolean(s.checkInTime)) {
-          finalReportStatus = s.attendanceStatus === 'late' ? 'Atrasado' : 'Presente';
         } else if (isPast24h || s.attendanceStatus === 'absent') {
           finalReportStatus = 'Ausente';
           isDecisionPending = true;
@@ -1556,13 +1884,17 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           name: emp?.name || 'Colaborador',
           role: emp?.role || 'Colaborador',
           dept: emp?.department || 'Geral',
+          scheduledShift,
+          punchReal,
           time: s.checkInTime 
             ? `${s.checkInTime}${hasRealExit ? ` → ${s.checkOutTime}` : ' (Entrada)'}` 
             : `${s.startTime} – ${s.endTime}`,
           hours: calculatedHours,
           status: finalReportStatus,
           isDecisionPending,
-          type: s.type === 'regular' ? 'Regular' : 'Extra',
+          type: apuracaoSaldo,
+          apuracao: apuracaoSaldo,
+          apuracaoKind,
           checkInLocation: s.checkInLocation,
           checkOutLocation: s.checkOutLocation,
           isGpsOutside,
@@ -1575,7 +1907,318 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     }
 
     return [];
-  }, [shifts, employees, justifications]);
+  }, [shifts, employees, justifications, livePunches]);
+
+  // Consolidação por Departamento: Presença, Assiduidade, Absenteísmo e Horas Trabalhadas (Fechamento Contábil & Folha)
+  const departmentConsolidatedRows = useMemo(() => {
+    const deptSet = new Set<string>();
+    employees.forEach(e => {
+      if (e.department) deptSet.add(e.department);
+    });
+    shifts.forEach(s => {
+      const emp = employees.find(e => e.id === s.employeeId);
+      if (emp?.department) deptSet.add(emp.department);
+    });
+    if (deptSet.size === 0) {
+      ['Atendimento', 'Suporte Técnico', 'Operações', 'Comercial'].forEach(d => deptSet.add(d));
+    }
+
+    return Array.from(deptSet).map(deptName => {
+      const deptEmployees = employees.filter(e => (e.department || 'Geral') === deptName);
+      const deptShifts = reportRows.filter(r => r.dept === deptName);
+
+      const totalShifts = deptShifts.length;
+      const presentCount = deptShifts.filter(r => r.status === 'Presente').length;
+      const lateCount = deptShifts.filter(r => r.status === 'Atrasado').length;
+      const justifiedCount = deptShifts.filter(r => r.status === 'Justificado').length;
+      const absentCount = deptShifts.filter(r => r.status === 'Ausente').length;
+
+      const effectivePresent = presentCount + lateCount + justifiedCount;
+      const evaluatedTotal = effectivePresent + absentCount;
+
+      const assiduidadePct = evaluatedTotal > 0
+        ? Math.round((effectivePresent / evaluatedTotal) * 1000) / 10
+        : 100;
+      const absenteismoPct = evaluatedTotal > 0
+        ? Math.round((absentCount / evaluatedTotal) * 1000) / 10
+        : 0;
+
+      // Soma de horas trabalhadas e previstas no departamento
+      let workedMinutes = 0;
+      let scheduledMinutes = 0;
+      shifts.forEach(s => {
+        const emp = employees.find(e => e.id === s.employeeId);
+        const empDept = emp?.department || 'Geral';
+        if (empDept !== deptName) return;
+
+        if (s.startTime && s.endTime) {
+          const [sH, sM] = s.startTime.split(':').map(Number);
+          const [eH, eM] = s.endTime.split(':').map(Number);
+          let dur = (eH * 60 + eM) - (sH * 60 + sM) - (s.breakMinutes ?? 60);
+          if (dur < 0) dur += 24 * 60;
+          if (!isNaN(dur) && dur > 0) scheduledMinutes += dur;
+        }
+
+        const hasRealExit = Boolean(s.checkOutTime);
+        if (s.checkInTime && hasRealExit) {
+          const [inH, inM] = s.checkInTime.split(':').map(Number);
+          const [outH, outM] = s.checkOutTime!.split(':').map(Number);
+          let diff = (outH * 60 + outM) - (inH * 60 + inM) - (s.breakMinutes ?? 60);
+          if (diff < 0) diff += 24 * 60;
+          if (!isNaN(diff) && diff > 0) workedMinutes += diff;
+        } else if (s.attendanceStatus === 'present' || s.attendanceStatus === 'late' || s.attendanceStatus === 'justified') {
+          if (s.startTime && s.endTime) {
+            const [sH, sM] = s.startTime.split(':').map(Number);
+            const [eH, eM] = s.endTime.split(':').map(Number);
+            let dur = (eH * 60 + eM) - (sH * 60 + sM) - (s.breakMinutes ?? 60);
+            if (dur < 0) dur += 24 * 60;
+            if (!isNaN(dur) && dur > 0) workedMinutes += dur;
+          }
+        }
+      });
+
+      const formatMinToHHMM = (min: number) => {
+        const h = Math.floor(min / 60);
+        const m = min % 60;
+        return `${h}h${m > 0 ? ` ${String(m).padStart(2, '0')}m` : ''}`;
+      };
+
+      const workedDecimal = (workedMinutes / 60).toFixed(2).replace('.', ',');
+      const scheduledDecimal = (scheduledMinutes / 60).toFixed(2).replace('.', ',');
+      const balanceMinutes = workedMinutes - scheduledMinutes;
+      const balanceDecimal = (balanceMinutes / 60).toFixed(2).replace('.', ',');
+
+      return {
+        dept: deptName,
+        employeesCount: deptEmployees.length,
+        totalShifts,
+        presentCount,
+        lateCount,
+        justifiedCount,
+        absentCount,
+        assiduidadePct,
+        absenteismoPct,
+        scheduledFormatted: formatMinToHHMM(scheduledMinutes),
+        workedFormatted: formatMinToHHMM(workedMinutes),
+        scheduledDecimal,
+        workedDecimal,
+        balanceDecimal,
+        workedMinutes,
+        scheduledMinutes,
+      };
+    });
+  }, [employees, reportRows, shifts]);
+
+  const handleExportConsolidatedDepartmentCsv = (
+    targetMonth?: string,
+    targetDept: string = 'all',
+    mode: 'consolidated_employees_dept' | 'consolidated_dept' = 'consolidated_employees_dept'
+  ) => {
+    const escapeCsv = (val: any) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+    const formatMinToHHMM = (min: number) => {
+      const h = Math.floor(min / 60);
+      const m = min % 60;
+      return `${h}h${m > 0 ? ` ${String(m).padStart(2, '0')}m` : ''}`;
+    };
+
+    const deptSlug = targetDept && targetDept !== 'all'
+      ? `-${targetDept.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')}`
+      : '-geral';
+    const suffix = (targetMonth && targetMonth !== 'all' ? targetMonth : getTodayDateString()) + deptSlug;
+
+    if (mode === 'consolidated_dept') {
+      const headers = [
+        'Departamento / Centro de Custo',
+        'Colaboradores Ativos',
+        'Turnos Escalados',
+        'Presenças no Posto',
+        'Entradas com Atraso',
+        'Faltas Justificadas / Abonadas',
+        'Faltas Injustificadas (Desconto)',
+        'Taxa de Assiduidade (%)',
+        'Taxa de Absenteísmo (%)',
+        'Horas Contratuais Previstas (HH:MM)',
+        'Horas Previstas Decimal (Contábil)',
+        'Horas Trabalhadas Apuradas (HH:MM)',
+        'Horas Trabalhadas Decimal (p/ Folha)',
+        'Saldo Líquido Decimal (Banco / Folha)',
+        'Situação Contábil / Fechamento'
+      ];
+
+      const filteredDepts = targetDept && targetDept !== 'all'
+        ? departmentConsolidatedRows.filter(d => d.dept === targetDept)
+        : departmentConsolidatedRows;
+
+      const rows = filteredDepts.map(d => [
+        escapeCsv(d.dept),
+        d.employeesCount,
+        d.totalShifts,
+        d.presentCount,
+        d.lateCount,
+        d.justifiedCount,
+        d.absentCount,
+        escapeCsv(`${d.assiduidadePct.toFixed(1).replace('.', ',')}%`),
+        escapeCsv(`${d.absenteismoPct.toFixed(1).replace('.', ',')}%`),
+        escapeCsv(d.scheduledFormatted),
+        escapeCsv(d.scheduledDecimal),
+        escapeCsv(d.workedFormatted),
+        escapeCsv(d.workedDecimal),
+        escapeCsv(d.balanceDecimal),
+        escapeCsv(d.absentCount === 0 ? 'Regular — Pronto p/ Folha' : `Atenção: ${d.absentCount} falta(s) apurada(s)`)
+      ].join(';'));
+
+      const csvContent = '\uFEFF' + [headers.join(';'), ...rows].join('\r\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `relatorio-consolidado-departamentos-${suffix}.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+
+      showPolishedToast({
+        id: 'csv-consolidated-dept-export',
+        title: 'Planilha por Departamento Exportada!',
+        description: 'Resumo consolidado por setor gerado com sucesso para fechamento contábil e de folha.',
+        rimVariant: 'success',
+        duration: 4000,
+      });
+      return;
+    }
+
+    // Modo 'consolidated_employees_dept': Lista todos os funcionários do setor selecionado (ou de todos os setores) com presença, assiduidade, absenteísmo e horas trabalhadas
+    const targetEmployees = (targetDept && targetDept !== 'all'
+      ? employees.filter(e => (e.department || 'Geral') === targetDept)
+      : [...employees]
+    ).sort((a, b) => (a.department || '').localeCompare(b.department || '', 'pt-BR') || (a.name || '').localeCompare(b.name || '', 'pt-BR'));
+
+    const headers = [
+      'Departamento / Setor',
+      'Colaborador',
+      'Matrícula',
+      'Cargo / Função',
+      'Regime Contratual',
+      'Turnos no Período',
+      'Presenças no Posto',
+      'Entradas com Atraso',
+      'Faltas Justificadas / Abonadas',
+      'Faltas Injustificadas (Desconto)',
+      'Taxa de Assiduidade (%)',
+      'Taxa de Absenteísmo (%)',
+      'Horas Previstas (HH:MM)',
+      'Horas Previstas Decimal',
+      'Horas Trabalhadas (HH:MM)',
+      'Horas Trabalhadas Decimal (p/ Folha)',
+      'Saldo Líquido Decimal (Banco / Folha)',
+      'Situação para Fechamento de Folha'
+    ];
+
+    const empRows = targetEmployees.map(emp => {
+      const empShifts = shifts.filter(s => {
+        if (s.employeeId !== emp.id) return false;
+        if (targetMonth && targetMonth !== 'all' && s.date) {
+          return normalizeDateToISO(s.date).startsWith(targetMonth);
+        }
+        return true;
+      });
+
+      let presentCount = 0;
+      let lateCount = 0;
+      let justifiedCount = 0;
+      let absentCount = 0;
+      let scheduledMinutes = 0;
+      let workedMinutes = 0;
+
+      empShifts.forEach(s => {
+        const just = (justifications || []).find(
+          j => (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)
+        );
+        const isPast24h = isShiftPast24hWithoutPunch(s);
+
+        if (just?.status === 'approved' || s.attendanceStatus === 'justified') {
+          justifiedCount++;
+        } else if (s.attendanceStatus === 'late') {
+          lateCount++;
+        } else if (s.attendanceStatus === 'present' || Boolean(s.checkInTime)) {
+          presentCount++;
+        } else if (s.attendanceStatus === 'absent' || just?.status === 'rejected' || isPast24h) {
+          absentCount++;
+        }
+
+        if (s.startTime && s.endTime) {
+          const [sH, sM] = s.startTime.split(':').map(Number);
+          const [eH, eM] = s.endTime.split(':').map(Number);
+          let dur = (eH * 60 + eM) - (sH * 60 + sM) - (s.breakMinutes ?? 60);
+          if (dur < 0) dur += 24 * 60;
+          if (!isNaN(dur) && dur > 0) scheduledMinutes += dur;
+        }
+
+        const hasRealExit = Boolean(s.checkOutTime);
+        if (s.checkInTime && hasRealExit) {
+          const [inH, inM] = s.checkInTime.split(':').map(Number);
+          const [outH, outM] = s.checkOutTime!.split(':').map(Number);
+          let diff = (outH * 60 + outM) - (inH * 60 + inM) - (s.breakMinutes ?? 60);
+          if (diff < 0) diff += 24 * 60;
+          if (!isNaN(diff) && diff > 0) workedMinutes += diff;
+        } else if (s.attendanceStatus === 'present' || s.attendanceStatus === 'late' || s.attendanceStatus === 'justified') {
+          if (s.startTime && s.endTime) {
+            const [sH, sM] = s.startTime.split(':').map(Number);
+            const [eH, eM] = s.endTime.split(':').map(Number);
+            let dur = (eH * 60 + eM) - (sH * 60 + sM) - (s.breakMinutes ?? 60);
+            if (dur < 0) dur += 24 * 60;
+            if (!isNaN(dur) && dur > 0) workedMinutes += dur;
+          }
+        }
+      });
+
+      const effectivePresent = presentCount + lateCount + justifiedCount;
+      const evaluatedTotal = effectivePresent + absentCount;
+      const assiduidadePct = evaluatedTotal > 0 ? Math.round((effectivePresent / evaluatedTotal) * 1000) / 10 : 100;
+      const absenteismoPct = evaluatedTotal > 0 ? Math.round((absentCount / evaluatedTotal) * 1000) / 10 : 0;
+
+      const scheduledDecimal = (scheduledMinutes / 60).toFixed(2).replace('.', ',');
+      const workedDecimal = (workedMinutes / 60).toFixed(2).replace('.', ',');
+      const balanceDecimal = ((workedMinutes - scheduledMinutes) / 60).toFixed(2).replace('.', ',');
+
+      return [
+        escapeCsv(emp.department || 'Geral'),
+        escapeCsv(emp.name),
+        escapeCsv(emp.registrationId || getEmployeeMatricula(emp.id, emp.name)),
+        escapeCsv(emp.role || 'Colaborador'),
+        escapeCsv(emp.contractType || 'CLT'),
+        empShifts.length,
+        presentCount,
+        lateCount,
+        justifiedCount,
+        absentCount,
+        escapeCsv(`${assiduidadePct.toFixed(1).replace('.', ',')}%`),
+        escapeCsv(`${absenteismoPct.toFixed(1).replace('.', ',')}%`),
+        escapeCsv(formatMinToHHMM(scheduledMinutes)),
+        escapeCsv(scheduledDecimal),
+        escapeCsv(formatMinToHHMM(workedMinutes)),
+        escapeCsv(workedDecimal),
+        escapeCsv(balanceDecimal),
+        escapeCsv(absentCount === 0 ? 'Regular — Pronto p/ Folha' : `Desconto / Revisão: ${absentCount} falta(s)`)
+      ].join(';');
+    });
+
+    const csvContent = '\uFEFF' + [headers.join(';'), ...empRows].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `relatorio-consolidado-colaboradores-${suffix}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+
+    showPolishedToast({
+      id: 'csv-consolidated-emp-dept-export',
+      title: 'Relatório Consolidado Exportado!',
+      description: targetDept && targetDept !== 'all'
+        ? `Planilha com todos os funcionários do setor "${targetDept}" (presença, assiduidade, absenteísmo e horas) baixada com sucesso.`
+        : 'Planilha consolidada de todos os funcionários por setor baixada com sucesso.',
+      rimVariant: 'success',
+      duration: 4000,
+    });
+  };
 
   // Tab 4 (Tarefas) State - Orbit Visual Identity
   const allAssignablePeople = useMemo(() => {
@@ -2856,19 +3499,36 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         // KPI calculations
         const pendingCount = approvalsData.filter(i => i.status === 'Pendente').length;
         const faltasCount = approvalsData.filter(i => i.status === 'Falta Lançada' || i.status === 'Recusado / Falta').length;
-        const atestadosCount = approvalsData.filter(i => i.documentName && i.documentName.toLowerCase().includes('.pdf')).length;
+        const atestadosCount = approvalsData.filter(i => i.documentName && i.documentName.toLowerCase().includes('.pdf') && i.documentName !== 'Sem anexo' && i.documentName !== 'Não se aplica').length;
 
         // Filter items
         const filteredApprovals = approvalsData.filter(row => {
-          // Search filter
+          // Search filter (colaborador, cargo, setor, tipo, motivo ou data igual ao Relatório de Presenças)
           if (approvalsSearch.trim()) {
-            const q = approvalsSearch.toLowerCase();
+            const q = approvalsSearch.toLowerCase().trim();
+            const formattedRowDate = formatDateToDDMMAAAA(row.date || '');
             const matchName = row.employeeName.toLowerCase().includes(q);
             const matchRole = row.employeeRole.toLowerCase().includes(q);
             const matchDept = (row.employeeDept || '').toLowerCase().includes(q);
             const matchType = row.type.toLowerCase().includes(q);
             const matchReason = row.reason.toLowerCase().includes(q);
-            if (!matchName && !matchRole && !matchDept && !matchType && !matchReason) return false;
+            const matchDateRaw = (row.date || '').toLowerCase().includes(q);
+            const matchDateFormatted = formattedRowDate.toLowerCase().includes(q);
+            const matchDateSlash = formattedRowDate.replace(/-/g, '/').toLowerCase().includes(q);
+            const matchDateDash = formattedRowDate.replace(/\//g, '-').toLowerCase().includes(q);
+            if (
+              !matchName &&
+              !matchRole &&
+              !matchDept &&
+              !matchType &&
+              !matchReason &&
+              !matchDateRaw &&
+              !matchDateFormatted &&
+              !matchDateSlash &&
+              !matchDateDash
+            ) {
+              return false;
+            }
           }
 
           // Department filter
@@ -2891,10 +3551,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             const isExplicitNao = t.includes('não justificada') || t.includes('nao justificada');
             const isJust = (!isExplicitNao && (t === 'falta justificada' || t === 'justificado')) ||
               Boolean(row.actionText?.toLowerCase().includes('abonad')) ||
-              (row.status === 'Aprovado' && (t.includes('falta') || t.includes('atraso')));
+              (row.status === 'Aprovado' && (t.includes('falta') || t.includes('atraso') || t.includes('antecipada')));
             if (!isJust) return false;
           } else if (approvalsTypeFilter === 'delay') {
-            if (!row.type.toLowerCase().includes('atraso')) return false;
+            const t = row.type.toLowerCase();
+            if (!t.includes('atraso') && !t.includes('antecipada')) return false;
           } else if (approvalsTypeFilter === 'overtime') {
             if (!row.type.toLowerCase().includes('hora extra') && !row.type.toLowerCase().includes('extra')) return false;
           } else if (approvalsTypeFilter === 'time_off') {
@@ -2912,6 +3573,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             return row.status === 'Recusado / Falta' || row.status === 'Falta Lançada';
           }
           return true;
+        }).sort((a, b) => {
+          const timeA = parseDateSortTimestamp(a.date);
+          const timeB = parseDateSortTimestamp(b.date);
+          if (timeA !== timeB) {
+            return approvalsDateSort === 'desc' ? timeB - timeA : timeA - timeB;
+          }
+          return a.employeeName.localeCompare(b.employeeName);
         });
 
         return (
@@ -3078,7 +3746,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     type="text"
                     value={approvalsSearch}
                     onChange={(e) => setApprovalsSearch(e.target.value)}
-                    placeholder="Buscar por colaborador..."
+                    placeholder="Filtrar por colaborador, setor ou data (ex: 26-10-2026)..."
                     className={`approvals-light-search w-full pl-9 pr-3 py-2 text-xs rounded-full outline-none transition-colors border ${
                       isDark
                         ? 'bg-[#0e0f12] text-white placeholder:text-slate-500 border-[#282a33] focus:border-[#F59242]'
@@ -3110,7 +3778,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             <div className="flex flex-wrap items-center gap-2 relative z-10">
               {[
                 { id: 'all', label: 'Todos' },
-                { id: 'delay', label: 'Atrasos de Entrada' },
+                { id: 'delay', label: 'Atrasos / Antecipações' },
                 { id: 'overtime', label: 'Horas Extras' },
                 { id: 'medical', label: 'Atestados Médicos' },
                 { id: 'absent', label: 'Faltas Não Justificadas' },
@@ -3121,7 +3789,10 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 const isActive = approvalsTypeFilter === cat.id;
                 const count = approvalsData.filter(row => {
                   if (cat.id === 'all') return true;
-                  if (cat.id === 'delay') return row.type.toLowerCase().includes('atraso');
+                  if (cat.id === 'delay') {
+                    const t = row.type.toLowerCase();
+                    return t.includes('atraso') || t.includes('antecipada');
+                  }
                   if (cat.id === 'overtime') return row.type.toLowerCase().includes('hora extra') || row.type.toLowerCase().includes('extra');
                   if (cat.id === 'medical') return row.type.toLowerCase().includes('atestado') || row.type.toLowerCase().includes('médico');
                   if (cat.id === 'absent') {
@@ -3135,7 +3806,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     const isExplicitNao = t.includes('não justificada') || t.includes('nao justificada');
                     return (!isExplicitNao && (t === 'falta justificada' || t === 'justificado')) ||
                       Boolean(row.actionText?.toLowerCase().includes('abonad')) ||
-                      (row.status === 'Aprovado' && (t.includes('falta') || t.includes('atraso')));
+                      (row.status === 'Aprovado' && (t.includes('falta') || t.includes('atraso') || t.includes('antecipada')));
                   }
                   if (cat.id === 'swap') return row.type.toLowerCase().includes('troca');
                   if (cat.id === 'time_off') return row.type.toLowerCase().includes('folga') || row.type.toLowerCase().includes('dispensa');
@@ -3192,7 +3863,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   >
                     <th className="p-3">COLABORADOR</th>
                     <th className="p-3">TIPO & JUSTIFICATIVA</th>
-                    <th className="p-3">DATA</th>
+                    <th 
+                      className="p-3 cursor-pointer select-none transition-colors hover:text-[#f89847] dark:hover:text-amber-400"
+                      onClick={() => setApprovalsDateSort(prev => prev === 'desc' ? 'asc' : 'desc')}
+                      title="Clique para alternar ordem por data (mais recente / mais antigo)"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>DATA</span>
+                        {approvalsDateSort === 'desc' ? (
+                          <ArrowDown className="w-3.5 h-3.5 text-amber-500" />
+                        ) : (
+                          <ArrowUp className="w-3.5 h-3.5 text-amber-500" />
+                        )}
+                      </div>
+                    </th>
                     <th className="p-3 text-center">COMPROVANTE</th>
                     <th className="p-3 text-center">STATUS</th>
                     <th className="p-3">OBSERVAÇÃO / FEEDBACK</th>
@@ -3252,12 +3936,22 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                               }`}>{row.type}</span>
                               {row.type === 'Atraso de Entrada' && (
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/15 text-amber-500 dark:text-amber-300 border border-amber-500/30">
-                                  -35 min
+                                  -{row.diffMinutes || (row.reason.match(/(\d+)\s*min/)?.[1]) || 15} min
                                 </span>
                               )}
                               {row.type === 'Hora Extra' && (
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30">
-                                  +39 min
+                                  +{row.diffMinutes || (row.reason.match(/\+(\d+)\s*min/)?.[1]) || (row.reason.match(/(\d+)\s*min/)?.[1]) || 15} min
+                                </span>
+                              )}
+                              {row.type === 'Saída Antecipada' && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-orange-500/15 text-orange-500 dark:text-orange-300 border border-orange-500/30">
+                                  -{row.diffMinutes || (row.reason.match(/-(\d+)\s*min/)?.[1]) || (row.reason.match(/(\d+)\s*min/)?.[1]) || 15} min
+                                </span>
+                              )}
+                              {(row.type === 'Esquecimento de Saída' || row.type === 'Esquecimento de Entrada' || row.type === 'Esquecimento de Ponto') && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/15 text-purple-600 dark:text-purple-300 border border-purple-500/30">
+                                  Esquecimento
                                 </span>
                               )}
                               <button
@@ -3296,9 +3990,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           </div>
                         </td>
 
-                        {/* Comprovante (Apenas ícone do clips clicável) */}
+                        {/* Comprovante (Apenas ícone do clips clicável se houver arquivo/link válido) */}
                         <td className="p-3 text-center">
-                          {row.documentUrl || (row.documentName && row.documentName.toLowerCase().includes('.')) ? (
+                          {row.documentUrl && row.documentUrl.trim() !== '' && row.documentUrl !== 'null' && row.documentUrl !== 'undefined' ? (
                             <button
                               type="button"
                               onClick={() => openDocumentSafe(row.documentUrl, row.documentName)}
@@ -3403,12 +4097,12 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                     <span>Debitar</span>
                                   </button>
                                 </>
-                              ) : row.type === 'Hora Extra' ? (
+                              ) : (row.type === 'Hora Extra' || row.type?.includes('Esquecimento')) ? (
                                 <>
                                   <button
                                     type="button"
                                     onClick={() => handleApproveOccurrence(row.id)}
-                                    title="Homologar Hora Extra: Aprova para crédito no Banco de Horas ou pagamento em Folha"
+                                    title={row.type?.includes('Esquecimento') ? "Homologar Esquecimento: Ajusta para o horário contratual sem gerar débito ou hora extra indevida" : "Homologar Hora Extra: Aprova para crédito no Banco de Horas ou pagamento em Folha"}
                                     className="approvals-light-approve px-2.5 py-1.5 rounded-xl font-bold text-xs text-white transition-all shadow-md flex items-center gap-1 cursor-pointer hover:scale-105 active:scale-95 shrink-0"
                                     style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
                                   >
@@ -3623,9 +4317,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           ? 'bg-[#0e0f12] border-white/10 text-slate-200' 
                           : 'bg-slate-50 border-slate-200 text-slate-800'
                       }`}>
-                        {selectedDetailOccurrence.type === 'Falta Não Justificada'
-                          ? 'Turno encerrado há mais de 24 horas sem registro de ponto e sem envio de atestado/justificativa pelo colaborador.'
-                          : (selectedDetailOccurrence.reason || 'Nenhuma justificativa detalhada foi fornecida.')}
+                        {selectedDetailOccurrence.reason || (
+                          selectedDetailOccurrence.type === 'Falta Não Justificada'
+                            ? 'Turno encerrado há mais de 24 horas sem registro de ponto e sem envio de atestado/justificativa pelo colaborador.'
+                            : 'Nenhuma justificativa detalhada foi fornecida.'
+                        )}
                       </div>
                     </div>
 
@@ -3634,12 +4330,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       <label className="text-[10px] font-bold font-mono tracking-wider uppercase text-slate-400 block">
                         COMPROVANTE / DOCUMENTO ANEXO
                       </label>
-                      {selectedDetailOccurrence.documentName && selectedDetailOccurrence.documentName.toLowerCase().includes('.pdf') ? (
+                      {selectedDetailOccurrence.documentUrl && 
+                       selectedDetailOccurrence.documentUrl.trim() !== '' &&
+                       selectedDetailOccurrence.documentUrl !== 'null' &&
+                       selectedDetailOccurrence.documentUrl !== 'undefined' ? (
                         <div className="flex items-center justify-between p-3 rounded-xl border border-[#f89847]/30 bg-[#f89847]/10">
                           <div className="flex items-center gap-2">
                             <Paperclip className="w-4 h-4 text-[#f89847]" />
                             <span className="text-xs font-mono font-bold text-[#f89847]">
-                              {selectedDetailOccurrence.documentName}
+                              {selectedDetailOccurrence.documentName || 'Comprovante'}
                             </span>
                           </div>
                           <button
@@ -3652,7 +4351,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         </div>
                       ) : (
                         <p className="text-xs text-slate-400 italic">
-                          {selectedDetailOccurrence.documentName || 'Sem comprovante anexado'}
+                          Sem comprovante anexado
                         </p>
                       )}
                     </div>
@@ -3735,7 +4434,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                               <span>Abonar Atraso</span>
                             </button>
                           </>
-                        ) : selectedDetailOccurrence.type === 'Hora Extra' ? (
+                        ) : (selectedDetailOccurrence.type === 'Hora Extra' || selectedDetailOccurrence.type?.includes('Esquecimento')) ? (
                           <>
                             <button
                               type="button"
@@ -3759,7 +4458,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                               style={{ background: 'linear-gradient(135deg, #059669, #10b981)' }}
                             >
                               <CheckCircle2 className="w-4 h-4" />
-                              <span>Homologar Hora Extra</span>
+                              <span>{selectedDetailOccurrence.type?.includes('Esquecimento') ? 'Homologar Esquecimento' : 'Homologar Hora Extra'}</span>
                             </button>
                           </>
                         ) : (
@@ -4179,13 +4878,27 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         ? 'border-[#282a33] bg-[#101115] text-slate-400' 
                         : 'border-[#640C1E]/30 bg-gradient-to-r from-[#640C1E] to-[#9F243C] text-[#F9DE97] shadow-sm'
                     }`}>
-                      <th className="p-3.5 font-bold tracking-wider">DATA</th>
+                      <th 
+                        className="p-3.5 font-bold tracking-wider cursor-pointer select-none transition-opacity hover:opacity-80"
+                        onClick={() => setRelatorioDateSort(prev => prev === 'desc' ? 'asc' : 'desc')}
+                        title="Clique para alternar ordem por data (mais recente / mais antigo)"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>DATA</span>
+                          {relatorioDateSort === 'desc' ? (
+                            <ArrowDown className="w-3.5 h-3.5 text-[#F9DE97] dark:text-amber-400" />
+                          ) : (
+                            <ArrowUp className="w-3.5 h-3.5 text-[#F9DE97] dark:text-amber-400" />
+                          )}
+                        </div>
+                      </th>
                       <th className="p-3.5 font-bold tracking-wider">COLABORADOR</th>
                       <th className="p-3.5 font-bold tracking-wider">DEPARTAMENTO</th>
-                      <th className="p-3.5 font-bold tracking-wider">HORÁRIO</th>
+                      <th className="p-3.5 font-bold tracking-wider">ESCALA PREVISTA</th>
+                      <th className="p-3.5 font-bold tracking-wider">PONTO REALIZADO</th>
                       <th className="p-3.5 font-bold tracking-wider">CARGA</th>
                       <th className="p-3.5 font-bold tracking-wider text-center">STATUS</th>
-                      <th className="p-3.5 font-bold tracking-wider">TIPO</th>
+                      <th className="p-3.5 font-bold tracking-wider">APURAÇÃO / SALDO</th>
                       <th className="p-3.5 font-bold tracking-wider">OBSERVAÇÕES</th>
                     </tr>
                   </thead>
@@ -4207,7 +4920,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         const matchDateRaw = row.date.toLowerCase().includes(q);
                         const matchDateFormatted = formattedRowDate.toLowerCase().includes(q);
                         const matchDateSlash = formattedRowDate.replace(/-/g, '/').toLowerCase().includes(q);
-                        if (!matchName && !matchDept && !matchRole && !matchDateRaw && !matchDateFormatted && !matchDateSlash) {
+                        const matchApuracao = (row.apuracao || '').toLowerCase().includes(q);
+                        if (!matchName && !matchDept && !matchRole && !matchDateRaw && !matchDateFormatted && !matchDateSlash && !matchApuracao) {
                           return false;
                         }
                       }
@@ -4220,6 +4934,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         (relatorioStatus === 'justified' && row.status === 'Justificado') ||
                         (relatorioStatus === 'pending' && row.status === 'Pendente');
                       return matchDept && matchStatus;
+                    }).sort((a, b) => {
+                      const timeA = parseDateSortTimestamp(a.date);
+                      const timeB = parseDateSortTimestamp(b.date);
+                      if (timeA !== timeB) {
+                        return relatorioDateSort === 'desc' ? timeB - timeA : timeA - timeB;
+                      }
+                      return a.name.localeCompare(b.name);
                     }).map((row, idx) => (
                       <tr 
                         key={idx} 
@@ -4258,7 +4979,14 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           </div>
                         </td>
                         <td className={`p-3.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{row.dept}</td>
-                        <td className={`p-3.5 font-mono text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>{row.time}</td>
+                        <td className={`p-3.5 font-mono text-[11px] whitespace-nowrap ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          <span>{row.scheduledShift}</span>
+                        </td>
+                        <td className={`p-3.5 font-mono text-[11px] whitespace-nowrap ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                          <span className={row.punchReal === 'Sem registro' ? (isDark ? 'text-slate-500 italic' : 'text-slate-400 italic') : ''}>
+                            {row.punchReal}
+                          </span>
+                        </td>
                         <td className={`p-3.5 font-mono font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{row.hours}</td>
                         <td className="p-3.5 text-center">
                           <div className="flex items-center justify-center">
@@ -4280,7 +5008,31 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                             />
                           </div>
                         </td>
-                        <td className={`p-3.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{row.type}</td>
+                        <td className="p-3.5 text-[11px] whitespace-nowrap">
+                          {row.apuracaoKind === 'overtime' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                              {row.apuracao}
+                            </span>
+                          ) : row.apuracaoKind === 'deficit' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                              {row.apuracao}
+                            </span>
+                          ) : row.apuracaoKind === 'falta' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                              {row.apuracao}
+                            </span>
+                          ) : row.apuracaoKind === 'pending' ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                              {row.apuracao}
+                            </span>
+                          ) : (
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-medium ${
+                              isDark ? 'bg-white/5 text-slate-300 border border-white/10' : 'bg-slate-100 text-slate-700 border border-slate-200'
+                            }`}>
+                              {row.apuracao}
+                            </span>
+                          )}
+                        </td>
                         <td className={`p-3.5 text-[11px] max-w-[280px] ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                           <div className="flex items-center gap-2 truncate" title={row.obsFull || row.cleanObs}>
                             {row.isGpsOutside && (
@@ -6307,13 +7059,74 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   ))}
                 </select>
 
+                <div className="space-y-1.5 pt-1">
+                  <label className={`block text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                    Departamento / Setor
+                  </label>
+                  <select
+                    value={selectedExportDept}
+                    onChange={(e) => setSelectedExportDept(e.target.value)}
+                    className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium border outline-none cursor-pointer transition-colors ${
+                      isDark 
+                        ? 'bg-[#0e0f12] border-[#282a33] text-white focus:border-[#F59242]' 
+                        : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-[#9F243C]'
+                    }`}
+                  >
+                    <option value="all">Todos os Departamentos (Geral da Empresa)</option>
+                    {departmentConsolidatedRows.map(d => (
+                      <option key={d.dept} value={d.dept}>
+                        {d.dept} ({d.employeesCount} {d.employeesCount === 1 ? 'funcionário' : 'funcionários'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {exportModalContext === 'attendance' && (
+                  <div className="space-y-1.5 pt-1">
+                    <label className={`block text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                      Modelo de Relatório (CSV)
+                    </label>
+                    <select
+                      value={exportReportFormat}
+                      onChange={(e) => setExportReportFormat(e.target.value as 'detailed' | 'consolidated_employees_dept' | 'consolidated_dept')}
+                      className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium border outline-none cursor-pointer transition-colors ${
+                        isDark 
+                          ? 'bg-[#0e0f12] border-[#282a33] text-white focus:border-[#F59242]' 
+                          : 'bg-slate-50 border-slate-200 text-slate-900 focus:border-[#9F243C]'
+                      }`}
+                    >
+                      <option value="consolidated_employees_dept">
+                        Consolidado de Funcionários por Setor (Presença, Assiduidade, Absenteísmo e Horas p/ Folha)
+                      </option>
+                      <option value="consolidated_dept">
+                        Resumo Geral por Departamento (Totais Contábeis do Setor)
+                      </option>
+                      <option value="detailed">
+                        Espelho de Ponto Detalhado (Turnos e Batidas Diárias)
+                      </option>
+                    </select>
+                  </div>
+                )}
+
                 <div className={`p-3 rounded-xl border text-xs ${
                   isDark ? 'bg-black/20 border-white/5 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'
                 }`}>
                   <div className="flex items-center justify-between font-medium">
-                    <span>Registros a exportar:</span>
+                    <span>
+                      {exportModalContext === 'attendance' && exportReportFormat === 'consolidated_employees_dept'
+                        ? (selectedExportDept === 'all' ? 'Funcionários incluídos (Todos os setores):' : `Funcionários do setor ${selectedExportDept}:`)
+                        : exportModalContext === 'attendance' && exportReportFormat === 'consolidated_dept'
+                        ? 'Departamentos consolidados:'
+                        : 'Registros a exportar:'}
+                    </span>
                     <span className="font-bold text-amber-500">
-                      {activeMonths.find(m => m.key === selectedExportMonth)?.count || 0}
+                      {exportModalContext === 'attendance' && exportReportFormat === 'consolidated_employees_dept'
+                        ? (selectedExportDept === 'all'
+                            ? employees.length
+                            : employees.filter(e => (e.department || 'Geral') === selectedExportDept).length)
+                        : exportModalContext === 'attendance' && exportReportFormat === 'consolidated_dept'
+                        ? (selectedExportDept === 'all' ? departmentConsolidatedRows.length : 1)
+                        : (activeMonths.find(m => m.key === selectedExportMonth)?.count || 0)}
                     </span>
                   </div>
                 </div>
@@ -6333,14 +7146,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   type="button"
                   onClick={() => {
                     if (exportModalContext === 'approvals') {
-                      const rowsToExport = selectedExportMonth === 'all'
+                      const monthFiltered = selectedExportMonth === 'all'
                         ? approvalsData
                         : approvalsData.filter(row => row.date && normalizeDateToISO(row.date).startsWith(selectedExportMonth));
+                      const rowsToExport = selectedExportDept === 'all'
+                        ? monthFiltered
+                        : monthFiltered.filter(row => (row.employeeDept || 'Geral') === selectedExportDept);
 
                       handleExportApprovalsCsv(rowsToExport, selectedExportMonth);
                       setIsExportModalOpen(false);
+                    } else if (exportReportFormat === 'consolidated_employees_dept' || exportReportFormat === 'consolidated_dept') {
+                      handleExportConsolidatedDepartmentCsv(selectedExportMonth, selectedExportDept, exportReportFormat);
+                      setIsExportModalOpen(false);
                     } else {
-                      onExportCsv(selectedExportMonth);
+                      onExportCsv(selectedExportMonth, selectedExportDept);
                       setIsExportModalOpen(false);
                       showPolishedToast({
                         title: 'Planilha exportada com sucesso!',

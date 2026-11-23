@@ -12,7 +12,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { Employee, Shift, ShiftTemplate, ShiftType } from '@/types';
-import { getStoredWorkplaces, WorkplaceLocation } from '@/shared/services/workplaceService';
+import { getStoredWorkplaces, getScopedDepartmentsStorageKey, registerWorkplaceIfNew, getDeletedWorkplaceIds, WorkplaceLocation } from '@/shared/services/workplaceService';
 import { getSchedulableEmployees } from '@/shared/utils/employeeUtils';
 
 export interface ShiftTemplatesModalProps {
@@ -21,6 +21,7 @@ export interface ShiftTemplatesModalProps {
   employees: Employee[];
   currentWeekStart: Date;
   currentWeekShifts: Shift[];
+  allShifts?: Shift[];
   onApplyTemplate: (template: ShiftTemplate, selectedEmployeeIds: string[]) => void;
   onSaveNewTemplate?: (newTemplate: ShiftTemplate) => void;
   theme?: 'light' | 'dark';
@@ -105,6 +106,7 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
   employees,
   currentWeekStart,
   currentWeekShifts,
+  allShifts,
   onApplyTemplate,
   onSaveNewTemplate,
   theme = 'dark',
@@ -114,8 +116,9 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
   // Active Tab: 'apply' | 'save'
   const [activeTab, setActiveTab] = useState<'apply' | 'save'>('apply');
 
-  const STORAGE_TEMPLATES_KEY = 'pontual_shift_templates_v1';
-  const STORAGE_DELETED_IDS_KEY = 'pontual_deleted_template_ids_v1';
+  const scopeSuffix = getScopedDepartmentsStorageKey();
+  const STORAGE_TEMPLATES_KEY = `pontual_shift_templates_${scopeSuffix}`;
+  const STORAGE_DELETED_IDS_KEY = `pontual_deleted_template_ids_${scopeSuffix}`;
 
   // Templates list com persistência de exclusões e novos modelos
   const [templates, setTemplates] = useState<ShiftTemplate[]>(() => {
@@ -162,11 +165,36 @@ export const ShiftTemplatesModal: React.FC<ShiftTemplatesModalProps> = ({
   };
 
   // Gestão de Posto de Trabalho do Template
-  const [workplacesList] = useState<WorkplaceLocation[]>(() => getStoredWorkplaces());
+  const [workplacesList, setWorkplacesList] = useState<WorkplaceLocation[]>(() => getStoredWorkplaces());
   const [selectedWorkplaceId, setSelectedWorkplaceId] = useState<string>(() => {
     const list = getStoredWorkplaces();
     return list[0]?.id || '';
   });
+
+  // Recarrega os postos de trabalho salvos sempre que o modal é aberto
+  React.useEffect(() => {
+    if (isOpen) {
+      const list = [...getStoredWorkplaces()];
+      const deletedIds = getDeletedWorkplaceIds();
+      const shiftsPool = allShifts && allShifts.length > 0 ? allShifts : (currentWeekShifts || []);
+      shiftsPool.forEach(s => {
+        if (s.workplaceLocation && s.workplaceLocation.name) {
+          const wName = s.workplaceLocation.name.toLowerCase().trim();
+          if (!deletedIds.includes(s.workplaceLocation.id) && !deletedIds.includes(wName)) {
+            const exists = list.some(
+              w => w.id === s.workplaceLocation?.id || w.name.toLowerCase().trim() === wName
+            );
+            if (!exists) {
+              list.push(s.workplaceLocation);
+              registerWorkplaceIfNew(s.workplaceLocation);
+            }
+          }
+        }
+      });
+      setWorkplacesList(list);
+      setSelectedWorkplaceId(prev => (list.some(w => w.id === prev) ? prev : (list[0]?.id || '')));
+    }
+  }, [isOpen, currentWeekShifts, allShifts]);
 
   // Filtra colaboradores excluindo gestores e PJ da alocação de escalas em lote
   const schedulableEmployees = useMemo(() => {

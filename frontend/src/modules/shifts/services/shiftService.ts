@@ -2,6 +2,7 @@ import { supabase } from '@/shared/services/supabase';
 import { Shift, WorkplaceLocation } from '@/types';
 import { findWorkplaceByName, registerWorkplaceIfNew } from '@/shared/services/workplaceService';
 import { calculateHaversineDistance } from '@/shared/utils/geolocation';
+import { evaluatePunchTolerance } from '@/shared/utils/dateUtils';
 
 function encodeShiftNotesWithWorkplace(notes?: string, workplace?: string, workplaceLocation?: WorkplaceLocation): string {
   const wpObj = workplaceLocation || (workplace ? findWorkplaceByName(workplace) : undefined) || (workplace ? { name: workplace } : undefined);
@@ -27,9 +28,9 @@ export function mapBneToShift(row: any): Shift {
         workplaceLocation = parsed;
         notes = notes.substring(endIdx + 1).trim();
 
-        // Registra o posto automaticamente no cache local para ficar disponível em dropdowns e mapas
+        // Registra o posto automaticamente no armazenamento isolado da empresa para ficar disponível em dropdowns e templates
         if (workplaceLocation) {
-          registerWorkplaceIfNew(workplaceLocation as any);
+          registerWorkplaceIfNew(workplaceLocation);
         }
       } catch {}
     }
@@ -61,7 +62,7 @@ export function mapBneToShift(row: any): Shift {
 
 export async function getShiftsSupabase(employeeIds?: string[]): Promise<Shift[]> {
   try {
-    if (employeeIds && employeeIds.length === 0) {
+    if (!employeeIds || employeeIds.length === 0) {
       return [];
     }
 
@@ -133,14 +134,24 @@ export async function getShiftsSupabase(employeeIds?: string[]): Promise<Shift[]
             };
 
             const inPunch = shiftPunches.find(p => p.Tpo_Registro?.toLowerCase() === 'entrada') || shiftPunches[0];
-            const outPunch = shiftPunches.find(p => p.Tpo_Registro?.toLowerCase() === 'saida');
+            const outPunch = [...shiftPunches].reverse().find(p => p.Tpo_Registro?.toLowerCase() === 'saida');
 
             const inData = inPunch ? buildPunchInfo(inPunch) : undefined;
             const outData = (outPunch && outPunch !== inPunch) ? buildPunchInfo(outPunch) : undefined;
 
+            let computedStatus = s.attendanceStatus;
+            if (computedStatus !== 'justified') {
+              if (inData?.time && s.startTime) {
+                const tol = evaluatePunchTolerance(s.startTime, inData.time, 'entrada', 10);
+                computedStatus = tol.isLate ? 'late' : 'present';
+              } else {
+                computedStatus = 'present';
+              }
+            }
+
             return {
               ...s,
-              attendanceStatus: 'present',
+              attendanceStatus: computedStatus,
               checkInTime: inData?.time,
               checkInLocation: inData?.location,
               checkOutTime: outData?.time,

@@ -9,26 +9,115 @@ import { searchAddressCoordinates } from '../utils/geolocation';
 import { WorkplaceLocation } from '@/types';
 export type { WorkplaceLocation };
 
-const STORAGE_KEY = 'pontuall_workplaces_v1';
+const STORAGE_KEY = 'pontuall_workplaces_isolated_v2';
 
 /**
- * Retorna a chave de armazenamento isolada por empresa/gestor ativo
+ * Retorna a chave da empresa ativa
+ */
+export function getWorkplaceCompanyKey(): string {
+  try {
+    const rawUser = safeStorage.getItem('pontual_active_user') || localStorage.getItem('pontual_active_user');
+    if (rawUser) {
+      const user = JSON.parse(rawUser);
+      const companyPart =
+        user.Idf_Empresa ||
+        user.companyId ||
+        user.company_id ||
+        user.empresa_id ||
+        user.Num_CNPJ ||
+        user.companyCnpj ||
+        user.cnpj ||
+        'cmp';
+      return String(companyPart).replace(/[^a-zA-Z0-9_-]/g, '_');
+    }
+  } catch {}
+  return 'default';
+}
+
+/**
+ * Retorna os IDs ou nomes de postos que foram explicitamente excluídos pelo usuário
+ */
+export function getDeletedWorkplaceIds(): string[] {
+  try {
+    const cmp = getWorkplaceCompanyKey();
+    const key = `pontuall_deleted_wp_${cmp}`;
+    const raw = safeStorage.getItem(key) || localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Registra um posto como excluído para não ser reintroduzido inadvertidamente por turnos legados
+ */
+export function markWorkplaceDeleted(id: string, name?: string): void {
+  try {
+    const cmp = getWorkplaceCompanyKey();
+    const key = `pontuall_deleted_wp_${cmp}`;
+    const current = getDeletedWorkplaceIds();
+    const toAdd = [id];
+    if (name) toAdd.push(name.toLowerCase().trim());
+    const updated = Array.from(new Set([...current, ...toAdd]));
+    safeStorage.setItem(key, JSON.stringify(updated));
+    localStorage.setItem(key, JSON.stringify(updated));
+  } catch {}
+}
+
+/**
+ * Retorna a chave de armazenamento estritamente isolada por empresa/gestor ativo
  */
 function getWorkplaceStorageKey(): string {
   try {
-    const rawUser = safeStorage.getItem('pontual_active_user');
+    const rawUser = safeStorage.getItem('pontual_active_user') || localStorage.getItem('pontual_active_user');
     if (rawUser) {
       const user = JSON.parse(rawUser);
-      const companyKey = user.companyId || user.company_id || user.empresa_id || user.cnpj || user.email;
-      if (companyKey) {
-        const sanitized = String(companyKey).replace(/[^a-zA-Z0-9_-]/g, '_');
-        return `pontuall_workplaces_${sanitized}`;
-      }
+      const companyPart =
+        user.Idf_Empresa ||
+        user.companyId ||
+        user.company_id ||
+        user.empresa_id ||
+        user.Num_CNPJ ||
+        user.companyCnpj ||
+        user.cnpj ||
+        'cmp';
+      const userPart =
+        user.Idf_Colaborador ||
+        user.id ||
+        user.Eml_Corporativo ||
+        user.email ||
+        'anon';
+      const sanitizedCmp = String(companyPart).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const sanitizedUsr = String(userPart).replace(/[^a-zA-Z0-9_-]/g, '_');
+      return `pontuall_workplaces_iso_${sanitizedCmp}__${sanitizedUsr}`;
     }
   } catch (e) {
     // ignore
   }
   return STORAGE_KEY;
+}
+
+/**
+ * Retorna a chave de setores/departamentos isolada estritamente por empresa e gestor ativo
+ */
+export function getScopedDepartmentsStorageKey(activeEmployee?: { id?: string; companyId?: string; email?: string }): string {
+  try {
+    let cmp = activeEmployee?.companyId || '';
+    let usr = activeEmployee?.id || activeEmployee?.email || '';
+    if (!cmp || !usr) {
+      const rawUser = safeStorage.getItem('pontual_active_user') || localStorage.getItem('pontual_active_user');
+      if (rawUser) {
+        const user = JSON.parse(rawUser);
+        if (!cmp) cmp = user.Idf_Empresa || user.companyId || user.Num_CNPJ || user.companyCnpj || 'cmp';
+        if (!usr) usr = user.Idf_Colaborador || user.id || user.Eml_Corporativo || user.email || 'usr';
+      }
+    }
+    const cleanCmp = String(cmp || 'cmp').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const cleanUsr = String(usr || 'usr').replace(/[^a-zA-Z0-9_-]/g, '_');
+    return `pontual_custom_depts_iso_${cleanCmp}__${cleanUsr}`;
+  } catch {
+    return 'pontual_custom_depts_iso_default';
+  }
 }
 
 // Locais padrão iniciais do sistema (apenas neutro Home Office / Remoto, sem sedes físicas fictícias)
@@ -60,11 +149,17 @@ export function registerWorkplaceIfNew(wp: WorkplaceLocation): void {
   ) {
     return;
   }
+  const deleted = getDeletedWorkplaceIds();
+  const lowerName = wp.name.toLowerCase().trim();
+  if (deleted.includes(wp.id) || deleted.includes(lowerName)) {
+    return;
+  }
+
   try {
     const list = getStoredWorkplaces();
     const exists = list.some(w => 
       w.id === wp.id || 
-      (w.name.toLowerCase() === wp.name.toLowerCase() && w.address === wp.address)
+      (w.name.toLowerCase().trim() === lowerName && (w.address === wp.address || !w.address || !wp.address))
     );
     if (!exists) {
       saveWorkplaces([...list, wp]);
@@ -79,28 +174,66 @@ export function registerWorkplaceIfNew(wp: WorkplaceLocation): void {
  */
 export function getStoredWorkplaces(): WorkplaceLocation[] {
   try {
+    const cmp = getWorkplaceCompanyKey();
     const key = getWorkplaceStorageKey();
-    const raw = safeStorage.getItem(key);
-    if (!raw) return DEFAULT_WORKPLACES;
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      // Filtra e limpa resquícios antigos de postos fictícios e formatações
-      const filtered = parsed
-        .filter(w => 
-          w &&
-          w.id !== 'wp-sede-sp' && 
-          w.name !== 'Sede Central - SP' &&
-          w.id !== 'wp-matriz' &&
-          w.name !== 'Sede Principal / Matriz' &&
-          w.id !== 'wp-externo-temporario' &&
-          w.name !== 'Posto Externo / Temporário'
-        )
-        .map(w => ({
-          ...w,
-          name: typeof w.name === 'string' ? w.name.replace(/📍\s*/g, '').trim() : w.name,
-          address: typeof w.address === 'string' ? w.address.replace(/📍\s*/g, '').trim() : w.address,
-        }));
-      return filtered.length > 0 ? filtered : DEFAULT_WORKPLACES;
+    const candidateKeys = [
+      key,
+      `pontuall_workplaces_cmp_${cmp}`,
+      STORAGE_KEY,
+      'pontuall_workplaces_v1',
+    ];
+
+    const deleted = getDeletedWorkplaceIds();
+    const allFound: WorkplaceLocation[] = [];
+
+    const isMock = (w: any) =>
+      !w ||
+      !w.name ||
+      w.id === 'wp-sede-sp' || 
+      w.name === 'Sede Central - SP' ||
+      w.id === 'wp-matriz' || 
+      w.name === 'Sede Principal / Matriz' ||
+      w.id === 'wp-externo-temporario' || 
+      w.name === 'Posto Externo / Temporário';
+
+    for (const candKey of candidateKeys) {
+      const raw = safeStorage.getItem(candKey) || localStorage.getItem(candKey);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            for (const item of parsed) {
+              if (item && !isMock(item)) {
+                const cleanName = typeof item.name === 'string' ? item.name.replace(/📍\s*/g, '').trim() : item.name;
+                const cleanAddr = typeof item.address === 'string' ? item.address.replace(/📍\s*/g, '').trim() : item.address;
+                const lowerName = cleanName.toLowerCase().trim();
+                if (!deleted.includes(item.id) && !deleted.includes(lowerName)) {
+                  const cleanedItem: WorkplaceLocation = {
+                    ...item,
+                    name: cleanName,
+                    address: cleanAddr,
+                  };
+                  const already = allFound.some(
+                    x => x.id === cleanedItem.id || x.name.toLowerCase().trim() === lowerName
+                  );
+                  if (!already) {
+                    allFound.push(cleanedItem);
+                  }
+                }
+              }
+            }
+          }
+        } catch {}
+      }
+    }
+
+    if (allFound.length > 0) {
+      // Garante que o Home Office padrão esteja presente se não houver um equivalente
+      const hasHomeOffice = allFound.some(w => w.isRemote || w.name.toLowerCase().includes('home office') || w.name.toLowerCase().includes('remoto'));
+      if (!hasHomeOffice) {
+        allFound.unshift(DEFAULT_WORKPLACES[0]);
+      }
+      return allFound;
     }
   } catch (err) {
     console.warn('Erro ao carregar locais de trabalho do storage:', err);
@@ -109,11 +242,28 @@ export function getStoredWorkplaces(): WorkplaceLocation[] {
 }
 
 /**
+ * Reseta os locais de trabalho da empresa ativa para apenas Home Office / Remoto
+ */
+export function resetWorkplacesToDefaultForActiveCompany(): void {
+  try {
+    saveWorkplaces(DEFAULT_WORKPLACES);
+  } catch {}
+}
+
+/**
  * Salva a lista de postos de trabalho
  */
 export function saveWorkplaces(workplaces: WorkplaceLocation[]): void {
+  const cmp = getWorkplaceCompanyKey();
   const key = getWorkplaceStorageKey();
-  safeStorage.setItem(key, JSON.stringify(workplaces));
+  const serialized = JSON.stringify(workplaces);
+  safeStorage.setItem(key, serialized);
+  localStorage.setItem(key, serialized);
+  if (cmp) {
+    const cmpKey = `pontuall_workplaces_cmp_${cmp}`;
+    safeStorage.setItem(cmpKey, serialized);
+    localStorage.setItem(cmpKey, serialized);
+  }
 }
 
 /**
@@ -186,6 +336,8 @@ export function findWorkplaceByName(name?: string): WorkplaceLocation | undefine
  */
 export function deleteWorkplace(id: string): WorkplaceLocation[] {
   const list = getStoredWorkplaces();
+  const target = list.find(w => w.id === id);
+  markWorkplaceDeleted(id, target?.name);
   const updated = list.filter(w => w.id !== id);
   saveWorkplaces(updated);
   return updated;

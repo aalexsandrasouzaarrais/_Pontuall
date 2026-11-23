@@ -4,6 +4,7 @@ import { User, X, Check, Sparkles, RefreshCw, ArrowRight, ArrowLeft, AlertCircle
 import { Employee } from '@/types';
 import { useTheme } from '@/shared/context/ThemeContext';
 import { safeStorage } from '@/shared/utils/safeStorage';
+import { getScopedDepartmentsStorageKey } from '@/shared/services/workplaceService';
 import { sendWelcomeEmail as sendWelcomeEmailService } from '@/modules/auth/services/emailService';
 import { savePjContractParamsLocal, checkEmailExists } from '@/modules/auth/services/colaboradorService';
 
@@ -54,7 +55,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
   };
 
   const DEFAULT_DEPARTMENTS = ['Atendimento', 'Suporte Técnico', 'Operações', 'Comercial', 'Tecnologia'];
-  const CUSTOM_DEPTS_KEY = 'pontual_custom_departments_v1';
+  const CUSTOM_DEPTS_KEY = getScopedDepartmentsStorageKey(activeEmployee);
 
   const getAvailableDepartments = (): string[] => {
     const set = new Set<string>(DEFAULT_DEPARTMENTS);
@@ -387,9 +388,9 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
     }
     const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
     const cleanId = employeeId.trim() || generateRandomId();
-    const isRhSelected = userRole === 'Administrador' || userRole === 'RH';
+    const isRhSelected = false;
     const isGestorSelected = userRole === 'Gestor';
-    const roleTypeVal: 'rh' | 'gestor' | 'colaborador' = isRhSelected ? 'rh' : isGestorSelected ? 'gestor' : 'colaborador';
+    const roleTypeVal: 'gestor' | 'colaborador' = isGestorSelected ? 'gestor' : 'colaborador';
 
     const parsedRate = employmentType === 'PJ' ? Number(pjHourlyRate.replace(',', '.')) || 0 : undefined;
     const parsedQuota = employmentType === 'PJ' ? Number(pjMonthlyHoursQuota) || 160 : undefined;
@@ -934,7 +935,6 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                     >
                       <option value="Colaborador" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>Colaborador</option>
                       <option value="Gestor" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>Gestor</option>
-                      <option value="Administrador" className={isDark ? "bg-[#181A24] text-white" : "bg-white text-slate-800"}>Administrador</option>
                     </select>
                   </div>
 

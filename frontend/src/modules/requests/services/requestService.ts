@@ -1,6 +1,7 @@
 import { getTodayDateString } from '@/shared/utils/dateUtils';
 import { supabase } from '@/shared/services/supabase';
 import { TimeOffRequest, AbsenceJustification, Employee } from '@/types';
+import bcrypt from 'bcryptjs';
 
 function isValidUuid(id?: string): boolean {
   if (!id) return false;
@@ -45,7 +46,7 @@ export async function ensureColaboradorUuidSupabase(activeEmp?: Employee): Promi
       Cod_Matricula: matricula,
       Nme_Colaborador: activeEmp.name || 'Colaborador',
       Eml_Corporativo: finalEmail,
-      Des_Senha_Hash: matricula,
+      Des_Senha_Hash: bcrypt.hashSync(matricula, 10),
       Tpo_Perfil: perfil,
       Tpo_Cargo: activeEmp.role || 'Colaborador',
       Des_Departamento: activeEmp.department || 'Geral',
@@ -99,21 +100,25 @@ export async function getJustificativasSupabase(empIds?: string[]): Promise<Abse
     }
 
     if (data && data.length > 0) {
-      return data.map((row: any) => ({
-        id: row.Idf_Justificativa,
-        employeeId: row.Idf_Colaborador,
-        employeeName: '',
-        employeeAvatar: '',
-        shiftId: row.Idf_Turno || '',
-        date: row.Dta_Ausencia,
-        reason: row.Des_Motivo || '',
-        documentName: row.Nme_Documento || '',
-        documentType: row.Tpo_Documento || 'application/pdf',
-        documentUrl: row.Des_Url_Documento || '',
-        status: (row.Tpo_Status === 'approved' || row.Tpo_Status === 'aprovado') ? 'approved' : (row.Tpo_Status === 'rejected' || row.Tpo_Status === 'recusado') ? 'rejected' : 'pending',
-        submittedAt: row.Dta_Envio ? new Date(row.Dta_Envio).toLocaleDateString('pt-BR') : 'Hoje',
-        managerNotes: row.Des_Parecer_Gestor || row.Des_Motivo_Recusa || row.Des_Feedback || ''
-      }));
+      return data.map((row: any) => {
+        const rawUrl = (row.Des_Url_Documento || '').trim();
+        const hasValidUrl = Boolean(rawUrl && rawUrl !== 'null' && rawUrl !== 'undefined');
+        return {
+          id: row.Idf_Justificativa,
+          employeeId: row.Idf_Colaborador,
+          employeeName: '',
+          employeeAvatar: '',
+          shiftId: row.Idf_Turno || '',
+          date: row.Dta_Ausencia,
+          reason: row.Des_Motivo || '',
+          documentName: hasValidUrl ? (row.Nme_Documento || 'Comprovante.pdf') : '',
+          documentType: hasValidUrl ? (row.Tpo_Documento || 'application/pdf') : undefined,
+          documentUrl: hasValidUrl ? rawUrl : '',
+          status: (row.Tpo_Status === 'approved' || row.Tpo_Status === 'aprovado') ? 'approved' : (row.Tpo_Status === 'rejected' || row.Tpo_Status === 'recusado') ? 'rejected' : 'pending',
+          submittedAt: row.Dta_Envio ? new Date(row.Dta_Envio).toLocaleDateString('pt-BR') : 'Hoje',
+          managerNotes: row.Des_Parecer_Gestor || row.Des_Motivo_Recusa || row.Des_Feedback || ''
+        };
+      });
     }
     return [];
   } catch (err: any) {
@@ -137,15 +142,18 @@ export async function createJustificativaSupabase(
       return null;
     }
 
+    const rawUrl = (just.documentUrl || '').trim();
+    const hasValidDoc = Boolean(rawUrl && rawUrl !== 'null' && rawUrl !== 'undefined');
+
     const payload = {
       Idf_Colaborador: colabId,
       Idf_Turno: isValidUuid(just.shiftId) ? just.shiftId : null,
       Dta_Ausencia: just.date || getTodayDateString(),
       Des_Motivo: just.reason || 'Justificativa de Ausência / Atestado Médico',
       Cod_Cid_Atestado: (just as any).cidCode || null,
-      Nme_Documento: just.documentName || 'Atestado_Medico.pdf',
-      Tpo_Documento: just.documentType || 'application/pdf',
-      Des_Url_Documento: just.documentUrl || null,
+      Nme_Documento: hasValidDoc ? (just.documentName || 'Comprovante.pdf') : null,
+      Tpo_Documento: hasValidDoc ? (just.documentType || 'application/pdf') : null,
+      Des_Url_Documento: hasValidDoc ? rawUrl : null,
       Tpo_Status: 'pending',
       Dta_Envio: new Date().toISOString(),
       Dta_Atualizacao: new Date().toISOString()
@@ -170,9 +178,9 @@ export async function createJustificativaSupabase(
       shiftId: data.Idf_Turno || '',
       date: data.Dta_Ausencia,
       reason: data.Des_Motivo,
-      documentName: data.Nme_Documento,
-      documentType: data.Tpo_Documento,
-      documentUrl: data.Des_Url_Documento,
+      documentName: hasValidDoc ? (data.Nme_Documento || undefined) : undefined,
+      documentType: hasValidDoc ? (data.Tpo_Documento || undefined) : undefined,
+      documentUrl: hasValidDoc ? (data.Des_Url_Documento || undefined) : undefined,
       status: 'pending',
       submittedAt: new Date().toLocaleDateString('pt-BR'),
       managerNotes: data.Des_Parecer_Gestor || ''

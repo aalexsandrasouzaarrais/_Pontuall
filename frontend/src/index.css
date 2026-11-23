@@ -388,3 +388,11 @@ html.light .manager-scope [style*="0 20px 50px rgba(0,0,0"],
   scrollbar-width: none !important;
 }
 
+/* Oculta o olhinho nativo duplicado do Edge/Windows em campos de senha */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+

@@ -73,12 +73,16 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
   employee,
   isDark = true,
   activeSubView = 'overview',
-  reminders = [],
+  reminders: rawReminders = [],
   employees = [],
   onNavigateToCalendar,
   onNavigateToTimesheet,
   onReportCreated,
 }) => {
+  const reminders = useMemo(() => {
+    const todayIso = getTodayDateString();
+    return (rawReminders || []).filter(r => !r.date || normalizeDateToISO(r.date) >= todayIso);
+  }, [rawReminders]);
   const [reports, setReports] = useState<PjDeliverableReport[]>([]);
   const [draftEntries, setDraftEntries] = useState<PjTimesheetEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);

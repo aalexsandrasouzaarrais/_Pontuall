@@ -38,7 +38,7 @@ import {
   AbsenceConflictResult,
   InterjornadaResult
 } from '@/shared/utils/shiftValidation';
-import { getStoredWorkplaces, createWorkplaceFromAddress, deleteWorkplace, WorkplaceLocation } from '@/shared/services/workplaceService';
+import { getStoredWorkplaces, createWorkplaceFromAddress, deleteWorkplace, registerWorkplaceIfNew, getDeletedWorkplaceIds, WorkplaceLocation } from '@/shared/services/workplaceService';
 import { getSchedulableEmployees } from '@/shared/utils/employeeUtils';
 import { 
   searchAddressSuggestions, 
@@ -297,7 +297,25 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
   }, [employees, editingShift?.employeeId]);
 
   useEffect(() => {
-    const list = getStoredWorkplaces();
+    const list = [...getStoredWorkplaces()];
+    const deletedIds = getDeletedWorkplaceIds();
+
+    // Sincroniza todos os postos de trabalho encontrados na lista de turnos
+    (shifts || []).forEach(s => {
+      if (s.workplaceLocation && s.workplaceLocation.name) {
+        const wName = s.workplaceLocation.name.toLowerCase().trim();
+        if (!deletedIds.includes(s.workplaceLocation.id) && !deletedIds.includes(wName)) {
+          const exists = list.some(
+            w => w.id === s.workplaceLocation?.id || w.name.toLowerCase().trim() === wName
+          );
+          if (!exists) {
+            list.push(s.workplaceLocation);
+            registerWorkplaceIfNew(s.workplaceLocation);
+          }
+        }
+      }
+    });
+
     setWorkplacesList(list);
 
     if (editingShift) {
@@ -1446,7 +1464,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                     >
                       {workplacesList.map(w => (
                         <option key={w.id} value={w.id} style={optionStyle}>
-                          {w.name} {w.isRemote ? '(Flexível/Remoto)' : `(${w.address})`}
+                          {w.name} {w.isRemote ? '(Remoto/Flexível)' : `— ${w.address}`} ({w.radiusMeters || 200}m)
                         </option>
                       ))}
                     </select>
@@ -1536,7 +1554,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                   {/* Nome do Posto */}
                   <input
                     type="text"
-                    placeholder="Nome do Posto (Ex: Filial Colombo, Stand Anhembi, Obra 02...)"
+                    placeholder="Nome do Posto"
                     value={newWorkplaceName}
                     onChange={e => setNewWorkplaceName(e.target.value)}
                     className="w-full px-3.5 py-2 rounded-xl text-xs outline-none font-medium"
@@ -1549,7 +1567,7 @@ export const OrbitShiftModal: React.FC<OrbitShiftModalProps> = ({
                       <div className="relative flex-1">
                         <input
                           type="text"
-                          placeholder="Endereço, Rua ou CEP (Ex: Rua Antonio Chemin, Colombo - PR)"
+                          placeholder="Endereço, Rua ou CEP"
                           value={newWorkplaceAddress}
                           onChange={e => {
                             setNewWorkplaceAddress(e.target.value);

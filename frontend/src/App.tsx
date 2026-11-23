@@ -1,4 +1,4 @@
-import { getTodayDateString, evaluatePunchTolerance, formatDateBR } from '@/shared/utils/dateUtils';
+import { getTodayDateString, evaluatePunchTolerance, formatDateBR, normalizeDateToISO } from '@/shared/utils/dateUtils';
 import React, { useState, useEffect } from 'react';
 import { 
   EmployeeSidebar 
@@ -371,10 +371,10 @@ function AppContent() {
         });
         setReminders(dbReminders || []);
 
-        // Busca solicitações e justificativas salvas no Supabase vinculadas à equipe
+        // Busca solicitações e justificativas salvas no Supabase estritamente vinculadas à equipe
         const validScopeIds = empIds.filter(isUuid);
-        const dbRequests = await getSolicitacoesSupabase(validScopeIds.length > 0 ? validScopeIds : undefined);
-        const dbJustifications = await getJustificativasSupabase(validScopeIds.length > 0 ? validScopeIds : undefined);
+        const dbRequests = validScopeIds.length > 0 ? await getSolicitacoesSupabase(validScopeIds) : [];
+        const dbJustifications = validScopeIds.length > 0 ? await getJustificativasSupabase(validScopeIds) : [];
 
         const enrichedRequests = (dbRequests || []).map(r => {
           const emp = finalEmployees.find(e => e.id === r.employeeId || (e.email && currentEmp.email && e.email.toLowerCase() === currentEmp.email.toLowerCase())) 
@@ -405,7 +405,8 @@ function AppContent() {
         setNotifications(dbNotifications || []);
 
         const dbPjReports = await getPjReportsSupabase();
-        setPjReports(dbPjReports || []);
+        const scopedPjReports = (dbPjReports || []).filter(r => empIds.includes(r.employeeId));
+        setPjReports(scopedPjReports);
 
       } catch (err) {
         console.warn('Erro ao carregar dados do Supabase:', err);
@@ -474,7 +475,7 @@ function AppContent() {
     shiftId?: string; 
     date?: string; 
     reason?: string; 
-    type?: 'absence' | 'delay';
+    type?: 'absence' | 'delay' | 'early_entry' | 'early_leave' | 'overtime' | 'forgetfulness';
     delayMinutes?: number;
   } | null>(null);
   const [editingRequest, setEditingRequest] = useState<TimeOffRequest | null>(null);
@@ -526,7 +527,7 @@ function AppContent() {
   const handleOpenJustificationModal = (
     shiftId?: string, 
     date?: string, 
-    type: 'absence' | 'delay' = 'absence', 
+    type: 'absence' | 'delay' | 'early_entry' | 'early_leave' | 'overtime' | 'forgetfulness' = 'absence', 
     delayMinutes?: number,
     reason?: string
   ) => {
@@ -541,7 +542,7 @@ function AppContent() {
 
   const { unreadCount: unreadChatCount, resetUnreadCount: resetUnreadChatCount } = useUnreadChatCount({
     activeEmployee,
-    isChatOpen: isChatModalOpen || isChatViewActive,
+    isChatOpen: isChatModalOpen || isChatViewActive || (currentRole === 'employee' && employeeTab === 'chat'),
   });
 
   // Monitora autenticação via Google Workspace (OAuth redirect)
@@ -763,18 +764,24 @@ function AppContent() {
     // Avaliação de tolerância conforme Art. 58 § 1º CLT
     let punchAttendanceStatus: 'present' | 'late' = 'present';
     let lateDiffMinutes = 0;
+    let earlyEntryDiffMinutes = 0;
     let overtimeDiffMinutes = 0;
+    let earlyLeaveDiffMinutes = 0;
 
     if (punchType === 'entrada' && targetShift?.startTime) {
       const tol = evaluatePunchTolerance(targetShift.startTime, timeStr, 'entrada', 10);
       if (tol.isLate) {
         punchAttendanceStatus = 'late';
         lateDiffMinutes = tol.diffMinutes;
+      } else if (tol.isEarly) {
+        earlyEntryDiffMinutes = tol.diffMinutes;
       }
     } else if (punchType === 'saida' && targetShift?.endTime) {
       const tol = evaluatePunchTolerance(targetShift.endTime, timeStr, 'saida', 10);
       if (tol.isOvertime) {
         overtimeDiffMinutes = tol.diffMinutes;
+      } else if (tol.isEarlyLeave) {
+        earlyLeaveDiffMinutes = tol.diffMinutes;
       }
     }
     
@@ -789,14 +796,20 @@ function AppContent() {
     setShifts(prev => prev.map(s => {
       if (s.id === shiftId) {
         if (punchType === 'saida') {
-          let updatedNotes = s.notes || '';
+          let updatedNotes = (s.notes || '')
+            .replace(/\|?\s*\[(HE|Esquecimento de Sa[íi]da|Sa[íi]da Antecipada|Justificativa Sa[íi]da Antecipada)[^\]]*\]/gi, '')
+            .replace(/^\s*\|\s*|\s*\|\s*$/g, '')
+            .trim();
           if (overtimeDiffMinutes > 0) {
             const heTag = isForgetfulness
               ? `[Esquecimento de Saída: Saída real no horário previsto (${s.endTime || '15:20'}) - Batida às ${timeStr}]`
               : `[HE +${overtimeDiffMinutes}m: ${notesOrReason || 'Aguardando justificativa'}]`;
             updatedNotes = updatedNotes ? `${updatedNotes} | ${heTag}` : heTag;
+          } else if (earlyLeaveDiffMinutes > 0) {
+            const earlyLeaveTag = `[Saída Antecipada ${earlyLeaveDiffMinutes}m: ${notesOrReason || 'Aguardando justificativa'}]`;
+            updatedNotes = updatedNotes ? `${updatedNotes} | ${earlyLeaveTag}` : earlyLeaveTag;
           }
-          return {
+          const updatedShift = {
             ...s,
             checkOutTime: timeStr,
             notes: updatedNotes,
@@ -811,13 +824,25 @@ function AppContent() {
               timestamp: now.toISOString(),
             }
           };
-        } else {
-          let updatedNotes = s.notes || '';
-          if (lateDiffMinutes > 0) {
-            const lateTag = `[Atraso ${lateDiffMinutes}m: ${notesOrReason || 'Aguardando justificativa'}]`;
-            updatedNotes = updatedNotes ? `${updatedNotes} | ${lateTag}` : lateTag;
+          if (updatedNotes !== (s.notes || '')) {
+            updateShiftSupabase(updatedShift);
           }
-          return {
+          return updatedShift;
+        } else {
+          let updatedNotes = (s.notes || '')
+            .replace(/\|?\s*\[(Atraso|Entrada Antecipada|Justificativa Atraso|Justificativa Entrada Antecipada)[^\]]*\]/gi, '')
+            .replace(/^\s*\|\s*|\s*\|\s*$/g, '')
+            .trim();
+          if (lateDiffMinutes > 0) {
+            const lateTag = isForgetfulness
+              ? `[Esquecimento de Entrada: Chegada real no horário previsto (${s.startTime || '08:00'}) - Batida às ${timeStr}]`
+              : `[Atraso ${lateDiffMinutes}m: ${notesOrReason || 'Aguardando justificativa'}]`;
+            updatedNotes = updatedNotes ? `${updatedNotes} | ${lateTag}` : lateTag;
+          } else if (earlyEntryDiffMinutes > 0) {
+            const earlyEntryTag = `[Entrada Antecipada ${earlyEntryDiffMinutes}m: ${notesOrReason || 'Aguardando justificativa'}]`;
+            updatedNotes = updatedNotes ? `${updatedNotes} | ${earlyEntryTag}` : earlyEntryTag;
+          }
+          const updatedShift = {
             ...s,
             attendanceStatus: punchAttendanceStatus,
             checkInTime: timeStr,
@@ -833,6 +858,10 @@ function AppContent() {
               timestamp: now.toISOString(),
             }
           };
+          if (updatedNotes !== (s.notes || '')) {
+            updateShiftSupabase(updatedShift);
+          }
+          return updatedShift;
         }
       }
       return s;
@@ -853,10 +882,14 @@ function AppContent() {
     
     if (punchType === 'entrada' && lateDiffMinutes > 0) {
       notifTitle = `Entrada Registrada (Atraso de ${lateDiffMinutes} min)`;
+    } else if (punchType === 'entrada' && earlyEntryDiffMinutes > 0) {
+      notifTitle = `Entrada Antecipada (-${earlyEntryDiffMinutes} min)`;
     } else if (punchType === 'saida' && overtimeDiffMinutes > 0) {
       notifTitle = isForgetfulness
         ? `Saída Registrada (Ajuste de Esquecimento de Ponto)`
         : `Saída Registrada (Hora Extra: +${overtimeDiffMinutes} min)`;
+    } else if (punchType === 'saida' && earlyLeaveDiffMinutes > 0) {
+      notifTitle = `Saída Antecipada (-${earlyLeaveDiffMinutes} min)`;
     }
 
     const newNotif: NotificationItem = {
@@ -890,6 +923,19 @@ function AppContent() {
       });
     }
 
+    // Alerta gestor em caso de entrada antecipada (> 10 min)
+    if (punchType === 'entrada' && earlyEntryDiffMinutes > 0) {
+      managers.forEach(mgr => {
+        createNotificationSupabase({
+          targetEmployeeId: mgr.id,
+          title: 'Alerta de Entrada Antecipada',
+          message: `${activeEmployee.name} registrou entrada ${earlyEntryDiffMinutes} min antes do horário às ${timeStr} (previsto: ${targetShift?.startTime || '08:00'}).${notesOrReason ? ` Motivo: "${notesOrReason}".` : ''}`,
+          type: 'system',
+          actionRequired: true,
+        });
+      });
+    }
+
     // Alerta gestor em caso de saída após o horário (hora extra ou esquecimento)
     if (punchType === 'saida' && overtimeDiffMinutes > 0) {
       managers.forEach(mgr => {
@@ -901,6 +947,19 @@ function AppContent() {
             : `${activeEmployee.name} registrou saída às ${timeStr} (+${overtimeDiffMinutes} min após o término previsto às ${targetShift?.endTime || '17:00'}). Motivo informado: "${notesOrReason || 'Permanência após o expediente'}". Requer homologação no Banco de Horas.`,
           type: isForgetfulness ? 'system' : 'approval',
           actionRequired: !isForgetfulness,
+        });
+      });
+    }
+
+    // Alerta gestor em caso de saída antecipada (> 10 min antes do término)
+    if (punchType === 'saida' && earlyLeaveDiffMinutes > 0) {
+      managers.forEach(mgr => {
+        createNotificationSupabase({
+          targetEmployeeId: mgr.id,
+          title: 'Alerta de Saída Antecipada',
+          message: `${activeEmployee.name} registrou saída antecipada às ${timeStr} (-${earlyLeaveDiffMinutes} min antes do término previsto às ${targetShift?.endTime || '17:00'}).${notesOrReason ? ` Motivo: "${notesOrReason}".` : ''}`,
+          type: 'approval',
+          actionRequired: true,
         });
       });
     }
@@ -997,8 +1056,30 @@ function AppContent() {
   };
 
   // Submit absence or delay justification
-  const handleSubmitJustification = async (just: Partial<AbsenceJustification> & { justificationType?: 'absence' | 'delay' }) => {
-    const isDelayJustification = just.justificationType === 'delay';
+  const handleSubmitJustification = async (just: Partial<AbsenceJustification> & { justificationType?: 'absence' | 'delay' | 'early_entry' | 'early_leave' | 'overtime' | 'forgetfulness' }) => {
+    const jType = just.justificationType || 'absence';
+    const isDelayJustification = jType === 'delay';
+    const isEarlyEntryJustification = jType === 'early_entry';
+    const isEarlyLeaveJustification = jType === 'early_leave';
+    const isOvertimeJustification = jType === 'overtime';
+    const isForgetfulnessJustification = jType === 'forgetfulness';
+    const isTimeDeviation = isDelayJustification || isEarlyEntryJustification || isEarlyLeaveJustification || isOvertimeJustification || isForgetfulnessJustification;
+
+    const rawReason = (just.reason || '').trim();
+    const lowerReason = rawReason.toLowerCase();
+    let finalReason = rawReason;
+    if (isEarlyEntryJustification && !lowerReason.includes('entrada antecipada')) {
+      finalReason = `[Entrada Antecipada] ${rawReason}`;
+    } else if (isEarlyLeaveJustification && !lowerReason.includes('saída antecipada') && !lowerReason.includes('saida antecipada')) {
+      finalReason = `[Saída Antecipada] ${rawReason}`;
+    } else if (isDelayJustification && !lowerReason.includes('atraso')) {
+      finalReason = `[Atraso] ${rawReason}`;
+    } else if (isOvertimeJustification && !lowerReason.includes('hora extra')) {
+      finalReason = `[Hora Extra] ${rawReason}`;
+    } else if (isForgetfulnessJustification && !lowerReason.includes('esquecimento') && !lowerReason.includes('esqueci')) {
+      finalReason = `[Esquecimento de Ponto] ${rawReason}`;
+    }
+
     const tempId = `just-${Date.now()}`;
     const newJust: AbsenceJustification = {
       id: tempId,
@@ -1007,7 +1088,7 @@ function AppContent() {
       employeeAvatar: activeEmployee.avatar,
       shiftId: just.shiftId || '',
       date: just.date || getTodayDateString(),
-      reason: just.reason || '',
+      reason: finalReason,
       documentName: just.documentName,
       documentType: just.documentType,
       status: 'pending',
@@ -1016,38 +1097,64 @@ function AppContent() {
 
     setJustifications(prev => [newJust, ...prev]);
     
-    if (just.shiftId) {
+    if (just.shiftId && isTimeDeviation) {
+      const notePrefix = isEarlyEntryJustification
+        ? 'Justificativa Entrada Antecipada'
+        : isEarlyLeaveJustification
+          ? 'Justificativa Saída Antecipada'
+          : isDelayJustification
+            ? 'Justificativa Atraso'
+            : isOvertimeJustification
+              ? 'Justificativa Hora Extra'
+              : 'Justificativa Esquecimento';
       setShifts(prev => prev.map(s => {
         if (s.id === just.shiftId) {
-          const updatedNotes = isDelayJustification
-            ? (s.notes ? `${s.notes} | [Justificativa Atraso: ${just.reason}]` : `[Justificativa Atraso: ${just.reason}]`)
-            : s.notes;
-          return {
-            ...s,
-            attendanceStatus: isDelayJustification ? s.attendanceStatus : 'justified',
-            notes: updatedNotes
-          };
+          const updatedNotes = s.notes
+            ? `${s.notes} | [${notePrefix}: ${rawReason}]`
+            : `[${notePrefix}: ${rawReason}]`;
+          const updatedShift = { ...s, notes: updatedNotes };
+          updateShiftSupabase(updatedShift);
+          return updatedShift;
         }
         return s;
       }));
     }
 
-    if (!isDelayJustification) {
+    if (!isTimeDeviation) {
       setEmployeeTab('justifications');
       showToast('Atestado Enviado', 'Seu atestado/comprovante foi enviado para o RH e Gestor.', 'success');
     } else {
-      showToast('Justificativa Enviada', 'Sua justificativa de atraso foi registrada e enviada para o Gestor.', 'success');
+      const labelToast = isEarlyEntryJustification
+        ? 'entrada antecipada'
+        : isEarlyLeaveJustification
+          ? 'saída antecipada'
+          : isDelayJustification
+            ? 'atraso'
+            : isOvertimeJustification
+              ? 'hora extra'
+              : 'esquecimento de ponto';
+      showToast('Justificativa Enviada', `Sua justificativa de ${labelToast} foi registrada e enviada para o Gestor.`, 'success');
     }
 
     try {
-      const saved = await createJustificativaSupabase(just, activeEmployee);
+      const saved = await createJustificativaSupabase({ ...just, reason: finalReason }, activeEmployee);
       if (saved) {
         setJustifications(prev => prev.map(j => j.id === tempId ? { ...saved, employeeName: activeEmployee.name, employeeAvatar: activeEmployee.avatar } : j));
         // Notifica gestores/RH
         const managers = employees.filter(e => e.roleType === 'gestor' || e.isMasterManager || e.isRh);
-        const notifTitle = isDelayJustification ? 'Nova Justificativa de Atraso' : 'Novo Atestado / Justificativa';
-        const notifMsg = isDelayJustification
-          ? `${activeEmployee.name} enviou justificativa para atraso no dia ${just.date || ''}: "${just.reason}".`
+        const notifTitle = isEarlyEntryJustification
+          ? 'Nova Justificativa de Entrada Antecipada'
+          : isEarlyLeaveJustification
+            ? 'Nova Justificativa de Saída Antecipada'
+            : isDelayJustification
+              ? 'Nova Justificativa de Atraso'
+              : isOvertimeJustification
+                ? 'Nova Justificativa de Hora Extra'
+                : isForgetfulnessJustification
+                  ? 'Nova Justificativa de Esquecimento de Ponto'
+                  : 'Novo Atestado / Justificativa';
+        const notifMsg = isTimeDeviation
+          ? `${activeEmployee.name} enviou justificativa (${notifTitle.replace('Nova Justificativa de ', '')}) no dia ${just.date || ''}: "${rawReason}".`
           : `${activeEmployee.name} enviou atestado/comprovante para ${just.date || 'data de ausência'}.`;
 
         managers.forEach(mgr => {
@@ -1335,30 +1442,58 @@ function AppContent() {
     setJustifications(prev => prev.map(j => j.id === id ? { ...j, status: 'approved', managerNotes: feedback } : j));
     await updateJustificativaStatusSupabase(id, 'approved', feedback);
 
-    // Sincroniza o turno para 'justified' na memória e no Supabase
+    const lowerReason = (target?.reason || '').toLowerCase();
+    const isEarlyLeaveTarget = lowerReason.includes('saída antecipada') || lowerReason.includes('saida antecipada');
+    const isEarlyEntryTarget = lowerReason.includes('entrada antecipada');
+    let isTimeDeviationTarget = lowerReason.includes('atraso') || isEarlyLeaveTarget || isEarlyEntryTarget;
+
     if (target) {
-      let shiftIdToUpdate = target.shiftId;
-      if (!shiftIdToUpdate && target.employeeId && target.date) {
-        const found = shifts.find(s => s.employeeId === target.employeeId && s.date === target.date);
-        shiftIdToUpdate = found?.id;
+      let targetShift = target.shiftId ? shifts.find(s => s.id === target.shiftId) : undefined;
+      if (!targetShift && target.employeeId && target.date) {
+        targetShift = shifts.find(s => s.employeeId === target.employeeId && s.date === target.date);
       }
-      if (shiftIdToUpdate) {
-        setShifts(prev => prev.map(s => s.id === shiftIdToUpdate ? { ...s, attendanceStatus: 'justified' } : s));
-        await updateShiftAttendanceStatusSupabase(shiftIdToUpdate, 'justified');
-      } else if (target.employeeId && target.date) {
-        setShifts(prev => prev.map(s => (s.employeeId === target.employeeId && s.date === target.date) ? { ...s, attendanceStatus: 'justified' } : s));
+
+      if (targetShift) {
+        const hasWorkedPunch = Boolean(targetShift.checkInTime) || targetShift.attendanceStatus === 'late';
+        isTimeDeviationTarget = isTimeDeviationTarget || hasWorkedPunch;
+
+        if (hasWorkedPunch) {
+          const abonoLabel = isEarlyLeaveTarget
+            ? '[ABONO GESTOR: Saída Antecipada Abonada]'
+            : isEarlyEntryTarget
+              ? '[ABONO GESTOR: Entrada Antecipada Abonada]'
+              : '[ABONO GESTOR: Atraso Abonado]';
+          const updatedNotes = targetShift.notes?.includes(abonoLabel)
+            ? targetShift.notes
+            : `${targetShift.notes ? `${targetShift.notes} | ` : ''}${abonoLabel}`;
+          const updatedShift = { ...targetShift, notes: updatedNotes };
+          setShifts(prev => prev.map(s => s.id === targetShift!.id ? updatedShift : s));
+          await updateShiftSupabase(updatedShift);
+        } else {
+          const updatedShift = { ...targetShift, attendanceStatus: 'justified' as const };
+          setShifts(prev => prev.map(s => s.id === targetShift!.id ? updatedShift : s));
+          await updateShiftAttendanceStatusSupabase(targetShift.id, 'justified');
+        }
       }
     }
 
     if (target?.employeeId) {
       await createNotificationSupabase({
         targetEmployeeId: target.employeeId,
-        title: 'Atestado Homologado',
-        message: `Seu atestado médico para ${target.date} foi homologado. Parecer: "${feedback}". As horas do dia foram abonadas.`,
+        title: isTimeDeviationTarget ? 'Justificativa Homologada' : 'Atestado Homologado',
+        message: isTimeDeviationTarget
+          ? `Sua justificativa de horário para ${target.date} foi homologada. Parecer: "${feedback}".`
+          : `Seu atestado médico para ${target.date} foi homologado. Parecer: "${feedback}". As horas do dia foram abonadas.`,
         type: 'justification',
       });
     }
-    showToast('Atestado Homologado', 'O atestado/justificativa foi homologado e o turno atualizado no sistema.', 'success');
+    showToast(
+      isTimeDeviationTarget ? 'Ocorrência Abonada' : 'Atestado Homologado',
+      isTimeDeviationTarget
+        ? 'A justificativa de horário foi homologada pelo gestor.'
+        : 'O atestado/justificativa foi homologado e o turno atualizado no sistema.',
+      'success'
+    );
   };
 
   const handleRejectJustification = async (id: string, customFeedback?: string) => {
@@ -1367,27 +1502,57 @@ function AppContent() {
     setJustifications(prev => prev.map(j => j.id === id ? { ...j, status: 'rejected', managerNotes: feedback } : j));
     await updateJustificativaStatusSupabase(id, 'rejected', feedback);
 
+    const lowerReason = (target?.reason || '').toLowerCase();
+    const isEarlyLeaveTarget = lowerReason.includes('saída antecipada') || lowerReason.includes('saida antecipada');
+    const isEarlyEntryTarget = lowerReason.includes('entrada antecipada');
+    let isTimeDeviationTarget = lowerReason.includes('atraso') || isEarlyLeaveTarget || isEarlyEntryTarget;
+
     if (target) {
-      let shiftIdToUpdate = target.shiftId;
-      if (!shiftIdToUpdate && target.employeeId && target.date) {
-        const found = shifts.find(s => s.employeeId === target.employeeId && s.date === target.date);
-        shiftIdToUpdate = found?.id;
+      let targetShift = target.shiftId ? shifts.find(s => s.id === target.shiftId) : undefined;
+      if (!targetShift && target.employeeId && target.date) {
+        targetShift = shifts.find(s => s.employeeId === target.employeeId && s.date === target.date);
       }
-      if (shiftIdToUpdate) {
-        setShifts(prev => prev.map(s => s.id === shiftIdToUpdate ? { ...s, attendanceStatus: 'absent' } : s));
-        await updateShiftAttendanceStatusSupabase(shiftIdToUpdate, 'absent');
+
+      if (targetShift) {
+        const hasWorkedPunch = Boolean(targetShift.checkInTime) || targetShift.attendanceStatus === 'late';
+        isTimeDeviationTarget = isTimeDeviationTarget || hasWorkedPunch;
+
+        if (hasWorkedPunch) {
+          // Colaborador trabalhou no dia: mantém status trabalhado (não transforma dia trabalhado em falta)
+          const rejectLabel = isEarlyLeaveTarget
+            ? '[AJUSTE GESTOR: Saída Antecipada Não Abonada]'
+            : isEarlyEntryTarget
+              ? '[AJUSTE GESTOR: Entrada Antecipada Não Homologada]'
+              : '[AJUSTE GESTOR: Débito de Atraso Confirmado]';
+          const updatedNotes = targetShift.notes?.includes(rejectLabel)
+            ? targetShift.notes
+            : `${targetShift.notes ? `${targetShift.notes} | ` : ''}${rejectLabel}`;
+          const preservedStatus: Shift['attendanceStatus'] = targetShift.attendanceStatus === 'late' ? 'late' : (targetShift.attendanceStatus || 'present');
+          const updatedShift: Shift = { ...targetShift, attendanceStatus: preservedStatus, notes: updatedNotes };
+          setShifts(prev => prev.map(s => s.id === targetShift!.id ? updatedShift : s));
+          await updateShiftSupabase(updatedShift);
+        } else {
+          setShifts(prev => prev.map(s => s.id === targetShift!.id ? { ...s, attendanceStatus: 'absent' } : s));
+          await updateShiftAttendanceStatusSupabase(targetShift.id, 'absent');
+        }
       }
     }
 
     if (target?.employeeId) {
       await createNotificationSupabase({
         targetEmployeeId: target.employeeId,
-        title: 'Atestado Recusado',
-        message: `Seu atestado médico para ${target.date} não foi homologado. Motivo: "${feedback}".`,
+        title: isTimeDeviationTarget ? 'Justificativa Recusada' : 'Atestado Recusado',
+        message: isTimeDeviationTarget
+          ? `Sua justificativa de horário para ${target.date} não foi homologada. Motivo: "${feedback}".`
+          : `Seu atestado médico para ${target.date} não foi homologado. Motivo: "${feedback}".`,
         type: 'justification',
       });
     }
-    showToast('Atestado Recusado', 'A justificativa foi marcada como não homologada no Supabase.', 'info');
+    showToast(
+      isTimeDeviationTarget ? 'Justificativa Recusada' : 'Atestado Recusado',
+      'A justificativa foi marcada como não homologada no Supabase.',
+      'info'
+    );
   };
 
   const handleApprovePjReport = async (id: string) => {
@@ -1702,7 +1867,7 @@ function AppContent() {
         </div>
       ) : (
         /* EMPLOYEE VIEW */
-        <div className={`flex-1 flex flex-col md:flex-row overflow-hidden ${(employeeTab === 'requests' || employeeTab === 'justifications') && activeEmployee.contractType !== 'PJ' ? (!isDark ? 'bg-[#f4f5f8]' : 'colaborador-page-container') : (!isDark ? 'bg-[#f4f5f8]' : 'bg-[#050104]')}`}>
+        <div className={`flex-1 flex flex-col md:flex-row overflow-hidden ${(employeeTab === 'requests' || employeeTab === 'justifications') && activeEmployee.contractType !== 'PJ' ? (!isDark ? 'bg-[#f4f5f8]' : 'colaborador-page-container') : (!isDark ? 'bg-[#f4f5f8]' : (employeeTab === 'chat' ? 'bg-[#0F1117]' : 'bg-[#050104]'))}`}>
           {/* Full-height Collapsible Sidebar on Desktop / Horizontal Sub-Header Bar on Mobile */}
           <EmployeeSidebar
             activeTab={
@@ -1711,10 +1876,9 @@ function AppContent() {
                 : (employeeTab === 'pj_reports' ? 'overview' : employeeTab)
             }
             onTabChange={(tab) => {
+              setEmployeeTab(tab);
               if (tab === 'chat') {
-                setIsChatModalOpen(true);
-              } else {
-                setEmployeeTab(tab);
+                resetUnreadChatCount();
               }
             }}
             collapsed={sidebarCollapsed}
@@ -1759,8 +1923,10 @@ function AppContent() {
           <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 relative">
             {/* Tab 1: Overview & Digital Punch Clock (Apenas CLT / Temporário) */}
             {activeEmployee.contractType !== 'PJ' && (employeeTab === 'overview' || employeeTab === 'pj_reports') && (() => {
+              const todayIso = getTodayDateString();
               const filteredReminders = (reminders || []).filter(rem => {
                 if (rem.completed) return false;
+                if (rem.date && normalizeDateToISO(rem.date) < todayIso) return false;
                 if (!rem.assignedEmployeeIds || rem.assignedEmployeeIds.length === 0) return true;
                 return rem.assignedEmployeeIds.includes(activeEmployee.id);
               });
@@ -1786,8 +1952,10 @@ function AppContent() {
 
             {/* Tab PJ: Painel & Notas PJ (overview) OU Timesheet & Entregas PJ (pj_reports) */}
             {activeEmployee.contractType === 'PJ' && (employeeTab === 'pj_reports' || employeeTab === 'overview' || employeeTab === 'calendar' || employeeTab === 'requests' || employeeTab === 'justifications') && (() => {
+              const todayIso = getTodayDateString();
               const pjReminders = (reminders || []).filter(rem => {
                 if (rem.completed) return false;
+                if (rem.date && normalizeDateToISO(rem.date) < todayIso) return false;
                 if (!rem.assignedEmployeeIds || rem.assignedEmployeeIds.length === 0) return true;
                 return rem.assignedEmployeeIds.includes(activeEmployee.id);
               });
@@ -2388,40 +2556,47 @@ function AppContent() {
                         <div className={`my-2.5 p-2.5 rounded-xl border flex items-center justify-between gap-2.5 ${
                           !isDark ? 'bg-slate-50 border-slate-200' : 'bg-[#0e0f12] border-[#282a33]'
                         }`}>
-                          <div className="min-w-0 flex-1">
-                            <span className={`text-[9px] uppercase font-bold tracking-wider block font-mono ${
-                              !isDark ? 'text-slate-500' : 'text-slate-400'
-                            }`}>
-                              {just.documentName ? 'Comprovante Anexado' : 'Parecer da Gestão'}
-                            </span>
-                            <span className={`font-medium truncate block text-xs ${
-                              !isDark ? 'text-slate-900' : 'text-white'
-                            }`}>
-                              {just.documentName || just.managerNotes || statusLabel}
-                            </span>
-                          </div>
+                          {(() => {
+                            const hasValidDoc = Boolean(just.documentUrl && just.documentUrl.trim() !== '' && just.documentUrl !== 'null' && just.documentUrl !== 'undefined');
+                            return (
+                              <>
+                                <div className="min-w-0 flex-1">
+                                  <span className={`text-[9px] uppercase font-bold tracking-wider block font-mono ${
+                                    !isDark ? 'text-slate-500' : 'text-slate-400'
+                                  }`}>
+                                    {hasValidDoc ? 'Comprovante Anexado' : 'Parecer da Gestão'}
+                                  </span>
+                                  <span className={`font-medium truncate block text-xs ${
+                                    !isDark ? 'text-slate-900' : 'text-white'
+                                  }`}>
+                                    {hasValidDoc ? (just.documentName || 'Comprovante') : (just.managerNotes || statusLabel)}
+                                  </span>
+                                </div>
 
-                          {just.documentName ? (
-                            <button
-                              type="button"
-                              onClick={() => openDocumentSafe(just.documentUrl, just.documentName)}
-                              className={`shrink-0 text-[10px] font-semibold px-2.5 py-1 rounded-md font-mono border cursor-pointer transition-opacity hover:opacity-80 ${
-                                !isDark
-                                  ? 'text-amber-800 bg-amber-50 border-amber-200'
-                                  : 'text-[#F9DE97] bg-[#F59242]/10 border-[#F59242]/20'
-                              }`}
-                            >
-                              Visualizar
-                            </button>
-                          ) : (
-                            <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-md font-mono border ${
-                              !isDark
-                                ? 'text-slate-600 bg-slate-200 border-slate-300'
-                                : 'text-slate-400 bg-white/5 border-white/10'
-                            }`}>
-                              {statusLabel}
-                            </span>
-                          )}
+                                {hasValidDoc ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => openDocumentSafe(just.documentUrl, just.documentName)}
+                                    className={`shrink-0 text-[10px] font-semibold px-2.5 py-1 rounded-md font-mono border cursor-pointer transition-opacity hover:opacity-80 ${
+                                      !isDark
+                                        ? 'text-amber-800 bg-amber-50 border-amber-200'
+                                        : 'text-[#F9DE97] bg-[#F59242]/10 border-[#F59242]/20'
+                                    }`}
+                                  >
+                                    Visualizar
+                                  </button>
+                                ) : (
+                                  <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-md font-mono border ${
+                                    !isDark
+                                      ? 'text-slate-600 bg-slate-200 border-slate-300'
+                                      : 'text-slate-400 bg-white/5 border-white/10'
+                                  }`}>
+                                    {statusLabel}
+                                  </span>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
 
                         {/* Footer Row: Date Pill & SubmittedAt */}
@@ -2449,33 +2624,17 @@ function AppContent() {
               </div>
             )}
 
-            {/* Tab 5: Chat da Equipe */}
+            {/* Tab 5: Chat da Equipe (Versão Grande igual ao do Gestor) */}
             {employeeTab === 'chat' && (
-              <div className="space-y-4">
-                <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center text-center space-y-4 min-h-[420px]">
-                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#96183c] to-[#f89847] text-white flex items-center justify-center shadow-lg">
-                    <MessageSquare className="w-8 h-8 text-[#faf0ac]" />
-                  </div>
-                  <div className="max-w-md">
-                    <h2 className="text-lg font-extrabold text-slate-900">Chat da Equipe & Gestão em Tempo Real</h2>
-                    <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                      Conectado ao Supabase com canais corporativos (<span className="font-mono text-slate-700">#geral</span>, <span className="font-mono text-slate-700">#escalas</span>), grupos dinâmicos e conversa privada 1 a 1 com a gestão.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsChatModalOpen(true)}
-                    className="px-6 py-3 bg-gradient-to-r from-[#96183c] to-[#f89847] hover:brightness-110 text-white rounded-xl text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center gap-2"
-                  >
-                    <MessageSquare className="w-4 h-4 text-[#faf0ac]" />
-                    <span>Abrir Chat da Equipe</span>
-                    {unreadChatCount > 0 && (
-                      <span className="px-2 py-0.5 bg-white text-[#96183c] rounded-full text-[11px] font-extrabold shadow-sm">
-                        {unreadChatCount} {unreadChatCount === 1 ? 'nova' : 'novas'}
-                      </span>
-                    )}
-                  </button>
-                </div>
+              <div className={`w-full font-sans space-y-4 select-none manager-scope ${theme}`}>
+                <ChatModal
+                  isOpen={true}
+                  embedded={true}
+                  onClose={() => setEmployeeTab('overview')}
+                  currentEmployee={activeEmployee}
+                  employees={employees}
+                  isLightTheme={!isDark}
+                />
               </div>
             )}
 

@@ -84,12 +84,13 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
     title: 'Novo turno', startTime: '09:00', endTime: '18:00', breakMinutes: 60,
   });
 
-  const exportCsv = (targetMonth?: string) => {
+  const exportCsv = (targetMonth?: string, targetDept?: string) => {
     // Relatório de Auditoria de Ponto & Banco de Horas (Conformidade Portaria MTE 671/2021)
     const headers = [
       'Colaborador',
+      'Matrícula',
       'Departamento',
-      'Data',
+      'Data do Turno',
       'Início Previsto',
       'Fim Previsto',
       'Entrada Registrada',
@@ -104,8 +105,8 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
       'Parecer / Auditoria Legal (Portaria 671)'
     ];
 
-    // Se especificado targetMonth (ex: '2026-10'), filtra apenas turnos do mês correspondente
-    const targetShifts = targetMonth && targetMonth !== 'all'
+    // Se especificado targetMonth (ex: '2026-10') e/ou targetDept, filtra os turnos correspondentes
+    const monthFilteredShifts = targetMonth && targetMonth !== 'all'
       ? shifts.filter(s => {
           if (!s.date) return false;
           const iso = normalizeDateToISO(s.date);
@@ -113,9 +114,17 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
         })
       : shifts;
 
+    const targetShifts = targetDept && targetDept !== 'all'
+      ? monthFilteredShifts.filter(s => {
+          const emp = employees.find(e => e.id === s.employeeId);
+          return (emp?.department || 'Geral') === targetDept;
+        })
+      : monthFilteredShifts;
+
     const rows = targetShifts.map(s => {
       const emp = employees.find(e => e.id === s.employeeId);
       const name = `"${(emp?.name || 'Não informado').replace(/"/g, '""')}"`;
+      const matricula = `"${(emp?.registrationId || '—').replace(/"/g, '""')}"`;
       const dept = `"${(emp?.department || 'Geral').replace(/"/g, '""')}"`;
       
       // Formata a data para padrão brasileiro DD/MM/AAAA no CSV
@@ -183,14 +192,21 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
         auditStatus = 'Atestado médico homologado com abono legal';
       }
 
+      const safeDateForExcel = date ? `="${date}"` : '"—"';
+      const safeStart = `="${scheduledStart}"`;
+      const safeEnd = `="${scheduledEnd}"`;
+      const safeRealIn = `="${realIn}"`;
+      const safeRealOut = `="${realOut}"`;
+
       return [
         name,
+        matricula,
         dept,
-        date,
-        scheduledStart,
-        scheduledEnd,
-        realIn,
-        realOut,
+        safeDateForExcel,
+        safeStart,
+        safeEnd,
+        safeRealIn,
+        safeRealOut,
         `"${scheduledHours}h"`,
         `"${realHoursFormatted}"`,
         `"${saldoFormatted}"`,
