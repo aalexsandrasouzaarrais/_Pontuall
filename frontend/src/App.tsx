@@ -742,7 +742,7 @@ function AppContent() {
 
 
   // Check-In / Check-Out handler for employee
-  const handleCheckIn = (
+  const handleCheckIn = async (
     shiftId: string,
     locationData: {
       address: string;
@@ -756,10 +756,20 @@ function AppContent() {
     punchType: 'entrada' | 'saida' = 'entrada',
     notesOrReason?: string,
     simulatedTime?: string
-  ) => {
+  ): Promise<string> => {
     const now = new Date();
-    const timeStr = simulatedTime || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    let effectiveNowIso = now.toISOString();
+    let timeStr = simulatedTime || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const targetShift = shifts.find(s => s.id === shiftId);
+
+    // Salva na TAB_Registro_Ponto primeiro e usa o horário oficial do servidor para evitar drift cliente x banco
+    const savedPunch = await registerPunchSupabase(shiftId, activeEmployee.id, locationData, punchType);
+    if (!simulatedTime && savedPunch?.timeStr) {
+      timeStr = savedPunch.timeStr;
+    }
+    if (!simulatedTime && savedPunch?.timestamp) {
+      effectiveNowIso = savedPunch.timestamp;
+    }
 
     // Avaliação de tolerância conforme Art. 58 § 1º CLT
     let punchAttendanceStatus: 'present' | 'late' = 'present';
@@ -784,9 +794,7 @@ function AppContent() {
         earlyLeaveDiffMinutes = tol.diffMinutes;
       }
     }
-    
-    // Salva o registro de ponto na TAB_Registro_Ponto no Supabase com coordenadas reais e tipo
-    registerPunchSupabase(shiftId, activeEmployee.id, locationData, punchType);
+
     if (punchType === 'entrada') {
       updateShiftAttendanceStatusSupabase(shiftId, punchAttendanceStatus);
     }
@@ -821,7 +829,7 @@ function AppContent() {
               accuracy: locationData.accuracy,
               distanceMeters: locationData.distanceMeters,
               reportedWorkplace: locationData.reportedWorkplace,
-              timestamp: now.toISOString(),
+              timestamp: effectiveNowIso,
             }
           };
           if (updatedNotes !== (s.notes || '')) {
@@ -855,7 +863,7 @@ function AppContent() {
               accuracy: locationData.accuracy,
               distanceMeters: locationData.distanceMeters,
               reportedWorkplace: locationData.reportedWorkplace,
-              timestamp: now.toISOString(),
+              timestamp: effectiveNowIso,
             }
           };
           if (updatedNotes !== (s.notes || '')) {
@@ -963,6 +971,8 @@ function AppContent() {
         });
       });
     }
+
+    return timeStr;
   };
 
   const handleUpdateEmployee = async (updated: Employee) => {

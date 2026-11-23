@@ -69,7 +69,7 @@ import {
 import { EmployeesManagementView } from '@/modules/manager/components/EmployeesManagementView';
 import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
 import { DeleteShiftsModal } from './DeleteShiftsModal';
-import { addDaysLocal, startOfWeekMonday, toLocalDateString, getTodayDateString, formatDateBR, normalizeDateToISO, isShiftPast24hWithoutPunch, evaluatePunchTolerance } from '@/shared/utils/dateUtils';
+import { addDaysLocal, startOfWeekMonday, toLocalDateString, getTodayDateString, formatDateBR, normalizeDateToISO, isShiftPast24hWithoutPunch, evaluatePunchTolerance, parseDateSortTimestamp, matchesDateSearchQuery } from '@/shared/utils/dateUtils';
 import { showPolishedToast } from '@/components/ui/halo-toast';
 import {
   ReminderItem,
@@ -82,19 +82,6 @@ import {
 import { updateJustificativaStatusSupabase, updateSolicitacaoStatusSupabase } from '@/modules/requests/services/requestService';
 import { openDocumentSafe } from '@/shared/services/storageService';
 import { createNotificationSupabase } from '@/modules/notifications/services/notificationService';
-
-const parseDateSortTimestamp = (d?: string | Date | null): number => {
-  if (!d) return 0;
-  if (d instanceof Date) return isNaN(d.getTime()) ? 0 : d.getTime();
-  const clean = String(d).trim();
-  const iso = normalizeDateToISO(clean);
-  if (iso) {
-    const t = new Date(iso + 'T12:00:00').getTime();
-    if (!isNaN(t)) return t;
-  }
-  const fallback = new Date(clean).getTime();
-  return isNaN(fallback) ? 0 : fallback;
-};
 
 interface ManagerMatrixGridProps {
   employees: Employee[];
@@ -1763,7 +1750,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         let s = rawShift;
         if (livePunches.length > 0 && (!s.checkInTime || !s.checkOutTime)) {
           const matching = livePunches.filter(p => {
-            if (p.Idf_Turno && p.Idf_Turno === s.id) return true;
+            if (p.Idf_Turno) return p.Idf_Turno === s.id;
             if (p.Idf_Colaborador === s.employeeId && p.Dta_Hora_Registro) {
               const dt = new Date(p.Dta_Hora_Registro);
               const localIso = !isNaN(dt.getTime()) ? toLocalDateString(dt) : p.Dta_Hora_Registro.slice(0, 10);
@@ -3562,35 +3549,33 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       {activeTab === 'aprovacoes' && (() => {
         // KPI calculations
         const pendingCount = approvalsData.filter(i => i.status === 'Pendente').length;
-        const faltasCount = approvalsData.filter(i => i.status === 'Falta Lançada' || i.status === 'Recusado / Falta').length;
-        const atestadosCount = approvalsData.filter(i => i.documentName && i.documentName.toLowerCase().includes('.pdf') && i.documentName !== 'Sem anexo' && i.documentName !== 'Não se aplica').length;
+        const atestadosCount = approvalsData.filter(i =>
+          Boolean(i.documentUrl && i.documentUrl.trim() !== '' && i.documentUrl !== 'null' && i.documentUrl !== 'undefined')
+        ).length;
+        const currentMonthPrefix = getTodayDateString().slice(0, 7);
+        const faltasMesRows = approvalsData.filter(i =>
+          (i.type === 'Falta Não Justificada' || i.type === 'Falta Justificada' || i.status === 'Falta Lançada' || i.status === 'Recusado / Falta') &&
+          normalizeDateToISO(i.date || '').startsWith(currentMonthPrefix)
+        );
+        const faltasJustificadasMes = faltasMesRows.filter(i => i.type === 'Falta Justificada' || i.status === 'Aprovado').length;
+        const evaluatedReportRows = reportRows.filter(r => r.status !== 'Pendente');
+        const unexcusedReportAbsences = evaluatedReportRows.filter(r => r.status === 'Ausente').length;
+        const assiduidadePct = evaluatedReportRows.length > 0
+          ? Math.round(((evaluatedReportRows.length - unexcusedReportAbsences) / evaluatedReportRows.length) * 100)
+          : null;
 
         // Filter items
         const filteredApprovals = approvalsData.filter(row => {
           // Search filter (colaborador, cargo, setor, tipo, motivo ou data igual ao Relatório de Presenças)
           if (approvalsSearch.trim()) {
             const q = approvalsSearch.toLowerCase().trim();
-            const formattedRowDate = formatDateToDDMMAAAA(row.date || '');
-            const matchName = row.employeeName.toLowerCase().includes(q);
-            const matchRole = row.employeeRole.toLowerCase().includes(q);
+            const matchName = (row.employeeName || '').toLowerCase().includes(q);
+            const matchRole = (row.employeeRole || '').toLowerCase().includes(q);
             const matchDept = (row.employeeDept || '').toLowerCase().includes(q);
-            const matchType = row.type.toLowerCase().includes(q);
-            const matchReason = row.reason.toLowerCase().includes(q);
-            const matchDateRaw = (row.date || '').toLowerCase().includes(q);
-            const matchDateFormatted = formattedRowDate.toLowerCase().includes(q);
-            const matchDateSlash = formattedRowDate.replace(/-/g, '/').toLowerCase().includes(q);
-            const matchDateDash = formattedRowDate.replace(/\//g, '-').toLowerCase().includes(q);
-            if (
-              !matchName &&
-              !matchRole &&
-              !matchDept &&
-              !matchType &&
-              !matchReason &&
-              !matchDateRaw &&
-              !matchDateFormatted &&
-              !matchDateSlash &&
-              !matchDateDash
-            ) {
+            const matchType = (row.type || '').toLowerCase().includes(q);
+            const matchReason = (row.reason || '').toLowerCase().includes(q);
+            const matchDate = matchesDateSearchQuery(row.date, q);
+            if (!matchName && !matchRole && !matchDept && !matchType && !matchReason && !matchDate) {
               return false;
             }
           }
@@ -3739,15 +3724,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 },
                 { 
                   label: 'Faltas Registradas no Mês', 
-                  value: String(faltasCount).padStart(2, '0'), 
-                  sub: '-25% em relação ao mês anterior', 
+                  value: String(faltasMesRows.length).padStart(2, '0'), 
+                  sub: faltasJustificadasMes > 0 ? `${faltasJustificadasMes} abonada(s) no mês` : 'Ocorrências no mês atual', 
                   dotColor: '#e90045', 
                   dotGlow: '#e90045',
                   hasDotInSub: false
                 },
                 { 
                   label: 'Atestados Anexados', 
-                  value: String(Math.max(atestadosCount, 8)).padStart(2, '0'), 
+                  value: String(atestadosCount).padStart(2, '0'), 
                   sub: 'Comprovantes anexados pelo colaborador', 
                   dotColor: '#38bdf8', 
                   dotGlow: '#38bdf8',
@@ -3755,8 +3740,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 },
                 { 
                   label: 'Taxa de Assiduidade', 
-                  value: '96%', 
-                  sub: '▲ Meta atingida (+2%)', 
+                  value: assiduidadePct !== null ? `${assiduidadePct}%` : '—', 
+                  sub: assiduidadePct === null ? 'Sem turnos apurados' : assiduidadePct >= 95 ? '▲ Meta atingida (≥ 95%)' : 'Abaixo da meta (95%)', 
                   dotColor: '#49d982', 
                   dotGlow: '#49d982',
                   hasDotInSub: false
@@ -4839,12 +4824,49 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           <div className="space-y-6 animate-in fade-in duration-200">
               {/* KPI Cards Estilo Widget da LP */}
               <div className="attendance-report-kpis grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
-                {[
-                  { label: 'Taxa de Presença', value: '96%', sub: '▲ +2.4% acima da meta', dotColor: '#49d982', dotGlow: '#49d982' },
-                  { label: 'Colaboradores Ativos', value: '48', sub: 'Total cadastrado na base', dotColor: '#F59242', dotGlow: '#F59242' },
-                  { label: 'Escalas Hoje', value: '24', sub: 'Diurnas e noturnas', dotColor: '#F9DE97', dotGlow: '#F9DE97' },
-                  { label: 'Faltas no Período', value: '02', sub: '1 abonada c/ atestado', dotColor: '#9F243C', dotGlow: '#9F243C' },
-                ].map((kpi, i) => (
+                {(() => {
+                  const todayIso = getTodayDateString();
+                  const todayShiftsList = shifts.filter(s => normalizeDateToISO(s.date) === todayIso);
+                  const todayWithPunch = todayShiftsList.filter(s => Boolean(s.checkInTime)).length;
+                  const evaluatedRelRows = reportRows.filter(r => r.status !== 'Pendente');
+                  const unexcusedRelAbsences = evaluatedRelRows.filter(r => r.status === 'Ausente').length;
+                  const presencaPct = evaluatedRelRows.length > 0
+                    ? Math.round(((evaluatedRelRows.length - unexcusedRelAbsences) / evaluatedRelRows.length) * 100)
+                    : null;
+                  const periodAbsenceRows = reportRows.filter(r => r.status === 'Ausente' || (r.status === 'Justificado' && r.punchReal === 'Sem registro'));
+                  const periodJustifiedAbsences = periodAbsenceRows.filter(r => r.status === 'Justificado').length;
+
+                  return [
+                    {
+                      label: 'Taxa de Presença',
+                      value: presencaPct !== null ? `${presencaPct}%` : '—',
+                      sub: presencaPct === null ? 'Sem turnos apurados' : presencaPct >= 95 ? '▲ Meta atingida (≥ 95%)' : 'Abaixo da meta (95%)',
+                      dotColor: '#49d982',
+                      dotGlow: '#49d982',
+                    },
+                    {
+                      label: 'Colaboradores Ativos',
+                      value: String(employees.length).padStart(2, '0'),
+                      sub: 'Total cadastrado na base',
+                      dotColor: '#F59242',
+                      dotGlow: '#F59242',
+                    },
+                    {
+                      label: 'Escalas Hoje',
+                      value: String(todayShiftsList.length).padStart(2, '0'),
+                      sub: todayShiftsList.length > 0 ? `${todayWithPunch} com ponto registrado` : 'Nenhuma escala para hoje',
+                      dotColor: '#F9DE97',
+                      dotGlow: '#F9DE97',
+                    },
+                    {
+                      label: 'Faltas no Período',
+                      value: String(periodAbsenceRows.length).padStart(2, '0'),
+                      sub: periodJustifiedAbsences > 0 ? `${periodJustifiedAbsences} abonada(s) c/ justificativa` : 'Nenhuma falta abonada no período',
+                      dotColor: '#9F243C',
+                      dotGlow: '#9F243C',
+                    },
+                  ];
+                })().map((kpi, i) => (
                   <div 
                     key={i} 
                     className={`approval-kpi attendance-report-kpi p-5 rounded-2xl border space-y-2 transition-transform hover:-translate-y-1 ${
@@ -4968,8 +4990,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   </thead>
                   <tbody>
                     {reportRows.filter(row => {
-                      const formattedRowDate = formatDateToDDMMAAAA(row.date);
-                      
                       if (relatorioDate) {
                         if (normalizeDateToISO(row.date) !== normalizeDateToISO(relatorioDate)) {
                           return false;
@@ -4981,12 +5001,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                         const matchName = (row.name || '').toLowerCase().includes(q);
                         const matchDept = (row.dept || '').toLowerCase().includes(q);
                         const matchRole = (row.role || '').toLowerCase().includes(q);
-                        const matchDateRaw = (row.date || '').toLowerCase().includes(q);
-                        const matchDateFormatted = formattedRowDate.toLowerCase().includes(q);
-                        const matchDateSlash = formattedRowDate.replace(/-/g, '/').toLowerCase().includes(q);
-                        const matchDateDash = formattedRowDate.replace(/\//g, '-').toLowerCase().includes(q);
+                        const matchDate = matchesDateSearchQuery(row.date, q);
                         const matchApuracao = (row.apuracao || '').toLowerCase().includes(q);
-                        if (!matchName && !matchDept && !matchRole && !matchDateRaw && !matchDateFormatted && !matchDateSlash && !matchDateDash && !matchApuracao) {
+                        if (!matchName && !matchDept && !matchRole && !matchDate && !matchApuracao) {
                           return false;
                         }
                       }

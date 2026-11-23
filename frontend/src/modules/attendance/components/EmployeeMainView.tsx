@@ -30,6 +30,7 @@ import { getWeekDates,
   evaluatePunchTolerance,
   isShiftPast24hWithoutPunch, formatDateBR, addDaysLocal, toLocalDateString, normalizeDateToISO } from '@/shared/utils/dateUtils';
 import { ReminderDetailModal } from './ReminderDetailModal';
+import { selectActiveTodayShift, isDirectionalForgetfulnessMatch } from '@/shared/utils/attendanceUtils';
 import { getCurrentCoordinates, reverseGeocode, validateGeofence, calculateHaversineDistance } from '@/shared/utils/geolocation';
 import { findWorkplaceByName, getStoredWorkplaces } from '@/shared/services/workplaceService';
 import { supabase } from '@/shared/services/supabase';
@@ -62,7 +63,7 @@ interface EmployeeMainViewProps {
     punchType?: 'entrada' | 'saida',
     notesOrReason?: string,
     simulatedTime?: string
-  ) => void;
+  ) => void | string | Promise<string | void>;
   onNavigateToCalendar: () => void;
   onNavigateToRequests: () => void;
   onNavigateToJustifications: () => void;
@@ -100,6 +101,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
   const [historyFilter, setHistoryFilter] = useState<'all' | 'presencas' | 'faltas' | 'atrasos' | 'justificados'>('all');
   const [dbPunches, setDbPunches] = useState<any[]>([]);
   const [isLoadingPunches, setIsLoadingPunches] = useState(false);
+  const [selectedTodayShiftId, setSelectedTodayShiftId] = useState<string | null>(null);
 
   const loadPunches = async () => {
     setIsLoadingPunches(true);
@@ -132,7 +134,14 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
     s => s.employeeId === employee.id && s.status === 'published'
   );
 
-  const todayShift = empShifts.find(s => s.date === todayStr);
+  const todayShifts = React.useMemo(
+    () =>
+      empShifts
+        .filter(s => s.date === todayStr)
+        .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || '')),
+    [empShifts, todayStr]
+  );
+  const todayShift = selectActiveTodayShift(todayShifts, selectedTodayShiftId);
 
   const weeklyShifts = empShifts.filter(
     s => currentWeekDateStrings.includes(s.date)
@@ -217,12 +226,8 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
       const isEntryPunch = rawKind === 'delay' || rawKind === 'early_entry';
       const mentionsForgetEntry = (t: string) => t.includes('esquecimento de entrada');
       const mentionsForgetExit = (t: string) => t.includes('esquecimento de saída') || t.includes('esquecimento de saida');
-      const forgetMatchesDirection = (t: string) => {
-        const hasEntry = mentionsForgetEntry(t);
-        const hasExit = mentionsForgetExit(t);
-        if (!hasEntry && !hasExit) return true; // registros legados sem direção
-        return isEntryPunch ? hasEntry : hasExit;
-      };
+      const forgetMatchesDirection = (t: string) =>
+        isDirectionalForgetfulnessMatch(t, isEntryPunch ? 'entry' : 'exit');
       const forgetJust = rawKind === 'forgetfulness' ? undefined : (justifications || []).find(j => {
         const jDate = (j.date || (j as any).Dta_Ausencia || '').slice(0, 10);
         const isThisEmp = !j.employeeId || j.employeeId === employee.id;
@@ -783,7 +788,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
           .from('TAB_Registro_Ponto')
           .delete()
           .eq('Idf_Colaborador', employee.id)
-          .gte('Dat_Registro', `${todayStr}T00:00:00`);
+          .gte('Dta_Hora_Registro', `${todayStr}T00:00:00`);
       }
     } catch (err) {
       console.warn('Erro ao limpar ponto:', err);
@@ -801,10 +806,59 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
     }, 'entrada');
   };
 
+  const showPunchToleranceToast = (punchType: 'entrada' | 'saida', shift: Shift, timeStr: string) => {
+    if (punchType === 'saida' && shift.endTime) {
+      const tol = evaluatePunchTolerance(shift.endTime, timeStr, 'saida', 10);
+      if (tol.isOvertime) {
+        showPolishedToast({
+          id: 'overtime-punch-toast',
+          title: `Saída Registrada (+${tol.diffMinutes} min)`,
+          description: `Batida registrada às ${timeStr} com permanência além do horário contratual. Se desejar justificar, acesse "Minhas Ocorrências".`,
+          rimVariant: 'default',
+          duration: 6000,
+          closeButton: true,
+        });
+      } else if (tol.isEarlyLeave) {
+        showPolishedToast({
+          id: 'early-leave-punch-toast',
+          title: `Saída Antecipada (-${Math.abs(tol.diffMinutes)} min)`,
+          description: `Batida registrada às ${timeStr}. Se possuir justificativa ou autorização, acesse "Minhas Ocorrências".`,
+          rimVariant: 'default',
+          duration: 6000,
+          closeButton: true,
+        });
+      }
+    } else if (punchType === 'entrada' && shift.startTime) {
+      const tol = evaluatePunchTolerance(shift.startTime, timeStr, 'entrada', 10);
+      if (tol.isLate) {
+        showPolishedToast({
+          id: 'late-punch-toast',
+          title: `Entrada Registrada (-${tol.diffMinutes} min de atraso)`,
+          description: `Batida registrada às ${timeStr}. Você pode anexar comprovante médico ou justificativa em "Minhas Ocorrências".`,
+          rimVariant: 'default',
+          duration: 6000,
+          closeButton: true,
+        });
+      } else if (tol.isEarly) {
+        showPolishedToast({
+          id: 'early-entry-toast',
+          title: 'Entrada Antecipada',
+          description: `Batida registrada às ${timeStr} antes do início previsto da escala.`,
+          rimVariant: 'default',
+          duration: 5000,
+          closeButton: true,
+        });
+      }
+    }
+  };
+
   const executePunchClock = async (forceType?: 'entrada' | 'saida', notesOrReason?: string, simulatedTime?: string) => {
     if (!todayShift) return;
     const punchType: 'entrada' | 'saida' = forceType || (hasCheckedIn ? 'saida' : 'entrada');
-    const targetShiftId = todayShift.id;
+    const targetShift = todayShift;
+    const targetShiftId = targetShift.id;
+    const nowFallback = new Date();
+    const fallbackTime = simulatedTime || `${String(nowFallback.getHours()).padStart(2, '0')}:${String(nowFallback.getMinutes()).padStart(2, '0')}`;
     setGpsError(null);
     setIsCapturingGps(true);
 
@@ -842,8 +896,8 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
         }
       }
 
-      // 4. Executa o check-in com dados reais, tipo (entrada ou saida), justificativa e horário simulado se aplicável
-      onCheckIn(targetShiftId, {
+      // 4. Executa o check-in e usa o horário oficial retornado pelo servidor para exibir o toast
+      const recordedTime = (await onCheckIn(targetShiftId, {
         address: formattedAddress,
         gpsValidated,
         latitude: coords.latitude,
@@ -851,23 +905,26 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
         accuracy: coords.accuracy,
         distanceMeters,
         reportedWorkplace,
-      }, punchType, notesOrReason, simulatedTime);
+      }, punchType, notesOrReason, simulatedTime)) || fallbackTime;
 
+      showPunchToleranceToast(punchType, targetShift, recordedTime);
       setCheckInSuccess(true);
       setTimeout(() => setCheckInSuccess(false), 5000);
-      loadPunches();
+      await loadPunches();
     } catch (err: any) {
       console.warn('Fallback de GPS para registro de ponto:', err);
       // Fallback gracioso para garantir registro mesmo se GPS bloqueado no navegador
-      onCheckIn(targetShiftId, {
+      const recordedTime = (await onCheckIn(targetShiftId, {
         address: 'Localização Registrada (Modo Navegador)',
         gpsValidated: true,
         latitude: -23.5505,
         longitude: -46.6333,
-      }, punchType, notesOrReason, simulatedTime);
+      }, punchType, notesOrReason, simulatedTime)) || fallbackTime;
+
+      showPunchToleranceToast(punchType, targetShift, recordedTime);
       setCheckInSuccess(true);
       setTimeout(() => setCheckInSuccess(false), 5000);
-      loadPunches();
+      await loadPunches();
     } finally {
       setIsCapturingGps(false);
     }
@@ -889,56 +946,6 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
     }
 
     const punchType: 'entrada' | 'saida' = forceType || (hasCheckedIn ? 'saida' : 'entrada');
-    const now = new Date();
-    const timeStr = simulatedTime || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-
-    // Verificação de Tolerância CLT para Saída (Sinalização não bloqueante)
-    if (punchType === 'saida' && todayShift.endTime) {
-      const tol = evaluatePunchTolerance(todayShift.endTime, timeStr, 'saida', 10);
-      if (tol.isOvertime) {
-        showPolishedToast({
-          id: 'overtime-punch-toast',
-          title: `Saída Registrada (+${tol.diffMinutes} min)`,
-          description: `Batida registrada às ${timeStr} com permanência além do horário contratual. Se desejar justificar, acesse "Minhas Ocorrências".`,
-          rimVariant: 'default',
-          duration: 6000,
-          closeButton: true,
-        });
-      } else if (tol.isEarlyLeave) {
-        showPolishedToast({
-          id: 'early-leave-punch-toast',
-          title: `Saída Antecipada (-${Math.abs(tol.diffMinutes)} min)`,
-          description: `Batida registrada às ${timeStr}. Se possuir justificativa ou autorização, acesse "Minhas Ocorrências".`,
-          rimVariant: 'default',
-          duration: 6000,
-          closeButton: true,
-        });
-      }
-    }
-
-    // Verificação de Tolerância CLT para Entrada (Sinalização não bloqueante)
-    if (punchType === 'entrada' && todayShift.startTime) {
-      const tol = evaluatePunchTolerance(todayShift.startTime, timeStr, 'entrada', 10);
-      if (tol.isLate) {
-        showPolishedToast({
-          id: 'late-punch-toast',
-          title: `Entrada Registrada (+${tol.diffMinutes} min de atraso)`,
-          description: `Batida registrada às ${timeStr}. Você pode anexar comprovante médico ou justificativa em "Minhas Ocorrências".`,
-          rimVariant: 'default',
-          duration: 6000,
-          closeButton: true,
-        });
-      } else if (tol.isEarly) {
-        showPolishedToast({
-          id: 'early-entry-toast',
-          title: 'Entrada Antecipada',
-          description: `Batida registrada às ${timeStr} antes do início previsto da escala.`,
-          rimVariant: 'default',
-          duration: 5000,
-          closeButton: true,
-        });
-      }
-    }
 
     // Registra o ponto imediatamente em 1 clique (Ponto Rápido, sem bloqueio de tela!)
     executePunchClock(punchType, undefined, simulatedTime);
@@ -1195,6 +1202,32 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                     }`}>
                       {todayShift?.title || 'Comercial (5x2)'}
                     </span>
+                    {todayShifts.length > 1 && (
+                      <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                        {todayShifts.map((s, idx) => {
+                          const isActive = s.id === todayShift?.id;
+                          const isCompleted = Boolean(s.checkInTime && s.checkOutTime);
+                          return (
+                            <button
+                              key={s.id}
+                              type="button"
+                              onClick={() => setSelectedTodayShiftId(s.id)}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-all cursor-pointer ${
+                                isActive
+                                  ? 'bg-[#96183c] border-[#96183c] text-white shadow-xs'
+                                  : isLightTheme
+                                    ? 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                                    : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
+                              }`}
+                              title={s.title || `Turno ${idx + 1}`}
+                            >
+                              {isCompleted && <Check className="w-2.5 h-2.5" />}
+                              <span>Turno {idx + 1} • {s.startTime}–{s.endTime}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
 
