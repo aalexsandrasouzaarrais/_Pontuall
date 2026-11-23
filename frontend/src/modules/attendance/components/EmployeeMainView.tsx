@@ -208,9 +208,36 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
       shift: Shift,
       dateStr: string,
       diffMin: number,
-      kind: 'delay' | 'early_entry' | 'early_leave' | 'overtime' | 'forgetfulness'
+      rawKind: 'delay' | 'early_entry' | 'early_leave' | 'overtime' | 'forgetfulness'
     ): OccurrenceItem['delayInfo'] => {
       const notes = shift.notes || '';
+      const notesLower = notes.toLowerCase();
+
+      // Esquecimento é direcional: um esquecimento de SAÍDA não pode contaminar a batida de ENTRADA do mesmo turno (e vice-versa)
+      const isEntryPunch = rawKind === 'delay' || rawKind === 'early_entry';
+      const mentionsForgetEntry = (t: string) => t.includes('esquecimento de entrada');
+      const mentionsForgetExit = (t: string) => t.includes('esquecimento de saída') || t.includes('esquecimento de saida');
+      const forgetMatchesDirection = (t: string) => {
+        const hasEntry = mentionsForgetEntry(t);
+        const hasExit = mentionsForgetExit(t);
+        if (!hasEntry && !hasExit) return true; // registros legados sem direção
+        return isEntryPunch ? hasEntry : hasExit;
+      };
+      const forgetJust = rawKind === 'forgetfulness' ? undefined : (justifications || []).find(j => {
+        const jDate = (j.date || (j as any).Dta_Ausencia || '').slice(0, 10);
+        const isThisEmp = !j.employeeId || j.employeeId === employee.id;
+        if (!isThisEmp || !(j.shiftId === shift.id || jDate === dateStr)) return false;
+        const rLower = (j.reason || '').toLowerCase();
+        const isForget = rLower.includes('[esquecimento') || (j as any).justificationType === 'forgetfulness';
+        return isForget && forgetMatchesDirection(rLower);
+      });
+      const notesHaveDirectionalForget = isEntryPunch ? mentionsForgetEntry(notesLower) : mentionsForgetExit(notesLower);
+      const notesHaveLegacyForget = notesLower.includes('esquecimento') && !mentionsForgetEntry(notesLower) && !mentionsForgetExit(notesLower);
+      const kind: 'delay' | 'early_entry' | 'early_leave' | 'overtime' | 'forgetfulness' =
+        rawKind === 'forgetfulness' || forgetJust || notesHaveDirectionalForget || notesHaveLegacyForget
+          ? 'forgetfulness'
+          : rawKind;
+      const forgetDirLabel = isEntryPunch ? 'esquecimento de entrada' : 'esquecimento de saída';
       const tagRegex = kind === 'early_entry'
         ? /\[Entrada Antecipada \d+m:\s*([^\]]+)\]/i
         : kind === 'early_leave'
@@ -218,9 +245,11 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
           : kind === 'overtime'
             ? /\[HE \+\d+m:\s*([^\]]+)\]/i
             : kind === 'forgetfulness'
-              ? /\[Esquecimento[^:]*:\s*([^\]]+)\]/i
+              ? (isEntryPunch
+                  ? /\[Esquecimento de Entrada[^:]*:\s*([^\]]+)\]/i
+                  : /\[Esquecimento de Sa[íi]da[^:]*:\s*([^\]]+)\]/i)
               : /\[Atraso \d+m:\s*([^\]]+)\]/i;
-      const matchNote = notes.match(tagRegex);
+      const matchNote = notes.match(tagRegex) || (kind === 'forgetfulness' && notesHaveLegacyForget ? notes.match(/\[Esquecimento[^:]*:\s*([^\]]+)\]/i) : null);
       const rawNoteReason = matchNote ? matchNote[1].trim() : '';
       const lowerNote = rawNoteReason.toLowerCase();
       const hasSubmittedNoteReason = Boolean(
@@ -229,7 +258,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
         !lowerNote.includes('aguardando justificativa')
       );
 
-      const matchingJust = (justifications || []).find(j => {
+      const matchingJust = kind === 'forgetfulness' && forgetJust ? forgetJust : (justifications || []).find(j => {
         const jDate = (j.date || (j as any).Dta_Ausencia || '').slice(0, 10);
         const isThisEmp = !j.employeeId || j.employeeId === employee.id;
         if (!isThisEmp || !(j.shiftId === shift.id || jDate === dateStr)) return false;
@@ -239,7 +268,8 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
         if (kind === 'early_entry') return rLower.includes('entrada antecipada') || jType === 'early_entry';
         if (kind === 'early_leave') return rLower.includes('saída antecipada') || rLower.includes('saida antecipada') || jType === 'early_leave';
         if (kind === 'overtime') return rLower.includes('hora extra') || jType === 'overtime';
-        if (kind === 'forgetfulness') return rLower.includes('esquecimento') || rLower.includes('esqueci') || jType === 'forgetfulness';
+        if (kind === 'forgetfulness') return (rLower.includes('[esquecimento') || jType === 'forgetfulness') && forgetMatchesDirection(rLower);
+        if (rLower.includes('[esquecimento') || jType === 'forgetfulness') return false;
         return rLower.includes('atraso') || jType === 'delay';
       });
 
@@ -247,20 +277,19 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
 
       const isManagerAbonado =
         justStatus === 'approved' ||
-        notes.includes('HOMOLOGADO GESTOR') ||
         (kind === 'delay' && (notes.includes('[ABONO GESTOR: Atraso') || shift.attendanceStatus === 'justified')) ||
         (kind === 'early_entry' && notes.includes('[ABONO GESTOR: Entrada Antecipada')) ||
         (kind === 'early_leave' && notes.includes('[ABONO GESTOR: Saída Antecipada')) ||
         (kind === 'overtime' && (notes.includes('[HOMOLOGADO GESTOR: Hora Extra') || notes.includes('[ABONO GESTOR: HE') || notes.includes('Hora Extra Aprovada'))) ||
-        (kind === 'forgetfulness' && (notes.includes('Esquecimento Homologado') || notes.includes('HOMOLOGADO')));
+        (kind === 'forgetfulness' && (notesLower.includes(`${forgetDirLabel} homologado`) || (notesHaveLegacyForget && notes.includes('Esquecimento Homologado'))));
 
       const isManagerRejected =
         justStatus === 'rejected' ||
         (kind === 'delay' && notes.includes('Débito de Atraso Confirmado')) ||
         (kind === 'early_entry' && notes.includes('Entrada Antecipada Não Homologada')) ||
         (kind === 'early_leave' && notes.includes('Saída Antecipada Não Abonada')) ||
-        (kind === 'overtime' && (notes.includes('AJUSTE GESTOR') || notes.includes('Hora Extra Não Homologada'))) ||
-        (kind === 'forgetfulness' && notes.includes('Esquecimento Não Aceito'));
+        (kind === 'overtime' && (notes.includes('[AJUSTE GESTOR: Ajustado') || notes.includes('Hora Extra Não Homologada'))) ||
+        (kind === 'forgetfulness' && (notesLower.includes(`${forgetDirLabel} não aceito`) || (notesHaveLegacyForget && notes.includes('Esquecimento Não Aceito'))));
 
       const pendingNoteTag = kind === 'early_entry'
         ? '[Justificativa Entrada Antecipada:'
@@ -269,7 +298,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
           : kind === 'overtime'
             ? '[Justificativa Hora Extra:'
             : kind === 'forgetfulness'
-              ? '[Justificativa Esquecimento:'
+              ? (notesHaveLegacyForget ? '[Justificativa Esquecimento:' : `[Justificativa Esquecimento: [${isEntryPunch ? 'Esquecimento de Entrada' : 'Esquecimento de Saída'}`)
               : '[Justificativa Atraso:';
 
       const isPendingApproval =
@@ -289,9 +318,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
             ? 'pending'
             : 'none';
 
-      const effectiveKind = (matchingJust && (matchingJust as any).justificationType === 'forgetfulness') || notes.includes('Esquecimento')
-        ? 'forgetfulness'
-        : kind;
+      const effectiveKind = kind;
 
       return {
         kind: effectiveKind,
@@ -2100,7 +2127,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                         ? (isDelayJustified ? `Hora extra homologada (+${item.delayInfo?.minutes}m)` : item.delayInfo?.justificationStatus === 'pending' ? `Hora extra em análise (+${item.delayInfo?.minutes}m)` : `Saída após o horário (+${item.delayInfo?.minutes}m)`)
                         : deviationKind === 'forgetfulness'
                           ? (isDelayJustified ? `Esquecimento homologado` : item.delayInfo?.justificationStatus === 'pending' ? `Esquecimento em análise` : `Esquecimento de ponto`)
-                          : (isDelayJustified ? `Atraso justificado (+${item.delayInfo?.minutes}m)` : item.delayInfo?.justificationStatus === 'pending' ? `Atraso em análise (+${item.delayInfo?.minutes}m)` : `Atraso (+${item.delayInfo?.minutes}m)`);
+                          : (isDelayJustified ? `Atraso justificado (-${item.delayInfo?.minutes}m)` : item.delayInfo?.justificationStatus === 'pending' ? `Atraso em análise (-${item.delayInfo?.minutes}m)` : `Atraso (-${item.delayInfo?.minutes}m)`);
 
                   return (
                     <div

@@ -689,12 +689,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             : (earlyMatch ? Number(earlyMatch[1]) : (inTol?.isEarly ? inTol.diffMinutes : 0));
 
           const isHomologated = Boolean(
-            s.notes?.includes('HOMOLOGADO') ||
+            (isForgetfulnessEntry && (s.notes?.includes('Esquecimento de Entrada Homologado') || (s.notes?.includes('Esquecimento Homologado') && !s.notes?.includes('Esquecimento de Saída') && !s.notes?.includes('Esquecimento de Saida')))) ||
             (hasLate && s.notes?.includes('[ABONO GESTOR: Atraso')) ||
             (hasEarlyEntry && s.notes?.includes('[ABONO GESTOR: Entrada Antecipada')) ||
             s.attendanceStatus === 'justified'
           );
           const isAdjusted = Boolean(
+            (isForgetfulnessEntry && (s.notes?.includes('Esquecimento de Entrada Não Aceito') || (s.notes?.includes('Esquecimento Não Aceito') && !s.notes?.includes('Esquecimento de Saída') && !s.notes?.includes('Esquecimento de Saida')))) ||
             (hasLate && s.notes?.includes('Débito de Atraso Confirmado')) ||
             (hasEarlyEntry && s.notes?.includes('Entrada Antecipada Não Homologada'))
           );
@@ -730,7 +731,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         : null;
       const hasHe = Boolean(s.notes?.includes('[HE')) || Boolean(outTol?.isOvertime);
       const hasEarlyLeave = !hasHe && (Boolean(s.notes?.includes('[Saída Antecipada') || s.notes?.includes('[Saida Antecipada')) || Boolean(outTol?.isEarlyLeave));
-      const isForgetfulnessExit = Boolean(s.notes?.includes('Esquecimento de Saída') || s.notes?.includes('Justificativa Esquecimento'));
+      const isForgetfulnessExit = Boolean(
+        s.notes?.includes('Esquecimento de Saída') ||
+        s.notes?.includes('Esquecimento de Saida') ||
+        (s.notes?.includes('Justificativa Esquecimento') && !s.notes?.includes('Esquecimento de Entrada'))
+      );
 
       if (hasHe || hasEarlyLeave || isForgetfulnessExit) {
         const exitKind = hasEarlyLeave ? 'early_leave' : 'overtime';
@@ -743,11 +748,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             : (earlyLeaveMatch ? Number(earlyLeaveMatch[1]) : (outTol?.isEarlyLeave ? outTol.diffMinutes : 0));
 
           const isHomologated = Boolean(
-            s.notes?.includes('HOMOLOGADO') ||
+            (hasHe && s.notes?.includes('[HOMOLOGADO GESTOR: Hora Extra')) ||
+            (isForgetfulnessExit && (s.notes?.includes('Esquecimento de Saída Homologado') || (s.notes?.includes('Esquecimento Homologado') && !s.notes?.includes('Esquecimento de Entrada')))) ||
             (hasEarlyLeave && s.notes?.includes('[ABONO GESTOR: Saída Antecipada'))
           );
           const isAdjusted = Boolean(
-            s.notes?.includes('AJUSTE GESTOR') ||
+            (hasHe && (s.notes?.includes('[AJUSTE GESTOR: Ajustado') || s.notes?.includes('Hora Extra Não Homologada'))) ||
+            (isForgetfulnessExit && (s.notes?.includes('Esquecimento de Saída Não Aceito') || (s.notes?.includes('Esquecimento Não Aceito') && !s.notes?.includes('Esquecimento de Entrada')))) ||
             (hasEarlyLeave && s.notes?.includes('Saída Antecipada Não Abonada'))
           );
 
@@ -1047,12 +1054,23 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     const isForgetfulness = Boolean(targetItem?.type?.includes('Esquecimento'));
     if (isForgetfulness) {
       const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace(/^shift-occ-(?:in-|out-)?/, '') : undefined);
-      if (shiftId) {
+      const matchingJust = id.startsWith('shift-occ-') ? undefined : justifications.find(j => j.id === id);
+      if (matchingJust) {
+        // Persiste a homologação na justificativa (Supabase) — o handler do App também anota o turno
+        if (onApproveJustification) {
+          await onApproveJustification(matchingJust.id, customFeedback || 'Esquecimento homologado pelo gestor');
+        } else {
+          await updateJustificativaStatusSupabase(matchingJust.id, 'approved', customFeedback || 'Esquecimento homologado pelo gestor');
+        }
+      } else if (shiftId) {
         const targetShift = shifts.find(s => s.id === shiftId);
         if (targetShift) {
+          const dirTag = targetItem?.type === 'Esquecimento de Entrada'
+            ? '[HOMOLOGADO GESTOR: Esquecimento de Entrada Homologado / Horário Normal Ajustado]'
+            : '[HOMOLOGADO GESTOR: Esquecimento de Saída Homologado / Horário Normal Ajustado]';
           onOpenEditShift?.({
             ...targetShift,
-            notes: `${targetShift.notes || ''} [HOMOLOGADO GESTOR: Esquecimento Homologado / Horário Normal Ajustado]`
+            notes: `${targetShift.notes || ''} ${dirTag}`
           });
         }
       }
@@ -1068,7 +1086,14 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
     if (isHe) {
       const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace(/^shift-occ-(?:in-|out-)?/, '') : undefined);
-      if (shiftId) {
+      const matchingJust = id.startsWith('shift-occ-') ? undefined : justifications.find(j => j.id === id);
+      if (matchingJust) {
+        if (onApproveJustification) {
+          await onApproveJustification(matchingJust.id, customFeedback || 'Hora extra homologada pelo gestor');
+        } else {
+          await updateJustificativaStatusSupabase(matchingJust.id, 'approved', customFeedback || 'Hora extra homologada pelo gestor');
+        }
+      } else if (shiftId) {
         const targetShift = shifts.find(s => s.id === shiftId);
         if (targetShift) {
           onOpenEditShift?.({
@@ -1184,9 +1209,48 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       return;
     }
 
+    const isForgetfulness = Boolean(targetItem?.type?.includes('Esquecimento'));
+    if (isForgetfulness) {
+      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace(/^shift-occ-(?:in-|out-)?/, '') : undefined);
+      const matchingJust = id.startsWith('shift-occ-') ? undefined : justifications.find(j => j.id === id);
+      if (matchingJust) {
+        if (onRejectJustification) {
+          await onRejectJustification(matchingJust.id, customFeedback || 'Esquecimento não aceito pelo gestor');
+        } else {
+          await updateJustificativaStatusSupabase(matchingJust.id, 'rejected', customFeedback || 'Esquecimento não aceito pelo gestor');
+        }
+      } else if (shiftId) {
+        const targetShift = shifts.find(s => s.id === shiftId);
+        if (targetShift) {
+          const dirTag = targetItem?.type === 'Esquecimento de Entrada'
+            ? '[AJUSTE GESTOR: Esquecimento de Entrada Não Aceito]'
+            : '[AJUSTE GESTOR: Esquecimento de Saída Não Aceito]';
+          onOpenEditShift?.({
+            ...targetShift,
+            notes: `${targetShift.notes || ''} ${dirTag}`
+          });
+        }
+      }
+      showPolishedToast({
+        id: 'ajuste-esquecimento-confirm',
+        title: 'Esquecimento Não Aceito',
+        description: 'A justificativa de esquecimento foi ajustada pelo gestor.',
+        rimVariant: 'default',
+        duration: 4000,
+      });
+      return;
+    }
+
     if (isHe) {
       const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace(/^shift-occ-(?:in-|out-)?/, '') : undefined);
-      if (shiftId) {
+      const matchingJust = id.startsWith('shift-occ-') ? undefined : justifications.find(j => j.id === id);
+      if (matchingJust) {
+        if (onRejectJustification) {
+          await onRejectJustification(matchingJust.id, customFeedback || 'Hora extra não homologada pelo gestor');
+        } else {
+          await updateJustificativaStatusSupabase(matchingJust.id, 'rejected', customFeedback || 'Hora extra não homologada pelo gestor');
+        }
+      } else if (shiftId) {
         const targetShift = shifts.find(s => s.id === shiftId);
         if (targetShift) {
           onOpenEditShift?.({
@@ -4914,14 +4978,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
                       if (relatorioSearch.trim()) {
                         const q = relatorioSearch.toLowerCase().trim();
-                        const matchName = row.name.toLowerCase().includes(q);
-                        const matchDept = row.dept.toLowerCase().includes(q);
-                        const matchRole = row.role.toLowerCase().includes(q);
-                        const matchDateRaw = row.date.toLowerCase().includes(q);
+                        const matchName = (row.name || '').toLowerCase().includes(q);
+                        const matchDept = (row.dept || '').toLowerCase().includes(q);
+                        const matchRole = (row.role || '').toLowerCase().includes(q);
+                        const matchDateRaw = (row.date || '').toLowerCase().includes(q);
                         const matchDateFormatted = formattedRowDate.toLowerCase().includes(q);
                         const matchDateSlash = formattedRowDate.replace(/-/g, '/').toLowerCase().includes(q);
+                        const matchDateDash = formattedRowDate.replace(/\//g, '-').toLowerCase().includes(q);
                         const matchApuracao = (row.apuracao || '').toLowerCase().includes(q);
-                        if (!matchName && !matchDept && !matchRole && !matchDateRaw && !matchDateFormatted && !matchDateSlash && !matchApuracao) {
+                        if (!matchName && !matchDept && !matchRole && !matchDateRaw && !matchDateFormatted && !matchDateSlash && !matchDateDash && !matchApuracao) {
                           return false;
                         }
                       }

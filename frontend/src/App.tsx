@@ -1445,7 +1445,10 @@ function AppContent() {
     const lowerReason = (target?.reason || '').toLowerCase();
     const isEarlyLeaveTarget = lowerReason.includes('saída antecipada') || lowerReason.includes('saida antecipada');
     const isEarlyEntryTarget = lowerReason.includes('entrada antecipada');
-    let isTimeDeviationTarget = lowerReason.includes('atraso') || isEarlyLeaveTarget || isEarlyEntryTarget;
+    const isForgetfulnessTarget = lowerReason.includes('[esquecimento') || (target as any)?.justificationType === 'forgetfulness';
+    const isForgetExitTarget = isForgetfulnessTarget && (lowerReason.includes('esquecimento de saída') || lowerReason.includes('esquecimento de saida'));
+    const isOvertimeTarget = !isForgetfulnessTarget && (lowerReason.includes('hora extra') || (target as any)?.justificationType === 'overtime');
+    let isTimeDeviationTarget = lowerReason.includes('atraso') || isEarlyLeaveTarget || isEarlyEntryTarget || isForgetfulnessTarget || isOvertimeTarget;
 
     if (target) {
       let targetShift = target.shiftId ? shifts.find(s => s.id === target.shiftId) : undefined;
@@ -1458,11 +1461,17 @@ function AppContent() {
         isTimeDeviationTarget = isTimeDeviationTarget || hasWorkedPunch;
 
         if (hasWorkedPunch) {
-          const abonoLabel = isEarlyLeaveTarget
-            ? '[ABONO GESTOR: Saída Antecipada Abonada]'
-            : isEarlyEntryTarget
-              ? '[ABONO GESTOR: Entrada Antecipada Abonada]'
-              : '[ABONO GESTOR: Atraso Abonado]';
+          const abonoLabel = isForgetfulnessTarget
+            ? (isForgetExitTarget
+                ? '[HOMOLOGADO GESTOR: Esquecimento de Saída Homologado / Horário Normal Ajustado]'
+                : '[HOMOLOGADO GESTOR: Esquecimento de Entrada Homologado / Horário Normal Ajustado]')
+            : isOvertimeTarget
+              ? '[HOMOLOGADO GESTOR: Hora Extra Aprovada]'
+              : isEarlyLeaveTarget
+                ? '[ABONO GESTOR: Saída Antecipada Abonada]'
+                : isEarlyEntryTarget
+                  ? '[ABONO GESTOR: Entrada Antecipada Abonada]'
+                  : '[ABONO GESTOR: Atraso Abonado]';
           const updatedNotes = targetShift.notes?.includes(abonoLabel)
             ? targetShift.notes
             : `${targetShift.notes ? `${targetShift.notes} | ` : ''}${abonoLabel}`;
@@ -1505,7 +1514,10 @@ function AppContent() {
     const lowerReason = (target?.reason || '').toLowerCase();
     const isEarlyLeaveTarget = lowerReason.includes('saída antecipada') || lowerReason.includes('saida antecipada');
     const isEarlyEntryTarget = lowerReason.includes('entrada antecipada');
-    let isTimeDeviationTarget = lowerReason.includes('atraso') || isEarlyLeaveTarget || isEarlyEntryTarget;
+    const isForgetfulnessTarget = lowerReason.includes('[esquecimento') || (target as any)?.justificationType === 'forgetfulness';
+    const isForgetExitTarget = isForgetfulnessTarget && (lowerReason.includes('esquecimento de saída') || lowerReason.includes('esquecimento de saida'));
+    const isOvertimeTarget = !isForgetfulnessTarget && (lowerReason.includes('hora extra') || (target as any)?.justificationType === 'overtime');
+    let isTimeDeviationTarget = lowerReason.includes('atraso') || isEarlyLeaveTarget || isEarlyEntryTarget || isForgetfulnessTarget || isOvertimeTarget;
 
     if (target) {
       let targetShift = target.shiftId ? shifts.find(s => s.id === target.shiftId) : undefined;
@@ -1519,11 +1531,17 @@ function AppContent() {
 
         if (hasWorkedPunch) {
           // Colaborador trabalhou no dia: mantém status trabalhado (não transforma dia trabalhado em falta)
-          const rejectLabel = isEarlyLeaveTarget
-            ? '[AJUSTE GESTOR: Saída Antecipada Não Abonada]'
-            : isEarlyEntryTarget
-              ? '[AJUSTE GESTOR: Entrada Antecipada Não Homologada]'
-              : '[AJUSTE GESTOR: Débito de Atraso Confirmado]';
+          const rejectLabel = isForgetfulnessTarget
+            ? (isForgetExitTarget
+                ? '[AJUSTE GESTOR: Esquecimento de Saída Não Aceito]'
+                : '[AJUSTE GESTOR: Esquecimento de Entrada Não Aceito]')
+            : isOvertimeTarget
+              ? '[AJUSTE GESTOR: Hora Extra Não Homologada]'
+              : isEarlyLeaveTarget
+                ? '[AJUSTE GESTOR: Saída Antecipada Não Abonada]'
+                : isEarlyEntryTarget
+                  ? '[AJUSTE GESTOR: Entrada Antecipada Não Homologada]'
+                  : '[AJUSTE GESTOR: Débito de Atraso Confirmado]';
           const updatedNotes = targetShift.notes?.includes(rejectLabel)
             ? targetShift.notes
             : `${targetShift.notes ? `${targetShift.notes} | ` : ''}${rejectLabel}`;
