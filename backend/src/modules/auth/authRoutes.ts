@@ -610,13 +610,13 @@ authRoutes.post('/send-welcome-email', requireRole('gestor', 'rh', 'admin'), wel
 
     const transporter = getMailTransporter();
     if (!transporter) {
-      res.status(503).json({ success: false, message: 'Serviço SMTP não configurado no servidor.' });
+      res.status(503).json({ success: false, message: 'Serviço de envio de e-mail temporariamente indisponível.' });
       return;
     }
 
     const appUrl = getTrustedAppUrl();
     if (!appUrl) {
-      res.status(500).json({ success: false, message: 'APP_URL não configurada no servidor.' });
+      res.status(500).json({ success: false, message: 'Serviço de envio de e-mail temporariamente indisponível.' });
       return;
     }
 
@@ -738,7 +738,7 @@ authRoutes.post('/send-welcome-email', requireRole('gestor', 'rh', 'admin'), wel
                     <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin: 0 0 26px 0;">
                       <tr>
                         <td>
-                          <a href="${safeResetLink}" target="_blank" style="display: inline-block; background-color: #670D20; color: #ffffff; text-decoration: none; font-size: 14.5px; font-weight: 600; padding: 13px 28px; border-radius: 8px; text-align: center;">
+                          <a href="${safeResetLink}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #670D20; color: #ffffff; text-decoration: none; font-size: 14.5px; font-weight: 600; padding: 13px 28px; border-radius: 8px; text-align: center;">
                             Acessar Portal do Colaborador
                           </a>
                         </td>
@@ -749,7 +749,7 @@ authRoutes.post('/send-welcome-email', requireRole('gestor', 'rh', 'admin'), wel
                       <p style="margin: 0 0 6px 0; font-size: 12px; color: #64748b; line-height: 1.5;">
                         Se preferir, copie e cole o link direto em seu navegador:
                       </p>
-                      <a href="${safeResetLink}" target="_blank" style="font-size: 12px; color: #2563eb; text-decoration: underline; word-break: break-all; line-height: 1.5;">
+                      <a href="${safeResetLink}" target="_blank" rel="noopener noreferrer" style="font-size: 12px; color: #2563eb; text-decoration: underline; word-break: break-all; line-height: 1.5;">
                         ${safeResetLink}
                       </a>
                     </div>
@@ -785,7 +785,7 @@ authRoutes.post('/send-welcome-email', requireRole('gestor', 'rh', 'admin'), wel
       id: info.messageId
     });
   } catch (error: any) {
-    console.error('[SMTP] Erro ao disparar e-mail:', error?.message || error);
+    console.error('[SMTP] Erro ao disparar e-mail:', String(error?.code || error?.message || 'Erro interno').slice(0, 160));
     res.status(500).json({
       success: false,
       message: 'Falha ao enviar e-mail de ativação.'
@@ -852,12 +852,12 @@ authRoutes.post('/request-password-reset', resetRequestLimiter, async (req: Requ
                     Recebemos uma solicitação para redefinir sua senha na plataforma <strong>Pontual</strong>. Este link expira em 30 minutos e só pode ser utilizado uma vez.
                   </p>
                   <p style="margin:0 0 24px 0;">
-                    <a href="${safeLink}" target="_blank" style="display:inline-block;background-color:#670D20;color:#ffffff;text-decoration:none;font-size:14.5px;font-weight:600;padding:13px 28px;border-radius:8px;">
+                    <a href="${safeLink}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background-color:#670D20;color:#ffffff;text-decoration:none;font-size:14.5px;font-weight:600;padding:13px 28px;border-radius:8px;">
                       Redefinir Minha Senha
                     </a>
                   </p>
                   <p style="margin:0;font-size:12px;color:#64748b;word-break:break-all;">
-                    Caso não tenha solicitado, ignore esta mensagem. Link alternativo: <a href="${safeLink}" target="_blank">${safeLink}</a>
+                    Caso não tenha solicitado, ignore esta mensagem. Link alternativo: <a href="${safeLink}" target="_blank" rel="noopener noreferrer">${safeLink}</a>
                   </p>
                 </td></tr>
               </table>
@@ -878,7 +878,7 @@ authRoutes.post('/request-password-reset', resetRequestLimiter, async (req: Requ
         });
         console.log(`[SMTP] Link de redefinição enviado para ${maskEmail(targetEmail)}.`);
       } catch (mailErr: any) {
-        console.error('[SMTP] Erro ao enviar link de redefinição:', mailErr?.message || mailErr);
+        console.error('[SMTP] Erro ao enviar link de redefinição:', String(mailErr?.code || mailErr?.message || 'Erro interno').slice(0, 160));
       }
     }
 

@@ -35,12 +35,12 @@ export default async function handler(req, res) {
   const transporter = getMailTransporter();
   const senderEmail = getSmtpUser();
   if (!transporter || !senderEmail) {
-    return res.status(503).json({ success: false, message: 'Serviço SMTP não configurado no servidor.' });
+    return res.status(503).json({ success: false, message: 'Serviço de envio de e-mail temporariamente indisponível.' });
   }
 
   const appUrl = getTrustedAppUrl();
   if (!appUrl) {
-    return res.status(500).json({ success: false, message: 'APP_URL não configurada no servidor.' });
+    return res.status(500).json({ success: false, message: 'Serviço de envio de e-mail temporariamente indisponível.' });
   }
 
   try {
@@ -163,7 +163,7 @@ export default async function handler(req, res) {
                     <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="margin: 0 0 26px 0;">
                       <tr>
                         <td>
-                          <a href="${safeResetLink}" target="_blank" style="display: inline-block; background-color: #670D20; color: #ffffff; text-decoration: none; font-size: 14.5px; font-weight: 600; padding: 13px 28px; border-radius: 8px; text-align: center;">
+                          <a href="${safeResetLink}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #670D20; color: #ffffff; text-decoration: none; font-size: 14.5px; font-weight: 600; padding: 13px 28px; border-radius: 8px; text-align: center;">
                             Acessar Portal do Colaborador
                           </a>
                         </td>
@@ -173,7 +173,7 @@ export default async function handler(req, res) {
                       <p style="margin: 0 0 6px 0; font-size: 12px; color: #64748b; line-height: 1.5;">
                         Se preferir, copie e cole o link direto em seu navegador:
                       </p>
-                      <a href="${safeResetLink}" target="_blank" style="font-size: 12px; color: #2563eb; text-decoration: underline; word-break: break-all; line-height: 1.5;">
+                      <a href="${safeResetLink}" target="_blank" rel="noopener noreferrer" style="font-size: 12px; color: #2563eb; text-decoration: underline; word-break: break-all; line-height: 1.5;">
                         ${safeResetLink}
                       </a>
                     </div>
@@ -208,7 +208,7 @@ export default async function handler(req, res) {
       id: info.messageId,
     });
   } catch (error) {
-    console.error('[SMTP Vercel] Erro ao disparar e-mail:', error?.message || error);
+    console.error('[SMTP Vercel] Erro ao disparar e-mail:', String(error?.code || error?.message || 'Erro interno').slice(0, 160));
     return res.status(500).json({
       success: false,
       message: 'Falha ao enviar e-mail.',

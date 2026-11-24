@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MapPin, Navigation, Info, ZoomIn } from 'lucide-react';
 
 interface DraggableMapPickerProps {
@@ -19,16 +19,46 @@ export const DraggableMapPicker: React.FC<DraggableMapPickerProps> = ({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [currentCoords, setCurrentCoords] = useState({ lat: latitude, lng: longitude });
 
+  const channelToken = useMemo(() => {
+    try {
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+      }
+    } catch {}
+    return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+  }, []);
+
+  const expectedOrigin =
+    typeof window !== 'undefined' && window.location.origin && window.location.origin !== 'null'
+      ? window.location.origin
+      : '*';
+
   useEffect(() => {
     setCurrentCoords({ lat: latitude, lng: longitude });
   }, [latitude, longitude]);
 
-  // Listener para capturar mensagens de arrasto do pino vindo do iframe do Leaflet
+  // Listener para capturar mensagens de arrasto do pino vindo exclusivamente do iframe autorizado
   useEffect(() => {
     const handleWindowMessage = (event: MessageEvent) => {
-      if (event.data && event.data.type === 'PONTUALL_PIN_DRAGGED') {
-        const { lat, lng } = event.data;
-        if (typeof lat === 'number' && typeof lng === 'number') {
+      const iframeWindow = iframeRef.current?.contentWindow;
+      if (!iframeWindow || event.source !== iframeWindow) return;
+      if (expectedOrigin !== '*' && event.origin !== expectedOrigin) return;
+
+      const data = event.data;
+      if (!data || typeof data !== 'object' || data.channelToken !== channelToken) return;
+
+      if (data.type === 'PONTUALL_PIN_DRAGGED') {
+        const { lat, lng } = data;
+        if (
+          typeof lat === 'number' &&
+          Number.isFinite(lat) &&
+          lat >= -90 &&
+          lat <= 90 &&
+          typeof lng === 'number' &&
+          Number.isFinite(lng) &&
+          lng >= -180 &&
+          lng <= 180
+        ) {
           setCurrentCoords({ lat, lng });
           onLocationChange(lat, lng);
         }
@@ -37,7 +67,7 @@ export const DraggableMapPicker: React.FC<DraggableMapPickerProps> = ({
 
     window.addEventListener('message', handleWindowMessage);
     return () => window.removeEventListener('message', handleWindowMessage);
-  }, [onLocationChange]);
+  }, [channelToken, expectedOrigin, onLocationChange]);
 
   // Atualiza a posição do mapa e do círculo caso as props mudem externamente
   useEffect(() => {
@@ -45,14 +75,15 @@ export const DraggableMapPicker: React.FC<DraggableMapPickerProps> = ({
       iframeRef.current.contentWindow.postMessage(
         {
           type: 'UPDATE_MAP_VIEW',
+          channelToken,
           lat: latitude,
           lng: longitude,
           radius: radiusMeters,
         },
-        '*'
+        expectedOrigin
       );
     }
-  }, [latitude, longitude, radiusMeters]);
+  }, [latitude, longitude, radiusMeters, channelToken, expectedOrigin]);
 
   // HTML autocontido para carregar Leaflet com tiles OpenStreetMap
   const mapHtml = `
@@ -80,6 +111,8 @@ export const DraggableMapPicker: React.FC<DraggableMapPickerProps> = ({
 <body>
   <div id="map"></div>
   <script>
+    const EXPECTED_ORIGIN = ${JSON.stringify(expectedOrigin)};
+    const CHANNEL_TOKEN = ${JSON.stringify(channelToken)};
     let map = null;
     let marker = null;
     let circle = null;
@@ -118,9 +151,10 @@ export const DraggableMapPicker: React.FC<DraggableMapPickerProps> = ({
         if (circle) circle.setLatLng([newLat, newLng]);
         window.parent.postMessage({
           type: 'PONTUALL_PIN_DRAGGED',
+          channelToken: CHANNEL_TOKEN,
           lat: newLat,
           lng: newLng
-        }, '*');
+        }, EXPECTED_ORIGIN);
       }
 
       // Evento de arrastar o pino
@@ -137,18 +171,28 @@ export const DraggableMapPicker: React.FC<DraggableMapPickerProps> = ({
     }
 
     window.addEventListener('message', function(event) {
-      if (event.data && event.data.type === 'UPDATE_MAP_VIEW') {
+      if (event.source !== window.parent) return;
+      if (EXPECTED_ORIGIN !== '*' && event.origin !== EXPECTED_ORIGIN) return;
+      if (event.data && event.data.type === 'UPDATE_MAP_VIEW' && event.data.channelToken === CHANNEL_TOKEN) {
         const { lat, lng, radius } = event.data;
+        if (
+          typeof lat !== 'number' || !Number.isFinite(lat) || lat < -90 || lat > 90 ||
+          typeof lng !== 'number' || !Number.isFinite(lng) || lng < -180 || lng > 180
+        ) {
+          return;
+        }
         if (map && marker && circle) {
           marker.setLatLng([lat, lng]);
           circle.setLatLng([lat, lng]);
-          if (radius) circle.setRadius(radius);
+          if (typeof radius === 'number' && Number.isFinite(radius) && radius > 0) {
+            circle.setRadius(radius);
+          }
           map.panTo([lat, lng]);
         }
       }
     });
 
-    initMap(${latitude}, ${longitude}, ${radiusMeters});
+    initMap(${Number(latitude) || 0}, ${Number(longitude) || 0}, ${Number(radiusMeters) || 200});
   </script>
 </body>
 </html>

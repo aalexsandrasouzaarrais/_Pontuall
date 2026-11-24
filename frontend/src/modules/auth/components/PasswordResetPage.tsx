@@ -128,9 +128,9 @@ export const PasswordResetPage: React.FC<PasswordResetPageProps> = ({
         });
         setIsLoading(false);
       }
-    } catch (err: any) {
+    } catch {
       setFeedback({
-        message: err?.message || 'Ocorreu um erro ao processar a nova senha. Tente novamente.',
+        message: 'Não foi possível concluir a redefinição de senha. Tente novamente.',
         type: 'error',
       });
       setIsLoading(false);

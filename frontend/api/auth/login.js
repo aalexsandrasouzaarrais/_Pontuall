@@ -165,7 +165,7 @@ export default async function handler(req, res) {
     });
 
     if (!token) {
-      return res.status(503).json({ error: 'JWT_SECRET não configurado no servidor.' });
+      return res.status(503).json({ error: 'Serviço de autenticação temporariamente indisponível.' });
     }
 
     setSessionCookie(req, res, token);

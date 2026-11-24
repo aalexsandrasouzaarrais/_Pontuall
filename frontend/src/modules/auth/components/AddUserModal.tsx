@@ -237,7 +237,9 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
         return false;
       }
     } catch (err) {
-      console.warn('Erro ao verificar disponibilidade do e-mail:', err);
+      if (import.meta.env.DEV) {
+        console.warn('Erro ao verificar disponibilidade do e-mail:', err);
+      }
     } finally {
       setIsCheckingEmail(false);
     }
@@ -281,7 +283,9 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
         setEmailErrorMessage(null);
       }
     } catch (err) {
-      console.warn(err);
+      if (import.meta.env.DEV) {
+        console.warn('Erro ao validar e-mail do colaborador:', err);
+      }
     } finally {
       setIsCheckingEmail(false);
     }
@@ -440,7 +444,9 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
             matricula: cleanId,
           });
         } catch (err) {
-          console.warn('Erro ao disparar e-mail de ativação:', err);
+          if (import.meta.env.DEV) {
+            console.warn('Erro ao disparar e-mail de ativação:', err);
+          }
         }
       }
 

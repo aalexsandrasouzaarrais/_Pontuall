@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useTheme } from '@/shared/context/ThemeContext';
 
 interface LandingViewProps {
@@ -7,11 +7,14 @@ interface LandingViewProps {
 
 export const LandingView: React.FC<LandingViewProps> = ({ onGoToLogin }) => {
   const { setTheme } = useTheme();
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     document.title = 'Pontual | Gestão de equipes';
 
     const handleMessage = (event: MessageEvent) => {
+      const iframeWindow = iframeRef.current?.contentWindow;
+      if (iframeWindow && event.source !== iframeWindow) return;
       if (event.origin !== window.location.origin) return;
       const data = event.data;
       if (!data || typeof data !== 'object') return;
@@ -26,7 +29,10 @@ export const LandingView: React.FC<LandingViewProps> = ({ onGoToLogin }) => {
           setTheme(data.theme);
         }
       } else if (data.type === 'PONTUAL_TITLE_CHANGE' && typeof data.title === 'string') {
-        document.title = data.title;
+        const cleanTitle = data.title.replace(/[\r\n\0]/g, ' ').trim().slice(0, 120);
+        if (cleanTitle) {
+          document.title = cleanTitle;
+        }
       }
     };
 
@@ -39,6 +45,7 @@ export const LandingView: React.FC<LandingViewProps> = ({ onGoToLogin }) => {
   return (
     <div className="fixed inset-0 w-screen h-screen bg-[#0c0a0d] overflow-hidden z-50">
       <iframe
+        ref={iframeRef}
         src="./lp/index.html"
         title="Pontual | Gestão de equipes"
         className="w-full h-full border-0 block"

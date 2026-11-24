@@ -131,7 +131,7 @@ storageRoutes.post('/upload-url', requireAuth, uploadUrlLimiter, async (req: Req
       signedUrl: data.signedUrl,
     });
   } catch (err: any) {
-    console.error('[storage/upload-url] Erro:', err?.message || err);
+    console.error('[storage/upload-url] Erro:', String(err?.code || err?.message || 'Erro interno').slice(0, 160));
     res.status(500).json({ error: 'Erro interno ao gerar URL de upload.' });
   }
 });
@@ -286,7 +286,7 @@ storageRoutes.post('/signed-url', requireAuth, signedUrlLimiter, async (req: Req
       expiresIn: SIGNED_DOWNLOAD_TTL_SECONDS,
     });
   } catch (err: any) {
-    console.error('[storage/signed-url] Erro:', err?.message || err);
+    console.error('[storage/signed-url] Erro:', String(err?.code || err?.message || 'Erro interno').slice(0, 160));
     res.status(500).json({ error: 'Erro interno ao gerar URL temporária do documento.' });
   }
 });
