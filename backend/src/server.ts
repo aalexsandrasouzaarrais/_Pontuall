@@ -1,11 +1,13 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import { authRoutes } from './modules/auth/authRoutes.js';
 import { shiftRoutes } from './modules/shifts/shiftRoutes.js';
 import { attendanceRoutes } from './modules/attendance/attendanceRoutes.js';
 import { requestRoutes } from './modules/requests/requestRoutes.js';
+import { storageRoutes } from './modules/storage/storageRoutes.js';
 
 dotenv.config();
 
@@ -13,7 +15,22 @@ const app = express();
 const port = process.env.PORT || 5000;
 
 app.set('trust proxy', 1);
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'same-site' },
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    hsts: { maxAge: 31536000, includeSubDomains: true },
+  })
+);
+
+const apiGlobalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.path === '/health',
+  message: { error: 'Muitas requisições deste endereço. Tente novamente em instantes.' },
+});
 
 function buildAllowedOrigins(): Set<string> {
   const origins = new Set<string>();
@@ -86,10 +103,12 @@ app.get('/api/health', (_req, res) => {
 });
 
 // Registro dos Módulos DDD-Lite
+app.use('/api/', apiGlobalLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/shifts', shiftRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/requests', requestRoutes);
+app.use('/api/storage', storageRoutes);
 
 // Handler global de erros (evita vazamento de stack traces ou detalhes internos)
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

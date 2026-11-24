@@ -24,6 +24,11 @@ import {
   addDraftTimesheetEntry,
   getDraftTimesheet
 } from '@/modules/attendance/services/pjReportService';
+import {
+  normalizeExternalHttpUrl,
+  validateUploadFile,
+  validateUploadMagicBytes,
+} from '@/shared/utils/security';
 
 interface PjTimesheetTrackerProps {
   employee: Employee;
@@ -268,11 +273,15 @@ export const PjTimesheetTracker: React.FC<PjTimesheetTrackerProps> = ({
     const breakMins = Math.round(breakSeconds / 60);
 
     const validLinks = modalLinks
-      .filter(l => l.url.trim().length > 0)
-      .map(l => ({
-        title: l.title.trim() || l.url.trim(),
-        url: l.url.trim().startsWith('http') ? l.url.trim() : `https://${l.url.trim()}`
-      }));
+      .map(l => {
+        const safeUrl = normalizeExternalHttpUrl(l.url);
+        if (!safeUrl) return null;
+        return {
+          title: l.title.trim() || safeUrl,
+          url: safeUrl,
+        };
+      })
+      .filter((l): l is PjReportLink => l !== null);
 
     const finalTaskCode = taskCode.trim() || generateNextTaskCode();
     const finalCostCenter = costCenter.trim() || defaultCC;
@@ -343,11 +352,15 @@ export const PjTimesheetTracker: React.FC<PjTimesheetTrackerProps> = ({
     const durHours = Number((Math.max(0.01, totalMins / 60)).toFixed(2));
 
     const validLinks = modalLinks
-      .filter(l => l.url.trim().length > 0)
-      .map(l => ({
-        title: l.title.trim() || l.url.trim(),
-        url: l.url.trim().startsWith('http') ? l.url.trim() : `https://${l.url.trim()}`
-      }));
+      .map(l => {
+        const safeUrl = normalizeExternalHttpUrl(l.url);
+        if (!safeUrl) return null;
+        return {
+          title: l.title.trim() || safeUrl,
+          url: safeUrl,
+        };
+      })
+      .filter((l): l is PjReportLink => l !== null);
 
     const finalTaskCode = manualTaskCode.trim() || generateNextTaskCode();
     const finalCostCenter = manualCostCenter.trim() || defaultCC;
@@ -387,20 +400,42 @@ export const PjTimesheetTracker: React.FC<PjTimesheetTrackerProps> = ({
     setTimeout(() => setNotification(null), 4000);
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    Array.from(files).forEach((file: File) => {
-      if (!file.type.startsWith('image/')) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          setModalImages(prev => [...prev, reader.result as string]);
-        }
-      };
-      reader.readAsDataURL(file);
-    });
+    for (const file of Array.from(files)) {
+      const check = validateUploadFile(file, { mode: 'image', maxSizeBytes: 5 * 1024 * 1024 });
+      if (!check.valid) {
+        setNotification({
+          type: 'error',
+          message: check.error || 'Imagem inválida. Utilize PNG, JPG, WEBP ou GIF até 5 MB.',
+        });
+        setTimeout(() => setNotification(null), 4000);
+        continue;
+      }
+
+      const magic = await validateUploadMagicBytes(file, { mode: 'image' });
+      if (!magic.valid) {
+        setNotification({
+          type: 'error',
+          message: magic.error || 'Conteúdo de imagem inválido ou não permitido.',
+        });
+        setTimeout(() => setNotification(null), 4000);
+        continue;
+      }
+
+      const dataUrl = await new Promise<string | null>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+      });
+
+      if (dataUrl) {
+        setModalImages(prev => [...prev, dataUrl]);
+      }
+    }
 
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -976,7 +1011,7 @@ export const PjTimesheetTracker: React.FC<PjTimesheetTrackerProps> = ({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept=".png,.jpg,.jpeg,.webp,.gif"
                 multiple
                 className="hidden"
                 onChange={handleImageUpload}
@@ -1279,7 +1314,7 @@ export const PjTimesheetTracker: React.FC<PjTimesheetTrackerProps> = ({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept=".png,.jpg,.jpeg,.webp,.gif"
                   multiple
                   className="hidden"
                   onChange={handleImageUpload}

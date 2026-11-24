@@ -1234,7 +1234,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               <input
                 type="file"
                 ref={activeGroupAvatarInputRef}
-                accept="image/*"
+                accept=".png,.jpg,.jpeg,.webp,.gif"
                 onChange={handleUpdateActiveGroupAvatar}
                 className="hidden"
               />
@@ -1771,7 +1771,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
             <input
               type="file"
               ref={fileInputRef}
-              accept="image/*"
+              accept=".png,.jpg,.jpeg,.webp,.gif"
               onChange={handleFileSelect}
               className="hidden"
             />
@@ -2020,7 +2020,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                 <input
                   type="file"
                   ref={groupAvatarInputRef}
-                  accept="image/*"
+                  accept=".png,.jpg,.jpeg,.webp,.gif"
                   onChange={handleGroupAvatarSelect}
                   className="hidden"
                 />

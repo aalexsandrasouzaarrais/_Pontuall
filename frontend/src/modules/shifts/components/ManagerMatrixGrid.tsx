@@ -1381,7 +1381,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         escapeCsv(getEmployeeMatricula(row.employeeId, row.employeeName)),
         escapeCsv(row.employeeDept),
         escapeCsv(row.employeeRole),
-        `="${formatDateToDDMMAAAA(row.date)}"`,
+        escapeCsv(formatDateToDDMMAAAA(row.date)),
         escapeCsv(row.scheduledTime),
         escapeCsv(row.punchTime),
         escapeCsv(row.typeLabel),
@@ -1462,7 +1462,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         escapeCsv(getEmployeeMatricula(row.employeeId, row.employeeName)),
         escapeCsv(row.employeeDept),
         escapeCsv(row.employeeRole),
-        `="${dateFormatted}"`,
+        escapeCsv(dateFormatted),
         escapeCsv(row.type),
         escapeCsv(row.reason),
         escapeCsv(row.documentName || 'Sem anexo'),
@@ -6372,7 +6372,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     <input
                       type="file"
                       ref={managerActiveGroupAvatarInputRef}
-                      accept="image/*"
+                      accept=".png,.jpg,.jpeg,.webp,.gif"
                       onChange={handleUpdateExistingChannelAvatar}
                       className="hidden"
                     />
@@ -6756,7 +6756,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   <input
                     type="file"
                     ref={managerFileInputRef}
-                    accept="image/*"
+                    accept=".png,.jpg,.jpeg,.webp,.gif"
                     onChange={handleManagerFileSelect}
                     className="hidden"
                   />
@@ -6859,7 +6859,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       <input
                         type="file"
                         ref={managerGroupAvatarInputRef}
-                        accept="image/*"
+                        accept=".png,.jpg,.jpeg,.webp,.gif"
                         onChange={handleManagerGroupAvatarSelect}
                         className="hidden"
                       />

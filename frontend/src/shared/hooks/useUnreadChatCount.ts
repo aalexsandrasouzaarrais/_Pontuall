@@ -6,6 +6,7 @@ import {
   setChatLastReadTimestamp,
   isMessageRelevantForUser,
 } from '@/shared/utils/chatUtils';
+import { quotePostgrestValue } from '@/shared/utils/security';
 
 interface UseUnreadChatCountOptions {
   activeEmployee?: Employee | null;
@@ -56,12 +57,15 @@ export function useUnreadChatCount({ activeEmployee, isChatOpen = false }: UseUn
       const lastReadTs = getChatLastReadTimestamp(companyId, userId) || currentLastRead;
 
       try {
+        const qPrefix = quotePostgrestValue(`${prefix}%`);
+        const qDirectLike = quotePostgrestValue(`%direct_%${userId}%`);
+        const qUserId = quotePostgrestValue(userId);
         const { data, error } = await supabase
           .from('messages')
           .select('id, channel, sender_id, recipient_id, created_at')
           .neq('sender_id', userId)
           .gt('created_at', lastReadTs)
-          .or(`channel.like.${prefix}%,channel.like.%direct_%${userId}%,recipient_id.eq.${userId}`);
+          .or(`channel.like.${qPrefix},channel.like.${qDirectLike},recipient_id.eq.${qUserId}`);
 
         if (!error && data) {
           const relevant = data.filter((msg) =>
