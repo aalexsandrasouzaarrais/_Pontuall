@@ -20,7 +20,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('ErrorBoundary capturou um erro não tratado:', error, errorInfo);
+    if (import.meta.env.DEV) {
+      console.error('ErrorBoundary capturou um erro não tratado:', error, errorInfo);
+    } else {
+      console.error('ErrorBoundary interceptou um erro de renderização.');
+    }
   }
 
   handleReset = () => {

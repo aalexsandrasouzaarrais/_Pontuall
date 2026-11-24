@@ -422,7 +422,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
 
       // REGRA ESTRITA: Quando a pessoa muda a senha, não é mais possível logar utilizando a matrícula
       if (alreadyChangedPassword && isPasswordEqualToMatricula) {
-        showFeedback('Sua senha já foi alterada. Não é mais possível fazer login utilizando a matrícula. Digite sua nova senha.', 'error');
+        showFeedback('E-mail, matrícula ou senha inválidos.', 'error');
         setIsLoading(false);
         passwordInputRef.current?.focus();
         return;
@@ -548,7 +548,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         onLoginSuccess(employeeObj, systemRole);
       }, 600);
     } catch (err) {
-      console.error('Erro ao autenticar:', err);
+      if (import.meta.env.DEV) {
+        console.error('Erro ao autenticar:', err);
+      } else {
+        console.error('Erro ao autenticar.');
+      }
       showFeedback('Ocorreu um erro ao processar o login. Tente novamente.', 'error');
       setIsLoading(false);
     }
@@ -800,7 +804,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess, externalFe
         onLoginSuccess(createdEmployee, 'manager');
       }, 750);
     } catch (err) {
-      console.error('Erro ao cadastrar empresa/RH:', err);
+      if (import.meta.env.DEV) {
+        console.error('Erro ao cadastrar empresa/RH:', err);
+      } else {
+        console.error('Erro ao cadastrar empresa/RH.');
+      }
       showFeedback('Ocorreu um erro ao realizar o cadastro. Tente novamente.', 'error');
       setIsRegLoading(false);
     }

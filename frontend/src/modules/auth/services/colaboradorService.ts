@@ -805,7 +805,7 @@ export async function syncGoogleUserWithSupabase(googleUser: {
     } catch {}
 
     // Se NÃO estiver previamente cadastrada, rejeita o acesso (não cria novo colaborador não autorizado)
-    console.warn(`[Google Workspace] Acesso negado: o e-mail ${email} não está previamente cadastrado.`);
+    console.warn('[Google Workspace] Acesso negado: conta não autorizada ou não cadastrada.');
     return null;
   } catch (err: any) {
     console.error('Erro ao verificar usuário Google no Supabase:', err.message);

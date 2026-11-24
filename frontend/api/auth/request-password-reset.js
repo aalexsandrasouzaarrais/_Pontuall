@@ -89,12 +89,12 @@ export default async function handler(req, res) {
                       Recebemos uma solicitação para redefinir sua senha na plataforma <strong>Pontual</strong>. Este link expira em 30 minutos e só pode ser utilizado uma vez.
                     </p>
                     <p style="margin:0 0 24px 0;">
-                      <a href="${safeLink}" target="_blank" style="display:inline-block;background-color:#670D20;color:#ffffff;text-decoration:none;font-size:14.5px;font-weight:600;padding:13px 28px;border-radius:8px;">
+                      <a href="${safeLink}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background-color:#670D20;color:#ffffff;text-decoration:none;font-size:14.5px;font-weight:600;padding:13px 28px;border-radius:8px;">
                         Redefinir Minha Senha
                       </a>
                     </p>
                     <p style="margin:0;font-size:12px;color:#64748b;word-break:break-all;">
-                      Caso não tenha solicitado, ignore esta mensagem. Link alternativo: <a href="${safeLink}" target="_blank">${safeLink}</a>
+                      Caso não tenha solicitado, ignore esta mensagem. Link alternativo: <a href="${safeLink}" target="_blank" rel="noopener noreferrer">${safeLink}</a>
                     </p>
                   </td></tr>
                 </table>
@@ -115,7 +115,7 @@ export default async function handler(req, res) {
           });
           console.log(`[SMTP Vercel] Link de redefinição enviado para ${maskEmail(targetEmail)}.`);
         } catch (mailErr) {
-          console.error('[SMTP Vercel] Erro ao enviar link de redefinição:', mailErr?.message || mailErr);
+          console.error('[SMTP Vercel] Erro ao enviar link de redefinição:', String(mailErr?.code || mailErr?.message || 'Erro interno').slice(0, 160));
         }
       }
     }

@@ -60,7 +60,7 @@ export default async function handler(req, res) {
       expiresIn: SIGNED_DOWNLOAD_TTL_SECONDS,
     });
   } catch (err) {
-    console.error('[api/storage/signed-url] Erro:', err?.message || err);
+    console.error('[api/storage/signed-url] Erro:', String(err?.code || err?.message || 'Erro interno').slice(0, 160));
     return res.status(500).json({ error: 'Erro interno ao gerar URL temporária do documento.' });
   }
 }
