@@ -18,6 +18,7 @@ import {
   ChevronRight,
   LogOut
 } from 'lucide-react';
+import { validateUploadFile, validateUploadMagicBytes } from '@/shared/utils/security';
 import { Employee } from '@/types';
 import { updateColaboradorAvatarSupabase } from '@/modules/auth/services/colaboradorService';
 import { safeStorage } from '@/shared/utils/safeStorage';
@@ -105,13 +106,21 @@ export const ProfileEditModal: React.FC<ProfileEditModalProps> = ({
   if (!isOpen) return null;
 
   // Upload local de arquivo (leitura e otimização para Data URL / Base64)
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Limita tamanho (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      setErrorMessage('O arquivo de imagem deve ter no máximo 5 MB.');
+    const validation = validateUploadFile(file, { mode: 'image', maxSizeBytes: 5 * 1024 * 1024 });
+    if (!validation.valid) {
+      setErrorMessage(validation.error || 'Formato de imagem inválido (use PNG, JPG, WEBP ou GIF até 5 MB).');
+      e.target.value = '';
+      return;
+    }
+
+    const magicCheck = await validateUploadMagicBytes(file, { mode: 'image' });
+    if (!magicCheck.valid) {
+      setErrorMessage(magicCheck.error || 'Assinatura de imagem inválida.');
+      e.target.value = '';
       return;
     }
 

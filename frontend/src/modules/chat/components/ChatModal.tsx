@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { Employee } from '@/types';
 import { supabase } from '@/shared/services/supabase';
+import { sanitizeSafeUrl, quotePostgrestValue } from '@/shared/utils/security';
 import { 
   ChatAttachment, 
   ChatReplyInfo,
@@ -197,7 +198,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         const { data } = await supabase
           .from('messages')
           .select('sender_id, created_at')
-          .or(`recipient_id.eq.${currentEmployee.id},channel.like.%direct_%${currentEmployee.id}%`)
+          .or(`recipient_id.eq.${quotePostgrestValue(currentEmployee.id)},channel.like.${quotePostgrestValue(`%direct_%${currentEmployee.id}%`)}`)
           .neq('sender_id', currentEmployee.id)
           .gt('created_at', lastReadTs);
 
@@ -429,7 +430,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
         const { data: groupMsgs } = await supabase
           .from('messages')
           .select('channel, recipient_id, attachment, text')
-          .or(`channel.like.${groupPrefix},recipient_id.like.group_meta%`)
+          .or(`channel.like.${quotePostgrestValue(groupPrefix)},recipient_id.like.group_meta%`)
           .order('created_at', { ascending: true });
 
         if (groupMsgs && groupMsgs.length > 0) {
@@ -523,7 +524,11 @@ export const ChatModal: React.FC<ChatModalProps> = ({
 
       if (chatType === 'direct') {
         const pair = [currentEmployee.id, selectedDirectEmployee!.id].sort().join('_');
-        query = query.or(`channel.eq.direct_${pair},channel.like.%direct_${pair},and(sender_id.eq.${currentEmployee.id},recipient_id.eq.${selectedDirectEmployee!.id}),and(sender_id.eq.${selectedDirectEmployee!.id},recipient_id.eq.${currentEmployee.id})`);
+        const qDirect = quotePostgrestValue(`direct_${pair}`);
+        const qDirectLike = quotePostgrestValue(`%direct_${pair}`);
+        const qSelf = quotePostgrestValue(currentEmployee.id);
+        const qOther = quotePostgrestValue(selectedDirectEmployee!.id);
+        query = query.or(`channel.eq.${qDirect},channel.like.${qDirectLike},and(sender_id.eq.${qSelf},recipient_id.eq.${qOther}),and(sender_id.eq.${qOther},recipient_id.eq.${qSelf})`);
       } else {
         query = query.eq('channel', currentChannel);
       }
@@ -897,11 +902,11 @@ export const ChatModal: React.FC<ChatModalProps> = ({
     const scopedGroupId = getScopedChatChannel(currentEmployee?.companyId, groupId);
 
     try {
-      await supabase.from('messages').delete().or(`channel.eq.${scopedGroupId},channel.eq.${groupId},recipient_id.eq.group_meta_id:${groupId},recipient_id.like.%${groupId}%`);
+      await supabase.from('messages').delete().or(`channel.eq.${quotePostgrestValue(scopedGroupId)},channel.eq.${quotePostgrestValue(groupId)},recipient_id.eq.${quotePostgrestValue(`group_meta_id:${groupId}`)},recipient_id.like.${quotePostgrestValue(`%${groupId}%`)}`);
     } catch {}
 
     try {
-      await supabase.from('chat_channels').delete().or(`id.eq.${scopedGroupId},id.eq.${groupId},name.eq.${groupName}`);
+      await supabase.from('chat_channels').delete().or(`id.eq.${quotePostgrestValue(scopedGroupId)},id.eq.${quotePostgrestValue(groupId)},name.eq.${quotePostgrestValue(groupName)}`);
     } catch {}
 
     try {
@@ -1229,7 +1234,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               <input
                 type="file"
                 ref={activeGroupAvatarInputRef}
-                accept="image/*"
+                accept=".png,.jpg,.jpeg,.webp,.gif"
                 onChange={handleUpdateActiveGroupAvatar}
                 className="hidden"
               />
@@ -1624,7 +1629,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                               title="Clique para ampliar a imagem"
                             >
                               <img
-                                src={parsed.attachment.url}
+                                src={sanitizeSafeUrl(parsed.attachment.url, { allowDataImage: true, allowBlob: true })}
                                 alt={parsed.attachment.name}
                                 className="w-full max-h-52 object-cover group-hover/img:scale-102 transition-transform duration-200"
                                 loading="lazy"
@@ -1634,8 +1639,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                                   <Eye className="w-3.5 h-3.5" />
                                 </span>
                                 <a
-                                  href={parsed.attachment.url}
+                                  href={sanitizeSafeUrl(parsed.attachment.url, { allowDataImage: true, allowBlob: true })}
                                   download={parsed.attachment.name}
+                                  rel="noopener noreferrer"
                                   onClick={(e) => e.stopPropagation()}
                                   className="p-1.5 rounded-lg bg-black/60 hover:bg-black/80"
                                   title="Baixar imagem"
@@ -1765,7 +1771,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
             <input
               type="file"
               ref={fileInputRef}
-              accept="image/*"
+              accept=".png,.jpg,.jpeg,.webp,.gif"
               onChange={handleFileSelect}
               className="hidden"
             />
@@ -1848,8 +1854,9 @@ export const ChatModal: React.FC<ChatModalProps> = ({
               <span className="font-semibold truncate max-w-[200px] sm:max-w-md">{previewModalImage.name}</span>
               <div className="flex items-center gap-2">
                 <a
-                  href={previewModalImage.url}
+                  href={sanitizeSafeUrl(previewModalImage.url, { allowDataImage: true, allowBlob: true })}
                   download={previewModalImage.name}
+                  rel="noopener noreferrer"
                   className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors"
                   title="Baixar imagem"
                 >
@@ -2013,7 +2020,7 @@ export const ChatModal: React.FC<ChatModalProps> = ({
                 <input
                   type="file"
                   ref={groupAvatarInputRef}
-                  accept="image/*"
+                  accept=".png,.jpg,.jpeg,.webp,.gif"
                   onChange={handleGroupAvatarSelect}
                   className="hidden"
                 />

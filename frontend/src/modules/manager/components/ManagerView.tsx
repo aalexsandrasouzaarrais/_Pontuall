@@ -7,6 +7,7 @@ import {
   normalizeDateToISO
 } from '@/shared/utils/dateUtils';
 import React, { useState } from 'react';
+import { sanitizeCsvCell } from '@/shared/utils/security';
 import { ManagerSidebar, ManagerTabId } from './ManagerSidebar';
 import { ManagerMatrixGrid } from '@/modules/shifts/components/ManagerMatrixGrid';
 import { OrbitCalendarView } from '@/modules/shifts/components/OrbitCalendarView';
@@ -42,8 +43,8 @@ interface ManagerViewProps {
   pjReports?: PjDeliverableReport[];
   onApproveRequest?: (id: string, customFeedback?: string) => void;
   onRejectRequest?: (id: string, customFeedback?: string) => void;
-  onApproveJustification?: (id: string, customFeedback?: string) => void;
-  onRejectJustification?: (id: string, customFeedback?: string) => void;
+  onApproveJustification?: (id: string, customFeedback?: string, silentToast?: boolean) => void | Promise<void>;
+  onRejectJustification?: (id: string, customFeedback?: string, silentToast?: boolean) => void | Promise<void>;
   onApprovePjReport?: (id: string) => void;
   onRejectPjReport?: (id: string, reason?: string) => void;
   activeTab?: ManagerTabId;
@@ -123,9 +124,9 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
 
     const rows = targetShifts.map(s => {
       const emp = employees.find(e => e.id === s.employeeId);
-      const name = `"${(emp?.name || 'Não informado').replace(/"/g, '""')}"`;
-      const matricula = `"${(emp?.registrationId || '—').replace(/"/g, '""')}"`;
-      const dept = `"${(emp?.department || 'Geral').replace(/"/g, '""')}"`;
+      const name = sanitizeCsvCell(emp?.name || 'Não informado');
+      const matricula = sanitizeCsvCell(emp?.registrationId || '—');
+      const dept = sanitizeCsvCell(emp?.department || 'Geral');
       
       // Formata a data para padrão brasileiro DD/MM/AAAA no CSV
       let date = s.date || '';
@@ -175,7 +176,7 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
       else if (s.attendanceStatus === 'absent') statusPresenca = 'Falta';
       else if (s.attendanceStatus === 'present') statusPresenca = 'Presente';
 
-      const notesClean = `"${(s.notes || '').replace(/"/g, '""')}"`;
+      const notesClean = sanitizeCsvCell(s.notes || '');
 
       let auditStatus = 'Conforme escala';
       if (s.notes?.includes('Esquecimento')) {
@@ -192,29 +193,23 @@ export const ManagerView: React.FC<ManagerViewProps> = ({
         auditStatus = 'Atestado médico homologado com abono legal';
       }
 
-      const safeDateForExcel = date ? `="${date}"` : '"—"';
-      const safeStart = `="${scheduledStart}"`;
-      const safeEnd = `="${scheduledEnd}"`;
-      const safeRealIn = `="${realIn}"`;
-      const safeRealOut = `="${realOut}"`;
-
       return [
         name,
         matricula,
         dept,
-        safeDateForExcel,
-        safeStart,
-        safeEnd,
-        safeRealIn,
-        safeRealOut,
-        `"${scheduledHours}h"`,
-        `"${realHoursFormatted}"`,
-        `"${saldoFormatted}"`,
+        sanitizeCsvCell(date || '—'),
+        sanitizeCsvCell(scheduledStart),
+        sanitizeCsvCell(scheduledEnd),
+        sanitizeCsvCell(realIn),
+        sanitizeCsvCell(realOut),
+        sanitizeCsvCell(`${scheduledHours}h`),
+        sanitizeCsvCell(realHoursFormatted),
+        sanitizeCsvCell(saldoFormatted),
         heMin,
         lateMin,
-        `"${statusPresenca}"`,
+        sanitizeCsvCell(statusPresenca),
         notesClean,
-        `"${auditStatus}"`
+        sanitizeCsvCell(auditStatus)
       ].join(';');
     });
 

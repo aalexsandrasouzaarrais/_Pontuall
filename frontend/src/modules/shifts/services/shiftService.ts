@@ -3,6 +3,18 @@ import { Shift, WorkplaceLocation } from '@/types';
 import { findWorkplaceByName, registerWorkplaceIfNew } from '@/shared/services/workplaceService';
 import { calculateHaversineDistance } from '@/shared/utils/geolocation';
 import { evaluatePunchTolerance } from '@/shared/utils/dateUtils';
+import { safeStorage } from '@/shared/utils/safeStorage';
+
+export interface PunchRegistrationResult {
+  ok: boolean;
+  fromServer: boolean;
+  serverTimestamp?: string;
+  serverTimeHHMM?: string;
+  gpsValidated?: boolean;
+  distanceMeters?: number;
+  attendanceStatus?: 'present' | 'late';
+  error?: string;
+}
 
 function encodeShiftNotesWithWorkplace(notes?: string, workplace?: string, workplaceLocation?: WorkplaceLocation): string {
   const wpObj = workplaceLocation || (workplace ? findWorkplaceByName(workplace) : undefined) || (workplace ? { name: workplace } : undefined);
@@ -85,18 +97,23 @@ export async function getShiftsSupabase(employeeIds?: string[]): Promise<Shift[]
     if (data && data.length > 0) {
       const baseShifts = data.map(mapBneToShift);
 
-      // Busca os registros de ponto para anexar check-in e geolocalização reais
+      // Busca apenas os registros de ponto pertencentes aos colaboradores listados na empresa
       try {
-        const { data: punches } = await supabase
-          .from('TAB_Registro_Ponto')
-          .select('*')
-          .order('Dta_Hora_Registro', { ascending: false });
+        const employeeIds = Array.from(new Set(baseShifts.map(s => s.employeeId).filter(id => isValidUuid(id))));
+        const { data: punches } = employeeIds.length > 0
+          ? await supabase
+              .from('TAB_Registro_Ponto')
+              .select('*')
+              .in('Idf_Colaborador', employeeIds)
+              .order('Dta_Hora_Registro', { ascending: false })
+          : { data: [] as any[] };
 
         if (punches && punches.length > 0) {
           return baseShifts.map(s => {
-            const shiftPunches = punches.filter(p => 
-              p.Idf_Turno === s.id || 
-              (p.Idf_Colaborador === s.employeeId && p.Dta_Hora_Registro?.startsWith(s.date))
+            const shiftPunches = punches.filter(p =>
+              p.Idf_Turno
+                ? p.Idf_Turno === s.id
+                : (p.Idf_Colaborador === s.employeeId && p.Dta_Hora_Registro?.startsWith(s.date))
             ).sort((a, b) => new Date(a.Dta_Hora_Registro).getTime() - new Date(b.Dta_Hora_Registro).getTime());
 
             if (shiftPunches.length === 0) return s;
@@ -179,20 +196,6 @@ function isValidUuid(id?: string): boolean {
 
 async function resolveValidEmployeeUuid(employeeId?: string): Promise<string | null> {
   if (isValidUuid(employeeId)) return employeeId!;
-  try {
-    const { data } = await supabase
-      .from('TAB_Colaborador')
-      .select('Idf_Colaborador')
-      .eq('Flg_Ativo', true)
-      .limit(1)
-      .maybeSingle();
-
-    if (data?.Idf_Colaborador && isValidUuid(data.Idf_Colaborador)) {
-      return data.Idf_Colaborador;
-    }
-  } catch (err) {
-    console.warn('Erro ao resolver UUID de colaborador no Supabase:', err);
-  }
   return null;
 }
 
@@ -313,41 +316,134 @@ export async function registerPunchSupabase(
     reportedWorkplace?: string;
   },
   punchType: 'entrada' | 'saida' = 'entrada'
-) {
+): Promise<PunchRegistrationResult> {
+  let fullAddressDesc = locationData.address;
+  if (locationData.reportedWorkplace) {
+    fullAddressDesc = `[Posto: ${locationData.reportedWorkplace}] ${locationData.address}`;
+  } else if (!locationData.gpsValidated && locationData.distanceMeters) {
+    fullAddressDesc = `[Aviso: Fora do Raio (${locationData.distanceMeters}m)] ${locationData.address}`;
+  }
+
+  // 1. Fluxo Server-First: validação de geofence, timestamp e autoria autenticada no backend
+  if (typeof fetch !== 'undefined') {
+    const backendBase = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+    const checkInEndpoints = [
+      ...(backendBase ? [`${backendBase}/api/attendance/check-in`] : []),
+      '/api/attendance/check-in',
+      ...(import.meta.env.DEV ? ['http://localhost:5000/api/attendance/check-in'] : []),
+    ];
+
+    let authToken = safeStorage.getItem('pontual_auth_token');
+    if (!authToken) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        authToken = data?.session?.access_token || null;
+      } catch {}
+    }
+
+    for (const endpoint of checkInEndpoints) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 4500);
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
+          body: JSON.stringify({
+            idf_turno: isValidUuid(shiftId) ? shiftId : null,
+            tpo_registro: punchType,
+            num_latitude: locationData.latitude ?? null,
+            num_longitude: locationData.longitude ?? null,
+            des_endereco: fullAddressDesc,
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+
+        if (response.ok) {
+          const json = await response.json().catch(() => null);
+          return {
+            ok: true,
+            fromServer: true,
+            serverTimestamp: json?.serverTimestamp,
+            serverTimeHHMM: json?.serverTimeHHMM,
+            gpsValidated: typeof json?.gpsValidated === 'boolean' ? json.gpsValidated : locationData.gpsValidated,
+            distanceMeters: typeof json?.distanceMeters === 'number' ? json.distanceMeters : locationData.distanceMeters,
+            attendanceStatus: json?.attendanceStatus,
+          };
+        }
+
+        if (response.status === 400 || response.status === 403) {
+          const errJson = await response.json().catch(() => null);
+          return {
+            ok: false,
+            fromServer: true,
+            error: errJson?.error || 'Não foi possível validar o registro de ponto no servidor.',
+          };
+        }
+      } catch {
+        // Endpoint indisponível; tenta próximo endpoint ou contingência
+      }
+    }
+  }
+
+  // 2. Contingência direta ao Supabase (sem fabricar coordenadas padrão, retornando timestamp oficial do banco)
   try {
     const colabUuid = await resolveValidEmployeeUuid(employeeId);
     if (!colabUuid) {
       console.warn('Idf_Colaborador não é um UUID válido no Supabase. Não foi possível registrar o ponto.');
-      return;
+      return { ok: false, fromServer: false, error: 'Colaborador sem UUID válido.' };
     }
 
-    let fullAddressDesc = locationData.address;
-    if (locationData.reportedWorkplace) {
-      fullAddressDesc = `[Posto: ${locationData.reportedWorkplace}] ${locationData.address}`;
-    } else if (!locationData.gpsValidated && locationData.distanceMeters) {
-      fullAddressDesc = `[Aviso: Fora do Raio (${locationData.distanceMeters}m)] ${locationData.address}`;
+    const hasRealCoords = typeof locationData.latitude === 'number' && typeof locationData.longitude === 'number';
+    const validatedFlag = Boolean(hasRealCoords && locationData.gpsValidated);
+
+    const { data: insertedPunch, error: insertError } = await supabase
+      .from('TAB_Registro_Ponto')
+      .insert({
+        Idf_Turno: isValidUuid(shiftId) ? shiftId : null,
+        Idf_Colaborador: colabUuid,
+        Tpo_Registro: punchType,
+        Num_Latitude: hasRealCoords ? locationData.latitude : null,
+        Num_Longitude: hasRealCoords ? locationData.longitude : null,
+        Des_Endereco: fullAddressDesc,
+        Flg_Gps_Validado: validatedFlag,
+      })
+      .select('Dta_Hora_Registro')
+      .single();
+
+    if (insertError) {
+      console.warn('Aviso ao inserir em TAB_Registro_Ponto:', insertError.message);
     }
 
-    // 1. Salva na TAB_Registro_Ponto com coordenadas reais e flag de validação
-    await supabase.from('TAB_Registro_Ponto').insert({
-      Idf_Turno: isValidUuid(shiftId) ? shiftId : null,
-      Idf_Colaborador: colabUuid,
-      Tpo_Registro: punchType,
-      Num_Latitude: locationData.latitude ?? -23.5505,
-      Num_Longitude: locationData.longitude ?? -46.6333,
-      Des_Endereco: fullAddressDesc,
-      Flg_Gps_Validado: locationData.gpsValidated
-    });
-
-    // 2. Se o turno for um UUID válido no banco, atualiza presença
     if (isValidUuid(shiftId)) {
       await supabase
         .from('TAB_Escala_Turno')
         .update({ Tpo_Status_Presenca: 'present' })
         .eq('Idf_Turno', shiftId);
     }
+
+    let serverTimeHHMM: string | undefined;
+    if (insertedPunch?.Dta_Hora_Registro) {
+      const dt = new Date(insertedPunch.Dta_Hora_Registro);
+      if (!isNaN(dt.getTime())) {
+        serverTimeHHMM = `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
+      }
+    }
+
+    return {
+      ok: true,
+      fromServer: false,
+      serverTimestamp: insertedPunch?.Dta_Hora_Registro || undefined,
+      serverTimeHHMM,
+      gpsValidated: validatedFlag,
+    };
   } catch (err: any) {
     console.warn('Erro ao salvar registro de ponto no Supabase:', err.message);
+    return { ok: false, fromServer: false, error: err?.message || 'Falha ao salvar registro de ponto.' };
   }
 }
 

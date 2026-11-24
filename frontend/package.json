@@ -9,7 +9,8 @@
     "build": "vite build",
     "build:singlefile": "vite build -c vite.singlefile.config.ts && node -e \"const fs = require('fs'); fs.copyFileSync('dist-singlefile/index.html', '../CLIQUE_AQUI_PARA_ABRIR.html');\"",
     "preview": "vite preview",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
@@ -22,6 +23,7 @@
     "bcryptjs": "^3.0.3",
     "canvas-confetti": "^1.9.4",
     "cors": "^2.8.6",
+    "dompurify": "^3.5.0",
     "dotenv": "^18.0.5",
     "express": "^5.2.1",
     "lucide-react": "^0.546.0",
@@ -34,12 +36,14 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
+    "@types/dompurify": "^3.0.5",
     "@types/node": "^22.14.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.21",
     "tailwindcss": "^4.1.14",
     "typescript": "~5.8.2",
-    "vite-plugin-singlefile": "^2.3.3"
+    "vite-plugin-singlefile": "^2.3.3",
+    "vitest": "^5.1.1"
   }
 }

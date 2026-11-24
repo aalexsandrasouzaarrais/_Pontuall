@@ -20,9 +20,13 @@ export function mapRowToNotification(row: any): NotificationItem {
 
 /**
  * Executa o expurgo físico definitivo automático no banco de dados
- * apenas para notificações que foram apagadas pelo colaborador há mais de 60 dias.
+ * apenas para notificações do usuário que foram apagadas há mais de 60 dias.
  */
-export async function purgeExpiredNotificationsSupabase(): Promise<number> {
+export async function purgeExpiredNotificationsSupabase(employeeId?: string): Promise<number> {
+  if (!employeeId || !isValidUuid(employeeId)) {
+    return 0;
+  }
+
   try {
     // Data de corte: exatamente 60 dias atrás
     const cutoff = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
@@ -30,6 +34,7 @@ export async function purgeExpiredNotificationsSupabase(): Promise<number> {
     const { error, count } = await supabase
       .from('TAB_Notificacao')
       .delete({ count: 'exact' })
+      .eq('Idf_Colaborador_Destino', employeeId)
       .not('Dta_Exclusao', 'is', null)
       .lte('Dta_Exclusao', cutoff);
 
@@ -54,18 +59,19 @@ export async function purgeExpiredNotificationsSupabase(): Promise<number> {
  * Ignora notificações onde Dta_Exclusao IS NOT NULL (soft delete).
  */
 export async function getNotificationsSupabase(employeeId?: string): Promise<NotificationItem[]> {
+  if (!employeeId || !isValidUuid(employeeId)) {
+    return [];
+  }
+
   try {
-    // Dispara a rotina de limpeza de 60 dias em background de forma assíncrona
-    purgeExpiredNotificationsSupabase().catch(() => {});
-
-    let query = supabase.from('TAB_Notificacao').select('*');
-
-    if (employeeId && isValidUuid(employeeId)) {
-      query = query.eq('Idf_Colaborador_Destino', employeeId);
-    }
+    // Dispara a rotina de limpeza de 60 dias apenas no escopo do colaborador autenticado
+    purgeExpiredNotificationsSupabase(employeeId).catch(() => {});
 
     // Tenta primeiro filtrar apenas as que NÃO foram apagadas pelo colaborador
-    const { data, error } = await query
+    const { data, error } = await supabase
+      .from('TAB_Notificacao')
+      .select('*')
+      .eq('Idf_Colaborador_Destino', employeeId)
       .is('Dta_Exclusao', null)
       .order('Dta_Envio', { ascending: false })
       .limit(50);
@@ -74,13 +80,11 @@ export async function getNotificationsSupabase(employeeId?: string): Promise<Not
       return data.map(mapRowToNotification);
     }
 
-    // Fallback: se a coluna Dta_Exclusao ainda não existir no banco, faz consulta padrão
-    let fallbackQuery = supabase.from('TAB_Notificacao').select('*');
-    if (employeeId && isValidUuid(employeeId)) {
-      fallbackQuery = fallbackQuery.eq('Idf_Colaborador_Destino', employeeId);
-    }
-
-    const { data: fallbackData, error: fallbackError } = await fallbackQuery
+    // Fallback: se a coluna Dta_Exclusao ainda não existir no banco, faz consulta padrão isolada
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('TAB_Notificacao')
+      .select('*')
+      .eq('Idf_Colaborador_Destino', employeeId)
       .order('Dta_Envio', { ascending: false })
       .limit(50);
 

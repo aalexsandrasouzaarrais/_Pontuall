@@ -128,6 +128,7 @@ import logoWideLight from './assets/logo-pontual-wide.png';
 
 function AppContent() {
   const { theme, isDark, toggleTheme } = useTheme();
+  const [headerLogoError, setHeaderLogoError] = useState(false);
   
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
@@ -137,6 +138,7 @@ function AppContent() {
           urlParams.get('primeiro_acesso') === 'true' || 
           urlParams.get('reset') === 'true' || 
           urlParams.get('type') === 'recovery' || 
+          Boolean(urlParams.get('token')) ||
           window.location.pathname.includes('/redefinir-senha');
 
         if (isResetOrFirstAccess) {
@@ -144,11 +146,14 @@ function AppContent() {
           safeStorage.removeItem('pontual_active_user');
           safeStorage.removeItem('pontual_role');
           safeStorage.removeItem('pontual_google_avatar');
+          safeStorage.removeItem('pontual_auth_token');
           try {
             window.sessionStorage.removeItem('pontual_active_user');
             window.sessionStorage.removeItem('pontual_role');
+            window.sessionStorage.removeItem('pontual_auth_token');
             window.localStorage.removeItem('pontual_active_user');
             window.localStorage.removeItem('pontual_role');
+            window.localStorage.removeItem('pontual_auth_token');
           } catch {}
           return false;
         }
@@ -167,17 +172,21 @@ function AppContent() {
         urlParams.get('primeiro_acesso') === 'true' || 
         urlParams.get('reset') === 'true' || 
         urlParams.get('type') === 'recovery' || 
+        Boolean(urlParams.get('token')) ||
         window.location.pathname.includes('/redefinir-senha');
 
       if (isResetOrFirstAccess) {
         safeStorage.removeItem('pontual_active_user');
         safeStorage.removeItem('pontual_role');
         safeStorage.removeItem('pontual_google_avatar');
+        safeStorage.removeItem('pontual_auth_token');
         try {
           window.sessionStorage.removeItem('pontual_active_user');
           window.sessionStorage.removeItem('pontual_role');
+          window.sessionStorage.removeItem('pontual_auth_token');
           window.localStorage.removeItem('pontual_active_user');
           window.localStorage.removeItem('pontual_role');
+          window.localStorage.removeItem('pontual_auth_token');
         } catch {}
         setIsAuthenticated(false);
       }
@@ -197,6 +206,7 @@ function AppContent() {
           search.includes('reset=true') ||
           search.includes('type=recovery') ||
           search.includes('primeiro_acesso=true') ||
+          search.includes('token=') ||
           search.includes('matricula=') ||
           search.includes('code=') ||
           hash.includes('access_token=') ||
@@ -358,23 +368,20 @@ function AppContent() {
 
         setEmployees(finalEmployees);
 
-        // Busca turnos estritamente dos colaboradores pertencentes à empresa/equipe
+        // Busca turnos, lembretes, solicitações e justificativas em paralelo para evitar flash de estado intermediário
         const empIds = finalEmployees.map(e => e.id);
-        const dbShifts = await getShiftsSupabase(empIds);
-        setShifts(dbShifts || []);
-
-        // Busca lembretes da gestão no Supabase filtrados por empresa e equipe
-        const dbReminders = await getRemindersSupabase({
-          companyId: currentEmp.companyId,
-          creatorId: currentEmp.id,
-          visibleEmployeeIds: empIds
-        });
-        setReminders(dbReminders || []);
-
-        // Busca solicitações e justificativas salvas no Supabase estritamente vinculadas à equipe
         const validScopeIds = empIds.filter(isUuid);
-        const dbRequests = validScopeIds.length > 0 ? await getSolicitacoesSupabase(validScopeIds) : [];
-        const dbJustifications = validScopeIds.length > 0 ? await getJustificativasSupabase(validScopeIds) : [];
+
+        const [dbShifts, dbReminders, dbRequests, dbJustifications] = await Promise.all([
+          getShiftsSupabase(empIds),
+          getRemindersSupabase({
+            companyId: currentEmp.companyId,
+            creatorId: currentEmp.id,
+            visibleEmployeeIds: empIds
+          }),
+          validScopeIds.length > 0 ? getSolicitacoesSupabase(validScopeIds) : Promise.resolve([]),
+          validScopeIds.length > 0 ? getJustificativasSupabase(validScopeIds) : Promise.resolve([]),
+        ]);
 
         const enrichedRequests = (dbRequests || []).map(r => {
           const emp = finalEmployees.find(e => e.id === r.employeeId || (e.email && currentEmp.email && e.email.toLowerCase() === currentEmp.email.toLowerCase())) 
@@ -398,6 +405,8 @@ function AppContent() {
           };
         });
 
+        setShifts(dbShifts || []);
+        setReminders(dbReminders || []);
         setRequests(enrichedRequests);
         setJustifications(enrichedJustifications);
 
@@ -625,7 +634,9 @@ function AppContent() {
         return;
       }
 
-      const isManager = emp.isMasterManager || emp.role?.toLowerCase().includes('gestor') || session.user.email.includes('gestor') || session.user.email.includes('kamile');
+      const isManager = Boolean(
+        emp.isMasterManager || emp.isRh || emp.roleType === 'gestor' || emp.roleType === 'rh'
+      );
       const systemRole: 'manager' | 'employee' = isManager ? 'manager' : 'employee';
 
       safeStorage.setItem('pontual_role', systemRole);
@@ -633,7 +644,7 @@ function AppContent() {
         Idf_Colaborador: emp.id,
         Nme_Colaborador: emp.name,
         Eml_Corporativo: emp.email,
-        Tpo_Perfil: isManager ? 'gestor' : 'colaborador',
+        Tpo_Perfil: emp.roleType || (isManager ? 'gestor' : 'colaborador'),
         Tpo_Cargo: emp.role,
         Des_Departamento: emp.department,
         Des_Avatar_Url: emp.avatar,
@@ -741,8 +752,8 @@ function AppContent() {
 
 
 
-  // Check-In / Check-Out handler for employee
-  const handleCheckIn = (
+  // Check-In / Check-Out handler for employee (server-first para timestamp e geofence oficiais)
+  const handleCheckIn = async (
     shiftId: string,
     locationData: {
       address: string;
@@ -756,13 +767,24 @@ function AppContent() {
     punchType: 'entrada' | 'saida' = 'entrada',
     notesOrReason?: string,
     simulatedTime?: string
-  ) => {
+  ): Promise<string> => {
     const now = new Date();
-    const timeStr = simulatedTime || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const targetShift = shifts.find(s => s.id === shiftId);
 
-    // Avaliação de tolerância conforme Art. 58 § 1º CLT
-    let punchAttendanceStatus: 'present' | 'late' = 'present';
+    // Envia ponto primeiro para o backend calcular timestamp, Haversine geofence e status oficial (ou obtém timestamp oficial do banco no fallback)
+    const serverRes = await registerPunchSupabase(shiftId, activeEmployee.id, locationData, punchType);
+    if (serverRes.fromServer && !serverRes.ok) {
+      showToast('Erro ao registrar ponto', serverRes.error || 'Não foi possível validar o registro no servidor.', 'error');
+      return '';
+    }
+
+    const officialTimestamp = (!simulatedTime && serverRes.serverTimestamp) ? serverRes.serverTimestamp : now.toISOString();
+    const timeStr = simulatedTime || serverRes.serverTimeHHMM || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const officialGpsValidated = typeof serverRes.gpsValidated === 'boolean' ? serverRes.gpsValidated : locationData.gpsValidated;
+    const officialDistanceMeters = serverRes.distanceMeters ?? locationData.distanceMeters;
+
+    // Avaliação de tolerância conforme Art. 58 § 1º CLT (usando horário oficial retornado pelo servidor)
+    let punchAttendanceStatus: 'present' | 'late' = serverRes.attendanceStatus || 'present';
     let lateDiffMinutes = 0;
     let earlyEntryDiffMinutes = 0;
     let overtimeDiffMinutes = 0;
@@ -770,7 +792,7 @@ function AppContent() {
 
     if (punchType === 'entrada' && targetShift?.startTime) {
       const tol = evaluatePunchTolerance(targetShift.startTime, timeStr, 'entrada', 10);
-      if (tol.isLate) {
+      if (serverRes.attendanceStatus === 'late' || tol.isLate) {
         punchAttendanceStatus = 'late';
         lateDiffMinutes = tol.diffMinutes;
       } else if (tol.isEarly) {
@@ -784,10 +806,8 @@ function AppContent() {
         earlyLeaveDiffMinutes = tol.diffMinutes;
       }
     }
-    
-    // Salva o registro de ponto na TAB_Registro_Ponto no Supabase com coordenadas reais e tipo
-    registerPunchSupabase(shiftId, activeEmployee.id, locationData, punchType);
-    if (punchType === 'entrada') {
+
+    if (punchType === 'entrada' && !serverRes.fromServer) {
       updateShiftAttendanceStatusSupabase(shiftId, punchAttendanceStatus);
     }
 
@@ -814,14 +834,14 @@ function AppContent() {
             checkOutTime: timeStr,
             notes: updatedNotes,
             checkOutLocation: {
-              latitude: locationData.latitude ?? -23.5505,
-              longitude: locationData.longitude ?? -46.6333,
+              latitude: locationData.latitude,
+              longitude: locationData.longitude,
               address: locationData.address,
-              gpsValidated: locationData.gpsValidated,
+              gpsValidated: officialGpsValidated,
               accuracy: locationData.accuracy,
-              distanceMeters: locationData.distanceMeters,
+              distanceMeters: officialDistanceMeters,
               reportedWorkplace: locationData.reportedWorkplace,
-              timestamp: now.toISOString(),
+              timestamp: officialTimestamp,
             }
           };
           if (updatedNotes !== (s.notes || '')) {
@@ -848,14 +868,14 @@ function AppContent() {
             checkInTime: timeStr,
             notes: updatedNotes,
             checkInLocation: {
-              latitude: locationData.latitude ?? -23.5505,
-              longitude: locationData.longitude ?? -46.6333,
+              latitude: locationData.latitude,
+              longitude: locationData.longitude,
               address: locationData.address,
-              gpsValidated: locationData.gpsValidated,
+              gpsValidated: officialGpsValidated,
               accuracy: locationData.accuracy,
-              distanceMeters: locationData.distanceMeters,
+              distanceMeters: officialDistanceMeters,
               reportedWorkplace: locationData.reportedWorkplace,
-              timestamp: now.toISOString(),
+              timestamp: officialTimestamp,
             }
           };
           if (updatedNotes !== (s.notes || '')) {
@@ -871,14 +891,16 @@ function AppContent() {
     let statusMsg = 'GPS Validado no Posto';
     if (locationData.reportedWorkplace) {
       statusMsg = `Posto declarado: ${locationData.reportedWorkplace}`;
-    } else if (!locationData.gpsValidated && locationData.distanceMeters) {
-      statusMsg = `Aviso: Ponto registrado a ${locationData.distanceMeters}m do posto alocado`;
+    } else if (!officialGpsValidated && officialDistanceMeters) {
+      statusMsg = `Aviso: Ponto registrado a ${officialDistanceMeters}m do posto alocado`;
+    } else if (!officialGpsValidated) {
+      statusMsg = 'Aviso: Localização GPS não validada';
     }
 
     const isExit = punchType === 'saida';
     let notifTitle = isExit
-      ? (locationData.gpsValidated ? 'Saída Registrada com Sucesso!' : 'Saída Registrada (Aviso de Perímetro)')
-      : (locationData.gpsValidated ? 'Entrada Registrada com Sucesso!' : 'Entrada Registrada (Aviso de Perímetro)');
+      ? (officialGpsValidated ? 'Saída Registrada com Sucesso!' : 'Saída Registrada (Aviso de Perímetro)')
+      : (officialGpsValidated ? 'Entrada Registrada com Sucesso!' : 'Entrada Registrada (Aviso de Perímetro)');
     
     if (punchType === 'entrada' && lateDiffMinutes > 0) {
       notifTitle = `Entrada Registrada (Atraso de ${lateDiffMinutes} min)`;
@@ -963,6 +985,8 @@ function AppContent() {
         });
       });
     }
+
+    return timeStr;
   };
 
   const handleUpdateEmployee = async (updated: Employee) => {
@@ -1436,7 +1460,7 @@ function AppContent() {
     showToast('Solicitação Recusada', 'A solicitação foi recusada no Supabase.', 'info');
   };
 
-  const handleApproveJustification = async (id: string, customFeedback?: string) => {
+  const handleApproveJustification = async (id: string, customFeedback?: string, silentToast: boolean = false) => {
     const feedback = customFeedback || 'Homologado pelo RH';
     const target = justifications.find(j => j.id === id);
     setJustifications(prev => prev.map(j => j.id === id ? { ...j, status: 'approved', managerNotes: feedback } : j));
@@ -1445,7 +1469,10 @@ function AppContent() {
     const lowerReason = (target?.reason || '').toLowerCase();
     const isEarlyLeaveTarget = lowerReason.includes('saída antecipada') || lowerReason.includes('saida antecipada');
     const isEarlyEntryTarget = lowerReason.includes('entrada antecipada');
-    let isTimeDeviationTarget = lowerReason.includes('atraso') || isEarlyLeaveTarget || isEarlyEntryTarget;
+    const isForgetfulnessTarget = lowerReason.includes('[esquecimento') || (target as any)?.justificationType === 'forgetfulness';
+    const isForgetExitTarget = isForgetfulnessTarget && (lowerReason.includes('esquecimento de saída') || lowerReason.includes('esquecimento de saida'));
+    const isOvertimeTarget = !isForgetfulnessTarget && (lowerReason.includes('hora extra') || (target as any)?.justificationType === 'overtime');
+    let isTimeDeviationTarget = lowerReason.includes('atraso') || isEarlyLeaveTarget || isEarlyEntryTarget || isForgetfulnessTarget || isOvertimeTarget;
 
     if (target) {
       let targetShift = target.shiftId ? shifts.find(s => s.id === target.shiftId) : undefined;
@@ -1458,11 +1485,17 @@ function AppContent() {
         isTimeDeviationTarget = isTimeDeviationTarget || hasWorkedPunch;
 
         if (hasWorkedPunch) {
-          const abonoLabel = isEarlyLeaveTarget
-            ? '[ABONO GESTOR: Saída Antecipada Abonada]'
-            : isEarlyEntryTarget
-              ? '[ABONO GESTOR: Entrada Antecipada Abonada]'
-              : '[ABONO GESTOR: Atraso Abonado]';
+          const abonoLabel = isForgetfulnessTarget
+            ? (isForgetExitTarget
+                ? '[HOMOLOGADO GESTOR: Esquecimento de Saída Homologado / Horário Normal Ajustado]'
+                : '[HOMOLOGADO GESTOR: Esquecimento de Entrada Homologado / Horário Normal Ajustado]')
+            : isOvertimeTarget
+              ? '[HOMOLOGADO GESTOR: Hora Extra Aprovada]'
+              : isEarlyLeaveTarget
+                ? '[ABONO GESTOR: Saída Antecipada Abonada]'
+                : isEarlyEntryTarget
+                  ? '[ABONO GESTOR: Entrada Antecipada Abonada]'
+                  : '[ABONO GESTOR: Atraso Abonado]';
           const updatedNotes = targetShift.notes?.includes(abonoLabel)
             ? targetShift.notes
             : `${targetShift.notes ? `${targetShift.notes} | ` : ''}${abonoLabel}`;
@@ -1487,16 +1520,18 @@ function AppContent() {
         type: 'justification',
       });
     }
-    showToast(
-      isTimeDeviationTarget ? 'Ocorrência Abonada' : 'Atestado Homologado',
-      isTimeDeviationTarget
-        ? 'A justificativa de horário foi homologada pelo gestor.'
-        : 'O atestado/justificativa foi homologado e o turno atualizado no sistema.',
-      'success'
-    );
+    if (!silentToast) {
+      showToast(
+        isTimeDeviationTarget ? 'Ocorrência Abonada' : 'Atestado Homologado',
+        isTimeDeviationTarget
+          ? 'A justificativa de horário foi homologada pelo gestor.'
+          : 'O atestado/justificativa foi homologado e o turno atualizado no sistema.',
+        'success'
+      );
+    }
   };
 
-  const handleRejectJustification = async (id: string, customFeedback?: string) => {
+  const handleRejectJustification = async (id: string, customFeedback?: string, silentToast: boolean = false) => {
     const feedback = customFeedback || 'Não homologado';
     const target = justifications.find(j => j.id === id);
     setJustifications(prev => prev.map(j => j.id === id ? { ...j, status: 'rejected', managerNotes: feedback } : j));
@@ -1505,7 +1540,10 @@ function AppContent() {
     const lowerReason = (target?.reason || '').toLowerCase();
     const isEarlyLeaveTarget = lowerReason.includes('saída antecipada') || lowerReason.includes('saida antecipada');
     const isEarlyEntryTarget = lowerReason.includes('entrada antecipada');
-    let isTimeDeviationTarget = lowerReason.includes('atraso') || isEarlyLeaveTarget || isEarlyEntryTarget;
+    const isForgetfulnessTarget = lowerReason.includes('[esquecimento') || (target as any)?.justificationType === 'forgetfulness';
+    const isForgetExitTarget = isForgetfulnessTarget && (lowerReason.includes('esquecimento de saída') || lowerReason.includes('esquecimento de saida'));
+    const isOvertimeTarget = !isForgetfulnessTarget && (lowerReason.includes('hora extra') || (target as any)?.justificationType === 'overtime');
+    let isTimeDeviationTarget = lowerReason.includes('atraso') || isEarlyLeaveTarget || isEarlyEntryTarget || isForgetfulnessTarget || isOvertimeTarget;
 
     if (target) {
       let targetShift = target.shiftId ? shifts.find(s => s.id === target.shiftId) : undefined;
@@ -1519,11 +1557,17 @@ function AppContent() {
 
         if (hasWorkedPunch) {
           // Colaborador trabalhou no dia: mantém status trabalhado (não transforma dia trabalhado em falta)
-          const rejectLabel = isEarlyLeaveTarget
-            ? '[AJUSTE GESTOR: Saída Antecipada Não Abonada]'
-            : isEarlyEntryTarget
-              ? '[AJUSTE GESTOR: Entrada Antecipada Não Homologada]'
-              : '[AJUSTE GESTOR: Débito de Atraso Confirmado]';
+          const rejectLabel = isForgetfulnessTarget
+            ? (isForgetExitTarget
+                ? '[AJUSTE GESTOR: Esquecimento de Saída Não Aceito]'
+                : '[AJUSTE GESTOR: Esquecimento de Entrada Não Aceito]')
+            : isOvertimeTarget
+              ? '[AJUSTE GESTOR: Hora Extra Não Homologada]'
+              : isEarlyLeaveTarget
+                ? '[AJUSTE GESTOR: Saída Antecipada Não Abonada]'
+                : isEarlyEntryTarget
+                  ? '[AJUSTE GESTOR: Entrada Antecipada Não Homologada]'
+                  : '[AJUSTE GESTOR: Débito de Atraso Confirmado]';
           const updatedNotes = targetShift.notes?.includes(rejectLabel)
             ? targetShift.notes
             : `${targetShift.notes ? `${targetShift.notes} | ` : ''}${rejectLabel}`;
@@ -1548,11 +1592,13 @@ function AppContent() {
         type: 'justification',
       });
     }
-    showToast(
-      isTimeDeviationTarget ? 'Justificativa Recusada' : 'Atestado Recusado',
-      'A justificativa foi marcada como não homologada no Supabase.',
-      'info'
-    );
+    if (!silentToast) {
+      showToast(
+        isTimeDeviationTarget ? 'Justificativa Recusada' : 'Atestado Recusado',
+        'A justificativa foi marcada como não homologada no Supabase.',
+        'info'
+      );
+    }
   };
 
   const handleApprovePjReport = async (id: string) => {
@@ -1601,6 +1647,20 @@ function AppContent() {
 
   const handleLogout = async () => {
     try {
+      const backendBase = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+      const logoutEndpoints = [
+        ...(backendBase ? [`${backendBase}/api/auth/logout`] : []),
+        '/api/auth/logout',
+        ...(import.meta.env.DEV ? ['http://localhost:5000/api/auth/logout'] : []),
+      ];
+      for (const endpoint of logoutEndpoints) {
+        try {
+          const res = await fetch(endpoint, { method: 'POST', credentials: 'include' });
+          if (res.ok) break;
+        } catch {}
+      }
+    } catch {}
+    try {
       await supabase.auth.signOut();
     } catch (err) {
       console.warn('Erro ao deslogar do Supabase:', err);
@@ -1609,14 +1669,17 @@ function AppContent() {
       safeStorage.removeItem('pontual_active_user');
       safeStorage.removeItem('pontual_role');
       safeStorage.removeItem('pontual_google_avatar');
+      safeStorage.removeItem('pontual_auth_token');
 
       if (typeof window !== 'undefined') {
         window.sessionStorage.removeItem('pontual_active_user');
         window.sessionStorage.removeItem('pontual_role');
         window.sessionStorage.removeItem('pontual_google_avatar');
+        window.sessionStorage.removeItem('pontual_auth_token');
         window.localStorage.removeItem('pontual_active_user');
         window.localStorage.removeItem('pontual_role');
         window.localStorage.removeItem('pontual_google_avatar');
+        window.localStorage.removeItem('pontual_auth_token');
 
         // Limpa tokens de autenticação do Supabase residuais no storage
         try {
@@ -1755,19 +1818,18 @@ function AppContent() {
           title="Ir para o Painel Inicial"
           aria-label="Ir para o Painel Inicial"
         >
-          <img
-            src={!isDark ? logoWideDark : logoWideLight}
-            alt="Pontual"
-            className="h-6 sm:h-7 w-auto object-contain select-none"
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              target.style.display = 'none';
-              const parent = target.parentElement;
-              if (parent) {
-                parent.innerHTML = `<span class="${!isDark ? 'text-slate-900' : 'text-white'} font-extrabold text-sm tracking-tight">Pontual</span>`;
-              }
-            }}
-          />
+          {!headerLogoError ? (
+            <img
+              src={!isDark ? logoWideDark : logoWideLight}
+              alt="Pontual"
+              className="h-6 sm:h-7 w-auto object-contain select-none"
+              onError={() => setHeaderLogoError(true)}
+            />
+          ) : (
+            <span className={`${!isDark ? 'text-slate-900' : 'text-white'} font-extrabold text-sm tracking-tight`}>
+              Pontual
+            </span>
+          )}
         </button>
 
         {/* Right: Perfil (mobile) + Tema + Sair (desktop) */}

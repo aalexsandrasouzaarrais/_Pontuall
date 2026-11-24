@@ -1,4 +1,5 @@
 import { supabase } from '@/shared/services/supabase';
+import { safeStorage } from '@/shared/utils/safeStorage';
 
 export interface SendWelcomeEmailPayload {
   email: string;
@@ -14,57 +15,72 @@ export interface SendWelcomeEmailResult {
   id?: string;
 }
 
+async function resolveAuthToken(): Promise<string | null> {
+  const localToken = safeStorage.getItem('pontual_auth_token');
+  if (localToken) return localToken;
+
+  try {
+    const { data } = await supabase.auth.getSession();
+    if (data?.session?.access_token) {
+      return data.session.access_token;
+    }
+  } catch {}
+
+  return null;
+}
+
 /**
- * Envia o e-mail de primeiro acesso com matrícula (senha temporária) e link de ativação.
- * Tenta via Backend Express (Resend) ou Supabase Edge Functions.
+ * Envia o e-mail de primeiro acesso com matrícula e link seguro gerado no servidor.
+ * Exige sessão autenticada de Gestor/RH.
  */
 export async function sendWelcomeEmail(payload: SendWelcomeEmailPayload): Promise<SendWelcomeEmailResult> {
-  // Prioriza a URL configurada do app (ex: no Vercel VITE_APP_URL=https://meuapp.vercel.app),
-  // ou dinamicamente o domínio atual do navegador (window.location.origin).
-  const configuredUrl = import.meta.env.VITE_APP_URL || import.meta.env.VITE_PUBLIC_URL || '';
-  const currentOrigin = (typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('file://')) 
-    ? window.location.origin 
-    : '';
-  const origin = (configuredUrl || currentOrigin || 'http://localhost:3000').replace(/\/+$/, '');
-  const resetLink = payload.link || `${origin}/colaborador?matricula=${encodeURIComponent(payload.matricula)}&primeiro_acesso=true`;
-
   const requestBody = {
     email: payload.email,
     nome: payload.nome,
     matricula: payload.matricula,
-    link: resetLink
+  };
+
+  const token = await resolveAuthToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
   // 1. Tenta disparar através do Backend Express ou API configurada
   const backendBase = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+  const isLocalViteDev =
+    import.meta.env.DEV &&
+    typeof window !== 'undefined' &&
+    ['localhost', '127.0.0.1'].includes(window.location.hostname);
+
   const endpoints = [
     ...(backendBase ? [`${backendBase}/api/auth/send-welcome-email`, `${backendBase}/send-welcome-email`] : []),
-    '/api/auth/send-welcome-email',
-    'http://localhost:5000/api/auth/send-welcome-email'
+    ...(!isLocalViteDev || Boolean(backendBase) ? ['/api/auth/send-welcome-email'] : []),
+    ...(import.meta.env.DEV && import.meta.env.VITE_ENABLE_LOCAL_EMAIL_SERVER === 'true'
+      ? ['http://localhost:5000/api/auth/send-welcome-email']
+      : []),
   ];
 
   for (const endpoint of endpoints) {
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestBody)
+        credentials: 'include',
+        headers,
+        body: JSON.stringify(requestBody),
       });
 
       if (response.ok) {
         const data = await response.json();
-        console.log('[emailService] Resposta do backend:', data);
         return {
           success: true,
-          simulated: data.simulated,
+          simulated: Boolean(data.simulated),
           message: data.message || 'E-mail enviado com sucesso!',
-          id: data.id
+          id: data.id,
         };
       } else {
         const errJson = await response.json().catch(() => null);
-        console.warn(`[emailService] Falha no endpoint ${endpoint}:`, errJson);
+        console.warn(`[emailService] Falha no endpoint ${endpoint}:`, errJson?.message || errJson?.error || response.status);
       }
     } catch (endpointErr) {
       console.warn(`[emailService] Erro ao conectar em ${endpoint}:`, endpointErr);
@@ -72,33 +88,28 @@ export async function sendWelcomeEmail(payload: SendWelcomeEmailPayload): Promis
   }
 
   // 2. Fallback: Tenta disparar através da Edge Function do Supabase (caso implantada)
-  try {
-    const { data, error } = await supabase.functions.invoke('send-welcome-email', {
-      body: requestBody
-    });
+  if (!isLocalViteDev || import.meta.env.VITE_ENABLE_EMAIL_EDGE_FUNCTION === 'true') {
+    try {
+      const { data, error } = await supabase.functions.invoke('send-welcome-email', {
+        body: requestBody,
+      });
 
-    if (!error && data) {
-      return {
-        success: true,
-        simulated: data.simulated,
-        message: 'E-mail enviado via Supabase Edge Function com sucesso!',
-        id: data.id
-      };
+      if (!error && data) {
+        return {
+          success: true,
+          simulated: Boolean(data.simulated),
+          message: 'E-mail enviado via Supabase Edge Function com sucesso!',
+          id: data.id,
+        };
+      }
+    } catch (supabaseErr) {
+      console.warn('Supabase Edge Function indisponível:', supabaseErr);
     }
-  } catch (supabaseErr) {
-    console.warn('Supabase Edge Function indisponível:', supabaseErr);
   }
 
-  // 3. Fallback de Demonstração / Local
-  console.log(`%c[PONTUAL - E-MAIL DE BOAS-VINDAS SIMULADO]`, 'color: #f89847; font-weight: bold; font-size: 14px;');
-  console.log(`Para: ${payload.email}`);
-  console.log(`Nome: ${payload.nome}`);
-  console.log(`Senha Inicial (Matrícula): ${payload.matricula}`);
-  console.log(`Link de Acesso: ${resetLink}`);
-
   return {
-    success: true,
-    simulated: true,
-    message: `E-mail de ativação preparado para ${payload.email} com a senha ${payload.matricula}.`
+    success: false,
+    simulated: false,
+    message: 'Não foi possível enviar o e-mail de ativação. Verifique a autenticação e a configuração SMTP do servidor.',
   };
 }

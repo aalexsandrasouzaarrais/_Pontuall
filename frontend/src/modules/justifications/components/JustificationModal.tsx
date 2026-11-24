@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { X, FileText, Upload, CheckCircle2, AlertCircle, Lock } from 'lucide-react';
 import { Employee, Shift, AbsenceJustification } from '@/types';
 import { uploadDocumentSupabase } from '@/shared/services/storageService';
+import { validateUploadFile, validateUploadMagicBytes } from '@/shared/utils/security';
 
 export type JustificationCategoryType = 'absence' | 'delay' | 'early_entry' | 'early_leave' | 'overtime' | 'forgetfulness';
 
@@ -102,6 +103,19 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      const validation = validateUploadFile(file, { mode: 'document', maxSizeBytes: 10 * 1024 * 1024 });
+      if (!validation.valid) {
+        alert(validation.error || 'Arquivo inválido. Selecione PDF, PNG, JPG ou WEBP.');
+        e.target.value = '';
+        return;
+      }
+
+      const magicCheck = await validateUploadMagicBytes(file, { mode: 'document' });
+      if (!magicCheck.valid) {
+        alert(magicCheck.error || 'Conteúdo de arquivo inválido. Envie apenas PDF, PNG, JPG ou WEBP reais.');
+        e.target.value = '';
+        return;
+      }
       setDocumentName(file.name);
       setIsUploaded(true);
       setIsUploading(true);
@@ -189,7 +203,7 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
     : isForgetfulness
       ? (justificationType === 'overtime' ? 'Esquecimento de Saída' : 'Esquecimento de Entrada')
       : isDelay
-        ? `Atraso de Entrada ${delayMinutes ? `(+${delayMinutes} min)` : ''}`
+        ? `Atraso de Entrada ${delayMinutes ? `(-${delayMinutes} min)` : ''}`
         : isEarlyEntry
           ? `Entrada Antecipada ${delayMinutes ? `(-${delayMinutes} min)` : ''}`
           : isEarlyLeave
@@ -217,7 +231,7 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
           ? `Declare que você encerrou o expediente no horário contratual (${chosenShift?.endTime || '17:00'}) e relate o motivo da batida posterior.`
           : `Declare que você iniciou o expediente no horário contratual (${chosenShift?.startTime || '08:00'}) e relate o motivo da batida posterior.`)
       : isDelay
-        ? (delayMinutes ? `Atraso registrado de +${delayMinutes} min. Informe o motivo para o gestor.` : 'Informe o motivo do atraso e anexe declaração/comprovante se aplicável.')
+        ? (delayMinutes ? `Atraso registrado de -${delayMinutes} min. Informe o motivo para o gestor.` : 'Informe o motivo do atraso e anexe declaração/comprovante se aplicável.')
         : isEarlyEntry
           ? (delayMinutes ? `Entrada registrada ${delayMinutes} min antes do horário previsto. Informe o motivo para o gestor.` : 'Informe o motivo da entrada antecipada para análise do gestor.')
           : isEarlyLeave
@@ -570,7 +584,7 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
             }`}>
               <input
                 type="file"
-                accept=".pdf,.jpg,.jpeg,.png"
+                accept=".pdf,.jpg,.jpeg,.png,.webp"
                 onChange={handleFileUpload}
                 className="hidden"
               />

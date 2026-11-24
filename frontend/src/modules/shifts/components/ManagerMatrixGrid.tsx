@@ -1,4 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import { sanitizeSafeUrl, sanitizeCsvCell, quotePostgrestValue } from '@/shared/utils/security';
+import { isUuid } from '@/modules/auth/services/colaboradorService';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -69,7 +71,8 @@ import {
 import { EmployeesManagementView } from '@/modules/manager/components/EmployeesManagementView';
 import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
 import { DeleteShiftsModal } from './DeleteShiftsModal';
-import { addDaysLocal, startOfWeekMonday, toLocalDateString, getTodayDateString, formatDateBR, normalizeDateToISO, isShiftPast24hWithoutPunch, evaluatePunchTolerance } from '@/shared/utils/dateUtils';
+import { addDaysLocal, startOfWeekMonday, toLocalDateString, getTodayDateString, formatDateBR, normalizeDateToISO, isShiftPast24hWithoutPunch, evaluatePunchTolerance, parseDateSortTimestamp, matchesDateSearchQuery } from '@/shared/utils/dateUtils';
+import { resolveAttendanceReportStatusAndObs } from '@/shared/utils/attendanceUtils';
 import { showPolishedToast } from '@/components/ui/halo-toast';
 import {
   ReminderItem,
@@ -82,19 +85,6 @@ import {
 import { updateJustificativaStatusSupabase, updateSolicitacaoStatusSupabase } from '@/modules/requests/services/requestService';
 import { openDocumentSafe } from '@/shared/services/storageService';
 import { createNotificationSupabase } from '@/modules/notifications/services/notificationService';
-
-const parseDateSortTimestamp = (d?: string | Date | null): number => {
-  if (!d) return 0;
-  if (d instanceof Date) return isNaN(d.getTime()) ? 0 : d.getTime();
-  const clean = String(d).trim();
-  const iso = normalizeDateToISO(clean);
-  if (iso) {
-    const t = new Date(iso + 'T12:00:00').getTime();
-    if (!isNaN(t)) return t;
-  }
-  const fallback = new Date(clean).getTime();
-  return isNaN(fallback) ? 0 : fallback;
-};
 
 interface ManagerMatrixGridProps {
   employees: Employee[];
@@ -123,8 +113,8 @@ interface ManagerMatrixGridProps {
   requests?: TimeOffRequest[];
   onApproveRequest?: (id: string, customFeedback?: string) => void;
   onRejectRequest?: (id: string, customFeedback?: string) => void;
-  onApproveJustification?: (id: string, customFeedback?: string) => void;
-  onRejectJustification?: (id: string, customFeedback?: string) => void;
+  onApproveJustification?: (id: string, customFeedback?: string, silentToast?: boolean) => void | Promise<void>;
+  onRejectJustification?: (id: string, customFeedback?: string, silentToast?: boolean) => void | Promise<void>;
 }
 
 export interface BancoHorasItem {
@@ -260,6 +250,37 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     actionText?: string;
     feedback: string;
   }>>([]);
+
+  useEffect(() => {
+    setSelectedDetailOccurrence(prev => {
+      if (!prev) return null;
+      const exactMatch = approvalsData.find(a => a.id === prev.id);
+      const fallbackMatch = !exactMatch && prev.id.startsWith('shift-occ-')
+        ? approvalsData.find(a =>
+            !a.id.startsWith('shift-occ-') &&
+            a.employeeId === prev.employeeId &&
+            a.date === prev.date &&
+            a.type === prev.type
+          )
+        : undefined;
+      const latest = exactMatch || fallbackMatch;
+      if (!latest) return prev;
+      if (
+        latest.id === prev.id &&
+        latest.status === prev.status &&
+        latest.reason === prev.reason &&
+        latest.actionText === prev.actionText &&
+        latest.documentUrl === prev.documentUrl
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        ...latest,
+        feedback: prev.feedback || latest.feedback,
+      };
+    });
+  }, [approvalsData]);
 
   // Tab 3 (Relatórios) & Banco de Horas States
   const [relatorioSubTab, setRelatorioSubTab] = useState<'geral' | 'banco_horas'>('geral');
@@ -689,12 +710,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             : (earlyMatch ? Number(earlyMatch[1]) : (inTol?.isEarly ? inTol.diffMinutes : 0));
 
           const isHomologated = Boolean(
-            s.notes?.includes('HOMOLOGADO') ||
+            (isForgetfulnessEntry && (s.notes?.includes('Esquecimento de Entrada Homologado') || (s.notes?.includes('Esquecimento Homologado') && !s.notes?.includes('Esquecimento de Saída') && !s.notes?.includes('Esquecimento de Saida')))) ||
             (hasLate && s.notes?.includes('[ABONO GESTOR: Atraso')) ||
             (hasEarlyEntry && s.notes?.includes('[ABONO GESTOR: Entrada Antecipada')) ||
             s.attendanceStatus === 'justified'
           );
           const isAdjusted = Boolean(
+            (isForgetfulnessEntry && (s.notes?.includes('Esquecimento de Entrada Não Aceito') || (s.notes?.includes('Esquecimento Não Aceito') && !s.notes?.includes('Esquecimento de Saída') && !s.notes?.includes('Esquecimento de Saida')))) ||
             (hasLate && s.notes?.includes('Débito de Atraso Confirmado')) ||
             (hasEarlyEntry && s.notes?.includes('Entrada Antecipada Não Homologada'))
           );
@@ -730,7 +752,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         : null;
       const hasHe = Boolean(s.notes?.includes('[HE')) || Boolean(outTol?.isOvertime);
       const hasEarlyLeave = !hasHe && (Boolean(s.notes?.includes('[Saída Antecipada') || s.notes?.includes('[Saida Antecipada')) || Boolean(outTol?.isEarlyLeave));
-      const isForgetfulnessExit = Boolean(s.notes?.includes('Esquecimento de Saída') || s.notes?.includes('Justificativa Esquecimento'));
+      const isForgetfulnessExit = Boolean(
+        s.notes?.includes('Esquecimento de Saída') ||
+        s.notes?.includes('Esquecimento de Saida') ||
+        (s.notes?.includes('Justificativa Esquecimento') && !s.notes?.includes('Esquecimento de Entrada'))
+      );
 
       if (hasHe || hasEarlyLeave || isForgetfulnessExit) {
         const exitKind = hasEarlyLeave ? 'early_leave' : 'overtime';
@@ -743,11 +769,13 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
             : (earlyLeaveMatch ? Number(earlyLeaveMatch[1]) : (outTol?.isEarlyLeave ? outTol.diffMinutes : 0));
 
           const isHomologated = Boolean(
-            s.notes?.includes('HOMOLOGADO') ||
+            (hasHe && s.notes?.includes('[HOMOLOGADO GESTOR: Hora Extra')) ||
+            (isForgetfulnessExit && (s.notes?.includes('Esquecimento de Saída Homologado') || (s.notes?.includes('Esquecimento Homologado') && !s.notes?.includes('Esquecimento de Entrada')))) ||
             (hasEarlyLeave && s.notes?.includes('[ABONO GESTOR: Saída Antecipada'))
           );
           const isAdjusted = Boolean(
-            s.notes?.includes('AJUSTE GESTOR') ||
+            (hasHe && (s.notes?.includes('[AJUSTE GESTOR: Ajustado') || s.notes?.includes('Hora Extra Não Homologada'))) ||
+            (isForgetfulnessExit && (s.notes?.includes('Esquecimento de Saída Não Aceito') || (s.notes?.includes('Esquecimento Não Aceito') && !s.notes?.includes('Esquecimento de Entrada')))) ||
             (hasEarlyLeave && s.notes?.includes('Saída Antecipada Não Abonada'))
           );
 
@@ -1021,7 +1049,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
       if (matchingJust) {
         if (onApproveJustification) {
-          onApproveJustification(matchingJust.id, customFeedback || 'Ocorrência abonada pelo gestor');
+          await onApproveJustification(matchingJust.id, customFeedback || 'Ocorrência abonada pelo gestor', true);
         } else {
           await updateJustificativaStatusSupabase(matchingJust.id, 'approved', customFeedback || 'Ocorrência abonada pelo gestor');
         }
@@ -1047,12 +1075,23 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     const isForgetfulness = Boolean(targetItem?.type?.includes('Esquecimento'));
     if (isForgetfulness) {
       const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace(/^shift-occ-(?:in-|out-)?/, '') : undefined);
-      if (shiftId) {
+      const matchingJust = id.startsWith('shift-occ-') ? undefined : justifications.find(j => j.id === id);
+      if (matchingJust) {
+        // Persiste a homologação na justificativa (Supabase) — o handler do App também anota o turno
+        if (onApproveJustification) {
+          await onApproveJustification(matchingJust.id, customFeedback || 'Esquecimento homologado pelo gestor', true);
+        } else {
+          await updateJustificativaStatusSupabase(matchingJust.id, 'approved', customFeedback || 'Esquecimento homologado pelo gestor');
+        }
+      } else if (shiftId) {
         const targetShift = shifts.find(s => s.id === shiftId);
         if (targetShift) {
+          const dirTag = targetItem?.type === 'Esquecimento de Entrada'
+            ? '[HOMOLOGADO GESTOR: Esquecimento de Entrada Homologado / Horário Normal Ajustado]'
+            : '[HOMOLOGADO GESTOR: Esquecimento de Saída Homologado / Horário Normal Ajustado]';
           onOpenEditShift?.({
             ...targetShift,
-            notes: `${targetShift.notes || ''} [HOMOLOGADO GESTOR: Esquecimento Homologado / Horário Normal Ajustado]`
+            notes: `${targetShift.notes || ''} ${dirTag}`
           });
         }
       }
@@ -1068,7 +1107,14 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
     if (isHe) {
       const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace(/^shift-occ-(?:in-|out-)?/, '') : undefined);
-      if (shiftId) {
+      const matchingJust = id.startsWith('shift-occ-') ? undefined : justifications.find(j => j.id === id);
+      if (matchingJust) {
+        if (onApproveJustification) {
+          await onApproveJustification(matchingJust.id, customFeedback || 'Hora extra homologada pelo gestor', true);
+        } else {
+          await updateJustificativaStatusSupabase(matchingJust.id, 'approved', customFeedback || 'Hora extra homologada pelo gestor');
+        }
+      } else if (shiftId) {
         const targetShift = shifts.find(s => s.id === shiftId);
         if (targetShift) {
           onOpenEditShift?.({
@@ -1098,7 +1144,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           await updateSolicitacaoStatusSupabase(id, 'approved', customFeedback || 'Aprovado pelo gestor');
         }
       } else if (onApproveJustification) {
-        onApproveJustification(id, customFeedback);
+        await onApproveJustification(id, customFeedback, true);
       } else {
         await updateJustificativaStatusSupabase(id, 'approved', customFeedback || 'Homologado pelo gestor');
       }
@@ -1161,7 +1207,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
       if (matchingJust) {
         if (onRejectJustification) {
-          onRejectJustification(matchingJust.id, customFeedback || 'Ocorrência não abonada pelo gestor');
+          await onRejectJustification(matchingJust.id, customFeedback || 'Ocorrência não abonada pelo gestor', true);
         } else {
           await updateJustificativaStatusSupabase(matchingJust.id, 'rejected', customFeedback || 'Ocorrência não abonada pelo gestor');
         }
@@ -1184,9 +1230,48 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       return;
     }
 
+    const isForgetfulness = Boolean(targetItem?.type?.includes('Esquecimento'));
+    if (isForgetfulness) {
+      const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace(/^shift-occ-(?:in-|out-)?/, '') : undefined);
+      const matchingJust = id.startsWith('shift-occ-') ? undefined : justifications.find(j => j.id === id);
+      if (matchingJust) {
+        if (onRejectJustification) {
+          await onRejectJustification(matchingJust.id, customFeedback || 'Esquecimento não aceito pelo gestor', true);
+        } else {
+          await updateJustificativaStatusSupabase(matchingJust.id, 'rejected', customFeedback || 'Esquecimento não aceito pelo gestor');
+        }
+      } else if (shiftId) {
+        const targetShift = shifts.find(s => s.id === shiftId);
+        if (targetShift) {
+          const dirTag = targetItem?.type === 'Esquecimento de Entrada'
+            ? '[AJUSTE GESTOR: Esquecimento de Entrada Não Aceito]'
+            : '[AJUSTE GESTOR: Esquecimento de Saída Não Aceito]';
+          onOpenEditShift?.({
+            ...targetShift,
+            notes: `${targetShift.notes || ''} ${dirTag}`
+          });
+        }
+      }
+      showPolishedToast({
+        id: 'ajuste-esquecimento-confirm',
+        title: 'Esquecimento Não Aceito',
+        description: 'A justificativa de esquecimento foi ajustada pelo gestor.',
+        rimVariant: 'default',
+        duration: 4000,
+      });
+      return;
+    }
+
     if (isHe) {
       const shiftId = (targetItem as any)?.shiftId || (id.startsWith('shift-occ-') ? id.replace(/^shift-occ-(?:in-|out-)?/, '') : undefined);
-      if (shiftId) {
+      const matchingJust = id.startsWith('shift-occ-') ? undefined : justifications.find(j => j.id === id);
+      if (matchingJust) {
+        if (onRejectJustification) {
+          await onRejectJustification(matchingJust.id, customFeedback || 'Hora extra não homologada pelo gestor', true);
+        } else {
+          await updateJustificativaStatusSupabase(matchingJust.id, 'rejected', customFeedback || 'Hora extra não homologada pelo gestor');
+        }
+      } else if (shiftId) {
         const targetShift = shifts.find(s => s.id === shiftId);
         if (targetShift) {
           onOpenEditShift?.({
@@ -1216,7 +1301,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           await updateSolicitacaoStatusSupabase(id, 'rejected', customFeedback || 'Recusado pelo gestor');
         }
       } else if (onRejectJustification) {
-        onRejectJustification(id, customFeedback);
+        await onRejectJustification(id, customFeedback, true);
       } else {
         await updateJustificativaStatusSupabase(id, 'rejected', customFeedback || 'Recusado pelo gestor');
       }
@@ -1263,7 +1348,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       'Fundamentação Legal'
     ];
 
-    const escapeCsv = (val: any) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+    const escapeCsv = sanitizeCsvCell;
 
     const rows = rowsToExport.map(row => {
       const isHe = row.type === 'hora_extra';
@@ -1296,7 +1381,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         escapeCsv(getEmployeeMatricula(row.employeeId, row.employeeName)),
         escapeCsv(row.employeeDept),
         escapeCsv(row.employeeRole),
-        `="${formatDateToDDMMAAAA(row.date)}"`,
+        escapeCsv(formatDateToDDMMAAAA(row.date)),
         escapeCsv(row.scheduledTime),
         escapeCsv(row.punchTime),
         escapeCsv(row.typeLabel),
@@ -1356,7 +1441,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       'Observação / Feedback do Gestor'
     ];
 
-    const escapeCsv = (val: any) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+    const escapeCsv = sanitizeCsvCell;
 
     const rows = rowsToExport.map(row => {
       let statusFormatted = row.status || 'Pendente';
@@ -1377,7 +1462,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         escapeCsv(getEmployeeMatricula(row.employeeId, row.employeeName)),
         escapeCsv(row.employeeDept),
         escapeCsv(row.employeeRole),
-        `="${dateFormatted}"`,
+        escapeCsv(dateFormatted),
         escapeCsv(row.type),
         escapeCsv(row.reason),
         escapeCsv(row.documentName || 'Sem anexo'),
@@ -1669,11 +1754,19 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
   useEffect(() => {
     let mounted = true;
+    const employeeIds = Array.from(new Set(employees.map(e => e.id).filter(isUuid)));
+
     const fetchLivePunches = async () => {
+      if (employeeIds.length === 0) {
+        if (mounted) setLivePunches([]);
+        return;
+      }
+
       try {
         const { data } = await supabase
           .from('TAB_Registro_Ponto')
           .select('*')
+          .in('Idf_Colaborador', employeeIds)
           .order('Dta_Hora_Registro', { ascending: true });
         if (mounted && data) {
           setLivePunches(data);
@@ -1687,7 +1780,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       mounted = false;
       clearInterval(timer);
     };
-  }, [activeTab]);
+  }, [activeTab, employees]);
 
   const reportRows = useMemo(() => {
     if (shifts && shifts.length > 0) {
@@ -1699,7 +1792,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         let s = rawShift;
         if (livePunches.length > 0 && (!s.checkInTime || !s.checkOutTime)) {
           const matching = livePunches.filter(p => {
-            if (p.Idf_Turno && p.Idf_Turno === s.id) return true;
+            if (p.Idf_Turno) return p.Idf_Turno === s.id;
             if (p.Idf_Colaborador === s.employeeId && p.Dta_Hora_Registro) {
               const dt = new Date(p.Dta_Hora_Registro);
               const localIso = !isNaN(dt.getTime()) ? toLocalDateString(dt) : p.Dta_Hora_Registro.slice(0, 10);
@@ -1724,13 +1817,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         }
 
         const emp = employees.find(e => e.id === s.employeeId);
-        const statusMap: Record<string, string> = {
-          present: 'Presente',
-          absent: 'Ausente',
-          justified: 'Justificado',
-          late: 'Atrasado',
-          pending: 'Pendente'
-        };
         const hasRealExit = Boolean(s.checkOutTime);
 
         // GPS fora do posto detectado de forma discreta
@@ -1824,50 +1910,20 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           : 'Sem registro';
 
         const isPast24h = isShiftPast24hWithoutPunch(s);
-        const just = (justifications || []).find(j => 
+        const shiftJusts = (justifications || []).filter(j =>
           (j.shiftId && j.shiftId === s.id) || (j.employeeId === s.employeeId && j.date === s.date)
         );
-
-        let finalReportStatus = statusMap[s.attendanceStatus || 'pending'] || 'Pendente';
-        let isDecisionPending = false;
-
-        if (s.attendanceStatus === 'justified' || just?.status === 'approved') {
-          finalReportStatus = 'Justificado';
-        } else if (Boolean(s.checkInTime) || Boolean(s.checkOutTime) || s.attendanceStatus === 'present' || s.attendanceStatus === 'late') {
-          finalReportStatus = s.attendanceStatus === 'late' ? 'Atrasado' : 'Presente';
-        } else if (just) {
-          if (just.status === 'rejected') {
-            finalReportStatus = 'Ausente';
-          } else {
-            finalReportStatus = (isPast24h || s.attendanceStatus === 'absent') ? 'Ausente' : 'Pendente';
-            isDecisionPending = true;
-          }
-        } else if (isPast24h || s.attendanceStatus === 'absent') {
-          finalReportStatus = 'Ausente';
-          isDecisionPending = true;
-        }
-
-        // Observação concisa e limpa (sem acúmulo de textos concatenados)
-        let cleanObs = '';
-        if (finalReportStatus === 'Ausente') {
-          if (just && just.status === 'pending') {
-            cleanObs = `Justificativa: "${just.reason || 'Em análise'}"`;
-          } else {
-            cleanObs = 'Não bateu ponto';
-          }
-        } else if (finalReportStatus === 'Justificado') {
-          cleanObs = 'Ausência abonada';
-        } else if (s.notes) {
-          if (s.notes.includes('AJUSTE GESTOR')) {
-            cleanObs = 'Ajustado p/ horário normal';
-          } else if (s.notes.includes('HOMOLOGADO GESTOR')) {
-            cleanObs = 'Homologado no banco';
-          } else if (s.notes.includes('Esquecimento')) {
-            cleanObs = 'Esquecimento de saída';
-          } else {
-            cleanObs = s.notes.replace(/\[.*?\]/g, '').trim() || s.notes;
-          }
-        }
+        const {
+          status: finalReportStatus,
+          isDecisionPending,
+          cleanObs,
+        } = resolveAttendanceReportStatusAndObs({
+          hasWorkedPunch: Boolean(s.checkInTime) || Boolean(s.checkOutTime),
+          attendanceStatus: s.attendanceStatus,
+          notes: s.notes,
+          isPast24h,
+          justifications: shiftJusts,
+        });
 
         const obsParts: string[] = [];
         if (isGpsOutside) {
@@ -2014,7 +2070,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     targetDept: string = 'all',
     mode: 'consolidated_employees_dept' | 'consolidated_dept' = 'consolidated_employees_dept'
   ) => {
-    const escapeCsv = (val: any) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+    const escapeCsv = sanitizeCsvCell;
     const formatMinToHHMM = (min: number) => {
       const h = Math.floor(min / 60);
       const m = min % 60;
@@ -2582,7 +2638,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
         const { data: groupMsgs } = await supabase
           .from('messages')
           .select('channel, recipient_id, attachment, text')
-          .or(`channel.like.${groupPrefix},recipient_id.like.group_meta%`)
+          .or(`channel.like.${quotePostgrestValue(groupPrefix)},recipient_id.like.group_meta%`)
           .order('created_at', { ascending: true });
 
         if (groupMsgs && groupMsgs.length > 0) {
@@ -2671,7 +2727,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       let query = supabase.from('messages').select('*');
       if (activeChatMode === 'direct' && activeEmployee?.id && selectedDirectEmployee?.id) {
         const pair = [activeEmployee.id, selectedDirectEmployee.id].sort().join('_');
-        query = query.or(`channel.eq.direct_${pair},channel.like.%direct_${pair},and(sender_id.eq.${activeEmployee.id},recipient_id.eq.${selectedDirectEmployee.id}),and(sender_id.eq.${selectedDirectEmployee.id},recipient_id.eq.${activeEmployee.id})`);
+        const qDirect = quotePostgrestValue(`direct_${pair}`);
+        const qDirectLike = quotePostgrestValue(`%direct_${pair}`);
+        const qSelf = quotePostgrestValue(activeEmployee.id);
+        const qOther = quotePostgrestValue(selectedDirectEmployee.id);
+        query = query.or(`channel.eq.${qDirect},channel.like.${qDirectLike},and(sender_id.eq.${qSelf},recipient_id.eq.${qOther}),and(sender_id.eq.${qOther},recipient_id.eq.${qSelf})`);
       } else {
         query = query.eq('channel', currentChatChannel);
       }
@@ -3047,11 +3107,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
     const scopedGroupId = getScopedChatChannel(activeEmployee?.companyId, groupId);
 
     try {
-      await supabase.from('messages').delete().or(`channel.eq.${scopedGroupId},channel.eq.${groupId},recipient_id.eq.group_meta_id:${groupId},recipient_id.like.%${groupId}%`);
+      await supabase.from('messages').delete().or(`channel.eq.${quotePostgrestValue(scopedGroupId)},channel.eq.${quotePostgrestValue(groupId)},recipient_id.eq.${quotePostgrestValue(`group_meta_id:${groupId}`)},recipient_id.like.${quotePostgrestValue(`%${groupId}%`)}`);
     } catch {}
 
     try {
-      await supabase.from('chat_channels').delete().or(`id.eq.${scopedGroupId},id.eq.${groupId},name.eq.${groupName}`);
+      await supabase.from('chat_channels').delete().or(`id.eq.${quotePostgrestValue(scopedGroupId)},id.eq.${quotePostgrestValue(groupId)},name.eq.${quotePostgrestValue(groupName)}`);
     } catch {}
 
     try {
@@ -3498,35 +3558,33 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
       {activeTab === 'aprovacoes' && (() => {
         // KPI calculations
         const pendingCount = approvalsData.filter(i => i.status === 'Pendente').length;
-        const faltasCount = approvalsData.filter(i => i.status === 'Falta Lançada' || i.status === 'Recusado / Falta').length;
-        const atestadosCount = approvalsData.filter(i => i.documentName && i.documentName.toLowerCase().includes('.pdf') && i.documentName !== 'Sem anexo' && i.documentName !== 'Não se aplica').length;
+        const atestadosCount = approvalsData.filter(i =>
+          Boolean(i.documentUrl && i.documentUrl.trim() !== '' && i.documentUrl !== 'null' && i.documentUrl !== 'undefined')
+        ).length;
+        const currentMonthPrefix = getTodayDateString().slice(0, 7);
+        const faltasMesRows = approvalsData.filter(i =>
+          (i.type === 'Falta Não Justificada' || i.type === 'Falta Justificada' || i.status === 'Falta Lançada' || i.status === 'Recusado / Falta') &&
+          normalizeDateToISO(i.date || '').startsWith(currentMonthPrefix)
+        );
+        const faltasJustificadasMes = faltasMesRows.filter(i => i.type === 'Falta Justificada' || i.status === 'Aprovado').length;
+        const evaluatedReportRows = reportRows.filter(r => r.status !== 'Pendente');
+        const unexcusedReportAbsences = evaluatedReportRows.filter(r => r.status === 'Ausente').length;
+        const assiduidadePct = evaluatedReportRows.length > 0
+          ? Math.round(((evaluatedReportRows.length - unexcusedReportAbsences) / evaluatedReportRows.length) * 100)
+          : null;
 
         // Filter items
         const filteredApprovals = approvalsData.filter(row => {
           // Search filter (colaborador, cargo, setor, tipo, motivo ou data igual ao Relatório de Presenças)
           if (approvalsSearch.trim()) {
             const q = approvalsSearch.toLowerCase().trim();
-            const formattedRowDate = formatDateToDDMMAAAA(row.date || '');
-            const matchName = row.employeeName.toLowerCase().includes(q);
-            const matchRole = row.employeeRole.toLowerCase().includes(q);
+            const matchName = (row.employeeName || '').toLowerCase().includes(q);
+            const matchRole = (row.employeeRole || '').toLowerCase().includes(q);
             const matchDept = (row.employeeDept || '').toLowerCase().includes(q);
-            const matchType = row.type.toLowerCase().includes(q);
-            const matchReason = row.reason.toLowerCase().includes(q);
-            const matchDateRaw = (row.date || '').toLowerCase().includes(q);
-            const matchDateFormatted = formattedRowDate.toLowerCase().includes(q);
-            const matchDateSlash = formattedRowDate.replace(/-/g, '/').toLowerCase().includes(q);
-            const matchDateDash = formattedRowDate.replace(/\//g, '-').toLowerCase().includes(q);
-            if (
-              !matchName &&
-              !matchRole &&
-              !matchDept &&
-              !matchType &&
-              !matchReason &&
-              !matchDateRaw &&
-              !matchDateFormatted &&
-              !matchDateSlash &&
-              !matchDateDash
-            ) {
+            const matchType = (row.type || '').toLowerCase().includes(q);
+            const matchReason = (row.reason || '').toLowerCase().includes(q);
+            const matchDate = matchesDateSearchQuery(row.date, q);
+            if (!matchName && !matchRole && !matchDept && !matchType && !matchReason && !matchDate) {
               return false;
             }
           }
@@ -3675,15 +3733,15 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 },
                 { 
                   label: 'Faltas Registradas no Mês', 
-                  value: String(faltasCount).padStart(2, '0'), 
-                  sub: '-25% em relação ao mês anterior', 
+                  value: String(faltasMesRows.length).padStart(2, '0'), 
+                  sub: faltasJustificadasMes > 0 ? `${faltasJustificadasMes} abonada(s) no mês` : 'Ocorrências no mês atual', 
                   dotColor: '#e90045', 
                   dotGlow: '#e90045',
                   hasDotInSub: false
                 },
                 { 
                   label: 'Atestados Anexados', 
-                  value: String(Math.max(atestadosCount, 8)).padStart(2, '0'), 
+                  value: String(atestadosCount).padStart(2, '0'), 
                   sub: 'Comprovantes anexados pelo colaborador', 
                   dotColor: '#38bdf8', 
                   dotGlow: '#38bdf8',
@@ -3691,8 +3749,8 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                 },
                 { 
                   label: 'Taxa de Assiduidade', 
-                  value: '96%', 
-                  sub: '▲ Meta atingida (+2%)', 
+                  value: assiduidadePct !== null ? `${assiduidadePct}%` : '—', 
+                  sub: assiduidadePct === null ? 'Sem turnos apurados' : assiduidadePct >= 95 ? '▲ Meta atingida (≥ 95%)' : 'Abaixo da meta (95%)', 
                   dotColor: '#49d982', 
                   dotGlow: '#49d982',
                   hasDotInSub: false
@@ -4775,12 +4833,49 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
           <div className="space-y-6 animate-in fade-in duration-200">
               {/* KPI Cards Estilo Widget da LP */}
               <div className="attendance-report-kpis grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 relative z-10">
-                {[
-                  { label: 'Taxa de Presença', value: '96%', sub: '▲ +2.4% acima da meta', dotColor: '#49d982', dotGlow: '#49d982' },
-                  { label: 'Colaboradores Ativos', value: '48', sub: 'Total cadastrado na base', dotColor: '#F59242', dotGlow: '#F59242' },
-                  { label: 'Escalas Hoje', value: '24', sub: 'Diurnas e noturnas', dotColor: '#F9DE97', dotGlow: '#F9DE97' },
-                  { label: 'Faltas no Período', value: '02', sub: '1 abonada c/ atestado', dotColor: '#9F243C', dotGlow: '#9F243C' },
-                ].map((kpi, i) => (
+                {(() => {
+                  const todayIso = getTodayDateString();
+                  const todayShiftsList = shifts.filter(s => normalizeDateToISO(s.date) === todayIso);
+                  const todayWithPunch = todayShiftsList.filter(s => Boolean(s.checkInTime)).length;
+                  const evaluatedRelRows = reportRows.filter(r => r.status !== 'Pendente');
+                  const unexcusedRelAbsences = evaluatedRelRows.filter(r => r.status === 'Ausente').length;
+                  const presencaPct = evaluatedRelRows.length > 0
+                    ? Math.round(((evaluatedRelRows.length - unexcusedRelAbsences) / evaluatedRelRows.length) * 100)
+                    : null;
+                  const periodAbsenceRows = reportRows.filter(r => r.status === 'Ausente' || (r.status === 'Justificado' && r.punchReal === 'Sem registro'));
+                  const periodJustifiedAbsences = periodAbsenceRows.filter(r => r.status === 'Justificado').length;
+
+                  return [
+                    {
+                      label: 'Taxa de Presença',
+                      value: presencaPct !== null ? `${presencaPct}%` : '—',
+                      sub: presencaPct === null ? 'Sem turnos apurados' : presencaPct >= 95 ? '▲ Meta atingida (≥ 95%)' : 'Abaixo da meta (95%)',
+                      dotColor: '#49d982',
+                      dotGlow: '#49d982',
+                    },
+                    {
+                      label: 'Colaboradores Ativos',
+                      value: String(employees.length).padStart(2, '0'),
+                      sub: 'Total cadastrado na base',
+                      dotColor: '#F59242',
+                      dotGlow: '#F59242',
+                    },
+                    {
+                      label: 'Escalas Hoje',
+                      value: String(todayShiftsList.length).padStart(2, '0'),
+                      sub: todayShiftsList.length > 0 ? `${todayWithPunch} com ponto registrado` : 'Nenhuma escala para hoje',
+                      dotColor: '#F9DE97',
+                      dotGlow: '#F9DE97',
+                    },
+                    {
+                      label: 'Faltas no Período',
+                      value: String(periodAbsenceRows.length).padStart(2, '0'),
+                      sub: periodJustifiedAbsences > 0 ? `${periodJustifiedAbsences} abonada(s) c/ justificativa` : 'Nenhuma falta abonada no período',
+                      dotColor: '#9F243C',
+                      dotGlow: '#9F243C',
+                    },
+                  ];
+                })().map((kpi, i) => (
                   <div 
                     key={i} 
                     className={`approval-kpi attendance-report-kpi p-5 rounded-2xl border space-y-2 transition-transform hover:-translate-y-1 ${
@@ -4904,8 +4999,6 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   </thead>
                   <tbody>
                     {reportRows.filter(row => {
-                      const formattedRowDate = formatDateToDDMMAAAA(row.date);
-                      
                       if (relatorioDate) {
                         if (normalizeDateToISO(row.date) !== normalizeDateToISO(relatorioDate)) {
                           return false;
@@ -4914,14 +5007,12 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
 
                       if (relatorioSearch.trim()) {
                         const q = relatorioSearch.toLowerCase().trim();
-                        const matchName = row.name.toLowerCase().includes(q);
-                        const matchDept = row.dept.toLowerCase().includes(q);
-                        const matchRole = row.role.toLowerCase().includes(q);
-                        const matchDateRaw = row.date.toLowerCase().includes(q);
-                        const matchDateFormatted = formattedRowDate.toLowerCase().includes(q);
-                        const matchDateSlash = formattedRowDate.replace(/-/g, '/').toLowerCase().includes(q);
+                        const matchName = (row.name || '').toLowerCase().includes(q);
+                        const matchDept = (row.dept || '').toLowerCase().includes(q);
+                        const matchRole = (row.role || '').toLowerCase().includes(q);
+                        const matchDate = matchesDateSearchQuery(row.date, q);
                         const matchApuracao = (row.apuracao || '').toLowerCase().includes(q);
-                        if (!matchName && !matchDept && !matchRole && !matchDateRaw && !matchDateFormatted && !matchDateSlash && !matchApuracao) {
+                        if (!matchName && !matchDept && !matchRole && !matchDate && !matchApuracao) {
                           return false;
                         }
                       }
@@ -5545,11 +5636,11 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                           </div>
                         </div>
 
-                        {rem.link ? (
+                        {rem.link && sanitizeSafeUrl(rem.link, { fallback: '' }) ? (
                           <a
-                            href={rem.link}
+                            href={sanitizeSafeUrl(rem.link)}
                             target="_blank"
-                            rel="noreferrer"
+                            rel="noopener noreferrer"
                             className="reminder-call-button px-3.5 py-1.5 rounded-xl font-bold text-[11px] flex items-center gap-1.5 transition-all hover:opacity-80 shadow-sm text-white"
                             style={{
                               background: '#1d5c42',
@@ -6281,7 +6372,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     <input
                       type="file"
                       ref={managerActiveGroupAvatarInputRef}
-                      accept="image/*"
+                      accept=".png,.jpg,.jpeg,.webp,.gif"
                       onChange={handleUpdateExistingChannelAvatar}
                       className="hidden"
                     />
@@ -6523,7 +6614,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                     title="Clique para ampliar a imagem"
                                   >
                                     <img
-                                      src={parsed.attachment.url}
+                                      src={sanitizeSafeUrl(parsed.attachment.url, { allowDataImage: true, allowBlob: true })}
                                       alt={parsed.attachment.name}
                                       className="w-full max-h-52 object-cover group-hover/img:scale-102 transition-transform duration-200"
                                       loading="lazy"
@@ -6533,8 +6624,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                                         <Eye className="w-3.5 h-3.5" />
                                       </span>
                                       <a
-                                        href={parsed.attachment.url}
+                                        href={sanitizeSafeUrl(parsed.attachment.url, { allowDataImage: true, allowBlob: true })}
                                         download={parsed.attachment.name}
+                                        rel="noopener noreferrer"
                                         onClick={(e) => e.stopPropagation()}
                                         className="p-1.5 rounded-lg bg-black/60 hover:bg-black/80"
                                         title="Baixar imagem"
@@ -6664,7 +6756,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                   <input
                     type="file"
                     ref={managerFileInputRef}
-                    accept="image/*"
+                    accept=".png,.jpg,.jpeg,.webp,.gif"
                     onChange={handleManagerFileSelect}
                     className="hidden"
                   />
@@ -6767,7 +6859,7 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                       <input
                         type="file"
                         ref={managerGroupAvatarInputRef}
-                        accept="image/*"
+                        accept=".png,.jpg,.jpeg,.webp,.gif"
                         onChange={handleManagerGroupAvatarSelect}
                         className="hidden"
                       />
@@ -6966,8 +7058,9 @@ export const ManagerMatrixGrid: React.FC<ManagerMatrixGridProps> = ({
                     <span className="font-semibold truncate max-w-[200px] sm:max-w-md">{managerPreviewModalImage.name}</span>
                     <div className="flex items-center gap-2">
                       <a
-                        href={managerPreviewModalImage.url}
+                        href={sanitizeSafeUrl(managerPreviewModalImage.url, { allowDataImage: true, allowBlob: true })}
                         download={managerPreviewModalImage.name}
+                        rel="noopener noreferrer"
                         className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-colors"
                         title="Baixar imagem"
                       >

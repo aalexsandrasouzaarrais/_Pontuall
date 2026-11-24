@@ -19,6 +19,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { ManagerReminder, Employee } from '@/types';
+import { sanitizeSafeUrl } from '@/shared/utils/security';
 
 interface ReminderDetailModalProps {
   isOpen: boolean;
@@ -339,9 +340,9 @@ export const ReminderDetailModal: React.FC<ReminderDetailModalProps> = ({
                       Sala Virtual
                     </span>
                     <a
-                      href={reminder.link}
+                      href={sanitizeSafeUrl(reminder.link)}
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
                       className="text-xs font-medium text-emerald-600 dark:text-emerald-300 hover:underline truncate block"
                       title={reminder.link}
                     >
@@ -368,9 +369,9 @@ export const ReminderDetailModal: React.FC<ReminderDetailModalProps> = ({
                   </button>
 
                   <a
-                    href={reminder.link}
+                    href={sanitizeSafeUrl(reminder.link)}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className="px-4 py-1.5 bg-gradient-to-r from-[#96183c] to-[#b32047] hover:opacity-95 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
@@ -551,11 +552,11 @@ export const ReminderDetailModal: React.FC<ReminderDetailModalProps> = ({
             Fechar
           </button>
 
-          {reminder.link && (
+          {reminder.link && sanitizeSafeUrl(reminder.link, { fallback: '' }) && (
             <a
-              href={reminder.link}
+              href={sanitizeSafeUrl(reminder.link)}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="px-5 py-2 bg-gradient-to-r from-[#96183c] via-[#b32047] to-[#f89642] hover:opacity-95 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-md shadow-[#96183c]/20 transition-all"
             >
               <Video className="w-3.5 h-3.5" />

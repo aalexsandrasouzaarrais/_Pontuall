@@ -1,4 +1,5 @@
 import { supabase } from '@/shared/services/supabase';
+import { validateUploadFile, validateUploadMagicBytes } from '@/shared/utils/security';
 
 export interface ChatAttachment {
   type: 'image' | 'file';
@@ -30,22 +31,17 @@ export const CHAT_COMMON_EMOJIS: string[] = [
  * garantindo salvamento direto no banco de dados com alta performance.
  */
 export async function compressImageFile(file: File, maxWidth = 1200, maxHeight = 1200, quality = 0.82): Promise<ChatAttachment> {
-  return new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        resolve({
-          type: 'file',
-          name: file.name,
-          url: reader.result as string,
-          size: formatBytes(file.size),
-        });
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-      return;
-    }
+  const validation = validateUploadFile(file, { mode: 'image', maxSizeBytes: 10 * 1024 * 1024 });
+  if (!validation.valid) {
+    throw new Error(validation.error || 'Apenas imagens seguras (PNG, JPG, WEBP ou GIF) são permitidas.');
+  }
 
+  const magicCheck = await validateUploadMagicBytes(file, { mode: 'image' });
+  if (!magicCheck.valid) {
+    throw new Error(magicCheck.error || 'Arquivo de imagem inválido ou formato adulterado.');
+  }
+
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
@@ -91,12 +87,7 @@ export async function compressImageFile(file: File, maxWidth = 1200, maxHeight =
         });
       };
       img.onerror = () => {
-        resolve({
-          type: 'image',
-          name: file.name,
-          url: e.target?.result as string,
-          size: formatBytes(file.size),
-        });
+        reject(new Error('Arquivo de imagem inválido ou corrompido.'));
       };
       img.src = e.target?.result as string;
     };
