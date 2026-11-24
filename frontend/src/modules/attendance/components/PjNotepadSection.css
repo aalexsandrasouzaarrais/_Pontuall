@@ -1,25 +1,28 @@
 .pj-bloco-notas-wrapper {
-  width: min(960px, 100%);
+  width: min(880px, 100%);
   margin: 0 auto;
 }
 
 .pj-quadro-notas {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px 8px;
-  align-items: start;
+  gap: 18px 10px;
+  align-items: stretch;
 }
 
 .pj-nota {
   position: relative;
-  min-height: 200px;
-  border-radius: 14px;
+  aspect-ratio: 1 / 1;
+  min-height: 270px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
   overflow: visible;
   border: 0;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.16);
   background-repeat: no-repeat;
   background-position: center;
-  background-size: 100% 100%;
+  background-size: cover;
   transition: box-shadow 0.2s ease;
 }
 
@@ -54,7 +57,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  border-radius: 14px;
+  border-radius: 16px;
   z-index: 0;
   pointer-events: none;
   background: linear-gradient(135deg, rgba(64, 14, 24, 0.48), rgba(45, 10, 18, 0.42));
@@ -72,8 +75,10 @@
 .pj-nota-conteudo {
   position: relative;
   z-index: 2;
-  min-height: 200px;
-  padding: 12px 16px 10px 16px;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  padding: 16px 20px 14px 20px;
   display: flex;
   flex-direction: column;
 }
@@ -81,9 +86,9 @@
 /* Presilhas horizontais centralizadas entre os cards */
 .pj-espiral {
   position: absolute;
-  right: -16px;
-  top: 10%;
-  bottom: 10%;
+  right: -18px;
+  top: 12%;
+  bottom: 12%;
   width: 26px;
   display: none;
   flex-direction: column;
@@ -181,7 +186,8 @@ body.light .pj-nota input.pj-titulo {
 .pj-texto {
   width: 100%;
   flex: 1;
-  min-height: 95px;
+  min-height: 135px;
+  max-height: 220px;
   resize: none;
   border: 0;
   background: transparent;
@@ -302,6 +308,11 @@ body.light .pj-nota input.pj-titulo {
 @media (max-width: 650px) {
   .pj-quadro-notas {
     grid-template-columns: 1fr;
+  }
+
+  .pj-nota {
+    aspect-ratio: auto;
+    min-height: 250px;
   }
 
   .pj-nota .pj-espiral {
