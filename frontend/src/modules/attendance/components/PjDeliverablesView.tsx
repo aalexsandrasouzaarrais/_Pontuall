@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { sanitizeSafeUrl } from '@/shared/utils/security';
 import { 
   Briefcase, 
   Clock, 
@@ -954,11 +955,11 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                           </div>
 
                           <div className="flex items-center gap-2 shrink-0">
-                            {rem.link && (
+                            {rem.link && sanitizeSafeUrl(rem.link, { fallback: '' }) && (
                               <a
-                                href={rem.link}
+                                href={sanitizeSafeUrl(rem.link)}
                                 target="_blank"
-                                rel="noreferrer"
+                                rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
                                 className="px-3 py-1 bg-gradient-to-r from-[#96183c] to-[#b32047] hover:opacity-95 text-white rounded-full text-xs font-black shrink-0 flex items-center gap-1.5 shadow-xs transition-all"
                               >
@@ -1282,11 +1283,11 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                               </div>
 
                               <div className="flex items-center gap-1 shrink-0">
-                                {entry.link && (
+                                {entry.link && sanitizeSafeUrl(entry.link, { fallback: '' }) && (
                                   <a
-                                    href={entry.link}
+                                    href={sanitizeSafeUrl(entry.link)}
                                     target="_blank"
-                                    rel="noreferrer"
+                                    rel="noopener noreferrer"
                                     className="p-1 rounded-lg text-emerald-600 hover:bg-emerald-500/10 transition-colors"
                                     title="Acessar link da reunião"
                                   >
@@ -1615,12 +1616,15 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                         </td>
                         <td className="py-3 px-3">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            {entry.links?.map((link, lIdx) => (
+                            {entry.links?.map((link, lIdx) => {
+                              const safeHref = sanitizeSafeUrl(link.url, { fallback: '' });
+                              if (!safeHref) return null;
+                              return (
                               <a
                                 key={lIdx}
-                                href={link.url}
+                                href={safeHref}
                                 target="_blank"
-                                rel="noreferrer"
+                                rel="noopener noreferrer"
                                 className={`p-1 rounded-md ${
                                   isDark
                                     ? 'bg-[#9F243C]/20 text-[#F9DE97] hover:bg-[#9F243C]/35'
@@ -1630,7 +1634,8 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                               >
                                 <ExternalLink className="w-3.5 h-3.5" />
                               </a>
-                            ))}
+                              );
+                            })}
                             {entry.images?.map((img, iIdx) => (
                               <button
                                 key={iIdx}
@@ -1751,11 +1756,11 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                       }`}>
                         {formatDateBR(rem.date)} • {rem.time}
                       </span>
-                      {rem.link && (
+                      {rem.link && sanitizeSafeUrl(rem.link, { fallback: '' }) && (
                         <a
-                          href={rem.link}
+                          href={sanitizeSafeUrl(rem.link)}
                           target="_blank"
-                          rel="noreferrer"
+                          rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
                           className="px-3 py-1 bg-gradient-to-r from-[#96183c] to-[#b32047] text-white rounded-full text-xs font-bold shrink-0 flex items-center gap-1 shadow-xs"
                         >
@@ -2158,12 +2163,15 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                             Links & Evidências Online:
                           </span>
                           <div className="flex items-center gap-2 flex-wrap">
-                            {rep.links.map((link, lIdx) => (
+                            {rep.links.map((link, lIdx) => {
+                              const safeHref = sanitizeSafeUrl(link.url, { fallback: '' });
+                              if (!safeHref) return null;
+                              return (
                               <a
                                 key={lIdx}
-                                href={link.url}
+                                href={safeHref}
                                 target="_blank"
-                                rel="noreferrer"
+                                rel="noopener noreferrer"
                                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
                                   isDark
                                     ? 'bg-[#9F243C]/20 hover:bg-[#9F243C]/30 text-[#F9DE97] border-[#F59242]/30'
@@ -2174,7 +2182,8 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                                 <span>{link.title || link.url}</span>
                                 <ExternalLink className="w-3 h-3 opacity-70" />
                               </a>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       )}

@@ -10,6 +10,7 @@ import papelVinho from '@/assets/notas/papel-vinho.jpg';
 import papelLaranja from '@/assets/notas/papel-laranja.jpg';
 import papelAmarelo from '@/assets/notas/papel-amarelo.jpg';
 import './PjNotepadSection.css';
+import { sanitizeNoteHtml } from '@/shared/utils/security';
 
 interface PjNotepadSectionProps {
   employeeId: string;
@@ -28,8 +29,8 @@ function escapeHtml(texto = ''): string {
 function normalizarConteudoNota(conteudo = ''): string {
   if (!conteudo) return '';
   const pareceHtml = /<\/?[a-z][\s\S]*>/i.test(conteudo);
-  if (pareceHtml) return conteudo;
-  return escapeHtml(conteudo).replace(/\n/g, '<br>');
+  if (pareceHtml) return sanitizeNoteHtml(conteudo);
+  return sanitizeNoteHtml(escapeHtml(conteudo).replace(/\n/g, '<br>'));
 }
 
 function formatarData(dataIso: string): string {
@@ -132,7 +133,7 @@ const PjNoteCard: React.FC<PjNoteCardProps> = ({
       if (li) placeCursorAtEnd(li);
       setIsListActive(true);
       setStatusSalvo('Salvo agora');
-      onUpdate(nota.id, { texto: editor.innerHTML });
+      onUpdate(nota.id, { texto: sanitizeNoteHtml(editor.innerHTML) });
       return;
     }
 
@@ -180,7 +181,7 @@ const PjNoteCard: React.FC<PjNoteCardProps> = ({
     }
 
     setStatusSalvo('Salvo agora');
-    onUpdate(nota.id, { texto: editor.innerHTML });
+    onUpdate(nota.id, { texto: sanitizeNoteHtml(editor.innerHTML) });
     checkListState();
   };
 
@@ -200,7 +201,7 @@ const PjNoteCard: React.FC<PjNoteCardProps> = ({
       e.preventDefault();
       document.execCommand('insertUnorderedList', false);
       setStatusSalvo('Salvo agora');
-      onUpdate(nota.id, { texto: editor.innerHTML });
+      onUpdate(nota.id, { texto: sanitizeNoteHtml(editor.innerHTML) });
       checkListState();
     }
   };
@@ -212,7 +213,7 @@ const PjNoteCard: React.FC<PjNoteCardProps> = ({
       editor.innerHTML = '';
     }
     setStatusSalvo('Salvo agora');
-    onUpdate(nota.id, { texto: editor.innerHTML });
+    onUpdate(nota.id, { texto: sanitizeNoteHtml(editor.innerHTML) });
     checkListState();
   };
 

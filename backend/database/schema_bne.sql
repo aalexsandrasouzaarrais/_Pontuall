@@ -8,8 +8,9 @@
 -- Sem acentuação em nomes de identificadores
 -- ============================================================================
 
--- Habilita a extensão para geração de UUID
+-- Habilita a extensão para geração de UUID e hashing bcrypt
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ----------------------------------------------------------------------------
 -- 1. TABELA DE EMPRESAS MULTILOCATÁRIAS
@@ -204,82 +205,3 @@ CREATE TABLE IF NOT EXISTS "TAB_Escala_Pessoal_Pj" (
     "Des_Observacao" TEXT,
     "Dta_Cadastro" TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );
-
--- ============================================================================
--- DADOS INICIAIS (SEED) PARA O SISTEMA PONTUALL NO PADRÃO BNE
--- ============================================================================
-
--- Inserção de Gestor Inicial
-INSERT INTO "TAB_Colaborador" (
-    "Idf_Colaborador",
-    "Nme_Colaborador",
-    "Eml_Corporativo",
-    "Eml_Secundario",
-    "Des_Senha_Hash",
-    "Tpo_Perfil",
-    "Tpo_Cargo",
-    "Des_Departamento",
-    "Des_Avatar_Url",
-    "Num_Horas_Semanais"
-) VALUES (
-    'a0000000-0000-0000-0000-000000000001',
-    'Camila Duarte',
-    'gestor@pontual.com',
-    'camila.duarte@employer.com.br',
-    '123456', -- Em producao substituir por hash bcrypt
-    'gestor',
-    'Gerente Geral de Escalas',
-    'Gestao de Pessoas & Operacoes',
-    'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
-    44
-) ON CONFLICT ("Eml_Corporativo") DO NOTHING;
-
--- Inserção de Colaboradores Iniciais
-INSERT INTO "TAB_Colaborador" (
-    "Idf_Colaborador",
-    "Nme_Colaborador",
-    "Eml_Corporativo",
-    "Eml_Secundario",
-    "Des_Senha_Hash",
-    "Tpo_Perfil",
-    "Tpo_Cargo",
-    "Des_Departamento",
-    "Des_Avatar_Url",
-    "Num_Horas_Semanais"
-) VALUES 
-(
-    'b0000000-0000-0000-0000-000000000001',
-    'Lucas Silva',
-    'colaborador@pontual.com',
-    'lucas.silva@employer.com.br',
-    '123456',
-    'colaborador',
-    'Analista de Atendimento',
-    'Atendimento',
-    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-    40
-),
-(
-    'b0000000-0000-0000-0000-000000000002',
-    'Beatriz Santos',
-    'beatriz.santos@employer.com.br',
-    'beatriz@pontual.com',
-    '123456',
-    'colaborador',
-    'Especialista de Suporte',
-    'Suporte Tecnico',
-    'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
-    40
-),
-(
-    'b0000000-0000-0000-0000-000000000003',
-    'Rafael Mendes',
-    'rafael.mendes@employer.com.br',
-    'rafael@pontual.com',
-    '123456',
-    'colaborador',
-    'Operador de Escala',
-    'Operacoes',
-    'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-    44
-) ON CONFLICT ("Eml_Corporativo") DO NOTHING;

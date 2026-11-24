@@ -21,6 +21,7 @@ import {
   Briefcase
 } from 'lucide-react';
 import { Employee, Shift, ManagerReminder, AbsenceJustification } from '@/types';
+import { sanitizeSafeUrl } from '@/shared/utils/security';
 import { getWeekDates, 
   calculateShiftDurationHours, 
   getTodayDateString,
@@ -866,7 +867,7 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
       }
 
       // 4. Executa o check-in e usa o horário oficial retornado pelo servidor para exibir o toast
-      const recordedTime = (await onCheckIn(targetShiftId, {
+      const serverTimeResult = await onCheckIn(targetShiftId, {
         address: formattedAddress,
         gpsValidated,
         latitude: coords.latitude,
@@ -874,22 +875,32 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
         accuracy: coords.accuracy,
         distanceMeters,
         reportedWorkplace,
-      }, punchType, notesOrReason, simulatedTime)) || fallbackTime;
+      }, punchType, notesOrReason, simulatedTime);
 
+      if (serverTimeResult === '') {
+        return;
+      }
+
+      const recordedTime = serverTimeResult || fallbackTime;
       showPunchToleranceToast(punchType, targetShift, recordedTime);
       setCheckInSuccess(true);
       setTimeout(() => setCheckInSuccess(false), 5000);
       await loadPunches();
     } catch (err: any) {
-      console.warn('Fallback de GPS para registro de ponto:', err);
-      // Fallback gracioso para garantir registro mesmo se GPS bloqueado no navegador
-      const recordedTime = (await onCheckIn(targetShiftId, {
-        address: 'Localização Registrada (Modo Navegador)',
-        gpsValidated: true,
-        latitude: -23.5505,
-        longitude: -46.6333,
-      }, punchType, notesOrReason, simulatedTime)) || fallbackTime;
+      console.warn('GPS indisponível no dispositivo ao registrar ponto:', err);
+      // Nunca fabrica coordenadas geográficas falsas quando o GPS não está disponível
+      const serverTimeResult = await onCheckIn(targetShiftId, {
+        address: 'GPS indisponível no dispositivo',
+        gpsValidated: false,
+        latitude: undefined,
+        longitude: undefined,
+      }, punchType, notesOrReason, simulatedTime);
 
+      if (serverTimeResult === '') {
+        return;
+      }
+
+      const recordedTime = serverTimeResult || fallbackTime;
       showPunchToleranceToast(punchType, targetShift, recordedTime);
       setCheckInSuccess(true);
       setTimeout(() => setCheckInSuccess(false), 5000);
@@ -1232,11 +1243,11 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                     </div>
                   </div>
 
-                  {workplaceMapsUrl && (
+                  {workplaceMapsUrl && sanitizeSafeUrl(workplaceMapsUrl, { fallback: '' }) && (
                     <a
-                      href={workplaceMapsUrl}
+                      href={sanitizeSafeUrl(workplaceMapsUrl)}
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
                       className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer hover:scale-105 active:scale-95 shadow-xs ${
                         isLightTheme
                           ? 'bg-white border-slate-300 text-slate-800 hover:bg-slate-50'
@@ -1779,11 +1790,11 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                       );
                     })()}
 
-                    {dayShift.meetingLink && (
+                    {dayShift.meetingLink && sanitizeSafeUrl(dayShift.meetingLink, { fallback: '' }) && (
                       <a
-                        href={dayShift.meetingLink}
+                        href={sanitizeSafeUrl(dayShift.meetingLink)}
                         target="_blank"
-                        rel="noreferrer"
+                        rel="noopener noreferrer"
                         onClick={(e) => e.stopPropagation()}
                         className={`p-1 ${
                           isLightTheme
@@ -1881,11 +1892,11 @@ export const EmployeeMainView: React.FC<EmployeeMainViewProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  {rem.link && (
+                  {rem.link && sanitizeSafeUrl(rem.link, { fallback: '' }) && (
                     <a
-                      href={rem.link}
+                      href={sanitizeSafeUrl(rem.link)}
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
                       onClick={e => e.stopPropagation()}
                       className="px-4 py-1.5 bg-gradient-to-r from-[#96183c] to-[#b32047] hover:opacity-95 text-white rounded-full text-xs font-black shrink-0 flex items-center gap-1.5 shadow-xs transition-all"
                     >

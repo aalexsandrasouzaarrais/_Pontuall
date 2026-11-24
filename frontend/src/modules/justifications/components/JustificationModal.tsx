@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { X, FileText, Upload, CheckCircle2, AlertCircle, Lock } from 'lucide-react';
 import { Employee, Shift, AbsenceJustification } from '@/types';
 import { uploadDocumentSupabase } from '@/shared/services/storageService';
+import { validateUploadFile } from '@/shared/utils/security';
 
 export type JustificationCategoryType = 'absence' | 'delay' | 'early_entry' | 'early_leave' | 'overtime' | 'forgetfulness';
 
@@ -102,6 +103,12 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      const validation = validateUploadFile(file, { mode: 'document', maxSizeBytes: 10 * 1024 * 1024 });
+      if (!validation.valid) {
+        alert(validation.error || 'Arquivo inválido. Selecione PDF, PNG, JPG ou WEBP.');
+        e.target.value = '';
+        return;
+      }
       setDocumentName(file.name);
       setIsUploaded(true);
       setIsUploading(true);

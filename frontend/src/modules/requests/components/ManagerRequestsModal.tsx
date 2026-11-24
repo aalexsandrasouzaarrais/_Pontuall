@@ -2,6 +2,7 @@ import { formatDateBR, formatDateTimeBR } from '@/shared/utils/dateUtils';
 import React, { useState } from 'react';
 import { X, Check, ArrowLeftRight, FileText, CheckCircle2, Clock, Briefcase, Link as LinkIcon, ExternalLink, Eye, AlertCircle } from 'lucide-react';
 import { TimeOffRequest, AbsenceJustification, PjDeliverableReport } from '@/types';
+import { sanitizeSafeUrl } from '@/shared/utils/security';
 
 interface ManagerRequestsModalProps {
   isOpen: boolean;
@@ -266,19 +267,23 @@ export const ManagerRequestsModal: React.FC<ManagerRequestsModalProps> = ({
                     {rep.links && rep.links.length > 0 && (
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[10px] font-mono text-slate-400 uppercase font-bold">Evidências:</span>
-                        {rep.links.map((link, lIdx) => (
+                        {rep.links.map((link, lIdx) => {
+                          const safeHref = sanitizeSafeUrl(link.url, { fallback: '' });
+                          if (!safeHref) return null;
+                          return (
                           <a
                             key={lIdx}
-                            href={link.url}
+                            href={safeHref}
                             target="_blank"
-                            rel="noreferrer"
+                            rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 transition-all cursor-pointer"
                           >
                             <LinkIcon className="w-3 h-3" />
                             <span>{link.title || link.url}</span>
                             <ExternalLink className="w-2.5 h-2.5 opacity-70" />
                           </a>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
 

@@ -41,7 +41,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             <p className="text-xs text-slate-400 max-w-md">
               {this.props.fallbackMessage || 'Uma inconsistência temporária nos dados foi interceptada com segurança para evitar o fechamento da tela.'}
             </p>
-            {this.state.error?.message && (
+            {import.meta.env.DEV && this.state.error?.message && (
               <p className="text-[11px] font-mono text-rose-300/80 bg-rose-950/40 px-3 py-1.5 rounded-lg border border-rose-500/20 max-w-md mx-auto truncate">
                 {this.state.error.message}
               </p>

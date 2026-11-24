@@ -1,5 +1,6 @@
 import { formatDateBR, formatDateTimeBR } from '@/shared/utils/dateUtils';
 import React, { useState, useMemo, useEffect } from 'react';
+import { sanitizeSafeUrl } from '@/shared/utils/security';
 import { 
   Briefcase, 
   Clock, 
@@ -846,12 +847,15 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                             </td>
                             <td className="py-2.5 px-3">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                {entry.links?.map((link, lIdx) => (
+                                {entry.links?.map((link, lIdx) => {
+                                  const safeHref = sanitizeSafeUrl(link.url, { fallback: '' });
+                                  if (!safeHref) return null;
+                                  return (
                                   <a
                                     key={lIdx}
-                                    href={link.url}
+                                    href={safeHref}
                                     target="_blank"
-                                    rel="noreferrer"
+                                    rel="noopener noreferrer"
                                     className={`p-1 rounded-md border ${
                                       isDark
                                         ? 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
@@ -861,7 +865,8 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                                   >
                                     <ExternalLink className="w-3.5 h-3.5" />
                                   </a>
-                                ))}
+                                  );
+                                })}
                                 {entry.images?.map((img, iIdx) => (
                                   <button
                                     key={iIdx}
@@ -1101,12 +1106,15 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                           }`}>
                             {rep.links && rep.links.length > 0 && (
                               <div className="flex items-center gap-2 flex-wrap">
-                                {rep.links.map((link, lIdx) => (
+                                {rep.links.map((link, lIdx) => {
+                                  const safeHref = sanitizeSafeUrl(link.url, { fallback: '' });
+                                  if (!safeHref) return null;
+                                  return (
                                   <a
                                     key={lIdx}
-                                    href={link.url}
+                                    href={safeHref}
                                     target="_blank"
-                                    rel="noreferrer"
+                                    rel="noopener noreferrer"
                                     className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border ${
                                       isDark
                                         ? 'bg-white/5 hover:bg-white/10 text-slate-300 border-white/10'
@@ -1117,7 +1125,8 @@ export const ManagerPjDeliverablesView: React.FC<ManagerPjDeliverablesViewProps>
                                     <span>{link.title || link.url}</span>
                                     <ExternalLink className="w-3 h-3 opacity-70" />
                                   </a>
-                                ))}
+                                  );
+                                })}
                               </div>
                             )}
 

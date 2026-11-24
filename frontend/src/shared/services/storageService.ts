@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { ALLOWED_DOCUMENT_MIMES, sanitizeSafeUrl, validateUploadFile } from '@/shared/utils/security';
 
 const DEFAULT_BUCKET = 'atestados';
 
@@ -10,6 +11,11 @@ export async function uploadDocumentSupabase(
   file: File,
   bucketName = DEFAULT_BUCKET
 ): Promise<{ url: string; path: string } | null> {
+  const check = validateUploadFile(file, { mode: 'document', maxSizeBytes: 10 * 1024 * 1024 });
+  if (!check.valid) {
+    throw new Error(check.error || 'Arquivo inválido ou formato não permitido.');
+  }
+
   try {
     const fileExt = file.name.split('.').pop() || 'pdf';
     const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -113,7 +119,12 @@ export async function openDocumentSafe(
   if (resolvedUrl.startsWith('data:')) {
     try {
       const parts = resolvedUrl.split(';base64,');
-      const contentType = parts[0].replace('data:', '') || 'application/pdf';
+      const contentType = parts[0].replace('data:', '').trim().toLowerCase() || 'application/pdf';
+      if (!ALLOWED_DOCUMENT_MIMES.has(contentType) || parts.length !== 2) {
+        alert(`Tipo de arquivo não permitido para visualização segura (${contentType}).`);
+        return false;
+      }
+
       const raw = window.atob(parts[1]);
       const rawLength = raw.length;
       const uInt8Array = new Uint8Array(rawLength);
@@ -124,23 +135,36 @@ export async function openDocumentSafe(
 
       const blob = new Blob([uInt8Array], { type: contentType });
       const blobUrl = URL.createObjectURL(blob);
-      const newTab = window.open(blobUrl, '_blank');
+      const newTab = window.open(blobUrl, '_blank', 'noopener,noreferrer');
       if (!newTab) {
-        window.location.href = blobUrl;
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = fileName;
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       }
       return true;
     } catch (e) {
-      console.warn('Erro ao abrir base64 como blob, tentando abertura direta:', e);
+      console.warn('Erro ao abrir base64 como blob:', e);
+      return false;
     }
   }
 
-  const opened = window.open(resolvedUrl, '_blank');
+  const safeHref = sanitizeSafeUrl(resolvedUrl, { allowBlob: true, fallback: '' });
+  if (!safeHref) {
+    alert(`O link do documento "${fileName}" é inválido ou inseguro.`);
+    return false;
+  }
+
+  const opened = window.open(safeHref, '_blank', 'noopener,noreferrer');
   if (!opened) {
     // Caso bloqueador de popups impeça window.open
     const link = document.createElement('a');
-    link.href = resolvedUrl;
+    link.href = safeHref;
     link.target = '_blank';
-    link.rel = 'noreferrer noopener';
+    link.rel = 'noopener noreferrer';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

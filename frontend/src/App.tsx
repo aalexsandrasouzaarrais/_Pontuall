@@ -128,6 +128,7 @@ import logoWideLight from './assets/logo-pontual-wide.png';
 
 function AppContent() {
   const { theme, isDark, toggleTheme } = useTheme();
+  const [headerLogoError, setHeaderLogoError] = useState(false);
   
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
@@ -137,6 +138,7 @@ function AppContent() {
           urlParams.get('primeiro_acesso') === 'true' || 
           urlParams.get('reset') === 'true' || 
           urlParams.get('type') === 'recovery' || 
+          Boolean(urlParams.get('token')) ||
           window.location.pathname.includes('/redefinir-senha');
 
         if (isResetOrFirstAccess) {
@@ -144,11 +146,14 @@ function AppContent() {
           safeStorage.removeItem('pontual_active_user');
           safeStorage.removeItem('pontual_role');
           safeStorage.removeItem('pontual_google_avatar');
+          safeStorage.removeItem('pontual_auth_token');
           try {
             window.sessionStorage.removeItem('pontual_active_user');
             window.sessionStorage.removeItem('pontual_role');
+            window.sessionStorage.removeItem('pontual_auth_token');
             window.localStorage.removeItem('pontual_active_user');
             window.localStorage.removeItem('pontual_role');
+            window.localStorage.removeItem('pontual_auth_token');
           } catch {}
           return false;
         }
@@ -167,17 +172,21 @@ function AppContent() {
         urlParams.get('primeiro_acesso') === 'true' || 
         urlParams.get('reset') === 'true' || 
         urlParams.get('type') === 'recovery' || 
+        Boolean(urlParams.get('token')) ||
         window.location.pathname.includes('/redefinir-senha');
 
       if (isResetOrFirstAccess) {
         safeStorage.removeItem('pontual_active_user');
         safeStorage.removeItem('pontual_role');
         safeStorage.removeItem('pontual_google_avatar');
+        safeStorage.removeItem('pontual_auth_token');
         try {
           window.sessionStorage.removeItem('pontual_active_user');
           window.sessionStorage.removeItem('pontual_role');
+          window.sessionStorage.removeItem('pontual_auth_token');
           window.localStorage.removeItem('pontual_active_user');
           window.localStorage.removeItem('pontual_role');
+          window.localStorage.removeItem('pontual_auth_token');
         } catch {}
         setIsAuthenticated(false);
       }
@@ -197,6 +206,7 @@ function AppContent() {
           search.includes('reset=true') ||
           search.includes('type=recovery') ||
           search.includes('primeiro_acesso=true') ||
+          search.includes('token=') ||
           search.includes('matricula=') ||
           search.includes('code=') ||
           hash.includes('access_token=') ||
@@ -624,7 +634,9 @@ function AppContent() {
         return;
       }
 
-      const isManager = emp.isMasterManager || emp.role?.toLowerCase().includes('gestor') || session.user.email.includes('gestor') || session.user.email.includes('kamile');
+      const isManager = Boolean(
+        emp.isMasterManager || emp.isRh || emp.roleType === 'gestor' || emp.roleType === 'rh'
+      );
       const systemRole: 'manager' | 'employee' = isManager ? 'manager' : 'employee';
 
       safeStorage.setItem('pontual_role', systemRole);
@@ -632,7 +644,7 @@ function AppContent() {
         Idf_Colaborador: emp.id,
         Nme_Colaborador: emp.name,
         Eml_Corporativo: emp.email,
-        Tpo_Perfil: isManager ? 'gestor' : 'colaborador',
+        Tpo_Perfil: emp.roleType || (isManager ? 'gestor' : 'colaborador'),
         Tpo_Cargo: emp.role,
         Des_Departamento: emp.department,
         Des_Avatar_Url: emp.avatar,
@@ -740,7 +752,7 @@ function AppContent() {
 
 
 
-  // Check-In / Check-Out handler for employee
+  // Check-In / Check-Out handler for employee (server-first para timestamp e geofence oficiais)
   const handleCheckIn = async (
     shiftId: string,
     locationData: {
@@ -757,21 +769,22 @@ function AppContent() {
     simulatedTime?: string
   ): Promise<string> => {
     const now = new Date();
-    let effectiveNowIso = now.toISOString();
-    let timeStr = simulatedTime || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const targetShift = shifts.find(s => s.id === shiftId);
 
-    // Salva na TAB_Registro_Ponto primeiro e usa o horário oficial do servidor para evitar drift cliente x banco
-    const savedPunch = await registerPunchSupabase(shiftId, activeEmployee.id, locationData, punchType);
-    if (!simulatedTime && savedPunch?.timeStr) {
-      timeStr = savedPunch.timeStr;
-    }
-    if (!simulatedTime && savedPunch?.timestamp) {
-      effectiveNowIso = savedPunch.timestamp;
+    // Envia ponto primeiro para o backend calcular timestamp, Haversine geofence e status oficial (ou obtém timestamp oficial do banco no fallback)
+    const serverRes = await registerPunchSupabase(shiftId, activeEmployee.id, locationData, punchType);
+    if (serverRes.fromServer && !serverRes.ok) {
+      showToast('Erro ao registrar ponto', serverRes.error || 'Não foi possível validar o registro no servidor.', 'error');
+      return '';
     }
 
-    // Avaliação de tolerância conforme Art. 58 § 1º CLT
-    let punchAttendanceStatus: 'present' | 'late' = 'present';
+    const officialTimestamp = (!simulatedTime && serverRes.serverTimestamp) ? serverRes.serverTimestamp : now.toISOString();
+    const timeStr = simulatedTime || serverRes.serverTimeHHMM || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const officialGpsValidated = typeof serverRes.gpsValidated === 'boolean' ? serverRes.gpsValidated : locationData.gpsValidated;
+    const officialDistanceMeters = serverRes.distanceMeters ?? locationData.distanceMeters;
+
+    // Avaliação de tolerância conforme Art. 58 § 1º CLT (usando horário oficial retornado pelo servidor)
+    let punchAttendanceStatus: 'present' | 'late' = serverRes.attendanceStatus || 'present';
     let lateDiffMinutes = 0;
     let earlyEntryDiffMinutes = 0;
     let overtimeDiffMinutes = 0;
@@ -779,7 +792,7 @@ function AppContent() {
 
     if (punchType === 'entrada' && targetShift?.startTime) {
       const tol = evaluatePunchTolerance(targetShift.startTime, timeStr, 'entrada', 10);
-      if (tol.isLate) {
+      if (serverRes.attendanceStatus === 'late' || tol.isLate) {
         punchAttendanceStatus = 'late';
         lateDiffMinutes = tol.diffMinutes;
       } else if (tol.isEarly) {
@@ -794,7 +807,7 @@ function AppContent() {
       }
     }
 
-    if (punchType === 'entrada') {
+    if (punchType === 'entrada' && !serverRes.fromServer) {
       updateShiftAttendanceStatusSupabase(shiftId, punchAttendanceStatus);
     }
 
@@ -821,14 +834,14 @@ function AppContent() {
             checkOutTime: timeStr,
             notes: updatedNotes,
             checkOutLocation: {
-              latitude: locationData.latitude ?? -23.5505,
-              longitude: locationData.longitude ?? -46.6333,
+              latitude: locationData.latitude,
+              longitude: locationData.longitude,
               address: locationData.address,
-              gpsValidated: locationData.gpsValidated,
+              gpsValidated: officialGpsValidated,
               accuracy: locationData.accuracy,
-              distanceMeters: locationData.distanceMeters,
+              distanceMeters: officialDistanceMeters,
               reportedWorkplace: locationData.reportedWorkplace,
-              timestamp: effectiveNowIso,
+              timestamp: officialTimestamp,
             }
           };
           if (updatedNotes !== (s.notes || '')) {
@@ -855,14 +868,14 @@ function AppContent() {
             checkInTime: timeStr,
             notes: updatedNotes,
             checkInLocation: {
-              latitude: locationData.latitude ?? -23.5505,
-              longitude: locationData.longitude ?? -46.6333,
+              latitude: locationData.latitude,
+              longitude: locationData.longitude,
               address: locationData.address,
-              gpsValidated: locationData.gpsValidated,
+              gpsValidated: officialGpsValidated,
               accuracy: locationData.accuracy,
-              distanceMeters: locationData.distanceMeters,
+              distanceMeters: officialDistanceMeters,
               reportedWorkplace: locationData.reportedWorkplace,
-              timestamp: effectiveNowIso,
+              timestamp: officialTimestamp,
             }
           };
           if (updatedNotes !== (s.notes || '')) {
@@ -878,14 +891,16 @@ function AppContent() {
     let statusMsg = 'GPS Validado no Posto';
     if (locationData.reportedWorkplace) {
       statusMsg = `Posto declarado: ${locationData.reportedWorkplace}`;
-    } else if (!locationData.gpsValidated && locationData.distanceMeters) {
-      statusMsg = `Aviso: Ponto registrado a ${locationData.distanceMeters}m do posto alocado`;
+    } else if (!officialGpsValidated && officialDistanceMeters) {
+      statusMsg = `Aviso: Ponto registrado a ${officialDistanceMeters}m do posto alocado`;
+    } else if (!officialGpsValidated) {
+      statusMsg = 'Aviso: Localização GPS não validada';
     }
 
     const isExit = punchType === 'saida';
     let notifTitle = isExit
-      ? (locationData.gpsValidated ? 'Saída Registrada com Sucesso!' : 'Saída Registrada (Aviso de Perímetro)')
-      : (locationData.gpsValidated ? 'Entrada Registrada com Sucesso!' : 'Entrada Registrada (Aviso de Perímetro)');
+      ? (officialGpsValidated ? 'Saída Registrada com Sucesso!' : 'Saída Registrada (Aviso de Perímetro)')
+      : (officialGpsValidated ? 'Entrada Registrada com Sucesso!' : 'Entrada Registrada (Aviso de Perímetro)');
     
     if (punchType === 'entrada' && lateDiffMinutes > 0) {
       notifTitle = `Entrada Registrada (Atraso de ${lateDiffMinutes} min)`;
@@ -1632,6 +1647,20 @@ function AppContent() {
 
   const handleLogout = async () => {
     try {
+      const backendBase = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+      const logoutEndpoints = [
+        ...(backendBase ? [`${backendBase}/api/auth/logout`] : []),
+        '/api/auth/logout',
+        ...(import.meta.env.DEV ? ['http://localhost:5000/api/auth/logout'] : []),
+      ];
+      for (const endpoint of logoutEndpoints) {
+        try {
+          const res = await fetch(endpoint, { method: 'POST', credentials: 'include' });
+          if (res.ok) break;
+        } catch {}
+      }
+    } catch {}
+    try {
       await supabase.auth.signOut();
     } catch (err) {
       console.warn('Erro ao deslogar do Supabase:', err);
@@ -1640,14 +1669,17 @@ function AppContent() {
       safeStorage.removeItem('pontual_active_user');
       safeStorage.removeItem('pontual_role');
       safeStorage.removeItem('pontual_google_avatar');
+      safeStorage.removeItem('pontual_auth_token');
 
       if (typeof window !== 'undefined') {
         window.sessionStorage.removeItem('pontual_active_user');
         window.sessionStorage.removeItem('pontual_role');
         window.sessionStorage.removeItem('pontual_google_avatar');
+        window.sessionStorage.removeItem('pontual_auth_token');
         window.localStorage.removeItem('pontual_active_user');
         window.localStorage.removeItem('pontual_role');
         window.localStorage.removeItem('pontual_google_avatar');
+        window.localStorage.removeItem('pontual_auth_token');
 
         // Limpa tokens de autenticação do Supabase residuais no storage
         try {
@@ -1786,19 +1818,18 @@ function AppContent() {
           title="Ir para o Painel Inicial"
           aria-label="Ir para o Painel Inicial"
         >
-          <img
-            src={!isDark ? logoWideDark : logoWideLight}
-            alt="Pontual"
-            className="h-6 sm:h-7 w-auto object-contain select-none"
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              target.style.display = 'none';
-              const parent = target.parentElement;
-              if (parent) {
-                parent.innerHTML = `<span class="${!isDark ? 'text-slate-900' : 'text-white'} font-extrabold text-sm tracking-tight">Pontual</span>`;
-              }
-            }}
-          />
+          {!headerLogoError ? (
+            <img
+              src={!isDark ? logoWideDark : logoWideLight}
+              alt="Pontual"
+              className="h-6 sm:h-7 w-auto object-contain select-none"
+              onError={() => setHeaderLogoError(true)}
+            />
+          ) : (
+            <span className={`${!isDark ? 'text-slate-900' : 'text-white'} font-extrabold text-sm tracking-tight`}>
+              Pontual
+            </span>
+          )}
         </button>
 
         {/* Right: Perfil (mobile) + Tema + Sair (desktop) */}

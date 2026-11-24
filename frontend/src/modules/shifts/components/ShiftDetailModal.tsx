@@ -17,6 +17,7 @@ import { Shift, Employee, WorkplaceLocation, ShiftColor } from '@/types';
 import { formatDateBR, normalizeDateToISO } from '@/shared/utils/dateUtils';
 import { calculateShiftDurationHours } from '@/shared/utils/dateUtils';
 import { findWorkplaceByName } from '@/shared/services/workplaceService';
+import { sanitizeSafeUrl } from '@/shared/utils/security';
 
 interface ShiftDetailModalProps {
   shift: Partial<Shift> | null;
@@ -456,18 +457,20 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                     {safeShift.meetingLink}
                   </div>
                 </div>
-                <a
-                  href={safeShift.meetingLink}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={`mt-2 w-full px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all border ${
-                    isLightTheme
-                      ? 'bg-white hover:bg-rose-50 border-rose-200 text-[#96183c] shadow-2xs'
-                      : 'bg-white/10 hover:bg-white/20 border-white/10 text-white'
-                  }`}
-                >
-                  Abrir Reunião <ExternalLink className="w-3.5 h-3.5" />
-                </a>
+                {sanitizeSafeUrl(safeShift.meetingLink, { fallback: '' }) && (
+                  <a
+                    href={sanitizeSafeUrl(safeShift.meetingLink)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`mt-2 w-full px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all border ${
+                      isLightTheme
+                        ? 'bg-white hover:bg-rose-50 border-rose-200 text-[#96183c] shadow-2xs'
+                        : 'bg-white/10 hover:bg-white/20 border-white/10 text-white'
+                    }`}
+                  >
+                    Abrir Reunião <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
               </div>
             ) : (
               <div className={`p-4 rounded-2xl border space-y-1.5 flex flex-col justify-between ${
@@ -483,11 +486,11 @@ export const ShiftDetailModal: React.FC<ShiftDetailModalProps> = ({
                         Local de Atuação
                       </div>
                     </div>
-                    {workplaceMapsUrl && (
+                    {workplaceMapsUrl && sanitizeSafeUrl(workplaceMapsUrl, { fallback: '' }) && (
                       <a
-                        href={workplaceMapsUrl}
+                        href={sanitizeSafeUrl(workplaceMapsUrl)}
                         target="_blank"
-                        rel="noreferrer"
+                        rel="noopener noreferrer"
                         className="inline-flex items-center gap-1 text-[10px] font-bold text-sky-400 hover:text-sky-300 transition-colors"
                         title="Abrir no Google Maps"
                       >

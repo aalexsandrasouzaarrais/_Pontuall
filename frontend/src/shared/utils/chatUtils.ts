@@ -1,4 +1,5 @@
 import { supabase } from '@/shared/services/supabase';
+import { validateUploadFile } from '@/shared/utils/security';
 
 export interface ChatAttachment {
   type: 'image' | 'file';
@@ -31,18 +32,9 @@ export const CHAT_COMMON_EMOJIS: string[] = [
  */
 export async function compressImageFile(file: File, maxWidth = 1200, maxHeight = 1200, quality = 0.82): Promise<ChatAttachment> {
   return new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        resolve({
-          type: 'file',
-          name: file.name,
-          url: reader.result as string,
-          size: formatBytes(file.size),
-        });
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
+    const validation = validateUploadFile(file, { mode: 'image', maxSizeBytes: 10 * 1024 * 1024 });
+    if (!validation.valid) {
+      reject(new Error(validation.error || 'Apenas imagens seguras (PNG, JPG, WEBP ou GIF) são permitidas.'));
       return;
     }
 
