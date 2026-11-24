@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { sanitizeSafeUrl } from '@/shared/utils/security';
+import { normalizeExternalHttpUrl, sanitizeSafeUrl, validateUploadFile, validateUploadMagicBytes } from '@/shared/utils/security';
 import { 
   Briefcase, 
   Clock, 
@@ -481,20 +481,32 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
     setLinks(updated);
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    Array.from(files).forEach((file: File) => {
-      if (!file.type.startsWith('image/')) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          setImages(prev => [...prev, reader.result as string]);
-        }
-      };
-      reader.readAsDataURL(file);
-    });
+    for (const file of Array.from(files)) {
+      const check = validateUploadFile(file, { mode: 'image', maxSizeBytes: 5 * 1024 * 1024 });
+      if (!check.valid) {
+        setFormError(check.error || 'Arquivo inválido. Selecione apenas PNG, JPG, WEBP ou GIF até 5 MB.');
+        continue;
+      }
+      const magic = await validateUploadMagicBytes(file, { mode: 'image' });
+      if (!magic.valid) {
+        setFormError(magic.error || 'Assinatura binária de imagem inválida.');
+        continue;
+      }
+
+      const dataUrl = await new Promise<string | null>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+      });
+      if (dataUrl) {
+        setImages(prev => [...prev, dataUrl]);
+      }
+    }
 
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -526,10 +538,16 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
       return;
     }
 
-    const validLinks = links.filter(l => l.url.trim().length > 0).map(l => ({
-      title: l.title.trim() || l.url.trim(),
-      url: l.url.trim().startsWith('http') ? l.url.trim() : `https://${l.url.trim()}`
-    }));
+    const validLinks = links
+      .map(l => {
+        const safeUrl = normalizeExternalHttpUrl(l.url);
+        if (!safeUrl) return null;
+        return {
+          title: l.title.trim() || safeUrl,
+          url: safeUrl,
+        };
+      })
+      .filter((l): l is PjReportLink => l !== null);
 
     setIsSubmitting(true);
     try {
@@ -2393,7 +2411,7 @@ export const PjDeliverablesView: React.FC<PjDeliverablesViewProps> = ({
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/*"
+                    accept=".png,.jpg,.jpeg,.webp,.gif"
                     multiple
                     className="hidden"
                     onChange={handleImageUpload}

@@ -217,6 +217,39 @@ const PjNoteCard: React.FC<PjNoteCardProps> = ({
     checkListState();
   };
 
+  const handleEditorPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const rawHtml = e.clipboardData.getData('text/html');
+    const rawText = e.clipboardData.getData('text/plain');
+    const safeHtml = rawHtml
+      ? sanitizeNoteHtml(rawHtml)
+      : sanitizeNoteHtml(escapeHtml(rawText).replace(/\r?\n/g, '<br>'));
+
+    if (!safeHtml) return;
+
+    if (typeof document.execCommand === 'function') {
+      document.execCommand('insertHTML', false, safeHtml);
+    } else {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        const frag = range.createContextualFragment(safeHtml);
+        range.insertNode(frag);
+        range.collapse(false);
+      } else {
+        editor.innerHTML = sanitizeNoteHtml(`${editor.innerHTML}${safeHtml}`);
+      }
+    }
+
+    setStatusSalvo('Salvo agora');
+    onUpdate(nota.id, { texto: sanitizeNoteHtml(editor.innerHTML) });
+    checkListState();
+  };
+
   return (
     <article className="pj-nota">
       <div className="pj-espiral" aria-hidden="true">
@@ -275,6 +308,7 @@ const PjNoteCard: React.FC<PjNoteCardProps> = ({
           aria-multiline="true"
           data-placeholder="Escreva aqui suas ideias..."
           onInput={handleEditorInput}
+          onPaste={handleEditorPaste}
           onKeyDown={handleEditorKeyDown}
           onKeyUp={checkListState}
           onMouseUp={checkListState}

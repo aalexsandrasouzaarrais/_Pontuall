@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { X, FileText, Upload, CheckCircle2, AlertCircle, Lock } from 'lucide-react';
 import { Employee, Shift, AbsenceJustification } from '@/types';
 import { uploadDocumentSupabase } from '@/shared/services/storageService';
-import { validateUploadFile } from '@/shared/utils/security';
+import { validateUploadFile, validateUploadMagicBytes } from '@/shared/utils/security';
 
 export type JustificationCategoryType = 'absence' | 'delay' | 'early_entry' | 'early_leave' | 'overtime' | 'forgetfulness';
 
@@ -106,6 +106,13 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
       const validation = validateUploadFile(file, { mode: 'document', maxSizeBytes: 10 * 1024 * 1024 });
       if (!validation.valid) {
         alert(validation.error || 'Arquivo inválido. Selecione PDF, PNG, JPG ou WEBP.');
+        e.target.value = '';
+        return;
+      }
+
+      const magicCheck = await validateUploadMagicBytes(file, { mode: 'document' });
+      if (!magicCheck.valid) {
+        alert(magicCheck.error || 'Conteúdo de arquivo inválido. Envie apenas PDF, PNG, JPG ou WEBP reais.');
         e.target.value = '';
         return;
       }
@@ -577,7 +584,7 @@ export const JustificationModal: React.FC<JustificationModalProps> = ({
             }`}>
               <input
                 type="file"
-                accept=".pdf,.jpg,.jpeg,.png"
+                accept=".pdf,.jpg,.jpeg,.png,.webp"
                 onChange={handleFileUpload}
                 className="hidden"
               />
