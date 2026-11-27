@@ -15,6 +15,7 @@ const SERVER_SNAPSHOT: PwaInstallSnapshot = {
   isInstalled: false,
   isInstalling: false,
   isDismissed: false,
+  forceShowGuide: false,
 };
 
 export function usePwaInstall() {
@@ -27,8 +28,7 @@ export function usePwaInstall() {
   const dismissed = snapshot.isDismissed || isInstallBannerDismissed();
   const shouldShowBanner =
     !snapshot.isInstalled &&
-    !dismissed &&
-    (snapshot.canPromptInstall || snapshot.isIos);
+    (snapshot.forceShowGuide || (!dismissed && (snapshot.canPromptInstall || snapshot.isIos)));
 
   const install = useCallback(async () => {
     return triggerPwaInstallPrompt();
@@ -45,6 +45,7 @@ export function usePwaInstall() {
     isIosNonSafari: snapshot.isIosNonSafari,
     isInstalled: snapshot.isInstalled,
     isInstalling: snapshot.isInstalling,
+    forceShowGuide: snapshot.forceShowGuide,
     install,
     dismiss,
   };

@@ -16,6 +16,7 @@ export interface PwaInstallSnapshot {
   isInstalled: boolean;
   isInstalling: boolean;
   isDismissed: boolean;
+  forceShowGuide: boolean;
 }
 
 const PWA_DISMISS_STORAGE_KEY = 'pontual_pwa_dismissed_until';
@@ -109,6 +110,7 @@ let initialized = false;
 let deferredPrompt: BeforeInstallPromptEvent | null = null;
 let isInstallingState = false;
 let installedOverride = false;
+let forceShowGuideState = false;
 const listeners = new Set<() => void>();
 
 const INITIAL_SNAPSHOT: PwaInstallSnapshot = {
@@ -118,6 +120,7 @@ const INITIAL_SNAPSHOT: PwaInstallSnapshot = {
   isInstalled: false,
   isInstalling: false,
   isDismissed: false,
+  forceShowGuide: false,
 };
 
 let cachedSnapshot: PwaInstallSnapshot = INITIAL_SNAPSHOT;
@@ -131,6 +134,7 @@ function computeSnapshot(): PwaInstallSnapshot {
     isInstalled: installedOverride || isRunningAsInstalledPwa(),
     isInstalling: isInstallingState,
     isDismissed: isInstallBannerDismissed(),
+    forceShowGuide: forceShowGuideState,
   };
 }
 
@@ -141,7 +145,8 @@ function snapshotsEqual(a: PwaInstallSnapshot, b: PwaInstallSnapshot): boolean {
     a.isIosNonSafari === b.isIosNonSafari &&
     a.isInstalled === b.isInstalled &&
     a.isInstalling === b.isInstalling &&
-    a.isDismissed === b.isDismissed
+    a.isDismissed === b.isDismissed &&
+    a.forceShowGuide === b.forceShowGuide
   );
 }
 
@@ -160,11 +165,22 @@ function updateSnapshotAndNotify(): void {
 }
 
 export function dismissInstallBanner(): void {
+  forceShowGuideState = false;
   try {
     safeStorage.setItem(PWA_DISMISS_STORAGE_KEY, getDismissalExpiryTimestamp());
   } catch {
     // Ignore storage write errors
   }
+  updateSnapshotAndNotify();
+}
+
+export function openPwaInstallGuide(): void {
+  try {
+    safeStorage.removeItem(PWA_DISMISS_STORAGE_KEY);
+  } catch {
+    // Ignore storage remove errors
+  }
+  forceShowGuideState = true;
   updateSnapshotAndNotify();
 }
 
@@ -203,6 +219,7 @@ export async function triggerPwaInstallPrompt(): Promise<
     const choice = await promptEvent.userChoice;
     if (choice?.outcome === 'accepted') {
       installedOverride = true;
+      forceShowGuideState = false;
       return 'accepted';
     }
     return 'dismissed';
@@ -212,6 +229,24 @@ export async function triggerPwaInstallPrompt(): Promise<
     isInstallingState = false;
     updateSnapshotAndNotify();
   }
+}
+
+export async function requestPwaInstall(): Promise<
+  'accepted' | 'dismissed' | 'guide' | 'installed'
+> {
+  if (installedOverride || isRunningAsInstalledPwa()) {
+    return 'installed';
+  }
+
+  if (deferredPrompt !== null) {
+    const outcome = await triggerPwaInstallPrompt();
+    if (outcome === 'accepted' || outcome === 'dismissed') {
+      return outcome;
+    }
+  }
+
+  openPwaInstallGuide();
+  return 'guide';
 }
 
 function registerServiceWorker(): void {
@@ -257,6 +292,7 @@ export function initPwa(): void {
     deferredPrompt = null;
     installedOverride = true;
     isInstallingState = false;
+    forceShowGuideState = false;
     updateSnapshotAndNotify();
   });
 

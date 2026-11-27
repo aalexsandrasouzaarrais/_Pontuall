@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useTheme } from '@/shared/context/ThemeContext';
+import { requestPwaInstall } from '@/lib/pwa';
 
 interface LandingViewProps {
   onGoToLogin: () => void;
@@ -33,6 +34,13 @@ export const LandingView: React.FC<LandingViewProps> = ({ onGoToLogin }) => {
         if (cleanTitle) {
           document.title = cleanTitle;
         }
+      } else if (data.type === 'PONTUAL_INSTALL_PWA') {
+        void requestPwaInstall().then((status) => {
+          iframeRef.current?.contentWindow?.postMessage(
+            { type: 'PONTUAL_PWA_STATUS', status },
+            window.location.origin
+          );
+        });
       }
     };
 

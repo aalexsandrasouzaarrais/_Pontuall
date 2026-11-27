@@ -92,6 +92,37 @@ if (window.parent && window.parent !== window) {
     window.parent.postMessage({ type: 'PONTUAL_TITLE_CHANGE', title: document.title }, window.location.origin);
 }
 
+// ============================
+// BOTÕES -> INSTALAR APP (PWA)
+// ============================
+
+const botoesInstalarPwa = document.querySelectorAll('[data-action="install-pwa"]');
+
+botoesInstalarPwa.forEach(botao => {
+    botao.addEventListener('click', (e) => {
+        if (e) e.preventDefault();
+        if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: 'PONTUAL_INSTALL_PWA' }, window.location.origin);
+        } else {
+            window.location.href = '/?login=true';
+        }
+    });
+});
+
+window.addEventListener('message', (event) => {
+    if (event.origin !== window.location.origin || event.source !== window.parent) return;
+    const data = event.data;
+    if (!data || typeof data !== 'object') return;
+    if (data.type === 'PONTUAL_PWA_STATUS' && (data.status === 'installed' || data.status === 'accepted')) {
+        document.querySelectorAll('.download-btn-text, .header-download-label').forEach(el => {
+            el.textContent = 'App instalado ✓';
+        });
+        botoesInstalarPwa.forEach(btn => {
+            btn.setAttribute('title', 'App instalado');
+        });
+    }
+});
+
 
 // ============================
 // ANIMAÇÃO DE ROLAGEM

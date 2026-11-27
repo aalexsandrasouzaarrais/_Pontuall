@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pontual-pwa-v1';
+const CACHE_NAME = 'pontual-pwa-v2';
 const PRECACHE_URLS = [
   '/manifest.webmanifest',
   '/icons/pwa-192x192.png',

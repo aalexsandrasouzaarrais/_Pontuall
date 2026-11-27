@@ -162,6 +162,23 @@
             </button>
 
 
+            <!-- BOTÃO BAIXAR APP (PWA) -->
+
+            <button
+                type="button"
+                class="header-download-app"
+                data-action="install-pwa"
+                aria-label="Baixar aplicativo Pontual"
+                title="Baixar App">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span class="header-download-label">Baixar App</span>
+            </button>
+
+
             <!-- BOTÃO ENTRAR -->
 
             <button type="button" class="login-alt" data-action="go-login">
@@ -226,10 +243,15 @@
 
                     </a>
 
+                    <button type="button" class="btn-download-app" data-action="install-pwa">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        <span class="download-btn-text">Baixar App</span>
+                    </button>
 
-                
-
-                    
                 </div>
 
             </div>
@@ -967,14 +989,25 @@
                 acontecer.
             </h2>
 
-            <button type="button" class="primary-button" data-action="go-login">
+            <div class="cta-actions">
+                <button type="button" class="primary-button" data-action="go-login">
 
-                Acessar plataforma
+                    Acessar plataforma
 
-                <span>↗</span>
-                
+                    <span>↗</span>
+                    
 
-            </button>
+                </button>
+
+                <button type="button" class="cta-download-app" data-action="install-pwa">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    <span class="download-btn-text">Baixar App</span>
+                </button>
+            </div>
 
         </div>
 

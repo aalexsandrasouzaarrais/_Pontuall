@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Download, PlusSquare, Share, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Download, MoreVertical, PlusSquare, Share, X } from 'lucide-react';
 import { useTheme } from '@/shared/context/ThemeContext';
 import { usePwaInstall } from '@/shared/hooks/usePwaInstall';
 
@@ -11,15 +11,24 @@ export const PwaInstallBanner: React.FC = () => {
     isIos,
     isIosNonSafari,
     isInstalling,
+    forceShowGuide,
     install,
     dismiss,
   } = usePwaInstall();
 
   const [showIosGuide, setShowIosGuide] = useState(false);
 
+  useEffect(() => {
+    if (forceShowGuide && isIos) {
+      setShowIosGuide(true);
+    }
+  }, [forceShowGuide, isIos]);
+
   if (!shouldShowBanner) {
     return null;
   }
+
+  const isGuideOpen = !canPromptInstall && (isIos ? showIosGuide : forceShowGuide);
 
   return (
     <aside
@@ -92,24 +101,34 @@ export const PwaInstallBanner: React.FC = () => {
                   <Share className="w-3.5 h-3.5" />
                   <span>{showIosGuide ? 'Ocultar passo a passo' : 'Como instalar'}</span>
                 </button>
+              ) : forceShowGuide ? (
+                <button
+                  type="button"
+                  onClick={dismiss}
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-[#640C1E] via-[#9F243C] to-[#F59242] hover:brightness-110 active:scale-[0.98] transition-all shadow-md cursor-pointer"
+                >
+                  <span>Entendi</span>
+                </button>
               ) : null}
 
-              <button
-                type="button"
-                onClick={dismiss}
-                className={`px-2.5 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
-                  isDark
-                    ? 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
-                }`}
-              >
-                Agora não
-              </button>
+              {(!forceShowGuide || canPromptInstall || isIos) && (
+                <button
+                  type="button"
+                  onClick={dismiss}
+                  className={`px-2.5 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
+                    isDark
+                      ? 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                      : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
+                  }`}
+                >
+                  Agora não
+                </button>
+              )}
             </div>
           </div>
         </div>
 
-        {isIos && !canPromptInstall && showIosGuide && (
+        {isGuideOpen && (
           <div
             className={`mt-3 pt-3 border-t text-xs space-y-2 ${
               isDark
@@ -117,36 +136,61 @@ export const PwaInstallBanner: React.FC = () => {
                 : 'border-slate-200 text-slate-700'
             }`}
           >
-            {isIosNonSafari && (
-              <p
-                className={`text-[11px] font-medium px-2.5 py-1.5 rounded-lg ${
-                  isDark
-                    ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
-                    : 'bg-amber-50 text-amber-800 border border-amber-200'
-                }`}
-              >
-                No iPhone/iPad, abra este link no <strong>Safari</strong> para instalar na tela inicial.
-              </p>
+            {isIos ? (
+              <>
+                {isIosNonSafari && (
+                  <p
+                    className={`text-[11px] font-medium px-2.5 py-1.5 rounded-lg ${
+                      isDark
+                        ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
+                        : 'bg-amber-50 text-amber-800 border border-amber-200'
+                    }`}
+                  >
+                    No iPhone/iPad, abra este link no <strong>Safari</strong> para instalar na tela inicial.
+                  </p>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-[#9F243C]/20 text-[#F59242] shrink-0">
+                    <Share className="w-3.5 h-3.5" />
+                  </span>
+                  <span>
+                    1. Toque no botão <strong>Compartilhar</strong> na barra do navegador.
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-[#9F243C]/20 text-[#F59242] shrink-0">
+                    <PlusSquare className="w-3.5 h-3.5" />
+                  </span>
+                  <span>
+                    2. Escolha <strong>&ldquo;Adicionar à Tela de Início&rdquo;</strong> e toque em{' '}
+                    <strong>Adicionar</strong>.
+                  </span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-[#9F243C]/20 text-[#F59242] shrink-0">
+                    <MoreVertical className="w-3.5 h-3.5" />
+                  </span>
+                  <span>
+                    1. Toque no menu do navegador (<strong>⋮</strong> no canto superior direito ou no ícone de instalar na barra de endereço).
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-[#9F243C]/20 text-[#F59242] shrink-0">
+                    <Download className="w-3.5 h-3.5" />
+                  </span>
+                  <span>
+                    2. Selecione <strong>&ldquo;Instalar aplicativo&rdquo;</strong> ou{' '}
+                    <strong>&ldquo;Adicionar à tela inicial&rdquo;</strong>.
+                  </span>
+                </div>
+              </>
             )}
-
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-[#9F243C]/20 text-[#F59242] shrink-0">
-                <Share className="w-3.5 h-3.5" />
-              </span>
-              <span>
-                1. Toque no botão <strong>Compartilhar</strong> na barra do navegador.
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center justify-center w-5 h-5 rounded-md bg-[#9F243C]/20 text-[#F59242] shrink-0">
-                <PlusSquare className="w-3.5 h-3.5" />
-              </span>
-              <span>
-                2. Escolha <strong>&ldquo;Adicionar à Tela de Início&rdquo;</strong> e toque em{' '}
-                <strong>Adicionar</strong>.
-              </span>
-            </div>
           </div>
         )}
       </div>

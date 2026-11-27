@@ -5,6 +5,7 @@ import {
   isStandaloneDisplayMode,
   isBannerDismissed,
   getDismissalExpiryTimestamp,
+  requestPwaInstall,
 } from '@/lib/pwa';
 
 describe('PWA Helpers', () => {
@@ -92,6 +93,12 @@ describe('PWA Helpers', () => {
       expect(isBannerDismissed(null)).toBe(false);
       expect(isBannerDismissed('')).toBe(false);
       expect(isBannerDismissed('invalid-number')).toBe(false);
+    });
+  });
+
+  describe('requestPwaInstall', () => {
+    it('falls back to opening the install guide when browser prompt is unavailable', async () => {
+      await expect(requestPwaInstall()).resolves.toBe('guide');
     });
   });
 });
