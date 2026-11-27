@@ -123,6 +123,8 @@ import {
 import { ThemeProvider, useTheme } from '@/shared/context/ThemeContext';
 import { showPolishedToast, PolishedToaster, type RimVariant } from '@/components/ui/halo-toast';
 import { safeStorage } from '@/shared/utils/safeStorage';
+import { isRunningAsInstalledPwa } from '@/lib/pwa';
+import { PwaInstallBanner } from '@/shared/components/PwaInstallBanner';
 import logoWideDark from './assets/logo-pontual-wide-dark.png';
 import logoWideLight from './assets/logo-pontual-wide.png';
 
@@ -197,6 +199,9 @@ function AppContent() {
 
   const [showLogin, setShowLogin] = useState<boolean>(() => {
     try {
+      if (isRunningAsInstalledPwa()) {
+        return true;
+      }
       if (typeof window !== 'undefined') {
         const search = window.location.search.toLowerCase();
         const hash = window.location.hash.toLowerCase();
@@ -2815,6 +2820,7 @@ export function App() {
   return (
     <ThemeProvider>
       <AppContent />
+      <PwaInstallBanner />
     </ThemeProvider>
   );
 }
