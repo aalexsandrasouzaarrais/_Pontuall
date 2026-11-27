@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { initPwa } from './lib/pwa';
 
 // Proteção global contra 'SecurityError: Access is denied for this document'
 (function initGlobalSafeStorage() {
@@ -38,6 +39,8 @@ import './index.css';
     }
   }
 })();
+
+initPwa();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
